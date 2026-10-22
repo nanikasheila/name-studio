@@ -21,6 +21,7 @@
         <button id="prev" title="前へ（→）" disabled>▶</button>
       </div>
       <label class="check"><input type="checkbox" id="first-alone" checked /> 1ページ目を単独</label>
+      <button id="export" disabled>ページに書き出す…</button>
     </header>
     <main class="workspace">
       <aside class="sidebar">
@@ -37,6 +38,46 @@
       </section>
     </main>
     <footer id="status" class="status"></footer>
+    <dialog id="export-dialog" class="export">
+      <form method="dialog" id="export-form">
+        <h2>ページに書き出す</h2>
+        <p class="hint">ネーム用紙のページ枠ごとに、レイヤーを保ったままの .clip を作ります。元のファイルは変更しません。</p>
+        <div class="field">
+          <span>ひな形のページ</span>
+          <output id="export-template" class="path">未選択</output>
+          <button type="button" id="pick-template">選ぶ…</button>
+          <small>同じ作品の設定で CSP が保存した、空のページ（.clip）</small>
+        </div>
+        <div class="field">
+          <span>書き出し先</span>
+          <output id="export-out-dir" class="path">未選択</output>
+          <button type="button" id="pick-out-dir">選ぶ…</button>
+        </div>
+        <div class="field">
+          <span>合わせ方</span>
+          <select id="export-fit">
+            <option value="basic">内枠を基本枠に合わせる</option>
+            <option value="trim">内枠を仕上がり線に合わせる</option>
+            <option value="cell">ページ枠全体をキャンバスに収める</option>
+          </select>
+        </div>
+        <label class="check"><input type="checkbox" id="export-make-work" checked /> 作品ファイル（.cmc）も作る</label>
+        <div class="field" id="work-fields">
+          <span>作品のひな形</span>
+          <output id="export-work-template" class="path">未選択</output>
+          <button type="button" id="pick-work-template">選ぶ…</button>
+          <span>作品名</span>
+          <input id="export-work-name" type="text" />
+          <span>話数</span>
+          <input id="export-story-index" type="number" min="0" placeholder="ひな形のまま" />
+        </div>
+        <p id="export-message" class="message" role="status"></p>
+        <div class="actions">
+          <button value="cancel" formnovalidate>閉じる</button>
+          <button type="button" id="export-run" class="primary">書き出す</button>
+        </div>
+      </form>
+    </dialog>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
