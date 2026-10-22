@@ -131,7 +131,6 @@ pub struct WorkReport {
 /// Writes pages one at a time (each page's images can be large), then the work.
 pub struct RasterWorkWriter {
     options: WorkOptions,
-    out_dir: PathBuf,
     canvas_values: Values,
     overrides: Values,
     pages: Vec<PathBuf>,
@@ -151,14 +150,16 @@ impl RasterWorkWriter {
         }
         inputs.extend(options.inputs.iter().filter(|path| path.exists()).cloned());
         std::fs::create_dir_all(&options.out_dir)?;
-        let out_dir = options.out_dir.canonicalize()?;
+        // Compared canonically; pages are written under the folder as given
+        // (on Windows the canonical form is a `\\?\` path).
+        let canonical_out = options.out_dir.canonicalize()?;
         for input in &inputs {
             let folder = input
                 .canonicalize()?
                 .parent()
                 .map(Path::to_path_buf)
                 .unwrap_or_default();
-            if folder == out_dir {
+            if folder == canonical_out {
                 return Err(CspError::format(
                     "The output folder must differ from the input folders so originals are never overwritten",
                 ));
@@ -181,7 +182,6 @@ impl RasterWorkWriter {
         }
         Ok(RasterWorkWriter {
             options,
-            out_dir,
             canvas_values,
             overrides,
             pages: Vec::new(),
@@ -192,7 +192,10 @@ impl RasterWorkWriter {
     /// Write the next page (numbered from 1 in the order they are written).
     pub fn write_page(&mut self, layers: &[RasterLayer]) -> Result<PathBuf> {
         let number = self.pages.len() as i64 + 1;
-        let output = self.out_dir.join(page_file_name(&self.options.name_pattern, number));
+        let output = self
+            .options
+            .out_dir
+            .join(page_file_name(&self.options.name_pattern, number));
         write_raster_page(&self.options.template, layers, &output, number - 1, &self.canvas_values)?;
         self.pages.push(output.clone());
         Ok(output)
@@ -207,7 +210,7 @@ impl RasterWorkWriter {
                 Some(write_cmc(
                     cmc,
                     &self.pages,
-                    &self.out_dir.join(format!("{name}.cmc")),
+                    &self.options.out_dir.join(format!("{name}.cmc")),
                     &self.overrides,
                 )?)
             }
