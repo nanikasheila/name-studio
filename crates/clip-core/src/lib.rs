@@ -10,6 +10,8 @@ pub mod clip;
 pub mod cmc;
 pub mod container;
 pub mod error;
+#[cfg(feature = "fixtures")]
+pub mod fixtures;
 pub mod inspect;
 pub mod layout;
 pub mod offscreen;

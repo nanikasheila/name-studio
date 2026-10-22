@@ -11,6 +11,7 @@ const USAGE: &str = "\
 usage:
   name-studio-cli inspect <file.clip|file.cmc> [--pixels] [--output FILE]
   name-studio-cli cells <sheet.clip> [--ltr]
+  name-studio-cli import <sheet.clip> [--output FILE.namestudio]
   name-studio-cli decode-time <file.clip>";
 
 fn main() -> ExitCode {
@@ -19,6 +20,7 @@ fn main() -> ExitCode {
         Some("inspect") => inspect(&args[1..]),
         Some("cells") => cells(&args[1..]),
         Some("decode-time") => decode_time(&args[1..]),
+        Some("import") => import(&args[1..]),
         _ => {
             eprintln!("{USAGE}");
             ExitCode::from(2)
@@ -97,6 +99,54 @@ fn cells(args: &[String]) -> ExitCode {
             ExitCode::from(1)
         }
     }
+}
+
+/// Turn a name sheet into a project file (ネームデータ).
+fn import(args: &[String]) -> ExitCode {
+    let Some(input) = args.first().map(PathBuf::from) else {
+        eprintln!("{USAGE}");
+        return ExitCode::from(2);
+    };
+    let output = match args.get(1).map(String::as_str) {
+        Some("--output") => match args.get(2) {
+            Some(path) => PathBuf::from(path),
+            None => {
+                eprintln!("{USAGE}");
+                return ExitCode::from(2);
+            }
+        },
+        None => input.with_extension(name_model::EXTENSION),
+        Some(_) => {
+            eprintln!("{USAGE}");
+            return ExitCode::from(2);
+        }
+    };
+    let imported = clip_core::ClipDocument::read(&input)
+        .and_then(|document| name_model::import::import_sheet(&document, name_model::PageFormat::default()));
+    let (project, warnings) = match imported {
+        Ok(result) => result,
+        Err(error) => {
+            eprintln!("Format error: {error}");
+            return ExitCode::from(1);
+        }
+    };
+    for warning in &warnings {
+        eprintln!("warning: {warning}");
+    }
+    if let Err(error) = project.save(&output) {
+        eprintln!("Cannot write {}: {error}", output.display());
+        return ExitCode::from(1);
+    }
+    let count = |f: fn(&name_model::Page) -> usize| project.pages.iter().map(f).sum::<usize>();
+    println!(
+        "Wrote {}: {} pages, {} panels, {} lines, {} strokes",
+        output.display(),
+        project.pages.len(),
+        count(|page| page.panels.len()),
+        count(|page| page.lines.len()),
+        count(|page| page.strokes.len())
+    );
+    ExitCode::SUCCESS
 }
 
 /// Time decoding every raster layer (to compare with the Python reader).

@@ -1912,7 +1912,18 @@ name = "name-cli"
 version = "0.1.0"
 dependencies = [
  "clip-core",
+ "name-model",
  "serde_json",
+]
+
+[[package]]
+name = "name-model"
+version = "0.1.0"
+dependencies = [
+ "clip-core",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]
