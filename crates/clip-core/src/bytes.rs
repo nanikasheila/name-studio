@@ -45,8 +45,10 @@ pub fn utf16_name(data: &[u8], offset: usize) -> Result<(String, usize)> {
         .get(start..end)
         .ok_or_else(|| CspError::format(format!("String at offset {offset} overruns the data")))?;
     let units: Vec<u16> = bytes
-        .chunks_exact(2)
-        .map(|pair| u16::from_be_bytes([pair[0], pair[1]]))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|pair| u16::from_be_bytes(*pair))
         .collect();
     Ok((String::from_utf16_lossy(&units), end))
 }

@@ -134,9 +134,11 @@ pub fn transform_text_attributes(blob: &[u8], scale: f64, dx: f64, dy: f64) -> R
             && value.len() % 4 == 0
         {
             value
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .flat_map(|bytes| {
-                    let number = i32::from_le_bytes(bytes.try_into().unwrap());
+                    let number = i32::from_le_bytes(*bytes);
                     ((number as f64 * scale).round_ties_even() as i32).to_le_bytes()
                 })
                 .collect()

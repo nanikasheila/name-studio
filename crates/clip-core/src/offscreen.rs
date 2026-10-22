@@ -154,9 +154,10 @@ impl RgbaImage {
         let width = self.width as usize;
         let (mut x0, mut y0, mut x1, mut y1) = (usize::MAX, usize::MAX, 0, 0);
         for (row, line) in self.pixels.chunks_exact(width * 4).enumerate() {
-            let opaque = |pixel: &[u8]| pixel[3] != 0;
-            if let Some(first) = line.chunks_exact(4).position(opaque) {
-                let last = line.chunks_exact(4).rposition(opaque).unwrap_or(first);
+            let opaque = |pixel: &[u8; 4]| pixel[3] != 0;
+            let pixels = line.as_chunks::<4>().0;
+            if let Some(first) = pixels.iter().position(opaque) {
+                let last = pixels.iter().rposition(opaque).unwrap_or(first);
                 x0 = x0.min(first);
                 x1 = x1.max(last + 1);
                 y0 = y0.min(row);
