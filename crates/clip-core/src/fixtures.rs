@@ -339,6 +339,16 @@ fn add_editing_schema(database: &Connection, canvas: FixtureCanvas) {
              UPDATE MipmapInfo SET NextIndex = 0;",
         )
         .expect("editing schema");
+    if canvas.double_page {
+        // CSP adds these for the second page's story info on spreads only.
+        database
+            .execute_batch(
+                "ALTER TABLE Canvas ADD COLUMN ComicStoryRightLayerCreated;
+                 ALTER TABLE Canvas ADD COLUMN ComicNombreRightLayerCreated;
+                 UPDATE Canvas SET ComicStoryRightLayerCreated = 1, ComicNombreRightLayerCreated = 1;",
+            )
+            .expect("spread columns");
+    }
     for (table, label, link, owner) in EDITING_SCHEME {
         database
             .execute(

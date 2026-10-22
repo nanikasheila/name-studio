@@ -290,6 +290,20 @@ fn splits_a_sheet_into_a_work() {
     assert_eq!(file_ids.len(), 4);
     let unique: std::collections::HashSet<&String> = uuids.iter().collect();
     assert!(unique.len() == uuids.len() && uuids.len() > 4);
+    // Pages keep the template's Canvas columns: spread-only columns from the
+    // sheet would make CSP rebuild the story info of right-hand pages on open.
+    for file in &files {
+        let document = ClipDocument::read(out.join(file)).unwrap();
+        let columns: Vec<String> = document
+            .database()
+            .prepare("SELECT name FROM pragma_table_info('Canvas')")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert!(!columns.iter().any(|column| column == "ComicStoryRightLayerCreated"));
+    }
     // Story info comes from the work's .cmc; --story-index overrides the episode.
     let first = ClipDocument::read(out.join("page0001.clip")).unwrap();
     let (name, index, string, attributes): (String, i64, Vec<u8>, Vec<u8>) = first

@@ -23,7 +23,10 @@ use crate::raster::{Filter, decode_png, resize};
 use crate::text::{build_tlv, parse_tlv, split_attribute_array, transform_text_attributes};
 use crate::vector::{select_vector_objects, transform_vector_data};
 
-pub(crate) const SCHEMA_TABLES: [&str; 5] = ["Layer", "Canvas", "VectorObjectList", "BrushStyleManager", "BrushStyle"];
+/// Not Canvas: a spread sheet has ComicStory/NombreRightLayerCreated columns,
+/// and a single right page that has them (as NULL) makes CSP rebuild its story
+/// info layers and mark the page modified on opening.
+pub(crate) const SCHEMA_TABLES: [&str; 4] = ["Layer", "VectorObjectList", "BrushStyleManager", "BrushStyle"];
 /// Vector objects refer to brush styles by id, so these rows keep their ids.
 const SHARED_TABLES: [&str; 2] = ["BrushStyleManager", "BrushStyle"];
 const TEXT_BLOBS: [&str; 1] = ["TextLayerAttributes"];
