@@ -117,27 +117,37 @@ pub fn merge_schema(target: &Connection, source: &Connection, tables: &[&str]) -
             ensure_elem_scheme(target, source, table)?;
             continue;
         }
-        let have: HashSet<String> = column_names(target, table)?.into_iter().collect();
-        let mut statement = source.prepare(&format!("PRAGMA table_info(\"{table}\")"))?;
-        let columns = statement.query_map([], |row| {
-            Ok((
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, Option<String>>(4)?,
-            ))
-        })?;
-        for column in columns {
-            let (name, declared_type, default) = column?;
-            if have.contains(&name) {
-                continue;
-            }
-            let mut definition = format!("\"{name}\" {declared_type}");
-            if let Some(default) = default {
-                definition += &format!(" DEFAULT {default}");
-            }
-            target.execute(&format!("ALTER TABLE \"{table}\" ADD COLUMN {definition}"), [])?;
-            copy_scheme_rows(target, source, table, Some(&name))?;
+        merge_columns(target, source, table, None)?;
+    }
+    Ok(())
+}
+
+/// Give `target`'s existing `table` the columns `source` has (only those in
+/// `only`, when given), with their ParamScheme rows.
+pub fn merge_columns(target: &Connection, source: &Connection, table: &str, only: Option<&[&str]>) -> Result<()> {
+    if !table_names(source)?.contains(table) || !table_names(target)?.contains(table) {
+        return Ok(());
+    }
+    let have: HashSet<String> = column_names(target, table)?.into_iter().collect();
+    let mut statement = source.prepare(&format!("PRAGMA table_info(\"{table}\")"))?;
+    let columns = statement.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, Option<String>>(4)?,
+        ))
+    })?;
+    for column in columns {
+        let (name, declared_type, default) = column?;
+        if have.contains(&name) || only.is_some_and(|only| !only.contains(&name.as_str())) {
+            continue;
         }
+        let mut definition = format!("\"{name}\" {declared_type}");
+        if let Some(default) = default {
+            definition += &format!(" DEFAULT {default}");
+        }
+        target.execute(&format!("ALTER TABLE \"{table}\" ADD COLUMN {definition}"), [])?;
+        copy_scheme_rows(target, source, table, Some(&name))?;
     }
     Ok(())
 }

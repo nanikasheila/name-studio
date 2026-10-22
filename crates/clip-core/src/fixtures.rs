@@ -352,6 +352,25 @@ fn add_editing_schema(database: &Connection, canvas: FixtureCanvas) {
             )
             .expect("spread columns");
     }
+    let has_vectors: i64 = database
+        .query_row("SELECT COUNT(*) FROM VectorObjectList", [], |row| row.get(0))
+        .expect("vectors");
+    if has_vectors > 0 {
+        // CSP gives a file brush styles (and Canvas the column that finds
+        // them) once it holds a vector line; an empty page has neither.
+        database
+            .execute_batch(
+                "CREATE TABLE BrushStyleManager(MainId, CanvasId, FirstBrushStyle);
+                 CREATE TABLE BrushStyle(MainId, CanvasId, NextIndex);
+                 INSERT INTO BrushStyleManager VALUES(8, 1, 33);
+                 INSERT INTO BrushStyle VALUES(33, 1, 0);
+                 ALTER TABLE Canvas ADD COLUMN BrushStyleManager;
+                 UPDATE Canvas SET BrushStyleManager = 8;
+                 INSERT INTO ParamScheme VALUES('Canvas', 'BrushStyleManager', 'BrushStyleManager', 0);
+                 INSERT INTO ElemScheme VALUES('BrushStyleManager', 0, 8), ('BrushStyle', 0, 33);",
+            )
+            .expect("brush styles");
+    }
     for (table, label, link, owner) in EDITING_SCHEME {
         database
             .execute(

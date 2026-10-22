@@ -18,8 +18,7 @@ use serde::Serialize;
 
 use super::cmc::{work_canvas_values, write_cmc};
 use super::editor::ClipEditor;
-use super::page::{SCHEMA_TABLES, apply_page_settings, replace_preview, share_rows};
-use super::schema::merge_schema;
+use super::page::{apply_page_settings, merge_page_schema, replace_preview, share_rows};
 use super::split::page_file_name;
 use super::{Values, set_value, value_of};
 use crate::RgbaImage;
@@ -182,7 +181,7 @@ fn freshen(values: &mut Values, name: &str) {
 /// brush styles), once per donor document.
 fn prepare_for(editor: &ClipEditor, donor: &PartDonors) -> Result<()> {
     if !donor.is_template {
-        merge_schema(&editor.db, donor.source.database(), &SCHEMA_TABLES)?;
+        merge_page_schema(&editor.db, donor.source.database())?;
         share_rows(&editor.db, donor.source.database())?;
     }
     Ok(())
