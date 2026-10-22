@@ -526,7 +526,13 @@ pub fn tar_entry(tar: &[u8], name: &str) -> Option<Vec<u8>> {
 pub fn tip_mask(png: &[u8]) -> Result<TipImage> {
     let image = decode_png(png)?;
     let mut mask = RgbaImage::transparent(image.width, image.height);
-    for (source, target) in image.pixels.chunks_exact(4).zip(mask.pixels.chunks_exact_mut(4)) {
+    for (source, target) in image
+        .pixels
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .zip(mask.pixels.as_chunks_mut::<4>().0)
+    {
         let darkness = 255 - luma(source[0], source[1], source[2]) as u32;
         let coverage = (darkness * source[3] as u32 / 255) as u8;
         target.copy_from_slice(&[255, 255, 255, coverage]);
@@ -664,7 +670,7 @@ mod tests {
     fn tip_png() -> Vec<u8> {
         // A black dot on white, 8 x 8 with a 4 x 2 mark.
         let mut image = RgbaImage::transparent(8, 8);
-        for (index, pixel) in image.pixels.chunks_exact_mut(4).enumerate() {
+        for (index, pixel) in image.pixels.as_chunks_mut::<4>().0.iter_mut().enumerate() {
             let (x, y) = (index % 8, index / 8);
             let ink = (2..6).contains(&x) && (3..5).contains(&y);
             pixel.copy_from_slice(if ink { &[0, 0, 0, 255] } else { &[255, 255, 255, 255] });
