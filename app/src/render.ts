@@ -90,8 +90,8 @@ export function drawText(ctx: CanvasRenderingContext2D, text: TextView, t: Trans
     ctx.fillRect(left, top, Math.max(right - left, 1), Math.max((y1 - y0) * t.scale, 1));
     return;
   }
-  ctx.fillStyle = INK;
-  ctx.font = `${size}px ${fontFamily(text)}`;
+  ctx.fillStyle = text.color ?? INK;
+  ctx.font = `${text.bold ? "bold " : ""}${size}px ${fontFamily(text)}`;
   const lines = text.text.replace(/\r\n?/g, "\n").split("\n");
   const pitch = size * 1.15;
   if (!text.vertical) {

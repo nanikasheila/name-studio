@@ -1,7 +1,10 @@
 use clip_core::ClipDocument;
 use clip_core::fixtures::{FixtureCanvas, FixtureLayer, OPEN, build_clip, rectangle};
 use name_model::import::import_sheet;
-use name_model::{Character, EmotionPoint, PageFormat, Project, ProjectError, Scene, validate};
+use name_model::{
+    BalloonShape, Character, EmotionPoint, LineKind, PageFormat, PanelBorder, PanelEffect, PanelFill, Project,
+    ProjectError, Scene, TailStyle, validate,
+};
 
 /// 100 x 60 mm at 254 dpi = 1000 x 600 px; two pages, right one first.
 fn sheet(folder: &std::path::Path) -> std::path::PathBuf {
@@ -155,4 +158,57 @@ fn reads_what_the_editor_writes() {
     assert_eq!(project.pages[2].strokes.len(), 1);
     let again = Project::from_json(&project.to_json().unwrap()).unwrap();
     assert_eq!(again, project);
+}
+
+/// The panel and balloon vocabulary (format 2) as the editor writes it.
+#[test]
+fn keeps_panel_and_balloon_styles() {
+    let text = r##"{
+      "formatVersion": 2, "title": "t", "author": "", "binding": "right",
+      "pageFormat": {"canvasMm": [297, 420], "trimMm": [257, 364], "basicMm": [180, 270], "basicOffsetMm": [0, 0]},
+      "pages": [{
+        "id": "page1", "memo": "",
+        "panels": [
+          {"id": "panel2", "shape": [[58, 0], [238, 0], [238, 120], [58, 120]], "order": 1,
+           "border": "wavy", "openEdges": [0], "fill": "black", "effect": "focus", "note": "回想"},
+          {"id": "panel3", "shape": [[50, 100], [90, 100], [90, 140], [50, 140]], "order": 2, "fill": "white", "z": 1}
+        ],
+        "lines": [
+          {"id": "line4", "text": "待って", "kind": "speech", "box": [100, 150, 110, 180], "fontSizePt": 13, "vertical": true,
+           "balloonShape": "spike", "tails": [{"tip": [90, 200]}, {"tip": [130, 200], "style": "line"}], "inverted": true, "emphasis": true},
+          {"id": "line5", "text": "ねえ", "kind": "aside", "box": [80, 150, 90, 170], "fontSizePt": 9, "vertical": true, "linkTo": "line4"}
+        ],
+        "strokes": [{"id": "stroke6", "points": [[1, 2, 1], [3, 4, 1]], "widthMm": 0.4, "closed": false, "over": true}],
+        "roughs": [],
+        "breakouts": [{"id": "breakout7", "shape": [[60, 90], [80, 90], [70, 130]], "note": "全身"}]
+      }],
+      "characters": [], "scenes": [], "emotions": [], "nextId": 8
+    }"##;
+    let project = Project::from_json(text).expect("format 2 project");
+    let page = &project.pages[0];
+    assert_eq!(page.panels[0].border, PanelBorder::Wavy);
+    assert_eq!(page.panels[0].open_edges, vec![0]);
+    assert_eq!(page.panels[0].fill, PanelFill::Black);
+    assert_eq!(page.panels[0].effect, PanelEffect::Focus);
+    assert_eq!(page.panels[1].z, 1);
+    assert_eq!(page.lines[0].balloon_shape, BalloonShape::Spike);
+    assert_eq!(page.lines[0].tails[1].style, TailStyle::Line);
+    assert_eq!(page.lines[1].kind, LineKind::Aside);
+    assert_eq!(page.lines[1].link_to.as_deref(), Some("line4"));
+    assert!(page.strokes[0].over);
+    assert_eq!(page.breakouts[0].note, "全身");
+    let json = project.to_json().unwrap();
+    assert!(
+        json.contains("\"openEdges\"") && json.contains("\"balloonShape\": \"spike\""),
+        "{json}"
+    );
+    // Defaults are left out, so panels and lines without styles look as before.
+    assert!(!json.contains("\"border\": \"solid\""));
+    assert_eq!(Project::from_json(&json).unwrap(), project);
+
+    let mut broken = project.clone();
+    broken.pages[0].panels[0].open_edges = vec![9];
+    broken.pages[0].lines[1].link_to = Some("line404".into());
+    let problems = validate(&broken);
+    assert_eq!(problems.len(), 2, "{problems:?}");
 }

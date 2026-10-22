@@ -33,7 +33,20 @@ pub fn validate(project: &Project) -> Vec<String> {
             if panel.shape.len() < 3 {
                 problems.push(format!("{number} ページのコマ {} の頂点が足りません", panel.id));
             }
+            if panel.open_edges.iter().any(|&edge| edge as usize >= panel.shape.len()) {
+                problems.push(format!(
+                    "{number} ページのコマ {} の開いた辺の番号が範囲外です",
+                    panel.id
+                ));
+            }
         }
+        for breakout in &page.breakouts {
+            check_id(&breakout.id, &mut problems);
+            if breakout.shape.len() < 3 {
+                problems.push(format!("{number} ページのはみ出し {} の頂点が足りません", breakout.id));
+            }
+        }
+        let lines: HashSet<&str> = page.lines.iter().map(|l| l.id.as_str()).collect();
         for line in &page.lines {
             check_id(&line.id, &mut problems);
             if let Some(speaker) = &line.speaker
@@ -49,6 +62,14 @@ pub fn validate(project: &Project) -> Vec<String> {
             {
                 problems.push(format!(
                     "{number} ページのセリフ {} のコマ {panel} がありません",
+                    line.id
+                ));
+            }
+            if let Some(target) = &line.link_to
+                && (target == &line.id || !lines.contains(target.as_str()))
+            {
+                problems.push(format!(
+                    "{number} ページのセリフ {} のつなぎ先 {target} が同じページにありません",
                     line.id
                 ));
             }

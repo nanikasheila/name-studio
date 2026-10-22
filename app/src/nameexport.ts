@@ -2,16 +2,9 @@
 // vector lines and texts where CSP-made layers to copy are found, plus the
 // work .cmc), a PDF to read or share, and the script as text.
 import { invoke } from "@tauri-apps/api/core";
-import {
-  BALLOON_LINE_MM,
-  INK,
-  PANEL_LINE_MM,
-  drawBalloon,
-  drawLineText,
-  drawPanel,
-  drawStroke,
-  type MmToPx,
-} from "./pagedraw";
+import { pageBalloons } from "./balloon";
+import { borderLines, borderWidthMm, dashes } from "./koma";
+import { BALLOON_LINE_MM, drawBalloons, drawLineText, drawPanelBorders, drawPanelFills, drawStrokes, type MmToPx } from "./pagedraw";
 import { KIND_LABELS, basicBox, trimBox, type Page, type Project, type RoughImage } from "./project";
 import { sceneSpans } from "./story";
 
@@ -62,33 +55,60 @@ export function mapBox([x0, y0, x1, y1]: number[], m: MmToPx): [number, number, 
   return [x0 * m.scale + m.x, y0 * m.scale + m.y, x1 * m.scale + m.x, y1 * m.scale + m.y];
 }
 
-export type LayerKind = "strokes" | "panels" | "balloons" | "text";
+export type LayerKind = "strokes" | "fills" | "panels" | "overStrokes" | "balloons" | "text";
+
+/** Layers of a page, bottom first. */
+export const LAYER_ORDER: LayerKind[] = ["strokes", "fills", "panels", "overStrokes", "balloons", "text"];
 
 export const LAYER_NAMES: Record<LayerKind, string> = {
   strokes: "ラフ線",
+  fills: "コマの塗り・効果",
   panels: "コマ枠",
+  overStrokes: "はみ出し（ラフ線）",
   balloons: "フキダシ",
   text: "セリフ",
 };
 
 export function partCount(page: Page, kind: LayerKind): number {
-  if (kind === "strokes") return page.strokes.length;
-  if (kind === "panels") return page.panels.length;
-  if (kind === "balloons") return page.lines.filter((line) => line.balloon).length;
-  return page.lines.filter((line) => line.text.trim()).length;
+  switch (kind) {
+    case "strokes":
+      return page.strokes.filter((stroke) => !stroke.over).length;
+    case "overStrokes":
+      return page.strokes.filter((stroke) => stroke.over).length;
+    case "fills":
+      return (
+        page.panels.filter((panel) => (panel.fill ?? "none") !== "none" || (panel.effect ?? "none") !== "none").length +
+        (page.breakouts ?? []).length
+      );
+    case "panels":
+      return page.panels.length;
+    case "balloons":
+      return pageBalloons(page).length;
+    case "text":
+      return page.lines.filter((line) => line.text.trim()).length;
+  }
+}
+
+/** Parts CSP can hold as vector lines; fills and effects are always an image. */
+export function canBeVector(kind: LayerKind): kind is LinePartKind {
+  return kind !== "text" && kind !== "fills";
 }
 
 /** Draw one kind of part of a page (transparent elsewhere). */
 export function drawPart(ctx: CanvasRenderingContext2D, page: Page, kind: LayerKind, m: MmToPx): void {
   switch (kind) {
     case "strokes":
-      for (const stroke of page.strokes) drawStroke(ctx, stroke, m, "#3a3834", 1);
+    case "overStrokes":
+      drawStrokes(ctx, page, m, kind === "overStrokes", () => "#3a3834", 1);
+      break;
+    case "fills":
+      drawPanelFills(ctx, page, m, 1);
       break;
     case "panels":
-      for (const panel of page.panels) drawPanel(ctx, panel, m, INK, 1);
+      drawPanelBorders(ctx, page, m, undefined, 1);
       break;
     case "balloons":
-      for (const line of page.lines) drawBalloon(ctx, line, m, 1);
+      drawBalloons(ctx, page, m, 1);
       break;
     case "text":
       for (const line of page.lines) drawLineText(ctx, line, m);
@@ -109,7 +129,7 @@ export type LayerMeta =
   | { kind: "vector"; name: string; lines: VectorLineMeta[] }
   | { kind: "text"; text: string; frame: [number, number, number, number]; fontSizePt: number; vertical: boolean };
 
-export type LinePartKind = Exclude<LayerKind, "text">;
+export type LinePartKind = Exclude<LayerKind, "text" | "fills">;
 
 /** One kind of line part of a page as vector lines (`m`: mm → template px). */
 export function vectorLines(page: Page, kind: LinePartKind, m: MmToPx): VectorLineMeta[] {
@@ -117,22 +137,27 @@ export function vectorLines(page: Page, kind: LinePartKind, m: MmToPx): VectorLi
     points.map((point): [number, number, number] => [point[0] * m.scale + m.x, point[1] * m.scale + m.y, width(point)]);
   switch (kind) {
     case "strokes":
+    case "overStrokes":
       // Same light-pressure thinning as drawStroke.
-      return page.strokes.map((stroke) => ({
-        points: map(stroke.points, (point) => 0.35 + 0.65 * point[2]),
-        closed: stroke.closed,
-        widthPx: stroke.widthMm * m.scale,
-      }));
+      return page.strokes
+        .filter((stroke) => !!stroke.over === (kind === "overStrokes"))
+        .map((stroke) => ({
+          points: map(stroke.points, (point) => 0.35 + 0.65 * point[2]),
+          closed: stroke.closed,
+          widthPx: stroke.widthMm * m.scale,
+        }));
     case "panels":
-      return page.panels.map((panel) => ({
-        points: map(panel.shape, () => 1),
-        closed: true,
-        widthPx: PANEL_LINE_MM * m.scale,
-      }));
+      return borderLines(page).flatMap((line) => {
+        const parts = line.panel.border === "dashed" ? dashes(line.points, line.closed).map((points) => ({ points, closed: false })) : [line];
+        return parts.map((part) => ({ points: map(part.points, () => 1), closed: part.closed, widthPx: borderWidthMm(line.panel) * m.scale }));
+      });
     case "balloons":
-      return page.lines
-        .filter((line) => line.balloon && line.balloon.length >= 3)
-        .map((line) => ({ points: map(line.balloon!, () => 1), closed: true, widthPx: BALLOON_LINE_MM * m.scale }));
+      return pageBalloons(page).flatMap((balloon) => {
+        const widthPx = BALLOON_LINE_MM * m.scale;
+        const outline = balloon.outline.length >= 3 ? [{ points: map(balloon.outline, () => 1), closed: true, widthPx }] : [];
+        const extras = balloon.extras.map((extra) => ({ points: map(extra.points, () => 1), closed: extra.closed, widthPx }));
+        return [...outline, ...extras];
+      });
   }
 }
 
@@ -235,10 +260,10 @@ export async function exportToCsp(
       const layers: LayerMeta[] = [];
       const pngs: Uint8Array[] = [];
       overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
-      for (const kind of ["strokes", "panels", "balloons", "text"] as LayerKind[]) {
-        if (kind === "text" ? text : vector) {
+      for (const kind of LAYER_ORDER) {
+        if (kind === "text" ? text : vector && canBeVector(kind)) {
           if (kind === "text") layers.push(...textLayers(page, full, start.resolution));
-          else layers.push({ kind: "vector", name: LAYER_NAMES[kind], lines: vectorLines(page, kind, full) });
+          else if (canBeVector(kind)) layers.push({ kind: "vector", name: LAYER_NAMES[kind], lines: vectorLines(page, kind, full) });
           // CSP draws these itself when the page is opened; the thumbnail does not.
           drawPart(overlayCtx, page, kind, small);
           continue;
@@ -314,7 +339,7 @@ export async function exportPdf(
       ctx.drawImage(image, x0, y0, x1 - x0, y1 - y0);
     }
     ctx.globalAlpha = 1;
-    for (const kind of ["strokes", "panels", "balloons", "text"] as LayerKind[]) drawPart(ctx, page, kind, m);
+    for (const kind of LAYER_ORDER) drawPart(ctx, page, kind, m);
     images.push(await encode(drawing, "image/jpeg", 0.88));
   }
   drawing.width = 0;
@@ -358,7 +383,9 @@ export function scriptText(project: Project): string {
             ? `${KIND_LABELS.sfx}：${text}`
             : line.kind === "thought"
               ? `${who}（${text}）`
-              : `${who}「${text}」`;
+              : line.kind === "aside"
+                ? `${who}・${text}`
+                : `${who}「${text}」`;
       out.push(`    ${said}`);
     }
     out.push("");

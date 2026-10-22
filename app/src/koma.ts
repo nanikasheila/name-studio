@@ -1,0 +1,648 @@
+// コマ割りの語彙: panel borders and open edges (裁ち切り), insets (はめ込み),
+// tilted panels, breakouts (はみ出し), background effects, and page layout
+// patterns taken from the manuscripts. Everything here works in page mm.
+import { seeded } from "./balloon";
+import {
+  DEFAULT_GUTTERS,
+  assignPanels,
+  basicBox,
+  bounds,
+  centroid,
+  newId,
+  orderPanels,
+  rectShape,
+  type Breakout,
+  type Page,
+  type PageFormat,
+  type Panel,
+  type PanelBorder,
+  type PanelEffect,
+  type PanelFill,
+  type Point,
+  type Project,
+} from "./project";
+
+export const BORDER_LABELS: Record<PanelBorder, string> = {
+  solid: "実線",
+  thick: "太枠",
+  none: "枠なし",
+  dashed: "破線（回想・空想）",
+  wavy: "波線（夢・ゆらぎ）",
+};
+
+export const FILL_LABELS: Record<PanelFill, string> = {
+  none: "なし",
+  white: "白（下のコマを隠す）",
+  black: "ベタ（回想・暗転）",
+  gray: "グレー（トーン）",
+};
+
+export const EFFECT_LABELS: Record<PanelEffect, string> = {
+  none: "なし",
+  speed: "流線（動き）",
+  focus: "集中線（驚き・注目）",
+  flash: "ウニフラ（衝撃・動揺）",
+  sparkle: "キラキラ（好意・華やぎ）",
+};
+
+export type Side = "top" | "bottom" | "left" | "right";
+
+export const SIDE_LABELS: Record<Side, string> = { top: "上", bottom: "下", left: "左", right: "右" };
+
+const ON_EDGE = 0.05;
+
+/** Whether a page point lies on that side of the canvas edge. */
+function onCanvasSide([x, y]: Point, side: Side, format: PageFormat): boolean {
+  const [w, h] = format.canvasMm;
+  switch (side) {
+    case "top":
+      return y <= ON_EDGE;
+    case "bottom":
+      return y >= h - ON_EDGE;
+    case "left":
+      return x <= ON_EDGE;
+    case "right":
+      return x >= w - ON_EDGE;
+  }
+}
+
+/** Whether the panel runs off the page on that side (裁ち切り). */
+export function isBled(panel: Panel, side: Side, format: PageFormat): boolean {
+  return panel.shape.some((point) => onCanvasSide(point, side, format));
+}
+
+/**
+ * 裁ち切り on or off for one side: the panel's corners on that side move out
+ * to the canvas edge (past the trim) and the edge there is left open, or back
+ * to the basic frame.
+ */
+export function bleedPanel(panel: Panel, side: Side, format: PageFormat, on: boolean): void {
+  const [w, h] = format.canvasMm;
+  const basic = basicBox(format);
+  const [x0, y0, x1, y1] = bounds(panel.shape);
+  const vertical = side === "top" || side === "bottom";
+  const extreme = { top: y0, bottom: y1, left: x0, right: x1 }[side];
+  const target = on ? { top: 0, bottom: h, left: 0, right: w }[side] : { top: basic[1], bottom: basic[3], left: basic[0], right: basic[2] }[side];
+  // Corners within a millimetre of the panel's edge on that side move together.
+  const tolerance = 1;
+  const before = edgesAlong(panel.shape, side, format);
+  panel.shape = panel.shape.map((point) => {
+    const value = vertical ? point[1] : point[0];
+    if (Math.abs(value - extreme) > tolerance) return point;
+    return vertical ? [point[0], target] : [target, point[1]];
+  });
+  const open = new Set(panel.openEdges ?? []);
+  if (on) for (const i of edgesAlong(panel.shape, side, format)) open.add(i);
+  else for (const i of before) open.delete(i);
+  if (open.size) panel.openEdges = [...open].sort((x, y) => x - y);
+  else delete panel.openEdges;
+}
+
+/** Edges lying on that side of the canvas edge. */
+function edgesAlong(shape: readonly Point[], side: Side, format: PageFormat): number[] {
+  const result: number[] = [];
+  for (let i = 0; i < shape.length; i++) {
+    if (onCanvasSide(shape[i], side, format) && onCanvasSide(shape[(i + 1) % shape.length], side, format)) result.push(i);
+  }
+  return result;
+}
+
+/**
+ * Open edges of a shape cut out of another: an edge is open when it lies
+ * along one of the old open edges.
+ */
+export function inheritOpenEdges(old: readonly Point[], open: readonly number[] | undefined, shape: readonly Point[]): number[] {
+  if (!open?.length) return [];
+  const result: number[] = [];
+  for (let i = 0; i < shape.length; i++) {
+    const a = shape[i];
+    const b = shape[(i + 1) % shape.length];
+    const mid: Point = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    const along = open.some((j) => {
+      const p = old[j];
+      const q = old[(j + 1) % old.length];
+      return onSegment(a, p, q) && onSegment(b, p, q) && onSegment(mid, p, q);
+    });
+    if (along) result.push(i);
+  }
+  return result;
+}
+
+function onSegment(point: Point, a: Point, b: Point, tolerance = 0.02): boolean {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const length = Math.hypot(dx, dy);
+  if (length < 1e-9) return Math.hypot(point[0] - a[0], point[1] - a[1]) <= tolerance;
+  const t = ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / (length * length);
+  if (t < -1e-6 || t > 1 + 1e-6) return false;
+  return Math.abs((point[0] - a[0]) * dy - (point[1] - a[1]) * dx) / length <= tolerance;
+}
+
+/**
+ * The border as drawn: runs of edges that are not open, each a polyline.
+ * A border with no open edge is one closed run.
+ */
+export function borderRuns(panel: Panel): { points: Point[]; closed: boolean }[] {
+  const n = panel.shape.length;
+  const open = new Set(panel.openEdges ?? []);
+  if (!open.size) return [{ points: [...panel.shape], closed: true }];
+  if (open.size >= n) return [];
+  const runs: { points: Point[]; closed: boolean }[] = [];
+  // Start right after an open edge so that no run is split across the start.
+  const first = [...open][0];
+  let run: Point[] = [];
+  for (let k = 1; k <= n; k++) {
+    const i = (first + k) % n;
+    if (open.has(i)) {
+      if (run.length) runs.push({ points: [...run, panel.shape[i]], closed: false });
+      run = [];
+    } else {
+      run.push(panel.shape[i]);
+    }
+  }
+  return runs;
+}
+
+/** A polyline made wavy (波線), amplitude and wavelength in mm. */
+export function wavy(points: readonly Point[], closed: boolean, amplitude = 0.7, wavelength = 5): Point[] {
+  const out: Point[] = [];
+  const count = closed ? points.length : points.length - 1;
+  for (let i = 0; i < count; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const steps = Math.max(2, Math.round((length / wavelength) * 8));
+    const nx = -(b[1] - a[1]) / (length || 1);
+    const ny = (b[0] - a[0]) / (length || 1);
+    for (let s = 0; s < steps; s++) {
+      const t = s / steps;
+      // Waves fade out at the corners so they meet cleanly.
+      const offset = amplitude * Math.sin((t * length * Math.PI * 2) / wavelength) * Math.min(1, t * 6, (1 - t) * 6);
+      out.push([a[0] + (b[0] - a[0]) * t + nx * offset, a[1] + (b[1] - a[1]) * t + ny * offset]);
+    }
+  }
+  if (!closed) out.push(points[points.length - 1]);
+  return out;
+}
+
+/** Turn the panel around its centre (傾いたコマ). */
+export function rotatePanel(panel: Panel, degrees: number): void {
+  const [cx, cy] = centroid(panel.shape);
+  const a = (degrees * Math.PI) / 180;
+  const cos = Math.cos(a);
+  const sin = Math.sin(a);
+  panel.shape = panel.shape.map(([x, y]) => [cx + (x - cx) * cos - (y - cy) * sin, cy + (x - cx) * sin + (y - cy) * cos]);
+}
+
+/**
+ * はめ込み: a small panel laid over a corner of `parent`, reaching a little
+ * past its border, white so that it hides what is under it.
+ */
+export function addInset(project: Project, page: Page, parent: Panel): Panel {
+  const [x0, y0, x1, y1] = bounds(parent.shape);
+  const w = Math.max((x1 - x0) * 0.36, 20);
+  const h = Math.max((y1 - y0) * 0.36, 20);
+  const out = 3;
+  // Bottom left: the corner read last in a right-bound book.
+  const shape = rectShape([x0 - out, y1 - h + out, x0 - out + w, y1 + out]);
+  const panel: Panel = { id: newId(project, "panel"), shape, order: 0, fill: "white", z: (parent.z ?? 0) + 1 };
+  page.panels.push(panel);
+  orderPanels(page, project.binding);
+  assignPanels(page);
+  return panel;
+}
+
+export function addBreakout(project: Project, page: Page, shape: Point[]): Breakout {
+  const breakout: Breakout = { id: newId(project, "breakout"), shape };
+  page.breakouts.push(breakout);
+  return breakout;
+}
+
+export function moveBreakout(breakout: Breakout, dx: number, dy: number): void {
+  breakout.shape = breakout.shape.map(([x, y]) => [x + dx, y + dy]);
+}
+
+/** Panels bottom first, as they stack. */
+export function stacked(panels: readonly Panel[]): Panel[] {
+  return [...panels].sort((a, b) => (a.z ?? 0) - (b.z ?? 0));
+}
+
+// --- background effects ---------------------------------------------------------
+
+/** Lines (and small stars) of a background effect, in mm, to be clipped to the panel. */
+export function effectStrokes(panel: Panel, effect: PanelEffect): { lines: [Point, Point][]; stars: Point[][] } {
+  const lines: [Point, Point][] = [];
+  const stars: Point[][] = [];
+  if (effect === "none") return { lines, stars };
+  const random = seeded(panel.id + effect);
+  const [x0, y0, x1, y1] = bounds(panel.shape);
+  const [cx, cy] = centroid(panel.shape);
+  const reach = Math.hypot(x1 - x0, y1 - y0);
+  switch (effect) {
+    case "speed":
+      for (let y = y0 + 1.5; y < y1; y += 1.8 + random() * 1.6) {
+        const start = x0 + random() * (x1 - x0) * 0.5;
+        lines.push([
+          [start, y],
+          [start + (x1 - x0) * (0.35 + random() * 0.5), y],
+        ]);
+      }
+      break;
+    case "focus": {
+      const count = Math.round(reach * 0.9);
+      for (let i = 0; i < count; i++) {
+        const a = (i / count) * Math.PI * 2 + random() * 0.03;
+        const inner = reach * (0.2 + random() * 0.12);
+        lines.push([
+          [cx + Math.cos(a) * reach, cy + Math.sin(a) * reach],
+          [cx + Math.cos(a) * inner, cy + Math.sin(a) * inner],
+        ]);
+      }
+      break;
+    }
+    case "flash": {
+      const count = Math.round(reach * 1.2);
+      const ring = Math.min(x1 - x0, y1 - y0) * 0.42;
+      for (let i = 0; i < count; i++) {
+        const a = (i / count) * Math.PI * 2;
+        const inner = ring * (0.75 + random() * 0.15);
+        const outer = ring * (1.05 + random() * 0.45);
+        lines.push([
+          [cx + Math.cos(a) * inner, cy + Math.sin(a) * inner],
+          [cx + Math.cos(a) * outer, cy + Math.sin(a) * outer],
+        ]);
+      }
+      break;
+    }
+    case "sparkle": {
+      const count = 4 + Math.round(random() * 4);
+      for (let i = 0; i < count; i++) {
+        const sx = x0 + random() * (x1 - x0);
+        const sy = y0 + random() * (y1 - y0);
+        const r = 2 + random() * 3;
+        const star: Point[] = [];
+        for (let k = 0; k < 8; k++) {
+          const a = (k / 8) * Math.PI * 2 - Math.PI / 2;
+          const rr = k % 2 ? r * 0.25 : r;
+          star.push([sx + Math.cos(a) * rr, sy + Math.sin(a) * rr]);
+        }
+        stars.push(star);
+      }
+      break;
+    }
+  }
+  return { lines, stars };
+}
+
+// --- layout patterns ------------------------------------------------------------
+
+/** One row of a layout pattern; weights are relative sizes. */
+interface Row {
+  weight: number;
+  cells: number[];
+  /** Vertical gutters lean: the top is this many mm right of the bottom. */
+  lean?: number;
+  /** The gutter under this row tilts: its left end is this many mm lower. */
+  tilt?: number;
+  /** Cells (by index from the right) filled black. */
+  black?: number[];
+}
+
+interface Pattern {
+  id: string;
+  label: string;
+  note: string;
+  rows: Row[];
+  /** Sides of the page the first / last row bleed to. */
+  bleed?: { first?: Side[]; last?: Side[]; all?: Side[] };
+  /** Add an inset over the bottom left corner of this row's first cell. */
+  inset?: number;
+}
+
+/**
+ * Page patterns seen in ユメノストラ 1–3 (and common in manga generally).
+ * Rows run top to bottom; cells right to left (right-bound books).
+ */
+export const PATTERNS: Pattern[] = [
+  {
+    id: "basic4",
+    label: "基本の4段",
+    note: "横長と2分割を交互に。会話の続くページの土台。",
+    rows: [
+      { weight: 1, cells: [1, 1.3] },
+      { weight: 1, cells: [1] },
+      { weight: 1, cells: [1.4, 1] },
+      { weight: 1, cells: [1] },
+    ],
+  },
+  {
+    id: "three",
+    label: "3段（2・1・2）",
+    note: "中段を見せ場に。",
+    rows: [
+      { weight: 1, cells: [1, 1] },
+      { weight: 1.3, cells: [1] },
+      { weight: 1, cells: [1, 1.2] },
+    ],
+  },
+  {
+    id: "opening",
+    label: "導入（上を裁ち切り）",
+    note: "場面の始まりに、上いっぱいの風景で場所を見せる。",
+    rows: [
+      { weight: 1.1, cells: [1] },
+      { weight: 1, cells: [1, 1.4] },
+      { weight: 1, cells: [1] },
+      { weight: 1, cells: [1.3, 1] },
+    ],
+    bleed: { first: ["top", "left", "right"] },
+  },
+  {
+    id: "bigInset",
+    label: "大ゴマ＋はめ込み",
+    note: "決めの大ゴマに、反応の小ゴマを重ねる。",
+    rows: [
+      { weight: 1, cells: [1, 1] },
+      { weight: 2.4, cells: [1] },
+    ],
+    bleed: { last: ["bottom", "left"] },
+    inset: 1,
+  },
+  {
+    id: "action",
+    label: "斜めの間白（アクション）",
+    note: "傾いた間白で勢いを出す。動きの向きに傾ける。",
+    rows: [
+      { weight: 1, cells: [1, 1.2], lean: 10, tilt: 8 },
+      { weight: 1.5, cells: [1], tilt: -10 },
+      { weight: 1, cells: [1, 1, 1], lean: -8 },
+    ],
+  },
+  {
+    id: "sequence",
+    label: "縦長の連続（動きのコマ送り）",
+    note: "細長いコマを3つ並べて一連の動きを見せる。",
+    rows: [
+      { weight: 1.5, cells: [1, 1, 1], lean: 6 },
+      { weight: 1, cells: [1] },
+      { weight: 1, cells: [1, 1] },
+    ],
+  },
+  {
+    id: "pause",
+    label: "間（細い空コマ）",
+    note: "細いコマを挟んで沈黙や時間の経過を置く。",
+    rows: [
+      { weight: 1, cells: [1, 1] },
+      { weight: 0.16, cells: [1] },
+      { weight: 1.2, cells: [1] },
+      { weight: 1, cells: [1, 1.3] },
+    ],
+  },
+  {
+    id: "flashback",
+    label: "回想の帯（ベタと交互）",
+    note: "傾いた横長の帯を重ね、ベタの帯に言葉だけを置く。",
+    rows: [
+      { weight: 1, cells: [1], tilt: -4, black: [0] },
+      { weight: 0.6, cells: [1], tilt: 4 },
+      { weight: 1, cells: [1], tilt: -4, black: [0] },
+      { weight: 0.6, cells: [1], tilt: 4 },
+      { weight: 1, cells: [1], black: [0] },
+    ],
+  },
+  {
+    id: "splash",
+    label: "1ページ大ゴマ（全面裁ち切り）",
+    note: "扉や山場の一枚絵。",
+    rows: [{ weight: 1, cells: [1] }],
+    bleed: { all: ["top", "bottom", "left", "right"] },
+  },
+];
+
+/** Panels of a pattern on the page's basic frame (not yet added to the page). */
+export function patternPanels(project: Project, patternId: string, gutters = DEFAULT_GUTTERS): Panel[] {
+  const pattern = PATTERNS.find((p) => p.id === patternId);
+  if (!pattern) return [];
+  const format = project.pageFormat;
+  const [bx0, by0, bx1, by1] = basicBox(format);
+  const total = pattern.rows.reduce((sum, row) => sum + row.weight, 0);
+  const height = by1 - by0 - gutters.down * (pattern.rows.length - 1);
+  // Gutter lines between rows: y at the left and right ends of the frame.
+  const cuts: { left: number; right: number }[] = [];
+  let y = by0;
+  pattern.rows.forEach((row, index) => {
+    y += (height * row.weight) / total;
+    if (index < pattern.rows.length - 1) {
+      const tilt = row.tilt ?? 0;
+      cuts.push({ left: y + tilt / 2, right: y - tilt / 2 });
+      y += gutters.down;
+    }
+  });
+  const lineY = (line: { left: number; right: number }, x: number) => line.left + ((line.right - line.left) * (x - bx0)) / (bx1 - bx0);
+  const panels: Panel[] = [];
+  pattern.rows.forEach((row, r) => {
+    const top = r === 0 ? { left: by0, right: by0 } : { left: cuts[r - 1].left + gutters.down, right: cuts[r - 1].right + gutters.down };
+    const bottom = r === pattern.rows.length - 1 ? { left: by1, right: by1 } : cuts[r];
+    const sum = row.cells.reduce((s, c) => s + c, 0);
+    const width = bx1 - bx0 - gutters.across * (row.cells.length - 1);
+    // Cells from the right edge leftwards.
+    let right = bx1;
+    row.cells.forEach((weight, c) => {
+      const left = c === row.cells.length - 1 ? bx0 : right - (width * weight) / sum;
+      const lean = row.lean ?? 0;
+      const leanRight = c === 0 ? 0 : lean / 2;
+      const leanLeft = c === row.cells.length - 1 ? 0 : lean / 2;
+      const shape: Point[] = [
+        [right + leanRight, lineY(top, right + leanRight)],
+        [right - leanRight, lineY(bottom, right - leanRight)],
+        [left - leanLeft, lineY(bottom, left - leanLeft)],
+        [left + leanLeft, lineY(top, left + leanLeft)],
+      ];
+      const panel: Panel = { id: newId(project, "panel"), shape, order: 0 };
+      if (row.black?.includes(c)) panel.fill = "black";
+      panels.push(panel);
+      right = left - gutters.across;
+    });
+  });
+  const firstRow = panels.slice(0, pattern.rows[0].cells.length);
+  const lastRow = panels.slice(panels.length - pattern.rows[pattern.rows.length - 1].cells.length);
+  const bleedAll = (list: Panel[], sides: Side[] | undefined) => {
+    for (const panel of list) {
+      for (const side of sides ?? []) {
+        // Only cells that touch that side of the frame run off the page.
+        const [x0, y0, x1, y1] = bounds(panel.shape);
+        const touches = { top: Math.abs(y0 - by0) < 1, bottom: Math.abs(y1 - by1) < 1, left: Math.abs(x0 - bx0) < 1, right: Math.abs(x1 - bx1) < 1 }[side];
+        if (touches) bleedPanel(panel, side, format, true);
+      }
+    }
+  };
+  bleedAll(firstRow, pattern.bleed?.first);
+  bleedAll(lastRow, pattern.bleed?.last);
+  bleedAll(panels, pattern.bleed?.all);
+  if (pattern.inset !== undefined) {
+    const rowStart = pattern.rows.slice(0, pattern.inset).reduce((s, row) => s + row.cells.length, 0);
+    const parent = panels[rowStart];
+    const [x0, , , y1] = bounds(parent.shape);
+    const [, , , fy1] = basicBox(format);
+    const [px0, py0, px1, py1] = bounds(parent.shape);
+    const w = (px1 - px0) * 0.36;
+    const h = (py1 - py0) * 0.3;
+    // Inside the frame even when the parent bleeds.
+    const left = Math.max(x0, bx0) + 4;
+    const bottom = Math.min(y1, fy1) - 4;
+    panels.push({ id: newId(project, "panel"), shape: rectShape([left, bottom - h, left + w, bottom]), order: 0, fill: "white", z: 1 });
+  }
+  return panels;
+}
+
+/** Replace the page's panels with a pattern. */
+export function applyPattern(project: Project, page: Page, patternId: string): void {
+  page.panels = patternPanels(project, patternId);
+  orderPanels(page, project.binding);
+  assignPanels(page);
+}
+
+// --- what is drawn of the borders -----------------------------------------------
+
+function insideShape(shape: readonly Point[], [x, y]: Point): boolean {
+  let inside = false;
+  for (let i = 0, j = shape.length - 1; i < shape.length; j = i++) {
+    const [xi, yi] = shape[i];
+    const [xj, yj] = shape[j];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/** Where segment a-b crosses segment c-d, as a fraction along a-b. */
+function crossing(a: Point, b: Point, c: Point, d: Point): number | null {
+  const rx = b[0] - a[0];
+  const ry = b[1] - a[1];
+  const sx = d[0] - c[0];
+  const sy = d[1] - c[1];
+  const det = rx * sy - ry * sx;
+  if (Math.abs(det) < 1e-12) return null;
+  const t = ((c[0] - a[0]) * sy - (c[1] - a[1]) * sx) / det;
+  const u = ((c[0] - a[0]) * ry - (c[1] - a[1]) * rx) / det;
+  return t > 1e-9 && t < 1 - 1e-9 && u >= 0 && u <= 1 ? t : null;
+}
+
+/** The parts of a polyline outside every one of `covers`. */
+export function clipOutside(points: readonly Point[], closed: boolean, covers: readonly (readonly Point[])[]): { points: Point[]; closed: boolean }[] {
+  if (!covers.length) return [{ points: [...points], closed }];
+  const count = closed ? points.length : points.length - 1;
+  const pieces: [Point, Point][] = [];
+  let cut = false;
+  for (let i = 0; i < count; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    const ts = [0, 1];
+    for (const cover of covers) {
+      for (let k = 0; k < cover.length; k++) {
+        const t = crossing(a, b, cover[k], cover[(k + 1) % cover.length]);
+        if (t !== null) ts.push(t);
+      }
+    }
+    ts.sort((x, y) => x - y);
+    for (let k = 0; k + 1 < ts.length; k++) {
+      if (ts[k + 1] - ts[k] < 1e-9) continue;
+      const p: Point = [a[0] + (b[0] - a[0]) * ts[k], a[1] + (b[1] - a[1]) * ts[k]];
+      const q: Point = [a[0] + (b[0] - a[0]) * ts[k + 1], a[1] + (b[1] - a[1]) * ts[k + 1]];
+      const mid: Point = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
+      if (covers.some((cover) => insideShape(cover, mid))) {
+        cut = true;
+        continue;
+      }
+      pieces.push([p, q]);
+    }
+  }
+  if (!cut) return [{ points: [...points], closed }];
+  // Join pieces that meet end to start.
+  const runs: Point[][] = [];
+  for (const [p, q] of pieces) {
+    const last = runs[runs.length - 1];
+    const end = last?.[last.length - 1];
+    if (end && Math.hypot(end[0] - p[0], end[1] - p[1]) < 1e-6) last.push(q);
+    else runs.push([p, q]);
+  }
+  // A closed outline cut somewhere: its last run continues into its first.
+  if (closed && runs.length > 1) {
+    const first = runs[0];
+    const last = runs[runs.length - 1];
+    const end = last[last.length - 1];
+    if (Math.hypot(end[0] - first[0][0], end[1] - first[0][1]) < 1e-6) {
+      runs[0] = [...last, ...first.slice(1)];
+      runs.pop();
+    }
+  }
+  return runs.map((run) => ({ points: run, closed: false }));
+}
+
+/** Cut a polyline into dashes (破線), lengths in mm. */
+export function dashes(points: readonly Point[], closed: boolean, on = 3, off = 1.6): Point[][] {
+  const out: Point[][] = [];
+  const all = closed ? [...points, points[0]] : [...points];
+  let drawing = true;
+  let left = on;
+  let current: Point[] = [all[0]];
+  for (let i = 0; i + 1 < all.length; i++) {
+    let a = all[i];
+    const b = all[i + 1];
+    let length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    while (length > 1e-9) {
+      const step = Math.min(left, length);
+      const t = step / length;
+      const p: Point = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+      if (drawing) current.push(p);
+      left -= step;
+      length -= step;
+      a = p;
+      if (left <= 1e-9) {
+        if (drawing && current.length > 1) out.push(current);
+        drawing = !drawing;
+        left = drawing ? on : off;
+        current = [p];
+      }
+    }
+  }
+  if (drawing && current.length > 1) out.push(current);
+  return out;
+}
+
+/** Fills that hide what is under them. */
+function covers(panel: Panel): boolean {
+  return !!panel.fill && panel.fill !== "none";
+}
+
+export interface BorderLine {
+  panel: Panel;
+  points: Point[];
+  closed: boolean;
+}
+
+/**
+ * The border lines of a page as drawn: open edges left out, wavy borders
+ * waved, and parts under a covering panel stacked above (はめ込み) or under a
+ * はみ出し removed. Dashed borders stay whole; they are dashed when drawn.
+ */
+export function borderLines(page: Page): BorderLine[] {
+  const panels = stacked(page.panels);
+  const breakouts = (page.breakouts ?? []).filter((b) => b.shape.length >= 3).map((b) => b.shape);
+  const lines: BorderLine[] = [];
+  panels.forEach((panel, index) => {
+    const border = panel.border ?? "solid";
+    if (border === "none") return;
+    const above = panels.slice(index + 1).filter((other) => covers(other) && (other.z ?? 0) > (panel.z ?? 0)).map((other) => other.shape);
+    for (const run of borderRuns(panel)) {
+      const points = border === "wavy" ? wavy(run.points, run.closed) : run.points;
+      for (const piece of clipOutside(points, run.closed, [...above, ...breakouts])) lines.push({ panel, ...piece });
+    }
+  });
+  return lines;
+}
+
+/** Line width of a panel border on the manuscript, in mm. */
+export function borderWidthMm(panel: Panel): number {
+  return panel.border === "thick" ? 1.2 : 0.6;
+}

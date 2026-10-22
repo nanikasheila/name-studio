@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapBox, packBody, projectToTemplate, scriptText, textLayers, vectorLines } from "./nameexport";
+import { LAYER_ORDER, canBeVector, mapBox, packBody, partCount, projectToTemplate, scriptText, textLayers, vectorLines } from "./nameexport";
 import { addCharacter, addLine, addScene, basicBox, newProject, rectShape } from "./project";
 
 describe("projectToTemplate", () => {
@@ -39,6 +39,7 @@ describe("editable layers", () => {
     page.strokes = [{ id: "s1", points: [[1, 2, 0], [3, 4, 1]], widthMm: 0.5, closed: false }];
     const line = addLine(project, page, [5, 5], "やあ");
     line.balloon = [[0, 0], [4, 0], [4, 4]];
+    line.balloonShape = "custom";
     const [panel] = vectorLines(page, "panels", m);
     expect(panel.closed).toBe(true);
     expect(panel.points).toEqual([[100, 50, 1], [200, 50, 1], [200, 250, 1], [100, 250, 1]]);
@@ -50,6 +51,24 @@ describe("editable layers", () => {
     expect(stroke.closed).toBe(false);
     expect(stroke.points.map((point) => point[2])).toEqual([0.35, 1]);
     expect(stroke.widthPx).toBeCloseTo(5);
+  });
+
+  it("leaves open edges out and splits strokes over the borders into their own layer", () => {
+    const project = newProject("t", 1);
+    const page = project.pages[0];
+    page.panels = [{ id: "p1", shape: rectShape([0, 0, 10, 20]), order: 1, openEdges: [0], fill: "black" }];
+    page.strokes = [
+      { id: "s1", points: [[1, 2, 1], [3, 4, 1]], widthMm: 0.5, closed: false },
+      { id: "s2", points: [[1, 2, 1], [3, 4, 1]], widthMm: 0.5, closed: false, over: true },
+    ];
+    page.breakouts = [{ id: "b1", shape: rectShape([20, 20, 30, 30]) }];
+    const [panel] = vectorLines(page, "panels", m);
+    expect(panel.closed).toBe(false);
+    expect(panel.points).toEqual([[200, 50, 1], [200, 250, 1], [100, 250, 1], [100, 50, 1]]);
+    expect(vectorLines(page, "strokes", m)).toHaveLength(1);
+    expect(vectorLines(page, "overStrokes", m)).toHaveLength(1);
+    expect(partCount(page, "fills")).toBe(2);
+    expect(LAYER_ORDER.filter((kind) => !canBeVector(kind))).toEqual(["fills", "text"]);
   });
 
   it("makes a text layer per line, sized in pt of the template resolution", () => {

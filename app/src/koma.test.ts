@@ -1,0 +1,129 @@
+import { describe, expect, it } from "vitest";
+import { PATTERNS, bleedPanel, borderLines, borderRuns, clipOutside, dashes, inheritOpenEdges, isBled, patternPanels, wavy } from "./koma";
+import { basicBox, bounds, cutPanels, emptyPage, newProject, rectShape, type Panel, type Point } from "./project";
+
+describe("裁ち切り", () => {
+  it("runs a panel off the page and back", () => {
+    const project = newProject("t", 1);
+    const format = project.pageFormat;
+    const [x0, y0, x1, y1] = basicBox(format);
+    const panel: Panel = { id: "panel1", shape: rectShape([x0, y0, x1, y0 + 60]), order: 1 };
+    bleedPanel(panel, "top", format, true);
+    expect(bounds(panel.shape)[1]).toBe(0);
+    expect(isBled(panel, "top", format)).toBe(true);
+    expect(isBled(panel, "left", format)).toBe(false);
+    // rectShape goes top left, top right, ...: edge 0 is the top.
+    expect(panel.openEdges).toEqual([0]);
+    expect(borderRuns(panel)).toHaveLength(1);
+    expect(borderRuns(panel)[0].closed).toBe(false);
+    bleedPanel(panel, "top", format, false);
+    expect(bounds(panel.shape)[1]).toBe(y0);
+    expect(panel.openEdges).toBeUndefined();
+    expect(x1).toBeGreaterThan(x0);
+    expect(y1).toBeGreaterThan(y0);
+  });
+
+  it("stays open in both halves when the panel is cut", () => {
+    const project = newProject("t", 1);
+    const page = project.pages[0];
+    const [x0, y0, x1] = basicBox(project.pageFormat);
+    const panel: Panel = { id: "panel1", shape: rectShape([x0, y0, x1, y0 + 60]), order: 1, fill: "black" };
+    bleedPanel(panel, "top", project.pageFormat, true);
+    page.panels.push(panel);
+    const middle = (x0 + x1) / 2;
+    expect(cutPanels(project, page, [middle, -5], [middle, 100])).toHaveLength(1);
+    for (const half of page.panels) {
+      expect(half.fill).toBe("black");
+      expect(half.openEdges).toHaveLength(1);
+      const [i] = half.openEdges!;
+      expect(half.shape[i][1]).toBe(0);
+      expect(half.shape[(i + 1) % half.shape.length][1]).toBe(0);
+    }
+  });
+
+  it("finds open edges along the old ones", () => {
+    const old = rectShape([0, 0, 100, 50]);
+    const left = rectShape([0, 0, 49, 50]);
+    expect(inheritOpenEdges(old, [0], left)).toEqual([0]);
+    expect(inheritOpenEdges(old, [1], left)).toEqual([]);
+  });
+});
+
+describe("borders as drawn", () => {
+  it("leave out what an inset panel covers", () => {
+    const page = emptyPage("page1");
+    page.panels.push({ id: "panel1", shape: rectShape([0, 0, 100, 100]), order: 1 });
+    page.panels.push({ id: "panel2", shape: rectShape([-5, 70, 30, 105]), order: 2, fill: "white", z: 1 });
+    const lines = borderLines(page);
+    const big = lines.filter((line) => line.panel.id === "panel1");
+    // The corner under the inset is gone: no point of the big border is inside it.
+    for (const line of big) {
+      for (const [x, y] of line.points) expect(x > -5 && x < 30 && y > 70 && y < 105 && !(x === 30 || y === 70)).toBe(false);
+    }
+    expect(lines.filter((line) => line.panel.id === "panel2")).toHaveLength(1);
+  });
+
+  it("leave out what a breakout covers", () => {
+    const page = emptyPage("page1");
+    page.panels.push({ id: "panel1", shape: rectShape([0, 0, 100, 100]), order: 1 });
+    page.breakouts.push({ id: "breakout1", shape: rectShape([40, -10, 60, 10]) });
+    const lines = borderLines(page);
+    expect(lines.length).toBe(1);
+    expect(lines[0].closed).toBe(false);
+    expect(lines[0].points[0]).toEqual([60, 0]);
+    expect(lines[0].points[lines[0].points.length - 1]).toEqual([40, 0]);
+  });
+
+  it("skip panels without a border", () => {
+    const page = emptyPage("page1");
+    page.panels.push({ id: "panel1", shape: rectShape([0, 0, 100, 100]), order: 1, border: "none" });
+    expect(borderLines(page)).toEqual([]);
+  });
+
+  it("clip a polyline that only touches a cover at a corner", () => {
+    const square: Point[] = rectShape([0, 0, 10, 10]);
+    expect(clipOutside(square, true, [rectShape([20, 20, 30, 30])])).toEqual([{ points: square, closed: true }]);
+  });
+
+  it("dash and wave", () => {
+    const pieces = dashes(
+      [
+        [0, 0],
+        [10, 0],
+      ],
+      false,
+      3,
+      2,
+    );
+    expect(pieces.map((p) => p[p.length - 1][0] - p[0][0])).toEqual([3, 3]);
+    const waved = wavy(rectShape([0, 0, 20, 20]), true);
+    expect(waved.length).toBeGreaterThan(20);
+  });
+});
+
+describe("layout patterns", () => {
+  it.each(PATTERNS.map((p) => p.id))("%s fits the page", (id) => {
+    const project = newProject("t", 1);
+    const panels = patternPanels(project, id);
+    expect(panels.length).toBeGreaterThan(0);
+    const [w, h] = project.pageFormat.canvasMm;
+    for (const panel of panels) {
+      const [x0, y0, x1, y1] = bounds(panel.shape);
+      expect(x0).toBeGreaterThanOrEqual(0);
+      expect(y0).toBeGreaterThanOrEqual(0);
+      expect(x1).toBeLessThanOrEqual(w);
+      expect(y1).toBeLessThanOrEqual(h);
+      expect(x1 - x0).toBeGreaterThan(5);
+      expect(y1 - y0).toBeGreaterThan(5);
+    }
+    expect(new Set(panels.map((p) => p.id)).size).toBe(panels.length);
+  });
+
+  it("bleeds the opening shot and adds the inset", () => {
+    const project = newProject("t", 1);
+    const opening = patternPanels(project, "opening");
+    expect(isBled(opening[0], "top", project.pageFormat)).toBe(true);
+    const big = patternPanels(project, "bigInset");
+    expect(big.filter((p) => p.z === 1 && p.fill === "white")).toHaveLength(1);
+  });
+});

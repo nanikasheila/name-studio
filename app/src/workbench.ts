@@ -3,8 +3,22 @@
 import { invoke } from "@tauri-apps/api/core";
 import { ask, save } from "@tauri-apps/plugin-dialog";
 import { PageEditor, isTyping, type Selection, type Tool } from "./editor";
+import { SHAPE_LABELS, TAIL_LABELS, defaultTailStyle, resolvedShape } from "./balloon";
 import { ExportDialog } from "./exportdialog";
 import { History } from "./history";
+import {
+  BORDER_LABELS,
+  EFFECT_LABELS,
+  FILL_LABELS,
+  PATTERNS,
+  SIDE_LABELS,
+  addInset,
+  applyPattern,
+  bleedPanel,
+  isBled,
+  rotatePanel,
+  type Side,
+} from "./koma";
 import { Overview, type OverviewKind } from "./overview";
 import {
   KIND_LABELS,
@@ -25,11 +39,17 @@ import {
   sceneOf,
   sortLines,
   textAmount,
+  type BalloonShape,
   type Line,
   type LineKind,
   type Page,
+  type Panel,
+  type PanelBorder,
+  type PanelEffect,
+  type PanelFill,
   type Project,
   type RoughImage,
+  type TailStyle,
 } from "./project";
 
 export const PROJECT_EXTENSION = "namestudio";
@@ -46,6 +66,17 @@ function element<K extends keyof HTMLElementTagNameMap>(
   Object.assign(node, props);
   node.append(...children);
   return node;
+}
+
+/** A drop-down of labelled values. */
+function choice<T extends string>(labels: Record<T, string>, value: T, change: (value: T) => void, skip: T[] = []): HTMLSelectElement {
+  const select = element("select");
+  for (const [key, label] of Object.entries(labels) as [T, string][]) {
+    if (!skip.includes(key) || key === value) select.append(element("option", { value: key, textContent: label }));
+  }
+  select.value = value;
+  select.addEventListener("change", () => change(select.value as T));
+  return select;
 }
 
 interface WorkbenchState {
@@ -228,8 +259,8 @@ export class Workbench {
   private findSelected(s: Selection): boolean {
     const page = this.state.project?.pages.find((p) => p.id === s.pageId);
     if (!page) return false;
-    const list = s.kind === "panel" ? page.panels : s.kind === "line" ? page.lines : page.strokes;
-    return list.some((item) => item.id === s.id);
+    const list = { panel: page.panels, line: page.lines, stroke: page.strokes, breakout: page.breakouts }[s.kind];
+    return list.some((item: { id: string }) => item.id === s.id);
   }
 
   // --- roughs -------------------------------------------------------------------------
@@ -412,9 +443,43 @@ export class Workbench {
       if (target) return panel.replaceChildren(...this.panelInspector(project, page, target.id, target.order));
     }
     if (s?.kind === "stroke") {
+      const stroke = page.strokes.find((x) => x.id === s.id);
       const remove = element("button", { className: "danger", textContent: "この線を消す" });
       remove.addEventListener("click", () => this.deleteSelection());
-      return panel.replaceChildren(element("h2", { textContent: "ラフの線" }), remove);
+      const over = element("input", { type: "checkbox", checked: !!stroke?.over });
+      over.addEventListener("change", () =>
+        this.edit(() => {
+          if (!stroke) return;
+          if (over.checked) stroke.over = true;
+          else delete stroke.over;
+        }),
+      );
+      return panel.replaceChildren(
+        element("h2", { textContent: "ラフの線" }),
+        element("label", { className: "inline" }, over, "コマ枠の上に描く（はみ出し）"),
+        remove,
+      );
+    }
+    if (s?.kind === "breakout") {
+      const breakout = page.breakouts.find((x) => x.id === s.id);
+      if (breakout) {
+        const note = element("input", { type: "text", value: breakout.note ?? "", placeholder: "例: 全身が枠を突き抜ける" });
+        this.liveText(note, (value) => {
+          if (value) breakout.note = value;
+          else delete breakout.note;
+        });
+        const remove = element("button", { className: "danger", textContent: "このはみ出しを消す" });
+        remove.addEventListener("click", () => this.deleteSelection());
+        return panel.replaceChildren(
+          element("h2", { textContent: "はみ出し" }),
+          element("p", {
+            className: "hint",
+            textContent: "この中ではコマ枠と間白が消えます。中でペンを描き始めた線は、コマ枠の上に描かれます（CSP では「はみ出し（ラフ線）」レイヤー）。",
+          }),
+          element("label", {}, "メモ", note),
+          remove,
+        );
+      }
     }
     panel.replaceChildren(...this.pageInspector(project, page));
   }
@@ -488,6 +553,65 @@ export class Workbench {
     const remove = element("button", { className: "danger", textContent: "このセリフを消す" });
     remove.addEventListener("click", () => this.deleteSelection());
     const panelNumber = page.panels.find((p) => p.id === line.panel)?.order;
+    const shape = choice(
+      SHAPE_LABELS,
+      line.balloonShape ?? "auto",
+      (value: BalloonShape) =>
+        this.edit(() => {
+          if (value === "auto") delete line.balloonShape;
+          else line.balloonShape = value;
+          fitLine(line);
+        }),
+      ["custom"],
+    );
+    const flag = (label: string, checked: boolean, set: (on: boolean) => void) => {
+      const box = element("input", { type: "checkbox", checked });
+      box.addEventListener("change", () => this.edit(() => set(box.checked)));
+      return element("label", { className: "inline" }, box, label);
+    };
+    const inverted = flag("白抜き", !!line.inverted, (on) => (on ? (line.inverted = true) : delete line.inverted));
+    const emphasis = flag("太字（強調）", !!line.emphasis, (on) => (on ? (line.emphasis = true) : delete line.emphasis));
+    const hasBalloon = resolvedShape(line) !== "none";
+    const tails = line.tails ?? [];
+    const addTail = element("button", { textContent: "しっぽを足す", disabled: !hasBalloon });
+    addTail.addEventListener("click", () =>
+      this.edit(() => {
+        const [x0, , , y1] = line.box;
+        // Down and to the left; drag the round handle to the speaker.
+        const offset = (line.tails?.length ?? 0) * 8;
+        line.tails = [...(line.tails ?? []), { tip: [x0 - 6 - offset, y1 + 12], style: defaultTailStyle(line) }];
+      }),
+    );
+    const removeTail = element("button", { textContent: "しっぽを消す", disabled: !tails.length });
+    removeTail.addEventListener("click", () =>
+      this.edit(() => {
+        line.tails = (line.tails ?? []).slice(0, -1);
+        if (!line.tails.length) delete line.tails;
+      }),
+    );
+    const tailStyle = choice(TAIL_LABELS, tails[tails.length - 1]?.style ?? defaultTailStyle(line), (value: TailStyle) =>
+      this.edit(() => {
+        for (const tail of line.tails ?? []) tail.style = value;
+      }),
+    );
+    tailStyle.disabled = !tails.length;
+    const names = new Map(project.characters.map((c) => [c.id, c.name]));
+    const link = element("select");
+    link.append(element("option", { value: "", textContent: "（つながない）" }));
+    for (const other of page.lines) {
+      if (other.id === line.id || other.linkTo === line.id) continue;
+      const who = names.get(other.speaker ?? "");
+      const text = other.text.replace(/\s+/g, " ").slice(0, 12);
+      link.append(element("option", { value: other.id, textContent: `${who ? `${who}：` : ""}${text}` }));
+    }
+    link.value = line.linkTo ?? "";
+    link.disabled = !hasBalloon;
+    link.addEventListener("change", () =>
+      this.edit(() => {
+        if (link.value) line.linkTo = link.value;
+        else delete line.linkTo;
+      }),
+    );
     setTimeout(() => {
       if (line.text === "セリフ") {
         text.focus();
@@ -499,18 +623,76 @@ export class Workbench {
       element("label", {}, "文字", text),
       element("div", { className: "row" }, element("label", {}, "種類", kind), element("label", {}, "話者", speaker)),
       element("div", { className: "row" }, element("label", {}, "文字の大きさ（pt）", size), element("label", { className: "inline" }, vertical, "縦書き")),
-      element("p", { className: "hint", textContent: "改行で行を分けます。フキダシは文字に合わせて大きさが変わります。ドラッグか矢印キーで動かせます。" }),
+      element("div", { className: "row" }, emphasis, inverted),
+      element("h3", { textContent: "フキダシ" }),
+      element("label", {}, "形", shape),
+      element("div", { className: "row" }, addTail, removeTail),
+      element("label", {}, `しっぽ（${tails.length} 本）`, tailStyle),
+      element("label", {}, "つなぐ（連結フキダシ）", link),
+      element("p", {
+        className: "hint",
+        textContent:
+          "しっぽの丸い先をドラッグして話者に向けます（コマの外の話者にも）。2本以上で同時に話す声。改行で行を分けます。ドラッグか矢印キーで動かせます。",
+      }),
       remove,
     ];
   }
 
   private panelInspector(project: Project, page: Page, panelId: string, order: number): HTMLElement[] {
+    const panel = page.panels.find((p) => p.id === panelId)!;
     const remove = element("button", { className: "danger", textContent: "このコマを消す" });
     remove.addEventListener("click", () => this.deleteSelection());
     const lines = page.lines.filter((line) => line.panel === panelId).length;
+    const set = <K extends keyof Panel>(key: K, value: Panel[K], none: Panel[K]) =>
+      this.edit(() => {
+        if (value === none) delete panel[key];
+        else panel[key] = value;
+      });
+    const border = choice(BORDER_LABELS, panel.border ?? "solid", (value: PanelBorder) => set("border", value, "solid"));
+    const fill = choice(FILL_LABELS, panel.fill ?? "none", (value: PanelFill) => set("fill", value, "none"));
+    const effect = choice(EFFECT_LABELS, panel.effect ?? "none", (value: PanelEffect) => set("effect", value, "none"));
+    const bleeds = (["top", "right", "bottom", "left"] as Side[]).map((side) => {
+      const box = element("input", { type: "checkbox", checked: isBled(panel, side, project.pageFormat) });
+      box.addEventListener("change", () => this.edit((p) => bleedPanel(panel, side, p.pageFormat, box.checked)));
+      return element("label", { className: "inline" }, box, SIDE_LABELS[side]);
+    });
+    const button = (label: string, action: (p: Project) => void, title = "") => {
+      const b = element("button", { textContent: label, title });
+      b.addEventListener("click", () => this.edit(action));
+      return b;
+    };
+    const tiltLeft = button("⟲ 2°", () => rotatePanel(panel, -2), "左に傾ける");
+    const tiltRight = button("⟳ 2°", () => rotatePanel(panel, 2), "右に傾ける");
+    const raise = button("前へ", () => (panel.z = (panel.z ?? 0) + 1), "重なりで上にする");
+    const lower = button("後ろへ", () => {
+      panel.z = (panel.z ?? 0) - 1;
+      if (!panel.z) delete panel.z;
+    }, "重なりで下にする");
+    const inset = element("button", { textContent: "はめ込みコマを足す", title: "このコマの左下に重ねる小さなコマ" });
+    inset.addEventListener("click", () => {
+      let created: Panel | null = null;
+      this.edit((p) => (created = addInset(p, page, panel)));
+      if (created) this.editor.select({ kind: "panel", pageId: page.id, id: (created as Panel).id });
+    });
+    const note = element("input", { type: "text", value: panel.note ?? "", placeholder: "例: 俯瞰で教室全体 / 間" });
+    this.liveText(note, (value) => {
+      if (value) panel.note = value;
+      else delete panel.note;
+    });
     return [
       element("h2", { textContent: `${pageIndex(project, page.id) + 1} ページ ${order} コマ目` }),
-      element("p", { className: "hint", textContent: `セリフ ${lines} 件。角の四角をドラッグすると形を変えられます（枠に吸い付きます。Alt で吸い付かない）。` }),
+      element("label", {}, "演出メモ", note),
+      element("div", { className: "row" }, element("label", {}, "枠線", border), element("label", {}, "塗り", fill)),
+      element("label", {}, "背景の効果", effect),
+      element("h3", { textContent: "裁ち切り（ページの外まで）" }),
+      element("div", { className: "row" }, ...bleeds),
+      element("h3", { textContent: "形と重なり" }),
+      element("div", { className: "row" }, tiltLeft, tiltRight, raise, lower),
+      inset,
+      element("p", {
+        className: "hint",
+        textContent: `セリフ ${lines} 件。角の四角をドラッグすると形を変えられます（枠に吸い付きます。Alt で吸い付かない）。重なり ${panel.z ?? 0}。`,
+      }),
       remove,
     ];
   }
@@ -536,6 +718,17 @@ export class Workbench {
         sortLines(page);
       }),
     );
+    const pattern = element("select");
+    for (const item of PATTERNS) pattern.append(element("option", { value: item.id, textContent: item.label, title: item.note }));
+    const patternNote = element("p", { className: "hint", textContent: PATTERNS[0].note });
+    pattern.addEventListener("change", () => (patternNote.textContent = PATTERNS.find((item) => item.id === pattern.value)?.note ?? ""));
+    const applyButton = button("このページに当てる", async () => {
+      if (page.panels.length && !(await ask("今のコマを置き換えますか？（元に戻すで戻せます）", { title: "Name Studio", kind: "warning" }))) return;
+      this.edit((p) => {
+        applyPattern(p, page, pattern.value);
+        sortLines(page);
+      });
+    });
     const after = button("後ろにページを足す", () => this.edit((p) => insertPage(p, index + 1)));
     const before = button("前にページを足す", () => this.edit((p) => insertPage(p, index)));
     const earlier = button("1 つ前へ", () => this.edit((p) => movePage(p, page.id, -1)), index === 0);
@@ -552,6 +745,9 @@ export class Workbench {
       element("h3", { textContent: "コマ" }),
       element("div", { className: "row" }, frame, reorder),
       element("p", { className: "hint", textContent: "コマ割り: コマを横切るように線を引くと割れます（ほぼ水平・垂直はまっすぐに。Alt で斜め）。コマの外をドラッグすると新しいコマ。" }),
+      element("h3", { textContent: "コマ割りの型" }),
+      element("div", { className: "row" }, pattern, applyButton),
+      patternNote,
       element("h3", { textContent: "ページ" }),
       element("div", { className: "row" }, before, after),
       element("div", { className: "row" }, earlier, later),
@@ -568,6 +764,11 @@ export class Workbench {
       if (s.kind === "panel") removePanel(page, s.id, project.binding);
       if (s.kind === "line") page.lines = page.lines.filter((line) => line.id !== s.id);
       if (s.kind === "stroke") page.strokes = page.strokes.filter((stroke) => stroke.id !== s.id);
+      if (s.kind === "breakout") page.breakouts = page.breakouts.filter((breakout) => breakout.id !== s.id);
+      if (s.kind === "line") {
+        // Balloons joined to the removed one come loose.
+        for (const line of page.lines) if (line.linkTo === s.id) delete line.linkTo;
+      }
     });
     this.editor.select(null);
   }
@@ -576,13 +777,13 @@ export class Workbench {
 
   setTool(tool: Tool): void {
     this.editor.setTool(tool);
-    for (const name of ["select", "cut", "text", "pen", "eraser"] as const) {
+    for (const name of ["select", "cut", "text", "pen", "eraser", "breakout"] as const) {
       $(`tool-${name}`).classList.toggle("active", name === tool);
     }
   }
 
   private bindControls(): void {
-    for (const name of ["select", "cut", "text", "pen", "eraser"] as const) {
+    for (const name of ["select", "cut", "text", "pen", "eraser", "breakout"] as const) {
       $(`tool-${name}`).addEventListener("click", () => this.setTool(name));
     }
     $("undo").addEventListener("click", () => this.undo());
@@ -637,7 +838,7 @@ export class Workbench {
       return true;
     }
     if (this.view !== "edit") return false;
-    const tools: Record<string, Tool> = { v: "select", k: "cut", t: "text", p: "pen", e: "eraser" };
+    const tools: Record<string, Tool> = { v: "select", k: "cut", t: "text", p: "pen", e: "eraser", b: "breakout" };
     const tool = tools[event.key.toLowerCase()];
     if (tool) {
       this.setTool(tool);

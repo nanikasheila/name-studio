@@ -9,7 +9,8 @@
 
 use serde::{Deserialize, Serialize};
 
-pub const FORMAT_VERSION: u32 = 1;
+/// 2: panel styles, balloon shapes and tails, breakouts (コマ割り・フキダシの語彙).
+pub const FORMAT_VERSION: u32 = 2;
 
 pub type Point = [f64; 2];
 /// `[x0, y0, x1, y1]` in millimetres.
@@ -103,15 +104,100 @@ pub struct Page {
     pub strokes: Vec<Stroke>,
     #[serde(default)]
     pub roughs: Vec<RoughImage>,
+    /// はみ出し: areas drawn over the panels (a figure or effect breaking out
+    /// of its panel). Panel borders and gutters under them are blanked.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub breakouts: Vec<Breakout>,
 }
 
 /// コマ: a polygon (usually a rectangle) in reading order.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+///
+/// Beyond the shape, a panel carries how it is drawn: its border (or none),
+/// edges left open (裁ち切り: the panel runs off the page there), a fill
+/// (ベタ for flashbacks), a background effect, and its stacking order so
+/// that inset panels (はめ込み) sit on top of the panel they overlap.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Panel {
     pub id: String,
     pub shape: Vec<Point>,
     pub order: u32,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub border: PanelBorder,
+    /// Edges not drawn: edge `i` runs from `shape[i]` to `shape[i + 1]`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub open_edges: Vec<u32>,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub fill: PanelFill,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub effect: PanelEffect,
+    /// Stacking order; higher is drawn later (on top). Inset panels use 1.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub z: i32,
+    /// 演出メモ: camera, timing or what the panel is for.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub note: String,
+}
+
+fn is_default<T: Default + PartialEq>(value: &T) -> bool {
+    *value == T::default()
+}
+
+/// 枠線
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PanelBorder {
+    #[default]
+    Solid,
+    /// 太枠: a heavier line for a key panel.
+    Thick,
+    /// 枠なし: the picture fades into the page.
+    None,
+    /// 破線: flashback, imagination.
+    Dashed,
+    /// 波線: dream, haze.
+    Wavy,
+}
+
+/// 塗り (inside the border, under everything else in the panel).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PanelFill {
+    /// Transparent: panels under it show through.
+    #[default]
+    None,
+    /// White: covers what is under it (inset panels).
+    White,
+    /// ベタ: flashback, darkness, a silent beat.
+    Black,
+    /// グレー (tone).
+    Gray,
+}
+
+/// Background effect drawn inside the panel (a note for the drawing stage).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PanelEffect {
+    #[default]
+    None,
+    /// 流線: motion.
+    Speed,
+    /// 集中線: focus, surprise.
+    Focus,
+    /// ウニフラ: shock, inner turmoil.
+    Flash,
+    /// キラキラ・花: warmth, charm.
+    Sparkle,
+}
+
+/// はみ出し: an area that breaks out of the panels.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Breakout {
+    pub id: String,
+    pub shape: Vec<Point>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub note: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -126,10 +212,71 @@ pub enum LineKind {
     Narration,
     /// 描き文字・効果音
     Sfx,
+    /// 小書き: a muttered aside written small without a balloon.
+    Aside,
+}
+
+/// フキダシの形
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BalloonShape {
+    /// The usual shape for the kind of line (楕円 / モコモコ / 四角 / なし).
+    #[default]
+    Auto,
+    /// 楕円: ordinary speech.
+    Ellipse,
+    /// 角丸
+    Rounded,
+    /// 四角: narration, captions.
+    Box,
+    /// 多角形: monologue, words heard or recalled.
+    Polygon,
+    /// モコモコ (雲): thoughts.
+    Cloud,
+    /// トゲ: shouting.
+    Spike,
+    /// 爆発: a burst of anger or surprise.
+    Burst,
+    /// ふるえ (波線): fear, weakness.
+    Wavy,
+    /// ウニフラ: shock, inner voice in turmoil.
+    Flash,
+    /// 電子音: phones, machines, broadcasts.
+    Electric,
+    /// 破線: whispers.
+    Dashed,
+    /// なし: text only.
+    None,
+    /// An outline imported from CSP, kept as it is in `balloon`.
+    Custom,
+}
+
+/// しっぽの種類
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TailStyle {
+    /// 三角
+    #[default]
+    Wedge,
+    /// 泡: thoughts.
+    Bubbles,
+    /// 線: a thin pointer to a small or far speaker.
+    Line,
+    /// ギザギザ: electric voices.
+    Zigzag,
+}
+
+/// しっぽ: points from the balloon to the speaker, even off the panel.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Tail {
+    pub tip: Point,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub style: TailStyle,
 }
 
 /// セリフ and other text placed on a page.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Line {
     pub id: String,
@@ -144,13 +291,27 @@ pub struct Line {
     pub box_mm: BoxMm,
     pub font_size_pt: f64,
     pub vertical: bool,
-    /// Balloon outline, when the line has one.
+    /// Balloon outline without tails and links, when the line has one. Made
+    /// from `balloon_shape` by the editor; kept as is for `Custom`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub balloon: Option<Vec<Point>>,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub balloon_shape: BalloonShape,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tails: Vec<Tail>,
+    /// 連結: the line whose balloon this one is joined to (same speaker).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link_to: Option<String>,
+    /// 白抜き: black balloon (or none on a black panel) with white text.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub inverted: bool,
+    /// 強調: bold type.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub emphasis: bool,
 }
 
 /// A rough line (ラフ). Points are `[x, y, pressure]` with pressure 0..1.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Stroke {
     pub id: String,
@@ -158,6 +319,9 @@ pub struct Stroke {
     pub width_mm: f64,
     #[serde(default)]
     pub closed: bool,
+    /// Drawn over the panel borders (inside a はみ出し), not under them.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub over: bool,
 }
 
 /// Raster rough kept in the source sheet; the pixels are read from there.

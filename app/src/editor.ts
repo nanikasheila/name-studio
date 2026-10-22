@@ -3,7 +3,8 @@
 // Coordinates on a page are millimetres; each page of the spread has its own
 // mm → screen mapping.
 import { spreads } from "./pages";
-import { INK, drawBalloon, drawLineText, drawPanel, drawStroke, tracePath } from "./pagedraw";
+import { addBreakout, moveBreakout, stacked } from "./koma";
+import { INK, drawBalloons, drawLineText, drawPanelBorders, drawPanelFills, drawStrokes, tracePath } from "./pagedraw";
 import {
   addLine,
   addPanel,
@@ -23,6 +24,7 @@ import {
   snapCut,
   snapLines,
   snapPoint,
+  simplify,
   sortLines,
   strokeHit,
   trimBox,
@@ -31,12 +33,13 @@ import {
   type Point,
   type Project,
   type RoughImage,
+  type Stroke,
 } from "./project";
 
-export type Tool = "select" | "cut" | "text" | "pen" | "eraser";
+export type Tool = "select" | "cut" | "text" | "pen" | "eraser" | "breakout";
 
 export interface Selection {
-  kind: "panel" | "line" | "stroke";
+  kind: "panel" | "line" | "stroke" | "breakout";
   pageId: string;
   id: string;
 }
@@ -71,6 +74,8 @@ type Drag =
   | { kind: "cut"; slot: Slot; a: Point; b: Point; free: boolean }
   | { kind: "frame"; slot: Slot; a: Point; b: Point }
   | { kind: "pen"; slot: Slot; points: [number, number, number][] }
+  | { kind: "tail"; slot: Slot; lineId: string; index: number; moved: boolean }
+  | { kind: "lasso"; slot: Slot; points: Point[] }
   | { kind: "erase"; slot: Slot; erased: number };
 
 const ACCENT = "#2f6fdb";
@@ -271,29 +276,54 @@ export class PageEditor {
     ctx.globalAlpha = 1;
 
     const m = { scale, x: slot.x, y: slot.y };
-    for (const stroke of page.strokes) {
-      drawStroke(ctx, stroke, m, this.isSelected(page, "stroke", stroke.id) ? ACCENT : "#3a3834");
+    const strokeColor = (stroke: Stroke) => (this.isSelected(page, "stroke", stroke.id) ? ACCENT : "#3a3834");
+    drawStrokes(ctx, page, m, false, strokeColor);
+    drawPanelFills(ctx, page, m);
+    const selectedPanel = page.panels.find((panel) => this.isSelected(page, "panel", panel.id));
+    if (selectedPanel) {
+      tracePath(ctx, selectedPanel.shape, m, true);
+      ctx.fillStyle = "rgba(47, 111, 219, 0.08)";
+      ctx.fill();
+    }
+    drawPanelBorders(ctx, page, m, (panel) => (panel === selectedPanel ? ACCENT : INK));
+    drawStrokes(ctx, page, m, true, strokeColor);
+
+    // はみ出し: shown by a dashed outline (only here, not in exports).
+    for (const breakout of page.breakouts) {
+      const selected = this.isSelected(page, "breakout", breakout.id);
+      tracePath(ctx, breakout.shape, m, true);
+      ctx.setLineDash([5, 4]);
+      ctx.strokeStyle = selected ? ACCENT : "rgba(214, 120, 40, 0.8)";
+      ctx.lineWidth = selected ? 2 : 1.2;
+      ctx.stroke();
+      ctx.setLineDash([]);
     }
 
-    for (const panel of page.panels) {
-      const selected = this.isSelected(page, "panel", panel.id);
-      if (selected) {
+    for (const panel of stacked(page.panels)) {
+      const selected = panel === selectedPanel;
+      // Panels with no border at all still show where they are.
+      if ((panel.border ?? "solid") === "none" && !selected) {
         tracePath(ctx, panel.shape, m, true);
-        ctx.fillStyle = "rgba(47, 111, 219, 0.08)";
-        ctx.fill();
+        ctx.setLineDash([2, 4]);
+        ctx.strokeStyle = "rgba(47, 111, 219, 0.35)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.setLineDash([]);
       }
-      drawPanel(ctx, panel, m, selected ? ACCENT : INK);
       const [, y0, x1] = bounds(panel.shape);
       const radius = Math.max(4 * scale, 7);
+      // Numbers stay inside the page even for panels that run off it.
+      const nx = Math.min(sx(x1), sx(pageW)) - radius - 3;
+      const ny = Math.max(sy(y0), sy(0)) + radius + 3;
       ctx.fillStyle = selected ? ACCENT : "rgba(47, 111, 219, 0.75)";
       ctx.beginPath();
-      ctx.arc(sx(x1) - radius - 3, sy(y0) + radius + 3, radius, 0, Math.PI * 2);
+      ctx.arc(nx, ny, radius, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = "#ffffff";
       ctx.font = `bold ${Math.round(radius * 1.2)}px sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(String(panel.order), sx(x1) - radius - 3, sy(y0) + radius + 3);
+      ctx.fillText(String(panel.order), nx, ny);
       if (selected) {
         ctx.fillStyle = "#ffffff";
         ctx.strokeStyle = ACCENT;
@@ -305,6 +335,7 @@ export class PageEditor {
       }
     }
 
+    drawBalloons(ctx, page, m);
     for (const line of page.lines) this.drawLine(project, slot, line);
     ctx.restore();
 
@@ -323,7 +354,6 @@ export class PageEditor {
     const sy = (y: number) => slot.y + y * scale;
     const selected = this.isSelected(slot.page, "line", line.id);
     const m = { scale, x: slot.x, y: slot.y };
-    drawBalloon(ctx, line, m);
     drawLineText(ctx, line, m);
     const speaker = project.characters.find((character) => character.id === line.speaker);
     const [x0, y0, x1, y1] = line.box;
@@ -339,6 +369,16 @@ export class PageEditor {
       ctx.setLineDash([3, 3]);
       ctx.strokeRect(sx(x0) - 3, sy(y0) - 3, (x1 - x0) * scale + 6, (y1 - y0) * scale + 6);
       ctx.setLineDash([]);
+      // しっぽの先: drag to point at the speaker.
+      for (const tail of line.tails ?? []) {
+        ctx.fillStyle = "#ffffff";
+        ctx.strokeStyle = ACCENT;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(sx(tail.tip[0]), sy(tail.tip[1]), HANDLE, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
     }
   }
 
@@ -361,6 +401,15 @@ export class PageEditor {
         const [x0, y0, x1, y1] = bounds([a, b]);
         ctx.strokeRect(slot.x + x0 * slot.scale, slot.y + y0 * slot.scale, (x1 - x0) * slot.scale, (y1 - y0) * slot.scale);
       }
+      ctx.setLineDash([]);
+    }
+    if (drag?.kind === "lasso" && drag.points.length > 1) {
+      const { slot } = drag;
+      ctx.strokeStyle = "rgba(214, 120, 40, 0.9)";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 4]);
+      tracePath(ctx, drag.points, { scale: slot.scale, x: slot.x, y: slot.y }, true);
+      ctx.stroke();
       ctx.setLineDash([]);
     }
     if (drag?.kind === "pen") {
@@ -411,7 +460,11 @@ export class PageEditor {
     for (const stroke of [...page.strokes].reverse()) {
       if (strokeHit(stroke, point, tolerance)) return { kind: "stroke", pageId: page.id, id: stroke.id };
     }
-    const panels = [...page.panels].sort((a, b) => bounds(a.shape)[2] - bounds(b.shape)[2]);
+    for (const breakout of [...page.breakouts].reverse()) {
+      if (insidePolygon(breakout.shape, point)) return { kind: "breakout", pageId: page.id, id: breakout.id };
+    }
+    // Panels on top (はめ込み) first.
+    const panels = [...page.panels].sort((a, b) => (b.z ?? 0) - (a.z ?? 0) || bounds(a.shape)[2] - bounds(b.shape)[2]);
     for (const panel of panels) {
       if (insidePolygon(panel.shape, point)) return { kind: "panel", pageId: page.id, id: panel.id };
     }
@@ -428,6 +481,15 @@ export class PageEditor {
     );
   }
 
+  /** The tail tip of the selected line under the pointer, or -1. */
+  private tailAt(slot: Slot, sx: number, sy: number): number {
+    const s = this.selection;
+    if (!s || s.kind !== "line" || s.pageId !== slot.page.id) return -1;
+    const line = slot.page.lines.find((l) => l.id === s.id);
+    if (!line?.tails) return -1;
+    return line.tails.findIndex(({ tip: [x, y] }) => Math.hypot(slot.x + x * slot.scale - sx, slot.y + y * slot.scale - sy) <= HANDLE + 3);
+  }
+
   // --- input ------------------------------------------------------------------------
 
   private updateCursor(): void {
@@ -437,6 +499,7 @@ export class PageEditor {
       text: "text",
       pen: "crosshair",
       eraser: "none",
+      breakout: "crosshair",
     };
     this.canvas.style.cursor = this.spaceHeld ? "grab" : cursors[this.tool];
   }
@@ -459,6 +522,12 @@ export class PageEditor {
     const point = this.toPage(slot, sx, sy);
     switch (this.tool) {
       case "select": {
+        const tail = this.tailAt(slot, sx, sy);
+        if (tail >= 0) {
+          this.host.begin();
+          this.drag = { kind: "tail", slot, lineId: this.selection!.id, index: tail, moved: false };
+          return;
+        }
         const vertex = this.vertexAt(slot, sx, sy);
         if (vertex >= 0) {
           this.host.begin();
@@ -495,6 +564,9 @@ export class PageEditor {
       }
       case "pen":
         this.drag = { kind: "pen", slot, points: [[...point, pressureOf(event)]] };
+        return;
+      case "breakout":
+        this.drag = { kind: "lasso", slot, points: [point] };
         return;
       case "eraser": {
         this.host.begin();
@@ -541,6 +613,17 @@ export class PageEditor {
         drag.moved = true;
         break;
       }
+      case "tail": {
+        const line = drag.slot.page.lines.find((l) => l.id === drag.lineId);
+        const tail = line?.tails?.[drag.index];
+        if (!tail) return;
+        tail.tip = point;
+        drag.moved = true;
+        break;
+      }
+      case "lasso":
+        drag.points.push(point);
+        break;
       case "cut":
       case "frame":
         drag.b = point;
@@ -567,6 +650,27 @@ export class PageEditor {
     const project = this.host.project();
     if (!project) return;
     switch (drag.kind) {
+      case "tail":
+        if (drag.moved) this.host.commit();
+        else this.host.cancel();
+        break;
+      case "lasso": {
+        const shape = simplify(
+          drag.points.map(([x, y]) => [x, y, 1] as [number, number, number]),
+          0.8,
+        ).map(([x, y]) => [x, y] as Point);
+        const box = bounds(shape);
+        if (shape.length < 3 || box[2] - box[0] < 4 || box[3] - box[1] < 4) {
+          this.host.status("はみ出しにする所を囲むようにドラッグしてください");
+          break;
+        }
+        this.host.begin();
+        const breakout = addBreakout(project, drag.slot.page, shape);
+        this.host.commit();
+        this.select({ kind: "breakout", pageId: drag.slot.page.id, id: breakout.id });
+        this.host.status("はみ出しを作りました。中でペンを描き始めると、コマ枠の上に描かれます");
+        break;
+      }
       case "move":
       case "vertex":
         if (!drag.moved) {
@@ -612,8 +716,14 @@ export class PageEditor {
       case "pen": {
         this.host.begin();
         const stroke = addStroke(project, drag.slot.page, drag.points, this.penWidthMm);
-        if (stroke) this.host.commit();
-        else this.host.cancel();
+        if (stroke) {
+          // Begun inside a はみ出し: the line goes over the panel borders.
+          const [x, y] = drag.points[0];
+          if (drag.slot.page.breakouts.some((breakout) => insidePolygon(breakout.shape, [x, y]))) stroke.over = true;
+          this.host.commit();
+        } else {
+          this.host.cancel();
+        }
         break;
       }
       case "erase":
@@ -641,6 +751,9 @@ export class PageEditor {
     } else if (s.kind === "panel") {
       const panel = page.panels.find((p) => p.id === s.id);
       if (panel) movePanel(panel, dx, dy);
+    } else if (s.kind === "breakout") {
+      const breakout = page.breakouts.find((b) => b.id === s.id);
+      if (breakout) moveBreakout(breakout, dx, dy);
     } else {
       const stroke = page.strokes.find((p) => p.id === s.id);
       if (stroke) moveStroke(stroke, dx, dy);
