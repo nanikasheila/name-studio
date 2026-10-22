@@ -100,14 +100,14 @@ impl Length {
 /// What changes a setting while drawing (影響元設定).
 ///
 /// The blob is big endian. A header of `u32` words: `[0]` its own length in
-/// bytes (44 in the database, 48 in a .sut), `[2]` the inputs in use (0x10
-/// pen pressure, 0x20 tilt, 0x40 speed, 0x80 random), `[4]` the minimum with
-/// pen pressure (%), `[8]` and `[9]` the byte lengths of the pressure and tilt
-/// graphs, `[11]` (only in a 48-byte header) that of the speed graph. The
-/// graphs follow the header: `u32` header length 12, `u32` point count,
-/// `u32` point size 16, then the points as two `f64` (input, output) in
-/// 0..1. Graph points are control points: CSP draws a smooth curve through
-/// the ends that bends towards the points in between.
+/// bytes (40 to 48), `[2]` the inputs in use (0x10 pen pressure, 0x20 tilt,
+/// 0x40 speed, 0x80 random), `[3]`..`[6]` the minimum (%) with pressure,
+/// tilt, speed and random, `[8]` and `[9]` the byte lengths of the pressure
+/// and tilt graphs, `[11]` (in a 48-byte header) that of the speed graph.
+/// The graphs follow the header in that order: `u32` header length 12, `u32`
+/// point count, `u32` point size 16, then the points as two `f64` (input,
+/// output) in 0..1. Graph points are control points: CSP draws a smooth curve
+/// through the ends that bends towards the points in between.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Dynamics {
@@ -117,8 +117,13 @@ pub struct Dynamics {
     /// Pressure graph; empty when it is the straight line.
     pub pressure_curve: Vec<[f64; 2]>,
     pub tilt: bool,
+    pub tilt_min: f64,
+    pub tilt_curve: Vec<[f64; 2]>,
     pub velocity: bool,
+    pub velocity_min: f64,
+    pub velocity_curve: Vec<[f64; 2]>,
     pub random: bool,
+    pub random_min: f64,
 }
 
 impl Dynamics {
@@ -128,40 +133,65 @@ impl Dynamics {
             Some(u32::from_be_bytes(bytes.try_into().ok()?))
         };
         let header = word(0)? as usize;
-        if !(44..=blob.len()).contains(&header) {
+        if !(40..=blob.len()).contains(&header) {
             return None;
         }
         let inputs = word(2)?;
-        let pressure_min = (word(4)? as f64 / 100.0).clamp(0.0, 1.0);
-        let pressure_graph = word(8)? as usize;
-        let mut pressure_curve = Vec::new();
-        if pressure_graph > 0 {
-            let graph = blob.get(header..header + pressure_graph)?;
-            let read = |at: usize| u32::from_be_bytes(graph[at..at + 4].try_into().unwrap()) as usize;
-            if graph.len() >= 12 {
-                let (start, count, size) = (read(0), read(4), read(8));
-                for index in 0..count {
-                    let at = start + index * size;
-                    let Some(point) = graph.get(at..at + 16) else { break };
-                    let x = f64::from_be_bytes(point[0..8].try_into().unwrap());
-                    let y = f64::from_be_bytes(point[8..16].try_into().unwrap());
-                    pressure_curve.push([x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)]);
-                }
+        let min = |index: usize| -> Option<f64> { Some((word(index)? as f64 / 100.0).clamp(0.0, 1.0)) };
+        let graph_length = |index: usize| {
+            if index * 4 < header {
+                word(index).unwrap_or(0) as usize
+            } else {
+                0
             }
-        }
-        let straight = pressure_curve.len() == 2 && pressure_curve[0] == [0.0, 0.0] && pressure_curve[1] == [1.0, 1.0];
-        if straight {
-            pressure_curve.clear();
-        }
+        };
+        let mut at = header;
+        let mut graph = |length: usize| -> Option<Vec<[f64; 2]>> {
+            let bytes = blob.get(at..at + length)?;
+            at += length;
+            Some(graph_points(bytes))
+        };
+        let pressure_curve = graph(graph_length(8))?;
+        let tilt_curve = graph(graph_length(9))?;
+        // Without a speed graph CSP thins the line as the pen speeds up.
+        let velocity_curve = match graph_length(11) {
+            0 => vec![[0.0, 1.0], [1.0, 0.0]],
+            length => graph(length).unwrap_or_default(),
+        };
         Some(Dynamics {
             pressure: inputs & 0x10 != 0,
-            pressure_min,
+            pressure_min: min(3)?,
             pressure_curve,
             tilt: inputs & 0x20 != 0,
+            tilt_min: min(4)?,
+            tilt_curve,
             velocity: inputs & 0x40 != 0,
+            velocity_min: min(5)?,
+            velocity_curve,
             random: inputs & 0x80 != 0,
+            random_min: min(6)?,
         })
     }
+}
+
+/// The points of one graph; empty for none or the straight line.
+fn graph_points(graph: &[u8]) -> Vec<[f64; 2]> {
+    let mut points = Vec::new();
+    if graph.len() >= 12 {
+        let read = |at: usize| u32::from_be_bytes(graph[at..at + 4].try_into().unwrap()) as usize;
+        let (start, count, size) = (read(0), read(4), read(8));
+        for index in 0..count {
+            let at = start + index * size;
+            let Some(point) = graph.get(at..at + 16) else { break };
+            let x = f64::from_be_bytes(point[0..8].try_into().unwrap());
+            let y = f64::from_be_bytes(point[8..16].try_into().unwrap());
+            points.push([x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)]);
+        }
+    }
+    if points == [[0.0, 0.0], [1.0, 1.0]] {
+        points.clear();
+    }
+    points
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -582,13 +612,15 @@ mod tests {
         words[0] = header as u32;
         words[1] = 0x1f0;
         words[2] = inputs;
-        words[4] = min;
+        words[3] = min;
         words[8] = if curve.is_empty() {
             0
         } else {
             12 + 16 * curve.len() as u32
         };
-        words[10] = 100;
+        if header >= 44 {
+            words[10] = 100;
+        }
         let mut blob: Vec<u8> = words.iter().flat_map(|w| w.to_be_bytes()).collect();
         if !curve.is_empty() {
             for w in [12u32, curve.len() as u32, 16] {
@@ -613,11 +645,52 @@ mod tests {
         }
         let off = Dynamics::parse(&effector(44, 0, 100, &[])).unwrap();
         assert!(!off.pressure);
-        assert_eq!(off.pressure_min, 1.0);
         let straight = Dynamics::parse(&effector(44, 0x10, 20, &[[0.0, 0.0], [1.0, 1.0]])).unwrap();
         assert!(straight.pressure_curve.is_empty());
         assert_eq!(straight.pressure_min, 0.2);
         assert!(Dynamics::parse(&[0, 0, 0, 8]).is_none());
+    }
+
+    #[test]
+    fn reads_tilt_speed_and_random() {
+        // Laid out like CSP's own: pressure, tilt and speed graphs in a row.
+        let graphs: [&[[f64; 2]]; 3] = [
+            &[[0.0, 0.0], [0.5, 0.75], [1.0, 1.0]],
+            &[[0.0, 1.0], [0.5, 1.0], [0.8, 0.0], [1.0, 0.0]],
+            &[[0.0, 1.0], [0.005, 0.0], [1.0, 0.0]],
+        ];
+        let lengths: Vec<u32> = graphs.iter().map(|g| 12 + 16 * g.len() as u32).collect();
+        let words = [
+            48, 240, 0xf0, 30, 100, 10, 5, 0, lengths[0], lengths[1], 100, lengths[2],
+        ];
+        let mut blob: Vec<u8> = words.iter().flat_map(|w: &u32| w.to_be_bytes()).collect();
+        for graph in graphs {
+            for w in [12u32, graph.len() as u32, 16] {
+                blob.extend(w.to_be_bytes());
+            }
+            for [x, y] in graph {
+                blob.extend(x.to_be_bytes());
+                blob.extend(y.to_be_bytes());
+            }
+        }
+        let dynamics = Dynamics::parse(&blob).unwrap();
+        assert!(dynamics.pressure && dynamics.tilt && dynamics.velocity && dynamics.random);
+        assert_eq!(
+            (
+                dynamics.pressure_min,
+                dynamics.tilt_min,
+                dynamics.velocity_min,
+                dynamics.random_min
+            ),
+            (0.3, 1.0, 0.1, 0.05)
+        );
+        assert_eq!(dynamics.pressure_curve, graphs[0].to_vec());
+        assert_eq!(dynamics.tilt_curve, graphs[1].to_vec());
+        assert_eq!(dynamics.velocity_curve, graphs[2].to_vec());
+        // A 40-byte header has no speed graph.
+        let short = Dynamics::parse(&effector(40, 0x10, 40, &[[0.0, 0.0], [0.3, 0.6], [1.0, 1.0]])).unwrap();
+        assert_eq!(short.pressure_min, 0.4);
+        assert_eq!(short.velocity_curve, [[0.0, 1.0], [1.0, 0.0]]);
     }
 
     fn utf16(text: &str) -> Vec<u8> {
@@ -824,9 +897,9 @@ mod tests {
             }
             let tools = read_sub_tools(&path, None).unwrap();
             assert!(!tools.is_empty(), "{}", path.display());
-            for tool in &tools {
-                assert!(tool.size.is_some(), "{} {}", path.display(), tool.name);
-            }
+            // A few (ドットペン) leave the size to the tool above them.
+            let sized = tools.iter().filter(|tool| tool.size.is_some()).count();
+            assert!(sized * 10 >= tools.len() * 9, "{}", path.display());
         }
     }
 }

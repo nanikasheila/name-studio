@@ -1,7 +1,7 @@
 // Pens and erasers: taking them over from CLIP STUDIO PAINT sub tools
 // (crates/clip-core/src/subtool.rs reads the files), and how a brush turns
 // pen pressure and the stroke's length into width and opacity.
-import { newId, type Brush, type PressureCurve, type Project, type Stroke } from "./project";
+import { newId, type Brush, type PressureCurve, type Project, type Stroke, type StrokePoint } from "./project";
 
 /** What the Rust side reads from a .sut or CSP's tool database. */
 export interface CspLength {
@@ -14,8 +14,13 @@ export interface CspDynamics {
   pressureMin: number;
   pressureCurve: [number, number][];
   tilt: boolean;
+  tiltMin: number;
+  tiltCurve: [number, number][];
   velocity: boolean;
+  velocityMin: number;
+  velocityCurve: [number, number][];
   random: boolean;
+  randomMin: number;
 }
 
 export interface CspSubTool {
@@ -49,10 +54,14 @@ export function lengthMm(length: CspLength | null, dpi: number): number {
   return length.unit === "mm" ? length.value : (length.value * 25.4) / dpi;
 }
 
-function pressureOf(dynamics: CspDynamics | null): PressureCurve | undefined {
-  if (!dynamics?.pressure) return undefined;
-  const curve: PressureCurve = { min: dynamics.pressureMin };
-  if (dynamics.pressureCurve.length) curve.curve = dynamics.pressureCurve;
+type Input = "pressure" | "tilt" | "velocity" | "random";
+
+/** The curve of one input of a CSP setting, if the input is on. */
+function inputOf(dynamics: CspDynamics | null, input: Input): PressureCurve | undefined {
+  if (!dynamics?.[input]) return undefined;
+  const curve: PressureCurve = { min: dynamics[`${input}Min`] };
+  const points = input === "random" ? [] : dynamics[`${input}Curve`];
+  if (points.length) curve.curve = points;
   return curve;
 }
 
@@ -66,7 +75,8 @@ export function brushFromSubTool(tool: CspSubTool, dpi: number, id: string): Bru
     id,
     name: tool.name,
     kind: tool.kind === "eraser" ? "eraser" : "pen",
-    sizeMm: Math.max(lengthMm(tool.size, dpi), 0.01),
+    // A few (ドットペン) leave the size to the tool above them.
+    sizeMm: tool.size ? Math.max(lengthMm(tool.size, dpi), 0.01) : 0.5,
     opacity: tool.opacity,
     hardness: tool.hardness,
     stabilization: tool.stabilization,
@@ -76,11 +86,14 @@ export function brushFromSubTool(tool: CspSubTool, dpi: number, id: string): Bru
     rotation: tool.rotation,
     source: sourceLabel(tool),
   };
-  const size = pressureOf(tool.sizeDynamics);
-  if (size) brush.sizePressure = size;
-  // ブラシ濃度 works much like opacity on a name page.
-  const opacity = pressureOf(tool.opacityDynamics) ?? pressureOf(tool.flowDynamics);
-  if (opacity) brush.opacityPressure = opacity;
+  const keys = { pressure: "Pressure", tilt: "Tilt", velocity: "Speed", random: "Random" } as const;
+  for (const input of ["pressure", "tilt", "velocity", "random"] as const) {
+    const size = inputOf(tool.sizeDynamics, input);
+    if (size) brush[`size${keys[input]}`] = size;
+    // ブラシ濃度 works much like opacity on a name page.
+    const opacity = inputOf(tool.opacityDynamics, input) ?? inputOf(tool.flowDynamics, input);
+    if (opacity) brush[`opacity${keys[input]}`] = opacity;
+  }
   if (tool.tip) {
     brush.tip = { ...tool.tip, interval: tool.interval || 10, enabled: true };
   }
@@ -167,7 +180,39 @@ export function pressureFactor(curve: PressureCurve | undefined, pressure: numbe
   return curve.min + (1 - curve.min) * Math.max(0, Math.min(1, value));
 }
 
-/** Width share of each point of a stroke: pen pressure, then 入り抜き at the ends. */
+/** Whether lines drawn with the brush need the pen's tilt and speed kept. */
+export function usesMotion(brush: Brush | undefined): boolean {
+  return !!(brush && (brush.sizeTilt || brush.sizeSpeed || brush.opacityTilt || brush.opacitySpeed));
+}
+
+/** Pen speed (page mm per second) that counts as the fastest on a speed graph. */
+export const FULL_SPEED_MM = 400;
+
+/** Same random value for the same line and point every time it is drawn. */
+function chance(seed: string, index: number): number {
+  let hash = 2166136261 ^ index;
+  for (let i = 0; i < seed.length; i++) hash = Math.imul(hash ^ seed.charCodeAt(i), 16777619);
+  hash = Math.imul(hash ^ (hash >>> 15), 2246822507);
+  hash = Math.imul(hash ^ (hash >>> 13), 3266489909);
+  return ((hash ^ (hash >>> 16)) >>> 0) / 4294967296;
+}
+
+/** Share of the full value at a point from pressure, tilt, speed and chance. */
+function inputFactor(
+  curves: { pressure?: PressureCurve; tilt?: PressureCurve; speed?: PressureCurve; random?: PressureCurve },
+  point: StrokePoint,
+  seed: string,
+  index: number,
+): number {
+  let factor = pressureFactor(curves.pressure, point[2]);
+  // Lines drawn without tilt and speed kept are taken as upright and slow.
+  if (curves.tilt) factor *= pressureFactor(curves.tilt, point[3] ?? 0);
+  if (curves.speed) factor *= pressureFactor(curves.speed, point[4] ?? 0);
+  if (curves.random) factor *= pressureFactor(curves.random, chance(seed, index));
+  return factor;
+}
+
+/** Width share of each point of a stroke: pen pressure, tilt, speed, then 入り抜き at the ends. */
 export function widthFactors(stroke: Stroke, brush: Brush | undefined): number[] {
   const points = stroke.points;
   if (!brush) return points.map(([, , p]) => 0.35 + 0.65 * p);
@@ -185,17 +230,32 @@ export function widthFactors(stroke: Stroke, brush: Brush | undefined): number[]
     taperIn *= share;
     taperOut *= share;
   }
-  return points.map(([, , pressure], i) => {
-    let factor = pressureFactor(brush.sizePressure, pressure);
+  const curves = { pressure: brush.sizePressure, tilt: brush.sizeTilt, speed: brush.sizeSpeed, random: brush.sizeRandom };
+  return points.map((point, i) => {
+    let factor = inputFactor(curves, point, stroke.id, i);
     if (taperIn > 0) factor *= Math.min(1, along[i] / taperIn);
     if (taperOut > 0) factor *= Math.min(1, (total - along[i]) / taperOut);
     return Math.max(factor, 0.02);
   });
 }
 
-export function opacityAt(brush: Brush | undefined, pressure: number): number {
-  if (!brush) return 1;
-  return Math.max(0, Math.min(1, brush.opacity * pressureFactor(brush.opacityPressure, pressure)));
+/** Opacity of each point of a stroke. */
+export function opacityFactors(stroke: Stroke, brush: Brush | undefined): number[] {
+  if (!brush) return stroke.points.map(() => 1);
+  const curves = { pressure: brush.opacityPressure, tilt: brush.opacityTilt, speed: brush.opacitySpeed, random: brush.opacityRandom };
+  // Offset so the random change differs from the size's.
+  const seed = `${stroke.id}/opacity`;
+  return stroke.points.map((point, i) => Math.max(0, Math.min(1, brush.opacity * inputFactor(curves, point, seed, i))));
+}
+
+/** Tilt input of a pointer event: 0 upright, 1 lying flat (0 for a mouse). */
+export function tiltOf(event: PointerEvent): number {
+  if (event.pointerType !== "pen") return 0;
+  const altitude = (event as PointerEvent & { altitudeAngle?: number }).altitudeAngle;
+  if (typeof altitude === "number") return Math.max(0, Math.min(1, 1 - altitude / (Math.PI / 2)));
+  const x = Math.tan((event.tiltX * Math.PI) / 180);
+  const y = Math.tan((event.tiltY * Math.PI) / 180);
+  return Math.max(0, Math.min(1, Math.atan(Math.hypot(x, y)) / (Math.PI / 2)));
 }
 
 /** 手ブレ補正 while drawing: how far each new point moves towards the pen (1 = all the way). */

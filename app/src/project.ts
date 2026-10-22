@@ -97,10 +97,15 @@ export interface Line {
   emphasis?: boolean;
 }
 
+/**
+ * `[x, y, pressure]`, or `[x, y, pressure, tilt, speed]` when the brush
+ * changes with them; all but x and y are 0..1, tilt 0 is the pen upright.
+ */
+export type StrokePoint = [number, number, number] | [number, number, number, number, number];
+
 export interface Stroke {
   id: string;
-  /** `[x, y, pressure]`, pressure 0..1. */
-  points: [number, number, number][];
+  points: StrokePoint[];
   widthMm: number;
   closed: boolean;
   /** Drawn over the panel borders (in a はみ出し). */
@@ -115,7 +120,7 @@ export type BrushKind = "pen" | "eraser";
 /** 触れた部分 / 交点まで / 線全体. */
 export type EraseMode = "touched" | "intersection" | "whole";
 
-/** `min` at the lightest pressure, 1 at the hardest, along `curve` (control points in 0..1). */
+/** `min` at the lightest pressure (or tilt, speed), 1 at the most, along `curve` (control points in 0..1). */
 export interface PressureCurve {
   min: number;
   curve?: [number, number][];
@@ -138,8 +143,15 @@ export interface Brush {
   kind: BrushKind;
   sizeMm: number;
   sizePressure?: PressureCurve;
+  sizeTilt?: PressureCurve;
+  sizeSpeed?: PressureCurve;
+  /** Random change along the line (only `min` is used). */
+  sizeRandom?: PressureCurve;
   opacity: number;
   opacityPressure?: PressureCurve;
+  opacityTilt?: PressureCurve;
+  opacitySpeed?: PressureCurve;
+  opacityRandom?: PressureCurve;
   hardness: number;
   /** 手ブレ補正, 0..100. */
   stabilization: number;
@@ -641,7 +653,7 @@ export function movePanel(panel: Panel, dx: number, dy: number): void {
 }
 
 export function moveStroke(stroke: Stroke, dx: number, dy: number): void {
-  stroke.points = stroke.points.map(([x, y, p]) => [x + dx, y + dy, p]);
+  stroke.points = stroke.points.map(([x, y, ...rest]) => [x + dx, y + dy, ...rest] as StrokePoint);
 }
 
 // --- strokes -------------------------------------------------------------------
@@ -649,7 +661,7 @@ export function moveStroke(stroke: Stroke, dx: number, dy: number): void {
 export function addStroke(
   project: Project,
   page: Page,
-  points: [number, number, number][],
+  points: StrokePoint[],
   widthMm: number,
   brush?: string,
 ): Stroke | null {
@@ -661,8 +673,8 @@ export function addStroke(
 }
 
 /** Drop points closer than `tolerance` mm to the previous kept one. */
-export function simplify(points: [number, number, number][], tolerance: number): [number, number, number][] {
-  const result: [number, number, number][] = [];
+export function simplify(points: StrokePoint[], tolerance: number): StrokePoint[] {
+  const result: StrokePoint[] = [];
   for (const point of points) {
     const last = result[result.length - 1];
     if (!last || Math.hypot(point[0] - last[0], point[1] - last[1]) >= tolerance) result.push(point);
@@ -689,8 +701,6 @@ export function eraseStrokes(page: Page, point: Point, radius: number): number {
   page.strokes = page.strokes.filter((stroke) => !strokeHit(stroke, point, radius));
   return before - page.strokes.length;
 }
-
-type StrokePoint = [number, number, number];
 
 /** Erase like a CSP vector eraser; returns how many strokes changed. */
 export function eraseWith(project: Project, page: Page, point: Point, radius: number, mode: EraseMode): number {
@@ -799,7 +809,8 @@ function cutBetweenCrossings(stroke: Stroke, others: Stroke[], center: Point): P
 }
 
 function lerpPoint(a: StrokePoint, b: StrokePoint, t: number): StrokePoint {
-  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+  const length = Math.min(a.length, b.length);
+  return a.slice(0, length).map((value, i) => value + (b[i] - value) * t) as StrokePoint;
 }
 
 function projectOnSegment(p: Point, a: StrokePoint, b: StrokePoint): number {

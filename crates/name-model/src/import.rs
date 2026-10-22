@@ -14,7 +14,7 @@ use clip_core::layout::{
 use clip_core::{ClipDocument, ClipLayer, LayerKind, Result};
 
 use crate::model::{
-    BalloonShape, BoxMm, Line, LineKind, Page, PageFormat, Panel, Project, RoughImage, SourceSheet, Stroke,
+    BalloonShape, BoxMm, Line, LineKind, Page, PageFormat, Panel, Project, RoughImage, SourceSheet, Stroke, StrokePoint,
 };
 
 const MM_PER_INCH: f64 = 25.4;
@@ -262,7 +262,7 @@ fn import_strokes(
         let id = project.new_id("stroke");
         let points = object.points.iter().map(|(x, y)| {
             let [px, py] = t.point(x + dx, y + dy);
-            [px, py, 1.0]
+            StrokePoint::new(px, py, 1.0)
         });
         project.pages[index].strokes.push(Stroke {
             id,

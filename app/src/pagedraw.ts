@@ -1,7 +1,7 @@
 // Drawing the parts of a name page (mm coordinates) onto a 2D canvas, shared
 // by the editor and the export (CSP layers, PDF).
 import { pageBalloons } from "./balloon";
-import { opacityAt, widthFactors } from "./brush";
+import { opacityFactors, widthFactors } from "./brush";
 import { borderLines, borderWidthMm, dashes, effectStrokes, stacked } from "./koma";
 import { MM_PER_PT, type Brush, type Line, type Page, type Panel, type Point, type Stroke } from "./project";
 import { drawText } from "./render";
@@ -45,8 +45,9 @@ export function drawStroke(
   const points = stroke.points;
   const factors = widthFactors(stroke, brush);
   const widthPx = (i: number) => Math.max(stroke.widthMm * factors[i] * m.scale, minWidthPx);
+  const opacity = opacityFactors(stroke, brush);
   if (brush && points.length && stampTip(brush)) {
-    stampStroke(ctx, stroke, brush, m, color, widthPx);
+    stampStroke(ctx, stroke, brush, m, color, widthPx, opacity);
     return;
   }
   ctx.save();
@@ -55,7 +56,7 @@ export function drawStroke(
   ctx.lineJoin = "round";
   for (let i = 1; i < points.length; i++) {
     ctx.lineWidth = (widthPx(i - 1) + widthPx(i)) / 2;
-    ctx.globalAlpha = opacityAt(brush, (points[i - 1][2] + points[i][2]) / 2);
+    ctx.globalAlpha = (opacity[i - 1] + opacity[i]) / 2;
     ctx.beginPath();
     ctx.moveTo(points[i - 1][0] * m.scale + m.x, points[i - 1][1] * m.scale + m.y);
     ctx.lineTo(points[i][0] * m.scale + m.x, points[i][1] * m.scale + m.y);
@@ -144,10 +145,11 @@ function stampStroke(
   m: MmToPx,
   color: string,
   widthPx: (i: number) => number,
+  opacity: number[],
 ): void {
   const tip = tintedTip(brush, color);
   if (!tip) return;
-  const points = stroke.points.map(([x, y, p]) => [x * m.scale + m.x, y * m.scale + m.y, p]);
+  const points = stroke.points.map(([x, y], i) => [x * m.scale + m.x, y * m.scale + m.y, opacity[i]]);
   let length = 0;
   for (let i = 1; i < points.length; i++) length += Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]);
   const interval = Math.max((brush.tip?.enabled ? brush.tip.interval : 10) / 100, 0.02);
@@ -155,8 +157,8 @@ function stampStroke(
   const flat = Math.max(brush.thickness, 1) / 100;
   const angle = (brush.rotation * Math.PI) / 180;
   ctx.save();
-  const stamp = (x: number, y: number, width: number, pressure: number) => {
-    ctx.globalAlpha = opacityAt(brush, pressure);
+  const stamp = (x: number, y: number, width: number, alpha: number) => {
+    ctx.globalAlpha = alpha;
     const height = width * aspect * flat;
     if (angle === 0) {
       ctx.drawImage(tip, x - width / 2, y - height / 2, width, height);

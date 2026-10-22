@@ -82,7 +82,7 @@ fn sorts_contents_into_pages() {
     // Template frames are neither panels nor strokes; hidden layers are skipped.
     assert!(right.strokes.is_empty());
     assert_eq!(left.strokes.len(), 1);
-    assert!(close(left.strokes[0].points[1][0] - left.strokes[0].points[0][0], 50.0));
+    assert!(close(left.strokes[0].points[1].x - left.strokes[0].points[0].x, 50.0));
     let line = &right.lines[0];
     assert_eq!(line.text, "こんにちは");
     assert!(line.vertical);
@@ -167,11 +167,12 @@ fn keeps_brushes_and_the_brush_of_each_stroke() {
       "formatVersion": 1, "title": "t", "binding": "right",
       "pageFormat": {"canvasMm": [297, 420], "trimMm": [257, 364], "basicMm": [180, 270], "basicOffsetMm": [0, 0]},
       "pages": [{"id": "page1", "strokes": [
-        {"id": "stroke2", "points": [[1, 2, 0.5], [3, 4, 1]], "widthMm": 0.5, "closed": false, "brush": "brush3", "cut": [false, true]}
+        {"id": "stroke2", "points": [[1, 2, 0.5], [3, 4, 1, 0.3, 0.2]], "widthMm": 0.5, "closed": false, "brush": "brush3", "cut": [false, true]}
       ]}],
       "brushes": [
         {"id": "brush3", "name": "丸ペン", "kind": "pen", "sizeMm": 0.5,
          "sizePressure": {"min": 0, "curve": [[0, 0], [0.66, 0.08], [1, 1]]},
+         "sizeTilt": {"min": 0.85, "curve": [[0, 1], [1, 0]]}, "opacityRandom": {"min": 0.3},
          "opacity": 1, "hardness": 1, "stabilization": 6, "taperInMm": 0.8, "taperOutMm": 0.8,
          "thickness": 100, "rotation": 0,
          "tip": {"pngBase64": "iVBORw0KGgo=", "width": 4, "height": 2, "interval": 10, "enabled": false},
@@ -184,6 +185,11 @@ fn keeps_brushes_and_the_brush_of_each_stroke() {
     assert_eq!(project.brushes.len(), 2);
     assert_eq!(project.pages[0].strokes[0].brush.as_deref(), Some("brush3"));
     assert_eq!(project.pages[0].strokes[0].cut, Some([false, true]));
+    let points = &project.pages[0].strokes[0].points;
+    assert_eq!(points[0].motion, None);
+    assert_eq!(points[1].motion, Some(name_model::Motion { tilt: 0.3, speed: 0.2 }));
+    assert_eq!(project.brushes[0].size_tilt.as_ref().map(|c| c.min), Some(0.85));
+    assert!(Project::from_json(&json.replace("[1, 2, 0.5]", "[1, 2, 0.5, 0.1]")).is_err());
     assert_eq!(project.brushes[1].erase, Some(name_model::EraseMode::Intersection));
     assert_eq!(project.brushes[1].opacity, 1.0);
     let again = Project::from_json(&project.to_json().unwrap()).unwrap();
