@@ -135,21 +135,25 @@ def database_rows(path: Path) -> dict[str, list[list[object]]]:
         database = sqlite3.connect(path)
     else:
         database = open_sqlite_bytes(read_csf_container(path).sqlite_bytes)
-    tables = [row[0] for row in database.execute("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")]
-    result = {}
-    for table in tables:
-        columns = [row[1] for row in database.execute(f'PRAGMA table_info("{table}")')]
-        rows = []
-        for row in database.execute(f'SELECT * FROM "{table}"'):
-            values = []
-            for column, value in zip(columns, row):
-                if column in MASKED_COLUMNS and value not in (None, b"", ""):
-                    value = "<masked>"
-                elif isinstance(value, bytes):
-                    value = value.hex()
-                values.append(value)
-            rows.append(values)
-        result[table] = [columns] + sorted(rows, key=repr)
+    try:
+        tables = [row[0] for row in database.execute("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")]
+        result = {}
+        for table in tables:
+            columns = [row[1] for row in database.execute(f'PRAGMA table_info("{table}")')]
+            rows = []
+            for row in database.execute(f'SELECT * FROM "{table}"'):
+                values = []
+                for column, value in zip(columns, row):
+                    if column in MASKED_COLUMNS and value not in (None, b"", ""):
+                        value = "<masked>"
+                    elif isinstance(value, bytes):
+                        value = value.hex()
+                    values.append(value)
+                rows.append(values)
+            result[table] = [columns] + sorted(rows, key=repr)
+    finally:
+        # Windows cannot delete the temporary folder while the file is open.
+        database.close()
     return result
 
 
