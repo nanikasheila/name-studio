@@ -588,12 +588,14 @@ export function movePage(project: Project, pageId: string, step: number): void {
 
 // --- characters, scenes and emotions ----------------------------------------------
 
-const PALETTE = ["#d1495b", "#2e86ab", "#edae49", "#66a182", "#8e6c8a", "#e07a5f", "#3d5a80", "#81b29a"];
+/** Categorical colours in a fixed order, checked for colour-blind separation. */
+export const PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"];
 
 export function addCharacter(project: Project, name: string): Character {
   const character: Character = {
     id: newId(project, "character"),
     name,
+    // Past eight the colours repeat; the name tells them apart.
     color: PALETTE[project.characters.length % PALETTE.length],
   };
   project.characters.push(character);

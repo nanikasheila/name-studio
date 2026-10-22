@@ -421,6 +421,7 @@ $("tab-layers").addEventListener("click", () => selectTab("layers"));
 $("tab-lines").addEventListener("click", () => selectTab("lines"));
 window.addEventListener("resize", () => {
   workbench.editor.resize();
+  if (workspace === "editor") workbench.renderAll();
   resizeCanvas();
   if (state.mode === "sheet") state.view = null;
   draw();

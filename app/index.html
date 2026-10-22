@@ -28,7 +28,13 @@
         <button id="export" disabled>ページに書き出す…</button>
       </div>
       <div class="editor-only toolbar-group" hidden>
-        <div class="segmented" role="group" aria-label="道具">
+        <div class="segmented" role="group" aria-label="画面">
+          <button id="view-edit" class="active" title="ページを編集する（F1）">編集</button>
+          <button id="view-structure" title="シーンと各ページの字数、ページ一覧（F2）">構成</button>
+          <button id="view-emotion" title="登場人物の感情の移り変わり（F3）">感情曲線</button>
+          <button id="view-timeline" title="ページの順と物語の時間（F4）">時系列</button>
+        </div>
+        <div class="segmented edit-only" role="group" aria-label="道具">
           <button id="tool-select" class="active" title="選ぶ・動かす（V）">選択</button>
           <button id="tool-cut" title="コマを割る。コマの外をドラッグすると新しいコマ（K）">コマ割り</button>
           <button id="tool-text" title="クリックでセリフを置く（T）">セリフ</button>
@@ -37,12 +43,12 @@
         </div>
         <button id="undo" title="元に戻す（Ctrl+Z）" disabled>↶</button>
         <button id="redo" title="やり直す（Ctrl+Shift+Z）" disabled>↷</button>
-        <div class="pager">
+        <div class="pager edit-only">
           <button id="editor-next" title="次の見開き（←）">◀</button>
           <span id="editor-page-label">-</span>
           <button id="editor-prev" title="前の見開き（→）">▶</button>
         </div>
-        <label class="check"><input type="checkbox" id="editor-first-alone" checked /> 1ページ目を単独</label>
+        <label class="check edit-only"><input type="checkbox" id="editor-first-alone" checked /> 1ページ目を単独</label>
       </div>
     </header>
     <main id="viewer" class="workspace">
@@ -70,10 +76,11 @@
         <div id="side-script" class="panel" hidden></div>
         <div id="side-cast" class="panel" hidden></div>
       </aside>
-      <section class="stage">
+      <section class="stage edit-only">
         <canvas id="editor-canvas"></canvas>
       </section>
-      <aside id="inspector" class="inspector"></aside>
+      <aside id="inspector" class="inspector edit-only"></aside>
+      <section id="overview" class="overview" hidden></section>
     </main>
     <footer id="status" class="status"></footer>
     <dialog id="export-dialog" class="export">
