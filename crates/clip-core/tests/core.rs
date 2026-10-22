@@ -313,6 +313,10 @@ fn round_trips_and_scales_text_attributes() {
     assert_eq!(scaled.bbox, Some((101, 127, 151, 377)));
     assert_eq!(scaled.font_size_pt, Some(20.0));
     assert_eq!(scaled.font_name.as_deref(), Some("Font"));
+    // CSP's rendering of the text (Offscreen 3760) is not copied with it.
+    let cached = build_tlv(&[(0x32, 3760u32.to_le_bytes().to_vec())]);
+    let moved = transform_text_attributes(&cached, 2.5, 1.0, 2.0).unwrap();
+    assert_eq!(parse_tlv(&moved).unwrap(), vec![(0x32, &0u32.to_le_bytes()[..])]);
     assert!(split_attribute_array(&[5, 0, 0, 0, 1]).is_err());
     assert!(parse_tlv(&blob[..blob.len() - 1]).is_err());
 }

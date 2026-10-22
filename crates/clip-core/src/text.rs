@@ -111,7 +111,8 @@ pub fn split_attribute_array(blob: &[u8]) -> Result<Vec<&[u8]>> {
 }
 
 /// `blob` with its bbox mapped to `p * scale + d` and font size, block size
-/// and quad scaled. Everything else is copied unchanged.
+/// and quad scaled, and no [`ATTR_RENDER_CACHE`]: CSP's rendering of the
+/// text stays behind in the source file. Everything else is copied unchanged.
 pub fn transform_text_attributes(blob: &[u8], scale: f64, dx: f64, dy: f64) -> Result<Vec<u8>> {
     if scale <= 0.0 {
         return Err(CspError::format("scale must be positive"));
@@ -129,6 +130,8 @@ pub fn transform_text_attributes(blob: &[u8], scale: f64, dx: f64, dy: f64) -> R
             .iter()
             .flat_map(|number| number.to_le_bytes())
             .collect()
+        } else if id == ATTR_RENDER_CACHE && value.len() == 4 {
+            0u32.to_le_bytes().to_vec()
         } else if matches!(id, ATTR_FONT_SIZE | ATTR_BLOCK_SIZE | ATTR_QUAD)
             && !value.is_empty()
             && value.len() % 4 == 0
