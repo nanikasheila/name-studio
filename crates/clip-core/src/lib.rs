@@ -18,6 +18,7 @@ pub mod offscreen;
 pub mod plan;
 pub mod raster;
 mod sql;
+pub mod subtool;
 pub mod text;
 pub mod vector;
 pub mod write;

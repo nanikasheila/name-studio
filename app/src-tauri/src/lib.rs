@@ -198,6 +198,38 @@ async fn save_project(path: String, project: Project) -> Result<(), String> {
     project.save(&path).map_err(|error| error.to_string())
 }
 
+/// Where CSP keeps its tools and materials on this computer, when found.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CspToolLocations {
+    tools: Option<String>,
+    materials: Option<String>,
+}
+
+#[tauri::command]
+async fn csp_tool_locations() -> CspToolLocations {
+    let Some(appdata) = std::env::var_os("APPDATA") else {
+        return CspToolLocations {
+            tools: None,
+            materials: None,
+        };
+    };
+    let (tools, materials) = clip_core::subtool::default_locations(Path::new(&appdata));
+    CspToolLocations {
+        tools: tools.is_file().then(|| tools.display().to_string()),
+        materials: materials.is_dir().then(|| materials.display().to_string()),
+    }
+}
+
+/// Pens and erasers of a .sut or of CSP's tool database (read from a copy).
+#[tauri::command]
+async fn read_csp_sub_tools(
+    path: String,
+    materials: Option<String>,
+) -> Result<Vec<clip_core::subtool::SubTool>, String> {
+    clip_core::subtool::read_sub_tools(&path, materials.as_deref().map(Path::new)).map_err(|error| error.to_string())
+}
+
 /// Part of a raster layer of the source sheet, at most `max_height` pixels high, as PNG.
 #[tauri::command]
 async fn rough_image(
@@ -574,7 +606,9 @@ pub fn run() {
             finish_name_export,
             cancel_name_export,
             write_pdf,
-            write_text_file
+            write_text_file,
+            csp_tool_locations,
+            read_csp_sub_tools
         ])
         .run(tauri::generate_context!())
         .expect("error while running Name Studio");

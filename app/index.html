@@ -42,6 +42,12 @@
           <button id="tool-eraser" title="ラフの線を消す（E）">消しゴム</button>
           <button id="tool-breakout" title="コマを突き抜ける所を囲む。中に描いた線はコマ枠の上に（B）">はみ出し</button>
         </div>
+        <div class="brush-bar edit-only" id="brush-bar">
+          <select id="brush-select" title="ペン・消しゴムの種類"></select>
+          <label class="size" title="太さ（mm）"><input id="brush-size" type="number" min="0.05" max="30" step="0.05" /> mm</label>
+          <label class="check" id="brush-tip-label" title="CSP の素材のサムネイルから作った先端の形で描く"><input type="checkbox" id="brush-tip" /> 先端</label>
+          <button id="brush-import" title="CLIP STUDIO PAINT のペン・消しゴムを取り込む">取り込み…</button>
+        </div>
         <button id="undo" title="元に戻す（Ctrl+Z）" disabled>↶</button>
         <button id="redo" title="やり直す（Ctrl+Shift+Z）" disabled>↷</button>
         <div class="pager edit-only">
@@ -182,6 +188,29 @@
         <div class="actions">
           <button value="cancel" formnovalidate>閉じる</button>
           <button type="button" id="ne-run" class="primary">書き出す</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="brush-dialog" class="export brushes">
+      <form method="dialog">
+        <h2>CSP のペン・消しゴムを取り込む</h2>
+        <p class="hint">書き出したサブツール（.sut）か、CSP が使っているツールの一覧から選びます。どちらもコピーを読むだけで、CSP の設定は変えません。</p>
+        <div class="actions start">
+          <button type="button" id="bd-read-csp">この PC の CSP のツールを読む</button>
+          <button type="button" id="bd-pick-file">ファイルを選ぶ（.sut）…</button>
+        </div>
+        <div class="field">
+          <span>原稿の解像度</span>
+          <input id="bd-dpi" type="number" min="72" max="1200" step="1" value="600" />
+          <small>px で決めた太さを、この dpi の原稿として mm に直します</small>
+          <span>探す</span>
+          <input id="bd-filter" type="search" placeholder="名前やグループ" />
+        </div>
+        <div id="bd-list" class="brush-list"></div>
+        <p id="bd-message" class="message" role="status"></p>
+        <div class="actions">
+          <button value="cancel" formnovalidate>閉じる</button>
+          <button type="button" id="bd-import" class="primary" disabled>取り込む</button>
         </div>
       </form>
     </dialog>

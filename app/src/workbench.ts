@@ -2,6 +2,8 @@
 // page list, the script, the cast and the inspector for the selection.
 import { invoke } from "@tauri-apps/api/core";
 import { ask, save } from "@tauri-apps/plugin-dialog";
+import { addBrushes, loadLibrary } from "./brush";
+import { BrushDialog } from "./brushdialog";
 import { PageEditor, isTyping, type Selection, type Tool } from "./editor";
 import { SHAPE_LABELS, TAIL_LABELS, defaultTailStyle, resolvedShape } from "./balloon";
 import { ExportDialog } from "./exportdialog";
@@ -43,6 +45,7 @@ import {
   sceneOf,
   sortLines,
   textAmount,
+  type Brush,
   type BalloonShape,
   type Line,
   type LineKind,
@@ -99,6 +102,7 @@ export class Workbench {
   private sideTab: "pages" | "script" | "cast" = "pages";
   readonly overview: Overview;
   private readonly exportDialog: ExportDialog;
+  private readonly brushDialog: BrushDialog;
   private view: "edit" | OverviewKind = "edit";
 
   constructor(private readonly setStatus: (message: string) => void, private readonly onTitle: (title: string) => void) {
@@ -126,6 +130,15 @@ export class Workbench {
       projectPath: () => this.state.path,
       rough: (rough) => this.loadRough(rough),
       status: (message) => this.setStatus(message),
+    });
+    this.brushDialog = new BrushDialog({
+      project: () => this.state.project,
+      edit: (change) => this.edit(change),
+      imported: (brushes) => {
+        const kind = this.editor.tool === "eraser" ? "eraser" : "pen";
+        const brush = brushes.find((b) => b.kind === kind) ?? brushes[0];
+        if (brush) this.useBrush(brush);
+      },
     });
     this.bindControls();
   }
@@ -311,6 +324,7 @@ export class Workbench {
   // --- rendering ------------------------------------------------------------------------
 
   renderAll(): void {
+    this.renderBrushBar();
     if (this.view === "edit") this.editor.draw();
     else this.overview.render();
     this.renderSide();
@@ -796,6 +810,74 @@ export class Workbench {
     for (const name of ["select", "cut", "text", "pen", "eraser", "breakout"] as const) {
       $(`tool-${name}`).classList.toggle("active", name === tool);
     }
+    this.renderBrushBar();
+  }
+
+  // --- pens and erasers -------------------------------------------------------------------
+
+  /** Use a brush for its kind of tool, with its own size. */
+  private useBrush(brush: Brush | null, kind: "pen" | "eraser" = brush?.kind ?? "pen"): void {
+    if (kind === "eraser") {
+      this.editor.eraserBrush = brush?.id ?? null;
+      if (brush) this.editor.eraserSizeMm = brush.sizeMm;
+    } else {
+      this.editor.penBrush = brush?.id ?? null;
+      this.editor.penWidthMm = brush ? brush.sizeMm : 0.4;
+    }
+    if (this.editor.tool !== kind) this.setTool(kind);
+    else this.renderBrushBar();
+    this.editor.draw();
+  }
+
+  /** The pen / eraser chooser: the project's brushes, then ones taken in other projects. */
+  private renderBrushBar(): void {
+    const tool = this.editor.tool;
+    const bar = $("brush-bar");
+    bar.classList.toggle("off", tool !== "pen" && tool !== "eraser");
+    const project = this.state.project;
+    if (!project || (tool !== "pen" && tool !== "eraser")) return;
+    const kind = tool;
+    const current = this.editor.brush(kind);
+    const select = $<HTMLSelectElement>("brush-select");
+    select.replaceChildren();
+    const option = (value: string, label: string) => Object.assign(document.createElement("option"), { value, textContent: label });
+    select.append(option("", kind === "pen" ? "標準のペン" : "標準の消しゴム（線ごと）"));
+    for (const brush of project.brushes.filter((b) => b.kind === kind)) select.append(option(brush.id, brush.name));
+    const others = loadLibrary()
+      .map((brush, index) => ({ brush, index }))
+      .filter(({ brush }) => brush.kind === kind && !project.brushes.some((b) => b.source === brush.source && b.name === brush.name));
+    if (others.length) {
+      const group = document.createElement("optgroup");
+      group.label = "ほかのネームで取り込んだもの";
+      for (const { brush, index } of others) group.append(option(`library:${index}`, brush.name));
+      select.append(group);
+    }
+    select.value = current?.id ?? "";
+    select.title = current?.source ?? "ペン・消しゴムの種類";
+    const size = $<HTMLInputElement>("brush-size");
+    const plainEraser = kind === "eraser" && !current;
+    size.disabled = plainEraser;
+    const sizeMm = kind === "pen" ? this.editor.penWidthMm : this.editor.eraserSizeMm;
+    if (document.activeElement !== size) size.value = plainEraser ? "" : String(Math.round(sizeMm * 100) / 100);
+    $("brush-tip-label").hidden = !current?.tip;
+    $<HTMLInputElement>("brush-tip").checked = !!current?.tip?.enabled;
+  }
+
+  private chooseBrush(value: string): void {
+    const kind = this.editor.tool === "eraser" ? "eraser" : "pen";
+    const project = this.state.project;
+    if (!project) return;
+    if (value.startsWith("library:")) {
+      const brush = loadLibrary()[Number(value.slice("library:".length))];
+      if (!brush) return;
+      let added: Brush[] = [];
+      this.edit((p) => {
+        added = addBrushes(p, [brush]);
+      });
+      this.useBrush(added[0] ?? null, kind);
+      return;
+    }
+    this.useBrush(project.brushes.find((brush) => brush.id === value) ?? null, kind);
   }
 
   private bindControls(): void {
@@ -803,6 +885,26 @@ export class Workbench {
       $(`tool-${name}`).addEventListener("click", () => this.setTool(name));
     }
     $("undo").addEventListener("click", () => this.undo());
+    $<HTMLSelectElement>("brush-select").addEventListener("change", (event) => {
+      this.chooseBrush((event.target as HTMLSelectElement).value);
+    });
+    $<HTMLInputElement>("brush-size").addEventListener("change", (event) => {
+      const value = Number((event.target as HTMLInputElement).value);
+      if (!(value > 0)) return;
+      if (this.editor.tool === "eraser") this.editor.eraserSizeMm = value;
+      else this.editor.penWidthMm = value;
+      this.editor.draw();
+    });
+    $<HTMLInputElement>("brush-tip").addEventListener("change", (event) => {
+      const kind = this.editor.tool === "eraser" ? "eraser" : "pen";
+      const id = this.editor.brush(kind)?.id;
+      const enabled = (event.target as HTMLInputElement).checked;
+      this.edit((project) => {
+        const tip = project.brushes.find((brush) => brush.id === id)?.tip;
+        if (tip) tip.enabled = enabled;
+      });
+    });
+    $("brush-import").addEventListener("click", () => void this.brushDialog.open());
     $("name-export").addEventListener("click", () => this.exportDialog.open());
     $("redo").addEventListener("click", () => this.redo());
     $("editor-next").addEventListener("click", () => this.flip(1));

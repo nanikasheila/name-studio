@@ -36,6 +36,9 @@ pub struct Project {
     pub emotions: Vec<EmotionPoint>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<SourceSheet>,
+    /// Pens and erasers the strokes are drawn with (often taken from CSP).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub brushes: Vec<Brush>,
     /// Next number used by [`Project::new_id`]; ids are never reused.
     pub next_id: u64,
 }
@@ -326,6 +329,114 @@ pub struct Stroke {
     /// Drawn over the panel borders (inside a はみ出し), not under them.
     #[serde(default, skip_serializing_if = "is_default")]
     pub over: bool,
+    /// [`Brush::id`] of the pen it was drawn with; none is the plain pen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub brush: Option<String>,
+    /// Whether the start / end was left by an eraser (no 入り抜き there).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cut: Option<[bool; 2]>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BrushKind {
+    #[default]
+    Pen,
+    Eraser,
+}
+
+/// How an eraser takes away rough lines.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EraseMode {
+    /// 触れた部分: cut away what the eraser touches.
+    Touched,
+    /// 交点まで: up to where the line crosses other lines.
+    Intersection,
+    /// 線全体: the whole line.
+    Whole,
+}
+
+/// How pen pressure changes a setting: `min` at the lightest touch, the full
+/// value at the hardest, along `curve` (control points in 0..1; empty is a
+/// straight line).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PressureCurve {
+    pub min: f64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub curve: Vec<[f64; 2]>,
+}
+
+/// Picture of the brush tip: white with the coverage in alpha.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrushTip {
+    pub png_base64: String,
+    pub width: u32,
+    pub height: u32,
+    /// Stamp spacing in % of the size.
+    #[serde(default = "default_interval")]
+    pub interval: f64,
+    /// Drawn with the picture; off falls back to a round tip.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+fn default_interval() -> f64 {
+    10.0
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_one() -> f64 {
+    1.0
+}
+
+/// A pen or eraser (ブラシ). Sizes are millimetres on the page.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Brush {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub kind: BrushKind,
+    pub size_mm: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_pressure: Option<PressureCurve>,
+    #[serde(default = "default_one")]
+    pub opacity: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opacity_pressure: Option<PressureCurve>,
+    /// 1 is a hard edge.
+    #[serde(default = "default_one")]
+    pub hardness: f64,
+    /// 手ブレ補正, 0..100.
+    #[serde(default)]
+    pub stabilization: f64,
+    /// 入り・抜き lengths.
+    #[serde(default)]
+    pub taper_in_mm: f64,
+    #[serde(default)]
+    pub taper_out_mm: f64,
+    /// Tip height in % of its width, and its angle in degrees.
+    #[serde(default = "default_thickness")]
+    pub thickness: f64,
+    #[serde(default)]
+    pub rotation: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tip: Option<BrushTip>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub erase: Option<EraseMode>,
+    /// Where it came from, e.g. "CSP: ペン / 丸ペン".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+}
+
+fn default_thickness() -> f64 {
+    100.0
 }
 
 /// Raster rough kept in the source sheet; the pixels are read from there.
@@ -404,6 +515,7 @@ impl Project {
             scenes: Vec::new(),
             emotions: Vec::new(),
             source: None,
+            brushes: Vec::new(),
             next_id: 1,
         }
     }

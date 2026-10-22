@@ -86,6 +86,12 @@ pub fn validate(project: &Project) -> Vec<String> {
             check_id(&rough.id, &mut problems);
         }
     }
+    for brush in &project.brushes {
+        check_id(&brush.id, &mut problems);
+        if !(brush.size_mm.is_finite() && brush.size_mm > 0.0) {
+            problems.push(format!("ブラシ「{}」の大きさが正しくありません", brush.name));
+        }
+    }
     for (spread, pages) in &spreads {
         let facing = pages.len() == 2 && pages[0].abs_diff(pages[1]) == 1;
         if pages.len() > 2 || (pages.len() == 2 && !facing) {

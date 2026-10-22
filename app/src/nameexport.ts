@@ -3,9 +3,20 @@
 // work .cmc), a PDF to read or share, and the script as text.
 import { invoke } from "@tauri-apps/api/core";
 import { pageBalloons } from "./balloon";
+import { widthFactors } from "./brush";
 import { borderLines, borderWidthMm, dashes } from "./koma";
-import { BALLOON_LINE_MM, drawBalloonFills, drawBalloons, drawLineText, drawPanelBorders, drawPanelFills, drawStrokes, type MmToPx } from "./pagedraw";
-import { KIND_LABELS, MM_PER_PT, basicBox, trimBox, type Page, type Project, type RoughImage } from "./project";
+import {
+  BALLOON_LINE_MM,
+  drawBalloonFills,
+  drawBalloons,
+  drawLineText,
+  drawPanelBorders,
+  drawPanelFills,
+  drawStrokes,
+  loadTips,
+  type MmToPx,
+} from "./pagedraw";
+import { KIND_LABELS, MM_PER_PT, basicBox, trimBox, type Brush, type Page, type Project, type RoughImage } from "./project";
 import { sceneSpans } from "./story";
 
 /** The template page as `begin_name_export` reports it (clip-core `TemplateCanvas`). */
@@ -97,11 +108,11 @@ export function canBeVector(kind: LayerKind): kind is LinePartKind {
 }
 
 /** Draw one kind of part of a page (transparent elsewhere). */
-export function drawPart(ctx: CanvasRenderingContext2D, page: Page, kind: LayerKind, m: MmToPx): void {
+export function drawPart(ctx: CanvasRenderingContext2D, page: Page, kind: LayerKind, m: MmToPx, brushes: Brush[] = []): void {
   switch (kind) {
     case "strokes":
     case "overStrokes":
-      drawStrokes(ctx, page, m, kind === "overStrokes", () => "#3a3834", 1);
+      drawStrokes(ctx, page, m, kind === "overStrokes", () => "#3a3834", 1, brushes);
       break;
     case "fills":
       drawPanelFills(ctx, page, m, 1);
@@ -145,20 +156,23 @@ export type LayerMeta =
 export type LinePartKind = Exclude<LayerKind, "text" | "fills" | "balloonFills">;
 
 /** One kind of line part of a page as vector lines (`m`: mm → template px). */
-export function vectorLines(page: Page, kind: LinePartKind, m: MmToPx): VectorLineMeta[] {
-  const map = (points: readonly (readonly number[])[], width: (point: readonly number[]) => number) =>
-    points.map((point): [number, number, number] => [point[0] * m.scale + m.x, point[1] * m.scale + m.y, width(point)]);
+export function vectorLines(page: Page, kind: LinePartKind, m: MmToPx, brushes: Brush[] = []): VectorLineMeta[] {
+  const map = (points: readonly (readonly number[])[], width: (point: readonly number[], index: number) => number) =>
+    points.map((point, index): [number, number, number] => [point[0] * m.scale + m.x, point[1] * m.scale + m.y, width(point, index)]);
   switch (kind) {
     case "strokes":
     case "overStrokes":
-      // Same light-pressure thinning as drawStroke.
+      // Same widths as drawStroke: pressure (through the brush's curve) and 入り抜き.
       return page.strokes
         .filter((stroke) => !!stroke.over === (kind === "overStrokes"))
-        .map((stroke) => ({
-          points: map(stroke.points, (point) => 0.35 + 0.65 * point[2]),
-          closed: stroke.closed,
-          widthPx: stroke.widthMm * m.scale,
-        }));
+        .map((stroke) => {
+          const factors = widthFactors(stroke, brushes.find((brush) => brush.id === stroke.brush));
+          return {
+            points: map(stroke.points, (_, i) => factors[i]),
+            closed: stroke.closed,
+            widthPx: stroke.widthMm * m.scale,
+          };
+        });
     case "panels":
       return borderLines(page).flatMap((line) => {
         const parts = line.panel.border === "dashed" ? dashes(line.points, line.closed).map((points) => ({ points, closed: false })) : [line];
@@ -260,6 +274,7 @@ export async function exportToCsp(
   editable: boolean,
   progress: (message: string) => void,
 ): Promise<CspExportReport> {
+  await loadTips(project.brushes);
   const start = await invoke<NameExportStart>("begin_name_export", { request });
   const vector = editable && start.vectorLayers;
   const text = editable && start.textLayers;
@@ -288,16 +303,16 @@ export async function exportToCsp(
         if (kind === "balloonFills" && !vector) continue;
         if (kind === "text" ? text : vector && canBeVector(kind)) {
           if (kind === "text") layers.push(...textLayers(page, full, start.resolution));
-          else if (canBeVector(kind)) layers.push({ kind: "vector", name: LAYER_NAMES[kind], lines: vectorLines(page, kind, full) });
+          else if (canBeVector(kind)) layers.push({ kind: "vector", name: LAYER_NAMES[kind], lines: vectorLines(page, kind, full, project.brushes) });
           // CSP draws these itself when the page is opened; the thumbnail does not.
-          drawPart(overlayCtx, page, kind, small);
+          drawPart(overlayCtx, page, kind, small, project.brushes);
           continue;
         }
         // An empty part goes as no bytes; the Rust side makes it a blank layer.
         let png: Uint8Array = new Uint8Array();
         if (partCount(page, kind)) {
           ctx.clearRect(0, 0, width, height);
-          drawPart(ctx, page, kind, m);
+          drawPart(ctx, page, kind, m, project.brushes);
           png = await encode(drawing, "image/png");
         }
         layers.push({ kind: "raster", name: LAYER_NAMES[kind], length: png.length });
@@ -347,6 +362,7 @@ export async function exportPdf(
   const width = Math.round((area[2] - area[0]) * scale);
   const height = Math.round((area[3] - area[1]) * scale);
   const m: MmToPx = { scale, x: -area[0] * scale, y: -area[1] * scale };
+  await loadTips(project.brushes);
   const drawing = document.createElement("canvas");
   drawing.width = width;
   drawing.height = height;
@@ -364,7 +380,7 @@ export async function exportPdf(
       ctx.drawImage(image, x0, y0, x1 - x0, y1 - y0);
     }
     ctx.globalAlpha = 1;
-    for (const kind of LAYER_ORDER) drawPart(ctx, page, kind, m);
+    for (const kind of LAYER_ORDER) drawPart(ctx, page, kind, m, project.brushes);
     images.push(await encode(drawing, "image/jpeg", 0.88));
   }
   drawing.width = 0;
