@@ -11,6 +11,7 @@ pub mod cmc;
 pub mod container;
 pub mod error;
 pub mod inspect;
+pub mod layout;
 pub mod offscreen;
 mod sql;
 pub mod text;

@@ -326,3 +326,54 @@ fn rejects_mismatched_block_grid() {
             .is_none()
     );
 }
+
+#[test]
+fn shrinks_raster_layers_without_full_decode() {
+    let folder = tempfile::tempdir().unwrap();
+    let document = ClipDocument::read(sample_clip(folder.path())).unwrap();
+    let raster = document.find_layer(3).unwrap();
+    let small = document.render_layer_scaled(raster, 4).unwrap().unwrap();
+    assert_eq!((small.width, small.height), (150, 75));
+    // Block 1 fills x 266..286, y 20..40 → x 66.5..71.5, y 5..10 at 1/4.
+    assert_eq!(small.alpha_bbox(), Some((66, 5, 72, 10)));
+    let pixel = ((7 * 150 + 68) * 4) as usize;
+    assert_eq!(&small.pixels[pixel..pixel + 4], &[200, 0, 0, 255]);
+    let edge = ((7 * 150 + 66) * 4) as usize;
+    assert_eq!(small.pixels[edge + 3], 127, "half-covered pixel keeps half alpha");
+    assert_eq!(
+        small.pixels[edge], 200,
+        "colour is not darkened by transparent neighbours"
+    );
+    assert!(small.to_png().unwrap().starts_with(b"\x89PNG"));
+}
+
+#[test]
+fn detects_spread_cells_in_reading_order() {
+    use clip_core::layout::{ReadingOrder, Rect, SpreadSide, detect_page_cells};
+    let outer = [
+        Rect::new(20.0, 20.0, 280.0, 140.0),
+        Rect::new(320.0, 20.0, 580.0, 140.0),
+    ];
+    let inner = [
+        Rect::new(30.0, 30.0, 140.0, 130.0),
+        Rect::new(160.0, 30.0, 270.0, 130.0),
+        Rect::new(330.0, 30.0, 440.0, 130.0),
+        Rect::new(460.0, 30.0, 570.0, 130.0),
+    ];
+    let rects: Vec<Rect> = outer.iter().chain(&inner).copied().collect();
+    let cells = detect_page_cells(&rects, 600.0, false, ReadingOrder::RightToLeft);
+    let summary: Vec<_> = cells
+        .iter()
+        .map(|cell| (cell.index, cell.rect.x0, cell.spread_side))
+        .collect();
+    assert_eq!(
+        summary,
+        [
+            (1, 450.0, Some(SpreadSide::Right)),
+            (2, 320.0, Some(SpreadSide::Left)),
+            (3, 150.0, Some(SpreadSide::Right)),
+            (4, 20.0, Some(SpreadSide::Left)),
+        ]
+    );
+    assert_eq!(cells[0].frame, Some(inner[3]));
+}

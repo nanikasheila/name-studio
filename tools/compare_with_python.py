@@ -27,6 +27,8 @@ from csp_fixtures import (  # noqa: E402
     FixtureLayer, build_clip, build_cmc, build_text_attributes, rectangle,
 )
 from name_splitter.csp import inspect_file  # noqa: E402
+from name_splitter.csp.clip_reader import read_clip  # noqa: E402
+from name_splitter.csp.name_layout import detect_document_cells  # noqa: E402
 
 BINARY = ROOT / "name-studio" / "target" / "release" / ("name-studio-cli.exe" if sys.platform == "win32" else "name-studio-cli")
 FLOAT_TOLERANCE = 1e-9
@@ -59,14 +61,29 @@ def build_fixtures(folder: Path) -> list[Path]:
                      text_attribute_array=[build_text_attributes((70, 80, 90, 180), 9.0, "源ノ角ゴシック")]),
         FixtureLayer(main_id=5, name="ラフ", offset=(3, 4), image=_sample_image(600, 300)),
     ], double_page=True)
+    spreads = [rectangle(x, y, x + 260, y + 120) for x in (20, 320) for y in (20, 160)]
+    frames = [rectangle(x + dx, y + 10, x + dx + 110, y + 110) for x in (20, 320) for y in (20, 160) for dx in (10, 140)]
+    name = build_clip(folder / "name.clip", 600, 300, [
+        FixtureLayer(main_id=2, name="用紙", layer_type=1584),
+        FixtureLayer(main_id=3, name="枠", layer_type=0, vector_objects=spreads + frames),
+        FixtureLayer(main_id=4, name="コマ", layer_type=0, offset=(2, 3), vector_objects=[rectangle(40, 40, 90, 90)]),
+    ], double_page=True)
     work = build_cmc(folder / "work.cmc", ["page0001.clip", "page0002.clip", "page0003.clip"], order=[0, 2, 1])
-    return [page, sheet, work]
+    return [page, sheet, name, work]
 
 
-def rust_inspect(path: Path) -> object:
-    result = subprocess.run([str(BINARY), "inspect", str(path), "--pixels"],
-                            capture_output=True, check=True, text=True, encoding="utf-8")
+def run_rust(*args: str) -> object:
+    result = subprocess.run([str(BINARY), *args], capture_output=True, check=True, text=True, encoding="utf-8")
     return json.loads(result.stdout)
+
+
+def python_cells(path: Path) -> list[dict[str, object]]:
+    def rect(value):
+        return None if value is None else {"x0": value.x0, "y0": value.y0, "x1": value.x1, "y1": value.y1}
+    return [
+        {"index": cell.index, "rect": rect(cell.rect), "frame": rect(cell.frame), "spread_side": cell.spread_side}
+        for cell in detect_document_cells(read_clip(path))
+    ]
 
 
 def differences(python: object, rust: object, where: str = "$") -> list[str]:
@@ -97,7 +114,9 @@ def main(extra: list[str]) -> int:
     with tempfile.TemporaryDirectory() as temp:
         for path in build_fixtures(Path(temp)) + [Path(item) for item in extra]:
             python = json.loads(json.dumps(inspect_file(path, include_pixels=True), ensure_ascii=False))
-            found = differences(python, rust_inspect(path))
+            found = differences(python, run_rust("inspect", str(path), "--pixels"))
+            if path.suffix == ".clip":
+                found += differences(python_cells(path), run_rust("cells", str(path)), "cells")
             print(f"{'OK  ' if not found else 'DIFF'} {path.name}")
             for line in found[:20]:
                 print(f"     {line}")

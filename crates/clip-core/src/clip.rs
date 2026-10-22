@@ -310,6 +310,14 @@ impl ClipDocument {
         }
     }
 
+    /// Stored pixels shrunk by an integer factor (for overviews of a whole sheet).
+    pub fn render_layer_scaled(&self, layer: &ClipLayer, factor: u32) -> Result<Option<RgbaImage>> {
+        match self.base_offscreen(layer.render_mipmap)? {
+            Some((attribute, payload)) => offscreen::decode_offscreen_scaled(&attribute, payload, factor),
+            None => Ok(None),
+        }
+    }
+
     pub fn layer_pixel_parameters(&self, layer: &ClipLayer) -> Result<Option<OffscreenParameters>> {
         self.base_offscreen(layer.render_mipmap)?
             .map(|(attribute, _)| OffscreenParameters::parse(&attribute))
@@ -389,6 +397,28 @@ impl ClipDocument {
             blobs.extend(split_attribute_array(array)?);
         }
         blobs.into_iter().map(parse_text_attributes).collect()
+    }
+}
+
+impl ClipDocument {
+    /// Text of each text block, in the order of [`ClipDocument::text_blocks`]:
+    /// `TextLayerString` first, then the `TextLayerStringArray` entries
+    /// (`u32` little-endian length + UTF-8, like the attribute array).
+    pub fn text_strings(&self, layer: &ClipLayer) -> Vec<String> {
+        let Some(row) = self.layer_rows.get(&layer.main_id) else {
+            return Vec::new();
+        };
+        let mut strings: Vec<String> = row.text("TextLayerString").into_iter().collect();
+        if let Some(array) = row.blob("TextLayerStringArray")
+            && let Ok(entries) = split_attribute_array(array)
+        {
+            strings.extend(
+                entries
+                    .into_iter()
+                    .map(|entry| String::from_utf8_lossy(entry).into_owned()),
+            );
+        }
+        strings
     }
 }
 

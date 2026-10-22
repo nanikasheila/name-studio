@@ -166,6 +166,23 @@ impl RgbaImage {
         (x0 != usize::MAX).then_some((x0 as u32, y0 as u32, x1 as u32, y1 as u32))
     }
 
+    /// Encode as PNG (for showing the image in the app).
+    pub fn to_png(&self) -> Result<Vec<u8>> {
+        let mut output = Vec::new();
+        let mut encoder = png::Encoder::new(&mut output, self.width, self.height);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        encoder.set_compression(png::Compression::Fast);
+        let mut writer = encoder
+            .write_header()
+            .map_err(|error| CspError::format(error.to_string()))?;
+        writer
+            .write_image_data(&self.pixels)
+            .map_err(|error| CspError::format(error.to_string()))?;
+        writer.finish().map_err(|error| CspError::format(error.to_string()))?;
+        Ok(output)
+    }
+
     /// Copy one decoded 256x256 block to (left, top), clipped to this image.
     fn paste_block(&mut self, block: &[u8], parameters: &OffscreenParameters, left: i64, top: i64) {
         let (alpha, color) = block.split_at(BLOCK_PLANE_BYTES);
@@ -266,4 +283,75 @@ pub fn occupied_blocks(attribute: &[u8], payload: &[u8]) -> Result<Vec<(i64, i64
             (left, top, left + BLOCK_SIZE as i64, top + BLOCK_SIZE as i64)
         })
         .collect())
+}
+
+/// Decode an offscreen shrunk by the integer `factor` (box filter on
+/// premultiplied colour), without ever holding the full-size image: a whole
+/// name sheet is over 500 MB as RGBA, its overview at factor 4 about 35 MB.
+pub fn decode_offscreen_scaled(attribute: &[u8], payload: Option<&[u8]>, factor: u32) -> Result<Option<RgbaImage>> {
+    let Some(payload) = payload else { return Ok(None) };
+    let parameters = OffscreenParameters::parse(attribute)?;
+    let factor = factor.max(1) as usize;
+    let width = (parameters.width as usize).div_ceil(factor);
+    let height = (parameters.height as usize).div_ceil(factor);
+    // Premultiplied sums per output pixel: r, g, b, a, sample count.
+    let mut sums = vec![[0u32; 5]; width * height];
+    let expected = parameters.block_raw_size();
+    let records: Vec<(u32, &[u8])> = block_records(payload)?
+        .into_iter()
+        .filter_map(|record| Some((record.index, record.compressed?)))
+        .collect();
+    // Decode in batches so that only a bounded number of raw blocks is alive.
+    for batch in records.chunks(64) {
+        let decoded: Vec<(u32, Vec<u8>)> = batch
+            .par_iter()
+            .map(|(index, compressed)| inflate(*index, compressed, expected).map(|raw| (*index, raw)))
+            .collect::<Result<_>>()?;
+        for (index, raw) in decoded {
+            let (left, top) = block_origin(&parameters, index);
+            let (alpha, color) = raw.split_at(BLOCK_PLANE_BYTES);
+            for y in 0..BLOCK_SIZE {
+                let source_y = top as usize + y;
+                if source_y >= parameters.height as usize {
+                    break;
+                }
+                let row = &mut sums[(source_y / factor) * width..(source_y / factor + 1) * width];
+                for x in 0..BLOCK_SIZE {
+                    let source_x = left as usize + x;
+                    if source_x >= parameters.width as usize {
+                        break;
+                    }
+                    let source = y * BLOCK_SIZE + x;
+                    let a = alpha[source] as u32;
+                    let rgb = match parameters.color_planes {
+                        4 => [color[source * 4 + 2], color[source * 4 + 1], color[source * 4]],
+                        1 => [color[source]; 3],
+                        _ => [0, 0, 0],
+                    };
+                    let cell = &mut row[source_x / factor];
+                    cell[0] += rgb[0] as u32 * a;
+                    cell[1] += rgb[1] as u32 * a;
+                    cell[2] += rgb[2] as u32 * a;
+                    cell[3] += a;
+                }
+            }
+        }
+    }
+    let mut image = RgbaImage::transparent(width as u32, height as u32);
+    for (index, cell) in sums.iter().enumerate() {
+        if cell[3] == 0 {
+            continue;
+        }
+        let row = index / width;
+        let column = index % width;
+        // Samples of this output pixel that lie inside the offscreen.
+        let samples_x = factor.min(parameters.width as usize - column * factor) as u32;
+        let samples_y = factor.min(parameters.height as usize - row * factor) as u32;
+        let pixel = &mut image.pixels[index * 4..index * 4 + 4];
+        pixel[0] = (cell[0] / cell[3]) as u8;
+        pixel[1] = (cell[1] / cell[3]) as u8;
+        pixel[2] = (cell[2] / cell[3]) as u8;
+        pixel[3] = (cell[3] / (samples_x * samples_y)) as u8;
+    }
+    Ok(Some(image))
 }

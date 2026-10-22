@@ -10,12 +10,14 @@ use std::time::Instant;
 const USAGE: &str = "\
 usage:
   name-studio-cli inspect <file.clip|file.cmc> [--pixels] [--output FILE]
+  name-studio-cli cells <sheet.clip> [--ltr]
   name-studio-cli decode-time <file.clip>";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("inspect") => inspect(&args[1..]),
+        Some("cells") => cells(&args[1..]),
         Some("decode-time") => decode_time(&args[1..]),
         _ => {
             eprintln!("{USAGE}");
@@ -67,6 +69,34 @@ fn inspect(args: &[String]) -> ExitCode {
         None => println!("{text}"),
     }
     ExitCode::SUCCESS
+}
+
+/// Print the page cells found on a name sheet as JSON.
+fn cells(args: &[String]) -> ExitCode {
+    let Some(input) = args.first() else {
+        eprintln!("{USAGE}");
+        return ExitCode::from(2);
+    };
+    let order = if args.iter().any(|arg| arg == "--ltr") {
+        clip_core::layout::ReadingOrder::LeftToRight
+    } else {
+        clip_core::layout::ReadingOrder::RightToLeft
+    };
+    let result = clip_core::ClipDocument::read(input)
+        .and_then(|document| clip_core::layout::detect_document_cells(&document, order));
+    match result {
+        Ok(cells) => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&cells).expect("cells always serialize")
+            );
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("Format error: {error}");
+            ExitCode::from(1)
+        }
+    }
 }
 
 /// Time decoding every raster layer (to compare with the Python reader).
