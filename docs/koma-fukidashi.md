@@ -22,6 +22,7 @@
 | 黒ベタの帯・黒コマ | 回想や場面転換 | `fill: black`。白抜きのセリフ（`Line.inverted`）と組み合わせる |
 | 枠なし・枠線の種類 | 回想（波線）、夢や記憶（破線）、強調（太線）、枠なしの一枚絵 | `Panel.border`: solid / thick / dashed / wavy / none |
 | 背景の効果 | 集中線、スピード線、フラッシュ、キラキラ | `Panel.effect`。ネーム用の目印として描く |
+| 見開きのコマ | 見せ場の大ゴマ、決めの一枚絵 | `Panel.spread`。「見開きにする」で、のどの側を裁ち切りにし、向かいのページに左右反転したもう半分を作る。2つの半分は同じ `spread` を持つ |
 | 演出メモ | 俯瞰、アップ、間など | `Panel.note` |
 
 ページ全体の土台には「コマ割りの型」を9種類用意した。ページのインスペクターから当てる。
@@ -62,7 +63,7 @@
 
 新しい項目はすべて省略でき、既定値なら保存しない。
 
-- `Panel`: `border`, `openEdges`, `fill`, `effect`, `z`, `note`
+- `Panel`: `border`, `openEdges`, `fill`, `effect`, `z`, `note`, `spread`
 - `Page.breakouts`: `{ id, shape, note }`
 - `Line`: `balloonShape`, `tails`（`{ tip, style }`）, `linkTo`, `inverted`, `emphasis`
 - `LineKind`: `aside` を追加
@@ -91,5 +92,5 @@
 
 ## まだできないこと
 
-- 見開きの両ページにまたがるコマ。
+- 見開きのコマは、ページごとの半分として書き出す（CSP の見開きページにはしない）。半分の形は別々に編集する。
 - CSP のフキダシ素材（フキダシレイヤーの種類）としての書き出し。

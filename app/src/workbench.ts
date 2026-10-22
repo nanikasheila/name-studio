@@ -15,8 +15,12 @@ import {
   addInset,
   applyPattern,
   bleedPanel,
+  facingPage,
   isBled,
   rotatePanel,
+  spreadPanel,
+  spreadTwin,
+  unspreadPanel,
   type Side,
 } from "./koma";
 import { Overview, type OverviewKind } from "./overview";
@@ -674,6 +678,11 @@ export class Workbench {
       this.edit((p) => (created = addInset(p, page, panel)));
       if (created) this.editor.select({ kind: "panel", pageId: page.id, id: (created as Panel).id });
     });
+    const firstAlone = this.editor.firstAlone;
+    const spread = panel.spread
+      ? button("見開きをやめる", (p) => unspreadPanel(p, page, panel, firstAlone), "向かいのページの半分を消して、このページだけのコマに戻す")
+      : button("見開きにする", (p) => spreadPanel(p, page, panel, firstAlone), "のどをまたいで向かいのページまで伸ばす");
+    spread.disabled = !panel.spread && !facingPage(project, page, firstAlone);
     const note = element("input", { type: "text", value: panel.note ?? "", placeholder: "例: 俯瞰で教室全体 / 間" });
     this.liveText(note, (value) => {
       if (value) panel.note = value;
@@ -686,6 +695,7 @@ export class Workbench {
       element("label", {}, "背景の効果", effect),
       element("h3", { textContent: "裁ち切り（ページの外まで）" }),
       element("div", { className: "row" }, ...bleeds),
+      spread,
       element("h3", { textContent: "形と重なり" }),
       element("div", { className: "row" }, tiltLeft, tiltRight, raise, lower),
       inset,
@@ -761,7 +771,13 @@ export class Workbench {
     this.edit((project) => {
       const page = project.pages.find((p) => p.id === s.pageId);
       if (!page) return;
-      if (s.kind === "panel") removePanel(page, s.id, project.binding);
+      if (s.kind === "panel") {
+        // The other half of a 見開き stays as a panel of its own page.
+        const panel = page.panels.find((p) => p.id === s.id);
+        const twin = panel && spreadTwin(project, page, panel);
+        if (twin) delete twin.panel.spread;
+        removePanel(page, s.id, project.binding);
+      }
       if (s.kind === "line") page.lines = page.lines.filter((line) => line.id !== s.id);
       if (s.kind === "stroke") page.strokes = page.strokes.filter((stroke) => stroke.id !== s.id);
       if (s.kind === "breakout") page.breakouts = page.breakouts.filter((breakout) => breakout.id !== s.id);

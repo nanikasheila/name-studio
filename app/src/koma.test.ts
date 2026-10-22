@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PATTERNS, bleedPanel, borderLines, borderRuns, clipOutside, dashes, inheritOpenEdges, isBled, patternPanels, wavy } from "./koma";
+import { PATTERNS, bleedPanel, facingPage, spreadPanel, spreadTwin, unspreadPanel, borderLines, borderRuns, clipOutside, dashes, inheritOpenEdges, isBled, patternPanels, wavy } from "./koma";
 import { basicBox, bounds, cutPanels, emptyPage, newProject, rectShape, type Panel, type Point } from "./project";
 
 describe("裁ち切り", () => {
@@ -46,6 +46,47 @@ describe("裁ち切り", () => {
     const left = rectShape([0, 0, 49, 50]);
     expect(inheritOpenEdges(old, [0], left)).toEqual([0]);
     expect(inheritOpenEdges(old, [1], left)).toEqual([]);
+  });
+});
+
+describe("見開き", () => {
+  it("runs a panel across the gutter onto the facing page and back", () => {
+    const project = newProject("t", 4);
+    const format = project.pageFormat;
+    const [w] = format.canvasMm;
+    const [x0, y0, x1] = basicBox(format);
+    // Page 2 is the right page of the 2-3 spread when page 1 stands alone.
+    const right = project.pages[1];
+    const left = project.pages[2];
+    expect(facingPage(project, right, true)).toMatchObject({ page: left, gutter: "left" });
+    expect(facingPage(project, project.pages[0], true)).toBeNull();
+    const panel: Panel = { id: "panel1", shape: rectShape([x0, y0, x1, y0 + 80]), order: 1, fill: "black" };
+    right.panels.push(panel);
+    const twin = spreadPanel(project, right, panel, true)!;
+    expect(bounds(panel.shape)[0]).toBe(0);
+    expect(isBled(panel, "left", format)).toBe(true);
+    expect(left.panels).toEqual([twin]);
+    expect(twin.spread).toBe(panel.spread);
+    expect(twin.fill).toBe("black");
+    // Mirrored: the twin reaches the right edge of the left page.
+    expect(bounds(twin.shape)).toEqual([w - x1, y0, w, y0 + 80]);
+    expect(isBled(twin, "right", format)).toBe(true);
+    expect(twin.openEdges).toHaveLength(1);
+    const [i] = twin.openEdges!;
+    expect(twin.shape[i][0]).toBe(w);
+    expect(twin.shape[(i + 1) % 4][0]).toBe(w);
+    expect(spreadTwin(project, left, twin)?.panel).toBe(panel);
+    expect(spreadPanel(project, right, panel, true)).toBeNull();
+    // Cut down the middle, only the part at the gutter stays joined.
+    const middle = (x0 + x1) / 2;
+    cutPanels(project, right, [middle, y0 - 5], [middle, y0 + 90]);
+    expect(right.panels.filter((p) => p.spread)).toHaveLength(1);
+    right.panels = [panel];
+    unspreadPanel(project, right, panel, true);
+    expect(left.panels).toEqual([]);
+    expect(panel.spread).toBeUndefined();
+    expect(bounds(panel.shape)[0]).toBe(x0);
+    expect(panel.openEdges).toBeUndefined();
   });
 });
 

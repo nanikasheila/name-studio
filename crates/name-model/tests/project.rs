@@ -170,7 +170,7 @@ fn keeps_panel_and_balloon_styles() {
         "id": "page1", "memo": "",
         "panels": [
           {"id": "panel2", "shape": [[58, 0], [238, 0], [238, 120], [58, 120]], "order": 1,
-           "border": "wavy", "openEdges": [0], "fill": "black", "effect": "focus", "note": "回想"},
+           "border": "wavy", "openEdges": [0], "fill": "black", "effect": "focus", "note": "回想", "spread": "spread9"},
           {"id": "panel3", "shape": [[50, 100], [90, 100], [90, 140], [50, 140]], "order": 2, "fill": "white", "z": 1}
         ],
         "lines": [
@@ -182,7 +182,7 @@ fn keeps_panel_and_balloon_styles() {
         "roughs": [],
         "breakouts": [{"id": "breakout7", "shape": [[60, 90], [80, 90], [70, 130]], "note": "全身"}]
       }],
-      "characters": [], "scenes": [], "emotions": [], "nextId": 8
+      "characters": [], "scenes": [], "emotions": [], "nextId": 10
     }"##;
     let project = Project::from_json(text).expect("format 2 project");
     let page = &project.pages[0];
@@ -191,6 +191,7 @@ fn keeps_panel_and_balloon_styles() {
     assert_eq!(page.panels[0].fill, PanelFill::Black);
     assert_eq!(page.panels[0].effect, PanelEffect::Focus);
     assert_eq!(page.panels[1].z, 1);
+    assert_eq!(page.panels[0].spread, "spread9");
     assert_eq!(page.lines[0].balloon_shape, BalloonShape::Spike);
     assert_eq!(page.lines[0].tails[1].style, TailStyle::Line);
     assert_eq!(page.lines[1].kind, LineKind::Aside);
@@ -209,6 +210,8 @@ fn keeps_panel_and_balloon_styles() {
     let mut broken = project.clone();
     broken.pages[0].panels[0].open_edges = vec![9];
     broken.pages[0].lines[1].link_to = Some("line404".into());
+    // Both halves of a 見開き on one page.
+    broken.pages[0].panels[1].spread = "spread9".into();
     let problems = validate(&broken);
-    assert_eq!(problems.len(), 2, "{problems:?}");
+    assert_eq!(problems.len(), 3, "{problems:?}");
 }

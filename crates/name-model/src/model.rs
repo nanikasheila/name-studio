@@ -137,6 +137,10 @@ pub struct Panel {
     /// 演出メモ: camera, timing or what the panel is for.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub note: String,
+    /// 見開き: shared by the two halves of a panel across the gutter, one on
+    /// each page of the spread.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub spread: String,
 }
 
 fn is_default<T: Default + PartialEq>(value: &T) -> bool {

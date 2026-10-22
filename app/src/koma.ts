@@ -2,6 +2,7 @@
 // tilted panels, breakouts (はみ出し), background effects, and page layout
 // patterns taken from the manuscripts. Everything here works in page mm.
 import { seeded } from "./balloon";
+import { spreads } from "./pages";
 import {
   DEFAULT_GUTTERS,
   assignPanels,
@@ -10,6 +11,7 @@ import {
   centroid,
   newId,
   orderPanels,
+  pageIndex,
   rectShape,
   type Breakout,
   type Page,
@@ -220,6 +222,67 @@ export function addBreakout(project: Project, page: Page, shape: Point[]): Break
 
 export function moveBreakout(breakout: Breakout, dx: number, dy: number): void {
   breakout.shape = breakout.shape.map(([x, y]) => [x + dx, y + dy]);
+}
+
+// --- 見開き: one panel across the gutter ----------------------------------------
+
+/** The page facing `page` in its spread and the side of `page` at the gutter. */
+export function facingPage(project: Project, page: Page, firstAlone: boolean): { page: Page; gutter: Side } | null {
+  const number = pageIndex(project, page.id) + 1;
+  const pair = spreads(project.pages.length, firstAlone).find((p) => p.includes(number));
+  if (!pair || pair[0] === null || pair[1] === null) return null;
+  const right = pair[0] === number;
+  return { page: project.pages[(right ? pair[1] : pair[0]) - 1], gutter: right ? "left" : "right" };
+}
+
+/** The other half of a 見開き panel, on the facing page. */
+export function spreadTwin(project: Project, page: Page, panel: Panel): { page: Page; panel: Panel } | null {
+  if (!panel.spread) return null;
+  for (const other of project.pages) {
+    if (other.id === page.id) continue;
+    const twin = other.panels.find((p) => p.spread === panel.spread);
+    if (twin) return { page: other, panel: twin };
+  }
+  return null;
+}
+
+const OPPOSITE: Record<Side, Side> = { top: "bottom", bottom: "top", left: "right", right: "left" };
+
+/**
+ * 見開き: run the panel across the gutter. Its gutter side bleeds to the
+ * canvas edge and stays open, and the facing page gets the mirrored other
+ * half with the same style. Both halves share `spread`.
+ */
+export function spreadPanel(project: Project, page: Page, panel: Panel, firstAlone: boolean): Panel | null {
+  const facing = facingPage(project, page, firstAlone);
+  if (!facing || panel.spread) return null;
+  const format = project.pageFormat;
+  bleedPanel(panel, facing.gutter, format, true);
+  const [w] = format.canvasMm;
+  // Mirrored across the gutter; reversed so the outline keeps its winding.
+  const shape: Point[] = panel.shape.map(([x, y]): Point => [w - x, y]).reverse();
+  const sides = (["top", "bottom", "left", "right"] as Side[]).filter((side) => isBled(panel, side, format)).map((side) => (side === "top" || side === "bottom" ? side : OPPOSITE[side]));
+  const open = [...new Set(sides.flatMap((side) => edgesAlong(shape, side, format)))].sort((a, b) => a - b);
+  panel.spread = newId(project, "spread");
+  const { id: _id, shape: _shape, order: _order, openEdges: _open, ...style } = panel;
+  const twin: Panel = { ...style, id: newId(project, "panel"), shape, order: 0, ...(open.length ? { openEdges: open } : {}) };
+  facing.page.panels.push(twin);
+  orderPanels(facing.page, project.binding);
+  assignPanels(facing.page);
+  return twin;
+}
+
+/** Back to one page: the other half goes and the gutter side returns to the basic frame. */
+export function unspreadPanel(project: Project, page: Page, panel: Panel, firstAlone: boolean): void {
+  const twin = spreadTwin(project, page, panel);
+  if (twin) {
+    twin.page.panels = twin.page.panels.filter((p) => p !== twin.panel);
+    orderPanels(twin.page, project.binding);
+    assignPanels(twin.page);
+  }
+  delete panel.spread;
+  const facing = facingPage(project, page, firstAlone);
+  if (facing) bleedPanel(panel, facing.gutter, project.pageFormat, false);
 }
 
 /** Panels bottom first, as they stack. */

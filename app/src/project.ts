@@ -65,6 +65,8 @@ export interface Panel {
   z?: number;
   /** 演出メモ */
   note?: string;
+  /** 見開き: shared by the two halves of a panel across the gutter. */
+  spread?: string;
 }
 
 /** はみ出し: an area over the panels where borders and gutters are blanked. */
@@ -464,6 +466,13 @@ export function cutPanels(project: Project, page: Page, a: Point, b: Point, gutt
       else delete half.openEdges;
       return half;
     });
+    if (panel.spread) {
+      // A 見開き has one half per page: it stays with the part at the gutter.
+      const [w] = project.pageFormat.canvasMm;
+      const atGutter = (half: Panel) => half.shape.some(([x]) => x <= 0.05 || x >= w - 0.05);
+      if (atGutter(first)) delete second.spread;
+      else delete first.spread;
+    }
     panels.push(first);
     const id = newId(project, "panel");
     panels.push({ ...second, id, order: 0 });

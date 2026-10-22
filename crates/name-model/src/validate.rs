@@ -1,6 +1,6 @@
 //! Consistency checks run when a project is loaded or saved.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use crate::model::{FORMAT_VERSION, Project};
 
@@ -22,6 +22,8 @@ pub fn validate(project: &Project) -> Vec<String> {
         }
     };
     let characters: HashSet<&str> = project.characters.iter().map(|c| c.id.as_str()).collect();
+    // 見開き id → page numbers of its halves.
+    let mut spreads: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
     for character in &project.characters {
         check_id(&character.id, &mut problems);
     }
@@ -32,6 +34,9 @@ pub fn validate(project: &Project) -> Vec<String> {
             check_id(&panel.id, &mut problems);
             if panel.shape.len() < 3 {
                 problems.push(format!("{number} ページのコマ {} の頂点が足りません", panel.id));
+            }
+            if !panel.spread.is_empty() {
+                spreads.entry(panel.spread.as_str()).or_default().push(number);
             }
             if panel.open_edges.iter().any(|&edge| edge as usize >= panel.shape.len()) {
                 problems.push(format!(
@@ -79,6 +84,12 @@ pub fn validate(project: &Project) -> Vec<String> {
         }
         for rough in &page.roughs {
             check_id(&rough.id, &mut problems);
+        }
+    }
+    for (spread, pages) in &spreads {
+        let facing = pages.len() == 2 && pages[0].abs_diff(pages[1]) == 1;
+        if pages.len() > 2 || (pages.len() == 2 && !facing) {
+            problems.push(format!("見開きのコマ {spread} が隣り合う 2 ページに分かれていません"));
         }
     }
     for scene in &project.scenes {
