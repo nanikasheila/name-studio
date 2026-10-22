@@ -18,7 +18,11 @@ use clip_core::layout::ReadingOrder;
 use clip_core::plan::Fit;
 use clip_core::raster::decode_png;
 use clip_core::raster::{Filter, resize};
-use clip_core::write::raster_page::{RasterLayer, RasterWorkWriter, TemplateCanvas, WorkOptions, WorkReport};
+use clip_core::text::NewText;
+use clip_core::vector::NewVectorLine;
+use clip_core::write::raster_page::{
+    PageLayer, RasterLayer, RasterWorkWriter, TemplateCanvas, WorkOptions, WorkReport,
+};
 use clip_core::write::split::{DEFAULT_NAME_PATTERN, SplitOptions, SplitReport, split_sheet};
 use name_model::{PageFormat, Project};
 use serde::{Deserialize, Serialize};
@@ -259,6 +263,20 @@ struct NameExportRequest {
     story_index: Option<i64>,
     /// The name data and its source sheet: never overwritten.
     inputs: Vec<String>,
+    /// .clip files (such as the name sheet) whose vector / text layers new
+    /// editable layers are copied from, after the template.
+    #[serde(default)]
+    donors: Vec<String>,
+}
+
+/// The template's canvas and which parts can be written as editable layers.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NameExportStart {
+    #[serde(flatten)]
+    canvas: TemplateCanvas,
+    vector_layers: bool,
+    text_layers: bool,
 }
 
 /// Start writing the name data as CSP pages; returns the template's canvas.
@@ -266,7 +284,7 @@ struct NameExportRequest {
 async fn begin_name_export(
     request: NameExportRequest,
     state: tauri::State<'_, AppState>,
-) -> Result<TemplateCanvas, String> {
+) -> Result<NameExportStart, String> {
     let work = match (request.work_template, request.work_name) {
         (Some(template), Some(name)) if !name.trim().is_empty() => {
             Some((name.trim().to_owned(), PathBuf::from(template)))
@@ -280,11 +298,16 @@ async fn begin_name_export(
         work,
         story_index: request.story_index,
         inputs: request.inputs.into_iter().map(PathBuf::from).collect(),
+        donor_sources: request.donors.into_iter().map(PathBuf::from).collect(),
     })
     .map_err(|error| error.to_string())?;
-    let canvas = writer.canvas;
+    let start = NameExportStart {
+        canvas: writer.canvas,
+        vector_layers: writer.donors.vector.is_some(),
+        text_layers: writer.donors.text.is_some(),
+    };
     *state.name_export.lock().map_err(lock_error)? = Some(writer);
-    Ok(canvas)
+    Ok(start)
 }
 
 /// A rough image of the source sheet and where it goes on the page (template px).
@@ -296,14 +319,49 @@ struct RoughPlacement {
     target: [f64; 4],
 }
 
+/// A vector line in template px; `points` are `[x, y, width factor]`.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LineMeta {
+    points: Vec<[f64; 3]>,
+    closed: bool,
+    width_px: f64,
+}
+
+/// One layer of a page, bottom first.
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+enum LayerMeta {
+    /// A whole-page PNG of `length` bytes from the body (0 for a blank layer).
+    Raster {
+        name: String,
+        length: usize,
+    },
+    Vector {
+        name: String,
+        lines: Vec<LineMeta>,
+    },
+    /// A text in a frame in template px, its size in CSP pt.
+    #[serde(rename_all = "camelCase")]
+    Text {
+        text: String,
+        frame: [f64; 4],
+        font_size_pt: f64,
+        vertical: bool,
+    },
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PageLayersMeta {
-    /// Name and PNG byte length of each layer, bottom first (0 for a blank layer).
-    layers: Vec<(String, usize)>,
+    layers: Vec<LayerMeta>,
     sheet: Option<String>,
     #[serde(default)]
     roughs: Vec<RoughPlacement>,
+    /// Byte length of a PNG (after the layers' PNGs) of the lines and texts,
+    /// drawn over the images for the page thumbnail; 0 for none.
+    #[serde(default)]
+    overlay_length: usize,
 }
 
 /// Rough images from the source sheet, placed on one transparent page image.
@@ -350,26 +408,57 @@ async fn export_name_page(app: tauri::AppHandle, request: tauri::ipc::Request<'_
             let (width, height) = (writer.canvas.width_px, writer.canvas.height_px);
             let mut layers = Vec::new();
             if let Some(sheet) = meta.sheet.as_deref().filter(|_| !meta.roughs.is_empty()) {
-                layers.push(RasterLayer {
+                layers.push(PageLayer::Raster(RasterLayer {
                     name: "ラフ（ネーム用紙）".to_owned(),
                     image: rough_layer(&state, sheet, &meta.roughs, width, height)?,
+                }));
+            }
+            let mut take = |length: usize| -> Result<&[u8], String> {
+                let png = rest.get(..length).ok_or("データが壊れています")?;
+                rest = &rest[length..];
+                Ok(png)
+            };
+            for layer in meta.layers {
+                layers.push(match layer {
+                    LayerMeta::Raster { name, length } => {
+                        let png = take(length)?;
+                        let image = if png.is_empty() {
+                            RgbaImage::transparent(width, height)
+                        } else {
+                            decode_png(png).map_err(|error| error.to_string())?
+                        };
+                        PageLayer::Raster(RasterLayer { name, image })
+                    }
+                    LayerMeta::Vector { name, lines } => PageLayer::Vector {
+                        name,
+                        lines: lines
+                            .into_iter()
+                            .map(|line| NewVectorLine {
+                                points: line.points.into_iter().map(|[x, y, w]| (x, y, w)).collect(),
+                                closed: line.closed,
+                                width_px: line.width_px,
+                            })
+                            .collect(),
+                    },
+                    LayerMeta::Text {
+                        text,
+                        frame,
+                        font_size_pt,
+                        vertical,
+                    } => PageLayer::Text(NewText {
+                        text,
+                        frame: frame.map(|value| value.round() as i32),
+                        font_size_pt,
+                        vertical,
+                    }),
                 });
             }
-            for (name, length) in &meta.layers {
-                let png = rest.get(..*length).ok_or("データが壊れています")?;
-                rest = &rest[*length..];
-                let image = if png.is_empty() {
-                    RgbaImage::transparent(width, height)
-                } else {
-                    decode_png(png).map_err(|error| error.to_string())?
-                };
-                layers.push(RasterLayer {
-                    name: name.clone(),
-                    image,
-                });
-            }
+            let overlay = match take(meta.overlay_length)? {
+                [] => None,
+                png => Some(decode_png(png).map_err(|error| error.to_string())?),
+            };
             writer
-                .write_page(&layers)
+                .write_page(&layers, overlay.as_ref())
                 .map(|path| path.display().to_string())
                 .map_err(|error| error.to_string())
         })();

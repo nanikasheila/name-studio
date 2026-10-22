@@ -1,30 +1,266 @@
-//! Write page .clip files made of whole-page raster layers, and the work
-//! (.cmc) around them.
+//! Write page .clip files from the name tool's pages, and the work (.cmc)
+//! around them.
 //!
-//! The name tool draws each page of its own name data (panels, balloons,
-//! text, rough lines) into images; this puts them into copies of a CSP-made
-//! empty page as separate raster layers, so the page opens in CSP with the
-//! name on layers to draw over.
+//! The name tool sends each page as layers: whole-page images, vector lines
+//! (panel borders, balloons, rough strokes) and texts (dialogue). They go
+//! into copies of a CSP-made empty page, so the page opens in CSP with the
+//! name on layers to draw over. Lines and texts stay editable in CSP.
+//!
+//! CSP's vector and text layers carry many settings this tool does not know,
+//! so new ones are copies of a CSP-made layer (a "donor": a vector layer with
+//! at least one line, a text layer with one plain text), from the template
+//! page or another .clip such as the name sheet, with their content replaced.
 
 use std::path::{Path, PathBuf};
 
 use rusqlite::types::Value;
 use serde::Serialize;
 
-use super::Values;
 use super::cmc::{work_canvas_values, write_cmc};
 use super::editor::ClipEditor;
-use super::page::{apply_page_settings, replace_preview};
+use super::page::{SCHEMA_TABLES, apply_page_settings, replace_preview, share_rows};
+use super::schema::merge_schema;
 use super::split::page_file_name;
+use super::{Values, set_value, value_of};
 use crate::RgbaImage;
-use crate::clip::ClipDocument;
+use crate::clip::{ClipDocument, LayerKind};
 use crate::error::{CspError, Result};
 use crate::raster::{Filter, resize};
+use crate::text::{NewText, retarget_add_attributes, retarget_text_attributes};
+use crate::vector::{NewVectorLine, brush_style_of, build_vector_data};
 
 /// One raster layer of a page; the image covers the whole page canvas.
 pub struct RasterLayer {
     pub name: String,
     pub image: RgbaImage,
+}
+
+/// One layer of a page, in page canvas pixels.
+pub enum PageLayer {
+    Raster(RasterLayer),
+    /// A vector layer holding these lines.
+    Vector {
+        name: String,
+        lines: Vec<NewVectorLine>,
+    },
+    /// A text layer holding one text (named after it, as CSP does).
+    Text(NewText),
+}
+
+/// Text layer columns that hold several blocks; a new text has one block.
+const TEXT_BLOCK_ARRAYS: [&str; 2] = ["TextLayerStringArray", "TextLayerAttributesArray"];
+
+/// CSP-made layers that new vector and text layers are copied from.
+pub struct PartDonors {
+    source: ClipDocument,
+    /// Whether `source` is the template itself (no schema to merge).
+    is_template: bool,
+    vector: Option<(i64, u32)>,
+    text: Option<i64>,
+}
+
+impl PartDonors {
+    /// Look for a vector layer with a line and a text layer with one plain
+    /// text in `source`.
+    pub fn find(source: ClipDocument, is_template: bool) -> Result<Self> {
+        let probe = NewText {
+            text: "a".to_owned(),
+            frame: [0, 0, 10, 10],
+            font_size_pt: 10.0,
+            vertical: true,
+        };
+        let mut vector = None;
+        let mut text = None;
+        for layer in source.layers() {
+            match layer.kind {
+                LayerKind::Vector if vector.is_none() => {
+                    let row = source.layer_row(layer.main_id);
+                    if row.is_none_or(|row| row.int("VectorNormalStrokeIndex") == 0) {
+                        continue;
+                    }
+                    if let Some(payload) = source.vector_payloads(layer)?.first()
+                        && let Ok(Some(brush)) = brush_style_of(payload)
+                    {
+                        vector = Some((layer.main_id, brush));
+                    }
+                }
+                LayerKind::Text if text.is_none() => {
+                    let Some(row) = source.layer_row(layer.main_id) else {
+                        continue;
+                    };
+                    // Not the work-info / page-number texts (TextLayerType 2).
+                    let plain = row.int("TextLayerType") == 0 && row.int("ComicStoryInfoType") == 0;
+                    let usable = plain
+                        && row.text("TextLayerString").is_some()
+                        && row
+                            .blob("TextLayerAttributes")
+                            .is_some_and(|blob| retarget_text_attributes(blob, &probe).is_ok())
+                        && row
+                            .blob("TextLayerAddAttributesV01")
+                            .is_none_or(|blob| retarget_add_attributes(blob, &probe).is_ok())
+                        && source.vector_payloads(layer)?.is_empty();
+                    if usable {
+                        text = Some(layer.main_id);
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(PartDonors {
+            source,
+            is_template,
+            vector,
+            text,
+        })
+    }
+
+    pub fn has_vector(&self) -> bool {
+        self.vector.is_some()
+    }
+
+    pub fn has_text(&self) -> bool {
+        self.text.is_some()
+    }
+}
+
+/// Where vector and text layers come from: the first source that has each.
+#[derive(Default)]
+pub struct Donors {
+    pub vector: Option<PartDonors>,
+    pub text: Option<PartDonors>,
+}
+
+impl Donors {
+    /// Search the template, then each of `others`, for each kind of donor.
+    pub fn find(template: &Path, others: &[PathBuf]) -> Result<Self> {
+        let mut donors = Donors::default();
+        let candidates =
+            std::iter::once((template.to_path_buf(), true)).chain(others.iter().map(|path| (path.clone(), false)));
+        for (path, is_template) in candidates {
+            if donors.vector.is_some() && donors.text.is_some() {
+                break;
+            }
+            if !path.exists() || path.extension().is_none_or(|extension| extension != "clip") {
+                continue;
+            }
+            let found = PartDonors::find(ClipDocument::read(&path)?, is_template)?;
+            let (vector, text) = (found.has_vector(), found.has_text());
+            if vector && donors.vector.is_none() && text && donors.text.is_none() {
+                // One document serves both; read it twice rather than share.
+                donors.text = Some(PartDonors::find(ClipDocument::read(&path)?, is_template)?);
+                donors.vector = Some(found);
+            } else if vector && donors.vector.is_none() {
+                donors.vector = Some(found);
+            } else if text && donors.text.is_none() {
+                donors.text = Some(found);
+            }
+        }
+        Ok(donors)
+    }
+}
+
+/// Columns reset on a copied donor so the new layer looks like a fresh one.
+const FRESH_LAYER: [(&str, i64); 5] = [
+    ("LayerOpacity", 256),
+    ("LayerVisibility", 1),
+    ("LayerComposite", 0),
+    ("LayerClip", 0),
+    ("LayerLock", 0),
+];
+
+fn freshen(values: &mut Values, name: &str) {
+    for (column, value) in FRESH_LAYER {
+        if value_of(values, column).is_some() {
+            set_value(values, column, Value::Integer(value));
+        }
+    }
+    set_value(values, "LayerName", Value::Text(name.to_owned()));
+}
+
+/// Make `editor` able to hold the donor's layers (its tables, columns and
+/// brush styles), once per donor document.
+fn prepare_for(editor: &ClipEditor, donor: &PartDonors) -> Result<()> {
+    if !donor.is_template {
+        merge_schema(&editor.db, donor.source.database(), &SCHEMA_TABLES)?;
+        share_rows(&editor.db, donor.source.database())?;
+    }
+    Ok(())
+}
+
+/// Brush style id for new lines: the donor's, when the page has that style,
+/// else the page's first one.
+fn brush_style_in(editor: &ClipEditor, donor_style: u32) -> Result<u32> {
+    let has = |sql: &str| -> Result<Option<i64>> {
+        Ok(editor
+            .db
+            .query_row(sql, [donor_style], |row| row.get::<_, Option<i64>>(0))
+            .unwrap_or(None))
+    };
+    if has("SELECT MainId FROM BrushStyle WHERE MainId = ?1")?.is_some() {
+        return Ok(donor_style);
+    }
+    Ok(has("SELECT MIN(MainId) FROM BrushStyle WHERE ?1 = ?1")?.map_or(donor_style, |id| id as u32))
+}
+
+fn add_vector_layer(editor: &mut ClipEditor, donor: &PartDonors, name: &str, lines: &[NewVectorLine]) -> Result<i64> {
+    let (layer_id, donor_style) = donor
+        .vector
+        .ok_or_else(|| CspError::format("No vector layer to copy"))?;
+    let brush = brush_style_in(editor, donor_style)?;
+    let data = build_vector_data(lines, brush);
+    let payload_hook = |table: &str, column: &str, payload: Vec<u8>| -> Result<Vec<u8>> {
+        Ok(if table == "VectorObjectList" && column == "VectorData" {
+            data.clone()
+        } else {
+            payload
+        })
+    };
+    let mut row_hook = |values: &mut Values| -> Result<()> {
+        freshen(values, name);
+        Ok(())
+    };
+    let source = &donor.source;
+    let payload = |id: &str| source.container.external_payload(id).map(<[u8]>::to_vec);
+    editor.add_layer(
+        source.database(),
+        &payload,
+        layer_id,
+        Some(&mut row_hook),
+        Some(&payload_hook),
+    )
+}
+
+/// CSP names a text layer after its first line.
+fn text_layer_name(text: &NewText) -> String {
+    let first = text.text.lines().find(|line| !line.trim().is_empty()).unwrap_or("");
+    first.chars().take(32).collect()
+}
+
+fn add_text_layer(editor: &mut ClipEditor, donor: &PartDonors, text: &NewText) -> Result<i64> {
+    let layer_id = donor.text.ok_or_else(|| CspError::format("No text layer to copy"))?;
+    let name = text_layer_name(text);
+    let mut row_hook = |values: &mut Values| -> Result<()> {
+        freshen(values, &name);
+        // CSP keeps the text as a UTF-8 blob and misreads a TEXT value.
+        set_value(values, "TextLayerString", Value::Blob(text.stored_text().into_bytes()));
+        if let Some(Value::Blob(blob)) = value_of(values, "TextLayerAttributes") {
+            let blob = retarget_text_attributes(blob, text)?;
+            set_value(values, "TextLayerAttributes", Value::Blob(blob));
+        }
+        if let Some(Value::Blob(blob)) = value_of(values, "TextLayerAddAttributesV01") {
+            let blob = retarget_add_attributes(blob, text)?;
+            set_value(values, "TextLayerAddAttributesV01", Value::Blob(blob));
+        }
+        for column in TEXT_BLOCK_ARRAYS {
+            if value_of(values, column).is_some() {
+                set_value(values, column, Value::Null);
+            }
+        }
+        Ok(())
+    };
+    let source = &donor.source;
+    let payload = |id: &str| source.container.external_payload(id).map(<[u8]>::to_vec);
+    editor.add_layer(source.database(), &payload, layer_id, Some(&mut row_hook), None)
 }
 
 /// Size and frames of the template page, in its pixels.
@@ -64,10 +300,15 @@ pub fn template_canvas(template: &ClipDocument) -> TemplateCanvas {
 }
 
 /// Write one page: a copy of `template` with `layers` added on top, bottom
-/// layer first. Images of another size are scaled to the page canvas.
-pub fn write_raster_page(
+/// layer first. Images of another size are scaled to the page canvas; vector
+/// and text layers are copied from `donors`. Vector and text layers are not
+/// drawn here, so the thumbnail shows the images with `overlay` (the lines
+/// and texts drawn by the caller, any size with the page's proportions) on top.
+pub fn write_name_page(
     template: &Path,
-    layers: &[RasterLayer],
+    layers: &[PageLayer],
+    donors: &Donors,
+    overlay: Option<&RgbaImage>,
     output: &Path,
     page_index: i64,
     canvas_values: &Values,
@@ -84,27 +325,62 @@ pub fn write_raster_page(
         height,
         pixels: [255, 255, 255, 255].repeat(width as usize * height as usize),
     };
+    let needs = |vector: bool| {
+        layers.iter().any(|layer| {
+            matches!(
+                (layer, vector),
+                (PageLayer::Vector { .. }, true) | (PageLayer::Text(_), false)
+            )
+        })
+    };
+    for (needed, donor) in [(needs(true), &donors.vector), (needs(false), &donors.text)] {
+        if needed && let Some(donor) = donor {
+            prepare_for(&editor, donor)?;
+        }
+    }
+    let missing = |kind: &str| CspError::format(format!("No {kind} layer to copy (template or name sheet)"));
     let mut ids = Vec::new();
     for layer in layers {
-        let image = if (layer.image.width, layer.image.height) == (width, height) {
-            None
-        } else {
-            Some(resize(&layer.image, width, height, Filter::Lanczos3))
+        let id = match layer {
+            PageLayer::Raster(layer) => {
+                let image = if (layer.image.width, layer.image.height) == (width, height) {
+                    None
+                } else {
+                    Some(resize(&layer.image, width, height, Filter::Lanczos3))
+                };
+                let image = image.as_ref().unwrap_or(&layer.image);
+                let mut rename = |values: &mut Values| -> Result<()> {
+                    set_value(values, "LayerName", Value::Text(layer.name.clone()));
+                    Ok(())
+                };
+                let id = editor.add_layer(source.database(), &payload, raster, Some(&mut rename), None)?;
+                if !image.is_transparent() {
+                    editor.set_layer_image(id, image, (0, 0))?;
+                    composite.blend_over(image, 0, 0);
+                }
+                id
+            }
+            PageLayer::Vector { name, lines } => {
+                let donor = donors.vector.as_ref().ok_or_else(|| missing("vector"))?;
+                add_vector_layer(&mut editor, donor, name, lines)?
+            }
+            PageLayer::Text(text) => {
+                let donor = donors.text.as_ref().ok_or_else(|| missing("text"))?;
+                add_text_layer(&mut editor, donor, text)?
+            }
         };
-        let image = image.as_ref().unwrap_or(&layer.image);
-        let mut rename = |values: &mut Values| -> Result<()> {
-            super::set_value(values, "LayerName", Value::Text(layer.name.clone()));
-            Ok(())
-        };
-        let id = editor.add_layer(source.database(), &payload, raster, Some(&mut rename), None)?;
         editor.append_to_folder(editor.root_id, id, None)?;
-        if !image.is_transparent() {
-            editor.set_layer_image(id, image, (0, 0))?;
-            composite.blend_over(image, 0, 0);
-        }
         ids.push(id);
     }
-    replace_preview(&editor.db, &composite)?;
+    let thumbnail = match overlay {
+        Some(overlay) => {
+            let mut base = resize(&composite, overlay.width, overlay.height, Filter::Box);
+            base.blend_over(overlay, 0, 0);
+            base
+        }
+        None => composite,
+    };
+    replace_preview(&editor.db, &thumbnail)?;
     editor.save(output)?;
     Ok(ids)
 }
@@ -119,6 +395,8 @@ pub struct WorkOptions {
     pub story_index: Option<i64>,
     /// Files the output must not overwrite (their folders are refused as the output folder).
     pub inputs: Vec<PathBuf>,
+    /// .clip files (after the template) to copy vector and text layers from.
+    pub donor_sources: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -135,6 +413,7 @@ pub struct RasterWorkWriter {
     overrides: Values,
     pages: Vec<PathBuf>,
     pub canvas: TemplateCanvas,
+    pub donors: Donors,
 }
 
 impl RasterWorkWriter {
@@ -166,6 +445,7 @@ impl RasterWorkWriter {
             }
         }
         let canvas = template_canvas(&ClipDocument::read(&options.template)?);
+        let donors = Donors::find(&options.template, &options.donor_sources)?;
         let mut canvas_values = match &options.work {
             Some((_, cmc)) => work_canvas_values(cmc)?,
             None => Vec::new(),
@@ -186,17 +466,26 @@ impl RasterWorkWriter {
             overrides,
             pages: Vec::new(),
             canvas,
+            donors,
         })
     }
 
     /// Write the next page (numbered from 1 in the order they are written).
-    pub fn write_page(&mut self, layers: &[RasterLayer]) -> Result<PathBuf> {
+    pub fn write_page(&mut self, layers: &[PageLayer], overlay: Option<&RgbaImage>) -> Result<PathBuf> {
         let number = self.pages.len() as i64 + 1;
         let output = self
             .options
             .out_dir
             .join(page_file_name(&self.options.name_pattern, number));
-        write_raster_page(&self.options.template, layers, &output, number - 1, &self.canvas_values)?;
+        write_name_page(
+            &self.options.template,
+            layers,
+            &self.donors,
+            overlay,
+            &output,
+            number - 1,
+            &self.canvas_values,
+        )?;
         self.pages.push(output.clone());
         Ok(output)
     }

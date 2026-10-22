@@ -134,6 +134,8 @@
         </div>
         <div id="ne-csp">
           <p class="hint">ページごとに .clip を作り、ラフ線・コマ枠・フキダシ・セリフを別々のレイヤーにします（取り込んだネーム用紙のラフ画像もレイヤーに）。ネームの基本枠を、ひな形の基本枠に合わせます。</p>
+          <label class="check"><input type="checkbox" id="ne-editable" checked /> 線をベクターレイヤー、セリフをテキストレイヤーにする（CSP で直せる）</label>
+          <p class="hint">CSP で描いたベクター線とテキストのレイヤーを、ひな形か取り込み元のネーム用紙から写して使います。見つからないときは画像レイヤーになります。</p>
           <div class="field">
             <span>ひな形のページ</span>
             <output id="ne-template" class="path">未選択</output>

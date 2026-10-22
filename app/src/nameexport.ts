@@ -1,7 +1,17 @@
-// Writing the name data out: CSP pages (one raster layer per kind of part,
-// plus the work .cmc), a PDF to read or share, and the script as text.
+// Writing the name data out: CSP pages (a layer per kind of part, editable
+// vector lines and texts where CSP-made layers to copy are found, plus the
+// work .cmc), a PDF to read or share, and the script as text.
 import { invoke } from "@tauri-apps/api/core";
-import { INK, drawBalloon, drawLineText, drawPanel, drawStroke, type MmToPx } from "./pagedraw";
+import {
+  BALLOON_LINE_MM,
+  INK,
+  PANEL_LINE_MM,
+  drawBalloon,
+  drawLineText,
+  drawPanel,
+  drawStroke,
+  type MmToPx,
+} from "./pagedraw";
 import { KIND_LABELS, basicBox, trimBox, type Page, type Project, type RoughImage } from "./project";
 import { sceneSpans } from "./story";
 
@@ -14,8 +24,16 @@ export interface TemplateCanvas {
   basicPx: [number, number, number, number] | null;
 }
 
+/** `begin_name_export`: the canvas, and which parts can be editable layers. */
+export interface NameExportStart extends TemplateCanvas {
+  vectorLayers: boolean;
+  textLayers: boolean;
+}
+
 /** Bigger page images are drawn smaller and scaled up on the Rust side. */
 const MAX_LAYER_PIXELS = 40_000_000;
+/** Width of the image drawn over the page thumbnail. */
+const OVERLAY_WIDTH = 1200;
 
 /**
  * Where the name's page lands on the template page: its basic frame onto the
@@ -78,6 +96,70 @@ export function drawPart(ctx: CanvasRenderingContext2D, page: Page, kind: LayerK
   }
 }
 
+/** A CSP vector line in template px; points are `[x, y, width factor]`. */
+export interface VectorLineMeta {
+  points: [number, number, number][];
+  closed: boolean;
+  widthPx: number;
+}
+
+/** One layer of a page as `export_name_page` takes it, bottom first. */
+export type LayerMeta =
+  | { kind: "raster"; name: string; length: number }
+  | { kind: "vector"; name: string; lines: VectorLineMeta[] }
+  | { kind: "text"; text: string; frame: [number, number, number, number]; fontSizePt: number; vertical: boolean };
+
+export type LinePartKind = Exclude<LayerKind, "text">;
+
+/** One kind of line part of a page as vector lines (`m`: mm → template px). */
+export function vectorLines(page: Page, kind: LinePartKind, m: MmToPx): VectorLineMeta[] {
+  const map = (points: readonly (readonly number[])[], width: (point: readonly number[]) => number) =>
+    points.map((point): [number, number, number] => [point[0] * m.scale + m.x, point[1] * m.scale + m.y, width(point)]);
+  switch (kind) {
+    case "strokes":
+      // Same light-pressure thinning as drawStroke.
+      return page.strokes.map((stroke) => ({
+        points: map(stroke.points, (point) => 0.35 + 0.65 * point[2]),
+        closed: stroke.closed,
+        widthPx: stroke.widthMm * m.scale,
+      }));
+    case "panels":
+      return page.panels.map((panel) => ({
+        points: map(panel.shape, () => 1),
+        closed: true,
+        widthPx: PANEL_LINE_MM * m.scale,
+      }));
+    case "balloons":
+      return page.lines
+        .filter((line) => line.balloon && line.balloon.length >= 3)
+        .map((line) => ({ points: map(line.balloon!, () => 1), closed: true, widthPx: BALLOON_LINE_MM * m.scale }));
+  }
+}
+
+/**
+ * Each line of dialogue as a CSP text layer: its box in template px and its
+ * size in CSP pt (pt of the template's resolution). CSP wraps text at the
+ * frame, so the frame gets room to grow along the text (down for vertical,
+ * right for horizontal), where its own font runs longer than ours.
+ */
+export function textLayers(page: Page, m: MmToPx, resolution: number): LayerMeta[] {
+  return page.lines
+    .filter((line) => line.text.trim())
+    .map((line) => {
+      const [x0, y0, x1, y1] = mapBox(line.box, m);
+      const frame: [number, number, number, number] = line.vertical
+        ? [x0, y0, x1, y1 + (y1 - y0) * 0.25]
+        : [x0, y0, x1 + (x1 - x0) * 0.25, y1];
+      return {
+        kind: "text",
+        text: line.text,
+        frame,
+        fontSizePt: (line.fontSizePt * m.scale * 25.4) / resolution,
+        vertical: line.vertical,
+      };
+    });
+}
+
 /** `[u32 JSON length][JSON][parts...]`, the raw request body the Rust side splits. */
 export function packBody(meta: unknown, parts: Uint8Array[]): Uint8Array {
   const json = new TextEncoder().encode(JSON.stringify(meta));
@@ -106,57 +188,89 @@ export interface CspExportRequest {
   workName: string | null;
   storyIndex: number | null;
   inputs: string[];
+  /** .clip files (the name sheet) to copy CSP's vector / text layers from. */
+  donors: string[];
 }
 
 export interface CspExportReport {
   pages: string[];
   work: string | null;
+  /** Which parts were written as editable vector / text layers. */
+  vectorLayers: boolean;
+  textLayers: boolean;
 }
 
-/** Write every page as a .clip with one layer per kind of part, then the work. */
+/**
+ * Write every page as a .clip, then the work. With `editable`, lines go as
+ * vector layers and dialogue as text layers when the template or the name
+ * sheet has such a CSP-made layer to copy; otherwise each kind of part is
+ * one image layer.
+ */
 export async function exportToCsp(
   project: Project,
   request: CspExportRequest,
+  editable: boolean,
   progress: (message: string) => void,
 ): Promise<CspExportReport> {
-  const canvas = await invoke<TemplateCanvas>("begin_name_export", { request });
+  const start = await invoke<NameExportStart>("begin_name_export", { request });
+  const vector = editable && start.vectorLayers;
+  const text = editable && start.textLayers;
   try {
-    const full = projectToTemplate(project, canvas);
-    const factor = Math.min(1, Math.sqrt(MAX_LAYER_PIXELS / (canvas.widthPx * canvas.heightPx)));
-    const width = Math.round(canvas.widthPx * factor);
-    const height = Math.round(canvas.heightPx * factor);
+    const full = projectToTemplate(project, start);
+    const factor = Math.min(1, Math.sqrt(MAX_LAYER_PIXELS / (start.widthPx * start.heightPx)));
+    const width = Math.round(start.widthPx * factor);
+    const height = Math.round(start.heightPx * factor);
     const m = scaled(full, factor);
     const drawing = document.createElement("canvas");
     drawing.width = width;
     drawing.height = height;
     const ctx = drawing.getContext("2d")!;
+    const overlay = document.createElement("canvas");
+    overlay.width = Math.min(OVERLAY_WIDTH, start.widthPx);
+    overlay.height = Math.round((start.heightPx * overlay.width) / start.widthPx);
+    const small = scaled(full, overlay.width / start.widthPx);
+    const overlayCtx = overlay.getContext("2d")!;
     for (const [index, page] of project.pages.entries()) {
       progress(`${index + 1} / ${project.pages.length} ページを書き出し中…`);
-      const layers: [string, Uint8Array][] = [];
+      const layers: LayerMeta[] = [];
+      const pngs: Uint8Array[] = [];
+      overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
       for (const kind of ["strokes", "panels", "balloons", "text"] as LayerKind[]) {
-        // An empty part goes as no bytes; the Rust side makes it a blank layer.
-        if (!partCount(page, kind)) {
-          layers.push([LAYER_NAMES[kind], new Uint8Array()]);
+        if (kind === "text" ? text : vector) {
+          if (kind === "text") layers.push(...textLayers(page, full, start.resolution));
+          else layers.push({ kind: "vector", name: LAYER_NAMES[kind], lines: vectorLines(page, kind, full) });
+          // CSP draws these itself when the page is opened; the thumbnail does not.
+          drawPart(overlayCtx, page, kind, small);
           continue;
         }
-        ctx.clearRect(0, 0, width, height);
-        drawPart(ctx, page, kind, m);
-        layers.push([LAYER_NAMES[kind], await encode(drawing, "image/png")]);
+        // An empty part goes as no bytes; the Rust side makes it a blank layer.
+        let png: Uint8Array = new Uint8Array();
+        if (partCount(page, kind)) {
+          ctx.clearRect(0, 0, width, height);
+          drawPart(ctx, page, kind, m);
+          png = await encode(drawing, "image/png");
+        }
+        layers.push({ kind: "raster", name: LAYER_NAMES[kind], length: png.length });
+        pngs.push(png);
       }
+      const overlayPng = vector || text ? await encode(overlay, "image/png") : new Uint8Array();
       const roughs = page.roughs.map((rough: RoughImage) => ({
         layerId: rough.layerId,
         sheetCrop: rough.sheetCrop,
         target: mapBox(rough.box, full),
       }));
       const meta = {
-        layers: layers.map(([name, png]) => [name, png.length]),
+        layers,
         sheet: project.source?.path ?? null,
         roughs: project.source ? roughs : [],
+        overlayLength: overlayPng.length,
       };
-      await invoke("export_name_page", packBody(meta, layers.map(([, png]) => png)));
+      await invoke("export_name_page", packBody(meta, [...pngs, overlayPng]));
     }
     drawing.width = 0;
-    return await invoke<CspExportReport>("finish_name_export");
+    overlay.width = 0;
+    const report = await invoke<{ pages: string[]; work: string | null }>("finish_name_export");
+    return { ...report, vectorLayers: vector, textLayers: text };
   } catch (error) {
     await invoke("cancel_name_export").catch(() => undefined);
     throw error;

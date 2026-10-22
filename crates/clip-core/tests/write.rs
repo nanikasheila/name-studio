@@ -329,7 +329,7 @@ fn splits_a_sheet_into_a_work() {
 
 #[test]
 fn writes_whole_page_raster_layers_into_a_work() {
-    use clip_core::write::raster_page::{RasterLayer, RasterWorkWriter, WorkOptions};
+    use clip_core::write::raster_page::{PageLayer, RasterLayer, RasterWorkWriter, WorkOptions};
     let folder = tempfile::tempdir().unwrap();
     let template_path = template(folder.path());
     let cmc_path = build_cmc(&folder.path().join("template").join("name.cmc"), &["page.clip"]);
@@ -342,6 +342,7 @@ fn writes_whole_page_raster_layers_into_a_work() {
         work: Some(("第2話".into(), cmc_path.clone())),
         story_index: Some(2),
         inputs: Vec::new(),
+        donor_sources: Vec::new(),
     })
     .unwrap();
     assert_eq!((writer.canvas.width_px, writer.canvas.height_px), (400, 560));
@@ -358,16 +359,19 @@ fn writes_whole_page_raster_layers_into_a_work() {
     );
     for _ in 0..2 {
         writer
-            .write_page(&[
-                RasterLayer {
-                    name: "コマ枠".into(),
-                    image: frame.clone(),
-                },
-                RasterLayer {
-                    name: "フキダシ".into(),
-                    image: RgbaImage::transparent(400, 560),
-                },
-            ])
+            .write_page(
+                &[
+                    PageLayer::Raster(RasterLayer {
+                        name: "コマ枠".into(),
+                        image: frame.clone(),
+                    }),
+                    PageLayer::Raster(RasterLayer {
+                        name: "フキダシ".into(),
+                        image: RgbaImage::transparent(400, 560),
+                    }),
+                ],
+                None,
+            )
             .unwrap();
     }
     let report = writer.finish().unwrap();
@@ -397,6 +401,117 @@ fn writes_whole_page_raster_layers_into_a_work() {
         work: None,
         story_index: None,
         inputs: Vec::new(),
+        donor_sources: Vec::new(),
     });
     assert!(refused.is_err());
+}
+
+#[test]
+fn writes_vector_and_text_layers_copied_from_the_sheet() {
+    use clip_core::LayerKind;
+    use clip_core::text::NewText;
+    use clip_core::vector::NewVectorLine;
+    use clip_core::write::raster_page::{PageLayer, RasterWorkWriter, WorkOptions};
+    let folder = tempfile::tempdir().unwrap();
+    let template_path = template(folder.path());
+    let sheet_path = sheet(folder.path());
+    let sheet_before = digest(&sheet_path);
+    let options = |donor_sources: Vec<PathBuf>| WorkOptions {
+        template: template_path.clone(),
+        out_dir: folder.path().join("out"),
+        name_pattern: DEFAULT_NAME_PATTERN.into(),
+        work: None,
+        story_index: None,
+        inputs: vec![sheet_path.clone()],
+        donor_sources,
+    };
+    // The template has no vector or text layer to copy: without the sheet
+    // there is nothing to make them from.
+    let mut bare = RasterWorkWriter::new(options(Vec::new())).unwrap();
+    assert!(bare.donors.vector.is_none() && bare.donors.text.is_none());
+    let panel = NewVectorLine {
+        points: vec![
+            (20.0, 30.0, 1.0),
+            (380.0, 30.0, 1.0),
+            (380.0, 250.0, 1.0),
+            (20.0, 250.0, 1.0),
+        ],
+        closed: true,
+        width_px: 6.0,
+    };
+    let stroke = NewVectorLine {
+        points: vec![(50.0, 300.0, 0.2), (120.0, 340.0, 0.9)],
+        closed: false,
+        width_px: 3.0,
+    };
+    let text = NewText {
+        text: "こんにちは\nせかい".into(),
+        frame: [300, 60, 340, 200],
+        font_size_pt: 7.5,
+        vertical: true,
+    };
+    let layers = [
+        PageLayer::Vector {
+            name: "コマ枠".into(),
+            lines: vec![panel.clone()],
+        },
+        PageLayer::Vector {
+            name: "ラフ線".into(),
+            lines: vec![stroke.clone()],
+        },
+        PageLayer::Text(text.clone()),
+    ];
+    assert!(bare.write_page(&layers, None).is_err());
+
+    let mut writer = RasterWorkWriter::new(options(vec![sheet_path.clone()])).unwrap();
+    assert!(writer.donors.vector.is_some() && writer.donors.text.is_some());
+    let page_path = writer.write_page(&layers, None).unwrap();
+    writer.finish().unwrap();
+    assert_eq!(digest(&sheet_path), sheet_before);
+
+    let page = ClipDocument::read(&page_path).unwrap();
+    let find = |name: &str| {
+        page.layers()
+            .into_iter()
+            .find(|layer| layer.name == name)
+            .unwrap()
+            .clone()
+    };
+    let frame = find("コマ枠");
+    assert_eq!(frame.kind, LayerKind::Vector);
+    let objects = page.vector_objects(&frame).unwrap();
+    assert_eq!(objects.len(), 1);
+    // CSP marks a closed polyline (折れ線 with 線を閉じる) with 0x100.
+    assert_eq!(objects[0].flags, 0x111);
+    assert_eq!(
+        objects[0].points,
+        vec![(20.0, 30.0), (380.0, 30.0), (380.0, 250.0), (20.0, 250.0)]
+    );
+    assert_eq!(objects[0].brush_size, 3.0);
+    let rough = page.vector_objects(&find("ラフ線")).unwrap();
+    assert_eq!(rough[0].flags, 0x11);
+    assert_eq!(rough[0].points.len(), 2);
+
+    let said = find("こんにちは");
+    assert_eq!(said.kind, LayerKind::Text);
+    assert_eq!(page.text_strings(&said), vec!["こんにちは\r\nせかい".to_owned()]);
+    // CSP shows garbage for text stored as TEXT instead of a blob.
+    let stored: rusqlite::types::Value = page
+        .database()
+        .query_row(
+            "SELECT TextLayerString FROM Layer WHERE MainId = ?1",
+            [said.main_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(matches!(stored, rusqlite::types::Value::Blob(_)));
+    let attributes = &page.text_blocks(&said).unwrap()[0];
+    assert_eq!(attributes.font_size_pt, Some(7.5));
+    assert_eq!(attributes.bbox, Some((300, 60, 340, 200)));
+    // The sheet's text, folder and other layers are not copied along.
+    assert!(
+        page.layers()
+            .iter()
+            .all(|layer| layer.name != "あ" && layer.name != "テンプレート")
+    );
 }

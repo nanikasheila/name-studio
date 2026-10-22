@@ -23,7 +23,7 @@ use crate::raster::{Filter, decode_png, resize};
 use crate::text::{build_tlv, parse_tlv, split_attribute_array, transform_text_attributes};
 use crate::vector::{select_vector_objects, transform_vector_data};
 
-const SCHEMA_TABLES: [&str; 5] = ["Layer", "Canvas", "VectorObjectList", "BrushStyleManager", "BrushStyle"];
+pub(crate) const SCHEMA_TABLES: [&str; 5] = ["Layer", "Canvas", "VectorObjectList", "BrushStyleManager", "BrushStyle"];
 /// Vector objects refer to brush styles by id, so these rows keep their ids.
 const SHARED_TABLES: [&str; 2] = ["BrushStyleManager", "BrushStyle"];
 const TEXT_BLOBS: [&str; 1] = ["TextLayerAttributes"];
@@ -438,7 +438,7 @@ pub(crate) fn replace_preview(db: &Connection, image: &crate::RgbaImage) -> Resu
 }
 
 /// Copy brush styles (keeping ids) when the template has none.
-fn share_rows(target: &Connection, source: &Connection) -> Result<()> {
+pub(crate) fn share_rows(target: &Connection, source: &Connection) -> Result<()> {
     let (source_tables, target_tables) = (table_names(source)?, table_names(target)?);
     for table in SHARED_TABLES {
         if !source_tables.contains(table) || !target_tables.contains(table) {
