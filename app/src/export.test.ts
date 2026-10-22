@@ -54,3 +54,11 @@ describe("helpers", () => {
     expect(lines).toEqual(["1 ページを書き出しました", "作品ファイル: w.cmc", "3 ページ: 注意", "全体"]);
   });
 });
+
+describe("buildRequest with several sources", () => {
+  it("refuses the folder of any source", () => {
+    const sources = ["C:\\work\\project\\name.namestudio", "C:\\work\\out\\sheet.clip"];
+    expect(buildRequest(form, sources)).toMatch(/同じフォルダー/);
+    expect(typeof buildRequest(form, sources.slice(0, 1))).toBe("object");
+  });
+});

@@ -326,3 +326,77 @@ fn splits_a_sheet_into_a_work() {
     };
     assert!(split_sheet(&same).is_err());
 }
+
+#[test]
+fn writes_whole_page_raster_layers_into_a_work() {
+    use clip_core::write::raster_page::{RasterLayer, RasterWorkWriter, WorkOptions};
+    let folder = tempfile::tempdir().unwrap();
+    let template_path = template(folder.path());
+    let cmc_path = build_cmc(&folder.path().join("template").join("name.cmc"), &["page.clip"]);
+    let before = digest(&template_path);
+    let out = folder.path().join("work");
+    let mut writer = RasterWorkWriter::new(WorkOptions {
+        template: template_path.clone(),
+        out_dir: out.clone(),
+        name_pattern: DEFAULT_NAME_PATTERN.into(),
+        work: Some(("第2話".into(), cmc_path.clone())),
+        story_index: Some(2),
+        inputs: Vec::new(),
+    })
+    .unwrap();
+    assert_eq!((writer.canvas.width_px, writer.canvas.height_px), (400, 560));
+    // Panels drawn at half size are scaled up to the page; balloons stay empty.
+    let mut frame = RgbaImage::transparent(200, 280);
+    frame.paste(
+        &RgbaImage {
+            width: 50,
+            height: 40,
+            pixels: [0, 0, 0, 255].repeat(2000),
+        },
+        20,
+        30,
+    );
+    for _ in 0..2 {
+        writer
+            .write_page(&[
+                RasterLayer {
+                    name: "コマ枠".into(),
+                    image: frame.clone(),
+                },
+                RasterLayer {
+                    name: "フキダシ".into(),
+                    image: RgbaImage::transparent(400, 560),
+                },
+            ])
+            .unwrap();
+    }
+    let report = writer.finish().unwrap();
+    assert_eq!(report.pages.len(), 2);
+    assert_eq!(digest(&template_path), before);
+    let project = CmcProject::read(report.work.unwrap()).unwrap();
+    assert_eq!(project.pages.len(), 2);
+    let page = ClipDocument::read(&report.pages[1]).unwrap();
+    assert_eq!(canvas_page(&report.pages[1]).0, 1);
+    let names: Vec<&str> = page.root.children.iter().map(|layer| layer.name.as_str()).collect();
+    assert_eq!(&names[names.len() - 2..], ["コマ枠", "フキダシ"]);
+    let frame_layer = page.root.children.iter().find(|layer| layer.name == "コマ枠").unwrap();
+    let pixels = page.render_layer_pixels(frame_layer).unwrap().unwrap();
+    let (x0, y0, x1, y1) = pixels.alpha_bbox().unwrap();
+    // Lanczos leaves a faint fringe a few pixels wide.
+    let near = |a: u32, b: u32| a.abs_diff(b) <= 6;
+    assert!(
+        near(x0, 40) && near(y0, 60) && near(x1, 140) && near(y1, 140),
+        "{:?}",
+        (x0, y0, x1, y1)
+    );
+    // Writing into the template's folder would risk the originals.
+    let refused = RasterWorkWriter::new(WorkOptions {
+        template: template_path.clone(),
+        out_dir: folder.path().join("template"),
+        name_pattern: DEFAULT_NAME_PATTERN.into(),
+        work: None,
+        story_index: None,
+        inputs: Vec::new(),
+    });
+    assert!(refused.is_err());
+}

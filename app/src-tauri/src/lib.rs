@@ -13,17 +13,23 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use clip_core::ClipDocument;
+use clip_core::RgbaImage;
 use clip_core::layout::ReadingOrder;
 use clip_core::plan::Fit;
+use clip_core::raster::decode_png;
 use clip_core::raster::{Filter, resize};
+use clip_core::write::raster_page::{RasterLayer, RasterWorkWriter, TemplateCanvas, WorkOptions, WorkReport};
 use clip_core::write::split::{DEFAULT_NAME_PATTERN, SplitOptions, SplitReport, split_sheet};
 use name_model::{PageFormat, Project};
 use serde::{Deserialize, Serialize};
+use tauri::Manager;
 use tauri::ipc::Response;
 
 #[derive(Default)]
 struct AppState {
     document: Mutex<Option<ClipDocument>>,
+    /// Pages of the name data being written for CSP, one call per page.
+    name_export: Mutex<Option<RasterWorkWriter>>,
 }
 
 fn with_layer<T>(
@@ -218,6 +224,243 @@ async fn rough_image(
     Ok(Response::new(image.to_png().map_err(|error| error.to_string())?))
 }
 
+// --- writing the name data out -----------------------------------------------
+
+fn lock_error<T>(_: T) -> String {
+    "内部エラー（ロック）".to_owned()
+}
+
+/// A request body of `[u32 little-endian JSON length][JSON][binary parts...]`:
+/// large images travel as raw bytes, not as JSON number arrays.
+fn split_body<T: serde::de::DeserializeOwned>(body: &[u8]) -> Result<(T, &[u8]), String> {
+    let length = body
+        .get(..4)
+        .map(|bytes| u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize)
+        .ok_or("データが壊れています")?;
+    let json = body.get(4..4 + length).ok_or("データが壊れています")?;
+    let meta = serde_json::from_slice(json).map_err(|error| error.to_string())?;
+    Ok((meta, &body[4 + length..]))
+}
+
+fn raw_body(request: &tauri::ipc::Request<'_>) -> Result<Vec<u8>, String> {
+    match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => Ok(bytes.clone()),
+        tauri::ipc::InvokeBody::Json(_) => Err("データの形式が違います".to_owned()),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NameExportRequest {
+    template: String,
+    out_dir: String,
+    work_template: Option<String>,
+    work_name: Option<String>,
+    story_index: Option<i64>,
+    /// The name data and its source sheet: never overwritten.
+    inputs: Vec<String>,
+}
+
+/// Start writing the name data as CSP pages; returns the template's canvas.
+#[tauri::command]
+async fn begin_name_export(
+    request: NameExportRequest,
+    state: tauri::State<'_, AppState>,
+) -> Result<TemplateCanvas, String> {
+    let work = match (request.work_template, request.work_name) {
+        (Some(template), Some(name)) if !name.trim().is_empty() => {
+            Some((name.trim().to_owned(), PathBuf::from(template)))
+        }
+        _ => None,
+    };
+    let writer = RasterWorkWriter::new(WorkOptions {
+        template: request.template.into(),
+        out_dir: request.out_dir.into(),
+        name_pattern: DEFAULT_NAME_PATTERN.to_owned(),
+        work,
+        story_index: request.story_index,
+        inputs: request.inputs.into_iter().map(PathBuf::from).collect(),
+    })
+    .map_err(|error| error.to_string())?;
+    let canvas = writer.canvas;
+    *state.name_export.lock().map_err(lock_error)? = Some(writer);
+    Ok(canvas)
+}
+
+/// A rough image of the source sheet and where it goes on the page (template px).
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RoughPlacement {
+    layer_id: i64,
+    sheet_crop: [f64; 4],
+    target: [f64; 4],
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PageLayersMeta {
+    /// Name and PNG byte length of each layer, bottom first (0 for a blank layer).
+    layers: Vec<(String, usize)>,
+    sheet: Option<String>,
+    #[serde(default)]
+    roughs: Vec<RoughPlacement>,
+}
+
+/// Rough images from the source sheet, placed on one transparent page image.
+fn rough_layer(
+    state: &AppState,
+    sheet: &str,
+    roughs: &[RoughPlacement],
+    width: u32,
+    height: u32,
+) -> Result<RgbaImage, String> {
+    ensure_sheet(state, sheet)?;
+    let mut page = RgbaImage::transparent(width, height);
+    for rough in roughs {
+        let [x0, y0, x1, y1] = rough.sheet_crop;
+        let region = (x0.floor() as i64, y0.floor() as i64, x1.ceil() as i64, y1.ceil() as i64);
+        let pixels = with_layer(state, rough.layer_id, |document, layer| {
+            document.layer_pixels_in_box(layer, region)
+        })?;
+        let [tx0, ty0, tx1, ty1] = rough.target;
+        let (w, h) = ((tx1 - tx0).round().max(1.0) as u32, (ty1 - ty0).round().max(1.0) as u32);
+        page.blend_over(
+            &resize(&pixels, w, h, Filter::Lanczos3),
+            tx0.round() as i64,
+            ty0.round() as i64,
+        );
+    }
+    Ok(page)
+}
+
+/// Write the next page from its layer images (raw body, see [`split_body`]).
+#[tauri::command]
+async fn export_name_page(app: tauri::AppHandle, request: tauri::ipc::Request<'_>) -> Result<String, String> {
+    let body = raw_body(&request)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let (meta, mut rest) = split_body::<PageLayersMeta>(&body)?;
+        let mut writer = state
+            .name_export
+            .lock()
+            .map_err(lock_error)?
+            .take()
+            .ok_or("書き出しが始まっていません")?;
+        let result = (|| {
+            let (width, height) = (writer.canvas.width_px, writer.canvas.height_px);
+            let mut layers = Vec::new();
+            if let Some(sheet) = meta.sheet.as_deref().filter(|_| !meta.roughs.is_empty()) {
+                layers.push(RasterLayer {
+                    name: "ラフ（ネーム用紙）".to_owned(),
+                    image: rough_layer(&state, sheet, &meta.roughs, width, height)?,
+                });
+            }
+            for (name, length) in &meta.layers {
+                let png = rest.get(..*length).ok_or("データが壊れています")?;
+                rest = &rest[*length..];
+                let image = if png.is_empty() {
+                    RgbaImage::transparent(width, height)
+                } else {
+                    decode_png(png).map_err(|error| error.to_string())?
+                };
+                layers.push(RasterLayer {
+                    name: name.clone(),
+                    image,
+                });
+            }
+            writer
+                .write_page(&layers)
+                .map(|path| path.display().to_string())
+                .map_err(|error| error.to_string())
+        })();
+        *state.name_export.lock().map_err(lock_error)? = Some(writer);
+        result
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+/// Finish: write the work (.cmc) around the pages written so far.
+#[tauri::command]
+async fn finish_name_export(state: tauri::State<'_, AppState>) -> Result<WorkReport, String> {
+    let writer = state
+        .name_export
+        .lock()
+        .map_err(lock_error)?
+        .take()
+        .ok_or("書き出しが始まっていません")?;
+    tauri::async_runtime::spawn_blocking(move || writer.finish().map_err(|error| error.to_string()))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn cancel_name_export(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    *state.name_export.lock().map_err(lock_error)? = None;
+    Ok(())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PdfMeta {
+    path: String,
+    title: String,
+    right_to_left: bool,
+    pages: Vec<PdfPageMeta>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PdfPageMeta {
+    width_mm: f64,
+    height_mm: f64,
+    width_px: u32,
+    height_px: u32,
+    length: usize,
+}
+
+/// Write a PDF of page images (raw body: JSON, then the JPEGs in page order).
+#[tauri::command]
+async fn write_pdf(request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    let body = raw_body(&request)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let (meta, mut rest) = split_body::<PdfMeta>(&body)?;
+        let mut pages = Vec::new();
+        for page in &meta.pages {
+            let jpeg = rest.get(..page.length).ok_or("データが壊れています")?;
+            rest = &rest[page.length..];
+            pages.push(name_model::pdf::PdfImagePage {
+                width_mm: page.width_mm,
+                height_mm: page.height_mm,
+                width_px: page.width_px,
+                height_px: page.height_px,
+                jpeg: jpeg.to_vec(),
+            });
+        }
+        let pdf = name_model::pdf::image_pdf(&meta.title, &pages, meta.right_to_left);
+        write_through_temporary(Path::new(&meta.path), &pdf)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+/// Write a text file (the script) as UTF-8 with a byte order mark, which
+/// Windows' Notepad and Excel read as UTF-8.
+#[tauri::command]
+async fn write_text_file(path: String, text: String) -> Result<(), String> {
+    let mut bytes = "\u{FEFF}".as_bytes().to_vec();
+    bytes.extend_from_slice(text.replace('\n', "\r\n").as_bytes());
+    write_through_temporary(Path::new(&path), &bytes)
+}
+
+fn write_through_temporary(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let mut temporary = path.as_os_str().to_owned();
+    temporary.push(".tmp");
+    let temporary = PathBuf::from(temporary);
+    std::fs::write(&temporary, bytes).map_err(|error| error.to_string())?;
+    std::fs::rename(&temporary, path).map_err(|error| error.to_string())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -231,7 +474,13 @@ pub fn run() {
             import_project,
             load_project,
             save_project,
-            rough_image
+            rough_image,
+            begin_name_export,
+            export_name_page,
+            finish_name_export,
+            cancel_name_export,
+            write_pdf,
+            write_text_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running Name Studio");

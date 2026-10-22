@@ -7,6 +7,7 @@
 
 pub mod import;
 pub mod model;
+pub mod pdf;
 pub mod validate;
 
 use std::path::Path;

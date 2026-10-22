@@ -81,9 +81,11 @@ pub fn split_sheet(options: &SplitOptions) -> Result<SplitReport> {
         }
     }
     std::fs::create_dir_all(&options.out_dir)?;
-    let out_dir = options.out_dir.canonicalize()?;
+    // Compare canonical paths, but write to the folder as given: on Windows
+    // the canonical form is a `\\?\` path, which would show in reports.
+    let canonical_out = options.out_dir.canonicalize()?;
     for input in &inputs {
-        if folder_of(input)? == out_dir {
+        if folder_of(input)? == canonical_out {
             return Err(CspError::format(
                 "The output folder must differ from the input folders so originals are never overwritten",
             ));
@@ -140,7 +142,7 @@ pub fn split_sheet(options: &SplitOptions) -> Result<SplitReport> {
         warnings: plan.warnings.clone(),
     };
     for (position, page) in pages.iter().enumerate() {
-        let output = out_dir.join(page_file_name(&options.name_pattern, page.number));
+        let output = options.out_dir.join(page_file_name(&options.name_pattern, page.number));
         let index = options.work.is_some().then_some(position as i64);
         let result = write_page(&options.template, &sheet, page, &output, index, &work_values)?;
         report.pages.push(WrittenPage {
@@ -158,7 +160,7 @@ pub fn split_sheet(options: &SplitOptions) -> Result<SplitReport> {
         report.work = Some(write_cmc(
             cmc,
             &paths,
-            &out_dir.join(format!("{name}.cmc")),
+            &options.out_dir.join(format!("{name}.cmc")),
             &overrides,
         )?);
     }

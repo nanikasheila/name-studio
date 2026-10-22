@@ -49,6 +49,7 @@
           <button id="editor-prev" title="前の見開き（→）">▶</button>
         </div>
         <label class="check edit-only"><input type="checkbox" id="editor-first-alone" checked /> 1ページ目を単独</label>
+        <button id="name-export" title="CSP のページと作品、PDF、台本に書き出す">書き出す…</button>
       </div>
     </header>
     <main id="viewer" class="workspace">
@@ -120,6 +121,64 @@
         <div class="actions">
           <button value="cancel" formnovalidate>閉じる</button>
           <button type="button" id="export-run" class="primary">書き出す</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="name-export-dialog" class="export">
+      <form method="dialog">
+        <h2>ネームを書き出す</h2>
+        <div class="segmented kinds" role="group" aria-label="書き出す形">
+          <button type="button" id="ne-kind-csp" class="active">CSP のページ</button>
+          <button type="button" id="ne-kind-pdf">PDF</button>
+          <button type="button" id="ne-kind-text">台本（テキスト）</button>
+        </div>
+        <div id="ne-csp">
+          <p class="hint">ページごとに .clip を作り、ラフ線・コマ枠・フキダシ・セリフを別々のレイヤーにします（取り込んだネーム用紙のラフ画像もレイヤーに）。ネームの基本枠を、ひな形の基本枠に合わせます。</p>
+          <div class="field">
+            <span>ひな形のページ</span>
+            <output id="ne-template" class="path">未選択</output>
+            <button type="button" id="ne-pick-template">選ぶ…</button>
+            <small>同じ作品の設定で CSP が保存した、空のページ（.clip）</small>
+          </div>
+          <div class="field">
+            <span>書き出し先</span>
+            <output id="ne-out-dir" class="path">未選択</output>
+            <button type="button" id="ne-pick-out-dir">選ぶ…</button>
+          </div>
+          <label class="check"><input type="checkbox" id="ne-make-work" checked /> 作品ファイル（.cmc）も作る</label>
+          <div class="field" id="ne-work-fields">
+            <span>作品のひな形</span>
+            <output id="ne-work-template" class="path">未選択</output>
+            <button type="button" id="ne-pick-work-template">選ぶ…</button>
+            <span>作品名</span>
+            <input id="ne-work-name" type="text" />
+            <span>話数</span>
+            <input id="ne-story-index" type="number" min="0" placeholder="ひな形のまま" />
+          </div>
+        </div>
+        <div id="ne-pdf" hidden>
+          <p class="hint">読み返しや打ち合わせ用に、全ページを 1 つの PDF にします（右綴じで開くよう指定します）。</p>
+          <div class="field">
+            <span>範囲</span>
+            <select id="ne-pdf-area">
+              <option value="trim">仕上がり（裁ち落とし）で切る</option>
+              <option value="canvas">キャンバス全体</option>
+            </select>
+            <span>解像度</span>
+            <select id="ne-pdf-dpi">
+              <option value="150">150 dpi（軽い）</option>
+              <option value="200" selected>200 dpi</option>
+              <option value="300">300 dpi（印刷向け）</option>
+            </select>
+          </div>
+        </div>
+        <div id="ne-text" hidden>
+          <p class="hint">全ページのセリフを、ページ・コマ・話者つきのテキスト（.txt）にします。写植や打ち合わせに使えます。</p>
+        </div>
+        <p id="ne-message" class="message" role="status"></p>
+        <div class="actions">
+          <button value="cancel" formnovalidate>閉じる</button>
+          <button type="button" id="ne-run" class="primary">書き出す</button>
         </div>
       </form>
     </dialog>
