@@ -3,8 +3,8 @@
 // Coordinates on a page are millimetres; each page of the spread has its own
 // mm → screen mapping.
 import { spreads } from "./pages";
+import { INK, drawBalloon, drawLineText, drawPanel, drawStroke, tracePath } from "./pagedraw";
 import {
-  MM_PER_PT,
   addLine,
   addPanel,
   addStroke,
@@ -32,7 +32,6 @@ import {
   type Project,
   type RoughImage,
 } from "./project";
-import { drawText } from "./render";
 
 export type Tool = "select" | "cut" | "text" | "pen" | "eraser";
 
@@ -74,7 +73,6 @@ type Drag =
   | { kind: "pen"; slot: Slot; points: [number, number, number][] }
   | { kind: "erase"; slot: Slot; erased: number };
 
-const INK = "#1b1a18";
 const ACCENT = "#2f6fdb";
 const GAP = 18;
 const MARGIN = 28;
@@ -272,34 +270,19 @@ export class PageEditor {
     }
     ctx.globalAlpha = 1;
 
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
+    const m = { scale, x: slot.x, y: slot.y };
     for (const stroke of page.strokes) {
-      const selected = this.isSelected(page, "stroke", stroke.id);
-      ctx.strokeStyle = selected ? ACCENT : "#3a3834";
-      const points = stroke.points;
-      for (let i = 1; i < points.length; i++) {
-        const pressure = (points[i - 1][2] + points[i][2]) / 2;
-        ctx.lineWidth = Math.max(stroke.widthMm * (0.35 + 0.65 * pressure) * scale, 0.7);
-        ctx.beginPath();
-        ctx.moveTo(sx(points[i - 1][0]), sy(points[i - 1][1]));
-        ctx.lineTo(sx(points[i][0]), sy(points[i][1]));
-        ctx.stroke();
-      }
+      drawStroke(ctx, stroke, m, this.isSelected(page, "stroke", stroke.id) ? ACCENT : "#3a3834");
     }
 
     for (const panel of page.panels) {
       const selected = this.isSelected(page, "panel", panel.id);
-      ctx.beginPath();
-      panel.shape.forEach(([x, y], i) => (i === 0 ? ctx.moveTo(sx(x), sy(y)) : ctx.lineTo(sx(x), sy(y))));
-      ctx.closePath();
       if (selected) {
+        tracePath(ctx, panel.shape, m, true);
         ctx.fillStyle = "rgba(47, 111, 219, 0.08)";
         ctx.fill();
       }
-      ctx.strokeStyle = selected ? ACCENT : INK;
-      ctx.lineWidth = Math.max(0.6 * scale, 1);
-      ctx.stroke();
+      drawPanel(ctx, panel, m, selected ? ACCENT : INK);
       const [, y0, x1] = bounds(panel.shape);
       const radius = Math.max(4 * scale, 7);
       ctx.fillStyle = selected ? ACCENT : "rgba(47, 111, 219, 0.75)";
@@ -339,30 +322,9 @@ export class PageEditor {
     const sx = (x: number) => slot.x + x * scale;
     const sy = (y: number) => slot.y + y * scale;
     const selected = this.isSelected(slot.page, "line", line.id);
-    if (line.balloon && line.balloon.length > 2) {
-      ctx.beginPath();
-      line.balloon.forEach(([x, y], i) => (i === 0 ? ctx.moveTo(sx(x), sy(y)) : ctx.lineTo(sx(x), sy(y))));
-      ctx.closePath();
-      ctx.fillStyle = "#ffffff";
-      ctx.fill();
-      ctx.setLineDash(line.kind === "thought" ? [Math.max(2 * scale, 3), Math.max(1.5 * scale, 2)] : []);
-      ctx.strokeStyle = INK;
-      ctx.lineWidth = Math.max(0.3 * scale, 0.8);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-    drawText(
-      ctx,
-      {
-        text: line.text,
-        bbox: line.box,
-        fontSizePx: line.fontSizePt * MM_PER_PT,
-        fontName: null,
-        vertical: line.vertical,
-        inBalloon: !!line.balloon,
-      },
-      { scale, offsetX: slot.x, offsetY: slot.y },
-    );
+    const m = { scale, x: slot.x, y: slot.y };
+    drawBalloon(ctx, line, m);
+    drawLineText(ctx, line, m);
     const speaker = project.characters.find((character) => character.id === line.speaker);
     const [x0, y0, x1, y1] = line.box;
     if (speaker) {

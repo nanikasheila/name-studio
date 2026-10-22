@@ -54,17 +54,7 @@ pub fn write_page(
 ) -> Result<PageResult> {
     let mut editor = ClipEditor::open(template)?;
     editor.renew_ids()?;
-    set_page_index(&editor.db, page_index.unwrap_or(page.number - 1))?;
-    if !canvas_values.is_empty() {
-        let old_index = canvas_value(&editor.db, "ComicStoryStoryIndex")?;
-        set_canvas_values(&editor.db, canvas_values)?;
-        if let (Some(Value::Integer(old)), Some(Value::Integer(new))) =
-            (old_index, value_of(canvas_values, "ComicStoryStoryIndex"))
-            && old != *new
-        {
-            replace_story_index(&editor.db, old, *new)?;
-        }
-    }
+    apply_page_settings(&editor.db, page_index.unwrap_or(page.number - 1), canvas_values)?;
     let source = sheet.database();
     merge_schema(&editor.db, source, &SCHEMA_TABLES)?;
     share_rows(&editor.db, source)?;
@@ -96,6 +86,23 @@ pub fn write_page(
     update_preview(&editor.db, sheet, page)?;
     editor.save(output)?;
     Ok(result)
+}
+
+/// Set the page position in the work and the work's canvas settings (and
+/// with them the episode number in the story information text).
+pub(crate) fn apply_page_settings(db: &Connection, page_index: i64, canvas_values: &Values) -> Result<()> {
+    set_page_index(db, page_index)?;
+    if !canvas_values.is_empty() {
+        let old_index = canvas_value(db, "ComicStoryStoryIndex")?;
+        set_canvas_values(db, canvas_values)?;
+        if let (Some(Value::Integer(old)), Some(Value::Integer(new))) =
+            (old_index, value_of(canvas_values, "ComicStoryStoryIndex"))
+            && old != *new
+        {
+            replace_story_index(db, old, *new)?;
+        }
+    }
+    Ok(())
 }
 
 fn add_content(
@@ -400,6 +407,32 @@ fn update_preview(db: &Connection, sheet: &ClipDocument, page: &PlannedPage) -> 
     db.execute(
         "UPDATE CanvasPreview SET ImageData = ?1 WHERE rowid = ?2",
         (preview.to_png()?, row_id),
+    )?;
+    Ok(())
+}
+
+/// Replace the page preview with `image` (the whole page) shrunk to its size.
+pub(crate) fn replace_preview(db: &Connection, image: &crate::RgbaImage) -> Result<()> {
+    if !table_names(db)?.contains("CanvasPreview") {
+        return Ok(());
+    }
+    let row: Option<(i64, Option<Vec<u8>>)> = db
+        .query_row(
+            "SELECT rowid, ImageData FROM CanvasPreview ORDER BY rowid LIMIT 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    let Some((row_id, Some(preview_png))) = row else {
+        return Ok(());
+    };
+    let Ok(preview) = decode_png(&preview_png) else {
+        return Ok(());
+    };
+    let shrunk = resize(image, preview.width, preview.height, Filter::Box);
+    db.execute(
+        "UPDATE CanvasPreview SET ImageData = ?1 WHERE rowid = ?2",
+        (shrunk.to_png()?, row_id),
     )?;
     Ok(())
 }

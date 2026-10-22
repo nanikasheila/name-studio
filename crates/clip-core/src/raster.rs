@@ -169,6 +169,30 @@ impl RgbaImage {
         }
     }
 
+    /// Draw `other` placed at (x, y) over this image (straight alpha, "source over").
+    pub fn blend_over(&mut self, other: &RgbaImage, x: i64, y: i64) {
+        let (width, height) = (self.width as i64, self.height as i64);
+        for row in y.max(0)..(y + other.height as i64).min(height) {
+            for column in x.max(0)..(x + other.width as i64).min(width) {
+                let source = (((row - y) * other.width as i64 + (column - x)) * 4) as usize;
+                let target = ((row * width + column) * 4) as usize;
+                let alpha = other.pixels[source + 3] as f32 / 255.0;
+                if alpha == 0.0 {
+                    continue;
+                }
+                let below = self.pixels[target + 3] as f32 / 255.0;
+                let out = alpha + below * (1.0 - alpha);
+                for channel in 0..3 {
+                    let value = (other.pixels[source + channel] as f32 * alpha
+                        + self.pixels[target + channel] as f32 * below * (1.0 - alpha))
+                        / out;
+                    self.pixels[target + channel] = value.round().clamp(0.0, 255.0) as u8;
+                }
+                self.pixels[target + 3] = (out * 255.0).round() as u8;
+            }
+        }
+    }
+
     /// The part inside (x0, y0, x1, y1), transparent where it leaves the image.
     pub fn crop(&self, box_: (i64, i64, i64, i64)) -> RgbaImage {
         let (x0, y0, x1, y1) = box_;

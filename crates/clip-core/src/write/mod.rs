@@ -9,6 +9,7 @@ pub mod container;
 pub mod editor;
 pub mod offscreen;
 pub mod page;
+pub mod raster_page;
 pub mod schema;
 pub mod split;
 

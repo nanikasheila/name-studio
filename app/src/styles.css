@@ -89,6 +89,7 @@ dialog.export::backdrop { background: rgb(0 0 0 / 0.35); }
 .export .message.error { color: #c0392b; }
 .export .actions { display: flex; justify-content: flex-end; gap: 8px; }
 #work-fields[hidden] { display: none; }
+.export .kinds { margin: 10px 0 4px; }
 
 [hidden] { display: none !important; }
 .toolbar-group { display: flex; align-items: center; gap: 12px; }

@@ -3,6 +3,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { ask, save } from "@tauri-apps/plugin-dialog";
 import { PageEditor, isTyping, type Selection, type Tool } from "./editor";
+import { ExportDialog } from "./exportdialog";
 import { History } from "./history";
 import { Overview, type OverviewKind } from "./overview";
 import {
@@ -62,6 +63,7 @@ export class Workbench {
   private readonly state: WorkbenchState = { project: null, path: null, dirty: false, pending: null, roughs: new Map() };
   private sideTab: "pages" | "script" | "cast" = "pages";
   readonly overview: Overview;
+  private readonly exportDialog: ExportDialog;
   private view: "edit" | OverviewKind = "edit";
 
   constructor(private readonly setStatus: (message: string) => void, private readonly onTitle: (title: string) => void) {
@@ -83,6 +85,12 @@ export class Workbench {
         this.editor.showPage(pageNumber);
         this.renderAll();
       },
+    });
+    this.exportDialog = new ExportDialog({
+      project: () => this.state.project,
+      projectPath: () => this.state.path,
+      rough: (rough) => this.loadRough(rough),
+      status: (message) => this.setStatus(message),
     });
     this.bindControls();
   }
@@ -226,32 +234,43 @@ export class Workbench {
 
   // --- roughs -------------------------------------------------------------------------
 
+  private roughKey(rough: RoughImage): string {
+    return `${rough.layerId}:${rough.sheetCrop.join(",")}`;
+  }
+
+  /** A rough as drawn so far, starting to load it when it is not there yet. */
   private rough(rough: RoughImage): CanvasImageSource | null {
+    const cached = this.state.roughs.get(this.roughKey(rough));
+    if (cached instanceof ImageBitmap) return cached;
+    if (!cached) void this.loadRough(rough).then((image) => image && this.editor.draw());
+    return null;
+  }
+
+  /** Pixels of a rough from the source sheet (null when the sheet cannot be read). */
+  async loadRough(rough: RoughImage): Promise<ImageBitmap | null> {
     const source = this.state.project?.source;
     if (!source) return null;
-    const key = `${rough.layerId}:${rough.sheetCrop.join(",")}`;
+    const key = this.roughKey(rough);
     const cached = this.state.roughs.get(key);
     if (cached instanceof ImageBitmap) return cached;
-    if (cached) return null;
-    this.state.roughs.set(key, "loading");
-    const project = this.state.project;
-    invoke<ArrayBuffer>("rough_image", {
-      sheet: source.path,
-      layerId: rough.layerId,
-      crop: rough.sheetCrop,
-      maxHeight: ROUGH_MAX_HEIGHT,
-    })
-      .then((bytes) => (bytes.byteLength ? createImageBitmap(new Blob([bytes], { type: "image/png" })) : null))
-      .then((image) => {
-        if (this.state.project !== project) return;
-        this.state.roughs.set(key, image ?? "failed");
-        this.editor.draw();
-      })
-      .catch((error) => {
-        this.state.roughs.set(key, "failed");
-        this.setStatus(`ラフ画像を読めませんでした（元のネーム用紙が必要です）: ${error}`);
+    if (cached === "failed") return null;
+    const roughs = this.state.roughs;
+    roughs.set(key, "loading");
+    try {
+      const bytes = await invoke<ArrayBuffer>("rough_image", {
+        sheet: source.path,
+        layerId: rough.layerId,
+        crop: rough.sheetCrop,
+        maxHeight: ROUGH_MAX_HEIGHT,
       });
-    return null;
+      const image = bytes.byteLength ? await createImageBitmap(new Blob([bytes], { type: "image/png" })) : null;
+      roughs.set(key, image ?? "failed");
+      return image;
+    } catch (error) {
+      roughs.set(key, "failed");
+      this.setStatus(`ラフ画像を読めませんでした（元のネーム用紙が必要です）: ${error}`);
+      return null;
+    }
   }
 
   // --- rendering ------------------------------------------------------------------------
@@ -567,6 +586,7 @@ export class Workbench {
       $(`tool-${name}`).addEventListener("click", () => this.setTool(name));
     }
     $("undo").addEventListener("click", () => this.undo());
+    $("name-export").addEventListener("click", () => this.exportDialog.open());
     $("redo").addEventListener("click", () => this.redo());
     $("editor-next").addEventListener("click", () => this.flip(1));
     $("editor-prev").addEventListener("click", () => this.flip(-1));

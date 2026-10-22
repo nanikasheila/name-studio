@@ -40,11 +40,15 @@ function samePath(a: string, b: string): boolean {
   return normal(a) === normal(b);
 }
 
-/** Check the form; the request, or a message saying what is missing. */
-export function buildRequest(form: ExportForm, sheetPath: string): ExportRequest | string {
+/**
+ * Check the form; the request, or a message saying what is missing.
+ * `sources` are the files being written out (the sheet, or the name data and
+ * its sheet); their folders are refused as the output folder.
+ */
+export function buildRequest(form: ExportForm, sources: string | string[]): ExportRequest | string {
   if (!form.template) return "ひな形のページ（CSP で保存した空のページ）を選んでください";
   if (!form.outDir) return "書き出し先のフォルダーを選んでください";
-  const inputs = [sheetPath, form.template, ...(form.makeWork ? [form.workTemplate] : [])];
+  const inputs = [...[sources].flat(), form.template, ...(form.makeWork ? [form.workTemplate] : [])];
   if (inputs.some((input) => input && samePath(folderOf(input), form.outDir))) {
     return "元のファイルと同じフォルダーには書き出せません（上書きを防ぐため）";
   }
