@@ -156,7 +156,14 @@ export class BrushDialog {
     const meta = document.createElement("span");
     meta.className = "meta";
     const size = lengthMm(tool.size, dpi);
-    meta.textContent = `${size >= 1 ? size.toFixed(1) : size.toFixed(2)} mm${tool.sizeDynamics?.pressure ? "・筆圧" : ""}`;
+    const inputs = tool.sizeDynamics;
+    const changes = [
+      inputs?.pressure ? "筆圧" : "",
+      inputs?.tilt ? "傾き" : "",
+      inputs?.velocity ? "速度" : "",
+      inputs?.random ? "ランダム" : "",
+    ].filter(Boolean);
+    meta.textContent = [`${size >= 1 ? size.toFixed(1) : size.toFixed(2)} mm`, ...changes].join("・");
     row.append(check, picture, name, badge, meta);
     return row;
   }

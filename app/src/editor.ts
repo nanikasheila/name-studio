@@ -2,7 +2,7 @@
 // into edits (select and move, cut panels, place lines, draw and erase).
 // Coordinates on a page are millimetres; each page of the spread has its own
 // mm → screen mapping.
-import { followFactor } from "./brush";
+import { FULL_SPEED_MM, followFactor, tiltOf, usesMotion } from "./brush";
 import { spreads } from "./pages";
 import { addBreakout, moveBreakout, stacked } from "./koma";
 import { INK, drawBalloons, drawLineText, drawPanelBorders, drawPanelFills, drawStroke, drawStrokes, onTipLoaded, tracePath } from "./pagedraw";
@@ -36,6 +36,7 @@ import {
   type Project,
   type RoughImage,
   type Stroke,
+  type StrokePoint,
 } from "./project";
 
 export type Tool = "select" | "cut" | "text" | "pen" | "eraser" | "breakout";
@@ -75,7 +76,7 @@ type Drag =
   | { kind: "vertex"; slot: Slot; panelId: string; vertex: number; moved: boolean }
   | { kind: "cut"; slot: Slot; a: Point; b: Point; free: boolean }
   | { kind: "frame"; slot: Slot; a: Point; b: Point }
-  | { kind: "pen"; slot: Slot; points: [number, number, number][]; last: [number, number, number] }
+  | { kind: "pen"; slot: Slot; points: StrokePoint[]; last: StrokePoint; motion: boolean; time: number; speed: number }
   | { kind: "tail"; slot: Slot; lineId: string; index: number; moved: boolean }
   | { kind: "lasso"; slot: Slot; points: Point[] }
   | { kind: "erase"; slot: Slot; erased: number };
@@ -570,8 +571,10 @@ export class PageEditor {
         return;
       }
       case "pen": {
-        const first: [number, number, number] = [...point, pressureOf(event)];
-        this.drag = { kind: "pen", slot, points: [first], last: first };
+        // Keep tilt and speed only for brushes that change with them.
+        const motion = usesMotion(this.brush("pen"));
+        const first: StrokePoint = motion ? [...point, pressureOf(event), tiltOf(event), 0] : [...point, pressureOf(event)];
+        this.drag = { kind: "pen", slot, points: [first], last: first, motion, time: event.timeStamp, speed: 0 };
         return;
       }
       case "breakout":
@@ -643,9 +646,20 @@ export class PageEditor {
         const follow = followFactor(this.brush("pen")?.stabilization ?? 0);
         const events = event.getCoalescedEvents?.() ?? [event];
         for (const e of events.length ? events : [event]) {
-          const raw: [number, number, number] = [...this.toPage(drag.slot, e.offsetX, e.offsetY), pressureOf(e)];
+          const [x, y] = this.toPage(drag.slot, e.offsetX, e.offsetY);
+          let raw: StrokePoint = [x, y, pressureOf(e)];
+          if (drag.motion) {
+            const seconds = (e.timeStamp - drag.time) / 1000;
+            if (seconds > 0) {
+              const speed = Math.hypot(x - drag.last[0], y - drag.last[1]) / seconds / FULL_SPEED_MM;
+              // Smoothed: single samples jump about.
+              drag.speed += (Math.min(speed, 1) - drag.speed) * 0.3;
+              drag.time = e.timeStamp;
+            }
+            raw = [x, y, pressureOf(e), tiltOf(e), drag.speed];
+          }
           const previous = drag.points[drag.points.length - 1];
-          drag.points.push(previous.map((value, i) => value + (raw[i] - value) * follow) as [number, number, number]);
+          drag.points.push(previous.map((value, i) => value + (raw[i] - value) * follow) as StrokePoint);
           drag.last = raw;
         }
         break;

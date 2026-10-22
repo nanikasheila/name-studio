@@ -317,12 +317,12 @@ pub struct Line {
     pub emphasis: bool,
 }
 
-/// A rough line (ラフ). Points are `[x, y, pressure]` with pressure 0..1.
+/// A rough line (ラフ).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Stroke {
     pub id: String,
-    pub points: Vec<[f64; 3]>,
+    pub points: Vec<StrokePoint>,
     pub width_mm: f64,
     #[serde(default)]
     pub closed: bool,
@@ -335,6 +335,62 @@ pub struct Stroke {
     /// Whether the start / end was left by an eraser (no 入り抜き there).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cut: Option<[bool; 2]>,
+}
+
+/// A point of a rough line, written as `[x, y, pressure]`, or
+/// `[x, y, pressure, tilt, speed]` when the brush changes with them. All but
+/// x and y are 0..1; tilt 0 is the pen held upright.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "Vec<f64>", into = "Vec<f64>")]
+pub struct StrokePoint {
+    pub x: f64,
+    pub y: f64,
+    pub pressure: f64,
+    pub motion: Option<Motion>,
+}
+
+/// How the pen was held and moved at a point.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Motion {
+    pub tilt: f64,
+    pub speed: f64,
+}
+
+impl StrokePoint {
+    pub fn new(x: f64, y: f64, pressure: f64) -> StrokePoint {
+        StrokePoint {
+            x,
+            y,
+            pressure,
+            motion: None,
+        }
+    }
+}
+
+impl TryFrom<Vec<f64>> for StrokePoint {
+    type Error = String;
+
+    fn try_from(values: Vec<f64>) -> Result<StrokePoint, String> {
+        match values[..] {
+            [x, y, pressure] => Ok(StrokePoint::new(x, y, pressure)),
+            [x, y, pressure, tilt, speed] => Ok(StrokePoint {
+                x,
+                y,
+                pressure,
+                motion: Some(Motion { tilt, speed }),
+            }),
+            _ => Err(format!("a line point has 3 or 5 numbers, not {}", values.len())),
+        }
+    }
+}
+
+impl From<StrokePoint> for Vec<f64> {
+    fn from(point: StrokePoint) -> Vec<f64> {
+        match point.motion {
+            None => vec![point.x, point.y, point.pressure],
+            Some(Motion { tilt, speed }) => vec![point.x, point.y, point.pressure, tilt, speed],
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -357,9 +413,9 @@ pub enum EraseMode {
     Whole,
 }
 
-/// How pen pressure changes a setting: `min` at the lightest touch, the full
-/// value at the hardest, along `curve` (control points in 0..1; empty is a
-/// straight line).
+/// How pen pressure (or tilt, speed, chance) changes a setting: `min` at the
+/// lightest touch, the full value at the hardest, along `curve` (control
+/// points in 0..1; empty is a straight line).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PressureCurve {
@@ -406,10 +462,23 @@ pub struct Brush {
     pub size_mm: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size_pressure: Option<PressureCurve>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_tilt: Option<PressureCurve>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_speed: Option<PressureCurve>,
+    /// Random change along the line (only `min` is used).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_random: Option<PressureCurve>,
     #[serde(default = "default_one")]
     pub opacity: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub opacity_pressure: Option<PressureCurve>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opacity_tilt: Option<PressureCurve>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opacity_speed: Option<PressureCurve>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opacity_random: Option<PressureCurve>,
     /// 1 is a hard edge.
     #[serde(default = "default_one")]
     pub hardness: f64,

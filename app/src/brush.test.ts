@@ -4,13 +4,24 @@ import {
   brushFromSubTool,
   curveAt,
   followFactor,
-  opacityAt,
+  opacityFactors,
   pressureFactor,
   widthFactors,
   type CspSubTool,
 } from "./brush";
 import { vectorLines } from "./nameexport";
 import { addStroke, eraseWith, newProject, type Brush, type Stroke } from "./project";
+
+const noInput = {
+  tilt: false,
+  tiltMin: 1,
+  tiltCurve: [],
+  velocity: false,
+  velocityMin: 1,
+  velocityCurve: [[0, 1], [1, 0]] as [number, number][],
+  random: false,
+  randomMin: 1,
+};
 
 /** 丸ペン as CSP EX 5.1.4 exports it (sizes in px). */
 const maruPen: CspSubTool = {
@@ -22,12 +33,10 @@ const maruPen: CspSubTool = {
     pressure: true,
     pressureMin: 0,
     pressureCurve: [[0, 0], [0.6636, 0.0818], [1, 1]],
-    tilt: false,
-    velocity: false,
-    random: false,
+    ...noInput,
   },
   opacity: 1,
-  opacityDynamics: { pressure: false, pressureMin: 1, pressureCurve: [], tilt: false, velocity: false, random: false },
+  opacityDynamics: { pressure: false, pressureMin: 1, pressureCurve: [], ...noInput },
   flow: 1,
   flowDynamics: null,
   hardness: 1,
@@ -113,8 +122,9 @@ describe("widths along a stroke", () => {
   });
 
   it("applies the opacity curve", () => {
-    expect(opacityAt(brush({ opacity: 0.5, opacityPressure: { min: 0 } }), 0.5)).toBeCloseTo(0.25);
-    expect(opacityAt(undefined, 0)).toBe(1);
+    const stroke: Stroke = { id: "s", points: [[0, 0, 0.5]], widthMm: 1, closed: false };
+    expect(opacityFactors(stroke, brush({ opacity: 0.5, opacityPressure: { min: 0 } }))[0]).toBeCloseTo(0.25);
+    expect(opacityFactors(stroke, undefined)).toEqual([1]);
   });
 
   it("stabilizes harder with a larger 手ブレ補正", () => {
@@ -160,6 +170,62 @@ describe("taking CSP sub tools over", () => {
     addStroke(project, page, [[0, 0, 0], [5, 0, 1]], 1, pen.id);
     const [line] = vectorLines(page, "strokes", { scale: 10, x: 0, y: 0 }, project.brushes);
     expect(line.points.map((point) => point[2])).toEqual([0.5, 1]);
+  });
+});
+
+describe("tilt, speed and chance", () => {
+  const pen = brush({
+    sizeTilt: { min: 0.5, curve: [[0, 1], [1, 0]] },
+    sizeSpeed: { min: 0.2, curve: [[0, 1], [1, 0]] },
+  });
+
+  it("thins the line as the pen tilts and speeds up", () => {
+    const stroke: Stroke = {
+      id: "s",
+      points: [[0, 0, 1, 0, 0], [5, 0, 1, 1, 0], [10, 0, 1, 0, 1]],
+      widthMm: 1,
+      closed: false,
+    };
+    expect(widthFactors(stroke, pen)).toEqual([1, 0.5, 0.2]);
+  });
+
+  it("takes lines without tilt and speed as upright and slow", () => {
+    const stroke: Stroke = { id: "s", points: [[0, 0, 1], [5, 0, 1]], widthMm: 1, closed: false };
+    expect(widthFactors(stroke, pen)).toEqual([1, 1]);
+  });
+
+  it("changes randomly but the same way each time", () => {
+    const random = brush({ sizeRandom: { min: 0.4 } });
+    const stroke: Stroke = { id: "s", points: Array.from({ length: 50 }, (_, i) => [i, 0, 1]), widthMm: 1, closed: false };
+    const factors = widthFactors(stroke, random);
+    expect(widthFactors(stroke, random)).toEqual(factors);
+    expect(Math.min(...factors)).toBeGreaterThanOrEqual(0.4);
+    expect(Math.max(...factors) - Math.min(...factors)).toBeGreaterThan(0.2);
+  });
+
+  it("takes the inputs over from CSP", () => {
+    const tool: CspSubTool = {
+      ...maruPen,
+      sizeDynamics: { ...maruPen.sizeDynamics!, tilt: true, tiltMin: 0.85, tiltCurve: [[0, 1], [1, 0]], velocity: true, velocityMin: 0.7, random: true, randomMin: 0.3 },
+      opacityDynamics: null,
+      flowDynamics: { ...maruPen.opacityDynamics!, velocity: true, velocityMin: 0.5 },
+    };
+    const taken = brushFromSubTool(tool, 600, "b");
+    expect(taken.sizeTilt).toEqual({ min: 0.85, curve: [[0, 1], [1, 0]] });
+    expect(taken.sizeSpeed).toEqual({ min: 0.7, curve: [[0, 1], [1, 0]] });
+    expect(taken.sizeRandom).toEqual({ min: 0.3 });
+    expect(taken.opacitySpeed).toEqual({ min: 0.5, curve: [[0, 1], [1, 0]] });
+    expect(taken.opacityPressure).toBeUndefined();
+  });
+
+  it("keeps tilt and speed through the eraser", () => {
+    const project = newProject("t", 1);
+    const page = project.pages[0];
+    addStroke(project, page, [[0, 0, 1, 0, 0], [10, 0, 1, 1, 1]], 0.2);
+    eraseWith(project, page, [5, 0], 0.5, "touched");
+    for (const piece of page.strokes) for (const point of piece.points) expect(point).toHaveLength(5);
+    const right = page.strokes[1].points[0];
+    expect(right[3]).toBeCloseTo(right[0] / 10);
   });
 });
 
