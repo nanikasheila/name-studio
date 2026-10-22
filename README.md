@@ -5,7 +5,7 @@
 
 構想と段階計画は [検討ドキュメント](https://claude.ai/artifact/PhzqeXUZhD9LZs2pbkRsLs) にあります。
 ファイル形式の解析結果は csp-name-splitter の
-[docs/formats/csp-file-format.md](https://github.com/nanikasheila/csp-name-splitter/blob/nanikasheila/feat-cmc-writer/docs/formats/csp-file-format.md) を参照してください。
+[docs/formats/csp-file-format.md](https://github.com/nanikasheila/csp-name-splitter/blob/main/docs/formats/csp-file-format.md) を参照してください。
 
 ## できること
 
