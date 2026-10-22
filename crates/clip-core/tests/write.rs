@@ -78,7 +78,11 @@ fn template(folder: &Path) -> PathBuf {
         .chain(0u32.to_le_bytes())
         .chain(6u32.to_le_bytes())
         .chain(26u32.to_le_bytes());
-    let story = build_tlv(&[(0x0B, runs.collect()), (0x20, 900i32.to_le_bytes().to_vec())]);
+    let story = build_tlv(&[
+        (0x0B, runs.collect()),
+        (0x20, 900i32.to_le_bytes().to_vec()),
+        (0x32, 77i32.to_le_bytes().to_vec()),
+    ]);
     let layers = vec![
         FixtureLayer::paper(2),
         FixtureLayer::raster(3, "レイヤー 1", vec![(0, (0, 0, 0, 0))]),
@@ -88,8 +92,75 @@ fn template(folder: &Path) -> PathBuf {
             text_attributes: Some(story),
             ..FixtureLayer::new(4, "(作品情報)")
         },
+        FixtureLayer {
+            layer_type: 800,
+            text: Some("1".into()),
+            text_attributes: Some(nombre_attributes()),
+            ..FixtureLayer::new(5, "(ノンブル)")
+        },
     ];
     build_editable_clip(&folder.join("template").join("page.clip"), PAGE, layers)
+}
+
+fn le(numbers: &[i32]) -> Vec<u8> {
+    numbers.iter().flat_map(|n| n.to_le_bytes()).collect()
+}
+
+/// The hidden ノンブル of a left page: one 10 px wide digit near the right
+/// (binding) edge, with CSP's cached rendering in Offscreen 78.
+fn nombre_attributes() -> Vec<u8> {
+    build_tlv(&[
+        (0x0B, le(&[1, 0, 1])),
+        (0x2A, le(&[380, 540, 390, 550])),
+        (0x3F, le(&[10, 10])),
+        (0x40, le(&[0, 0, 1000, 0, 1000, 1000, 0, 1000])),
+        (0x32, le(&[78])),
+    ])
+}
+
+/// The ノンブル text, its bbox, its cached-rendering id and the page side flag.
+fn nombre(path: &Path) -> (String, Vec<u8>, Vec<u8>, i64) {
+    let document = ClipDocument::read(path).unwrap();
+    let (string, attributes): (Vec<u8>, Vec<u8>) = document
+        .database()
+        .query_row(
+            "SELECT TextLayerString, TextLayerAttributes FROM Layer WHERE ComicStoryInfoType = 2",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    let flag: i64 = document
+        .database()
+        .query_row("SELECT CropFrameOptionFlag FROM Canvas", [], |row| row.get(0))
+        .unwrap();
+    let items = parse_tlv(&attributes).unwrap();
+    let value = |id: u32| items.iter().find(|(tag, _)| *tag == id).unwrap().1.to_vec();
+    (String::from_utf8(string).unwrap(), value(0x2A), value(0x32), flag)
+}
+
+#[test]
+fn write_page_sets_nombre_and_side() {
+    let folder = tempfile::tempdir().unwrap();
+    let sheet = ClipDocument::read(sheet(folder.path())).unwrap();
+    let template = template(folder.path());
+    let options = PlanOptions {
+        fit: Fit::Cell,
+        ..PlanOptions::default()
+    };
+    let plan = plan_sheet(&sheet, 400, 560, options).unwrap();
+    let page = &plan.pages[0];
+    let write = |name: &str, index: i64| {
+        let output = folder.path().join(name);
+        clip_core::write::page::write_page(&template, &sheet, page, &output, Some(index), &Vec::new()).unwrap();
+        nombre(&output)
+    };
+    // Same side as the template (left): only the number changes, keeping the binding edge.
+    assert_eq!(
+        write("p11.clip", 10),
+        ("11".into(), le(&[370, 540, 390, 550]), le(&[0]), 2)
+    );
+    // A right page: CSP keeps the ノンブル at the binding edge, now on the left, and flags the side.
+    assert_eq!(write("p2.clip", 1), ("2".into(), le(&[10, 540, 20, 550]), le(&[0]), 4));
 }
 
 fn digest(path: &Path) -> Vec<u8> {
@@ -325,6 +396,15 @@ fn splits_a_sheet_into_a_work() {
         .1
         .to_vec();
     assert_eq!(u32::from_le_bytes(runs[8..12].try_into().unwrap()), 7);
+    // CSP would show its cached image of "作品 3話" (TLV 0x32) instead of the text.
+    let cache = parse_tlv(&attributes)
+        .unwrap()
+        .into_iter()
+        .find(|(tag, _)| *tag == 0x32)
+        .unwrap()
+        .1
+        .to_vec();
+    assert_eq!(cache, 0u32.to_le_bytes());
     let work = rusqlite::Connection::open(out.join("第1話.cmc")).unwrap();
     let story_index: i64 = work
         .query_row("SELECT ComicStoryStoryIndex FROM Project", [], |row| row.get(0))

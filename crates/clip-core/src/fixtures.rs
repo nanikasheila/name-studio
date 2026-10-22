@@ -317,14 +317,17 @@ fn add_editing_schema(database: &Connection, canvas: FixtureCanvas) {
              ALTER TABLE Canvas ADD COLUMN ComicIsLeftPage;
              ALTER TABLE Canvas ADD COLUMN ComicStoryStoryName;
              ALTER TABLE Canvas ADD COLUMN ComicStoryStoryIndex;
+             ALTER TABLE Canvas ADD COLUMN ComicStoryNombreStart;
+             ALTER TABLE Canvas ADD COLUMN CropFrameOptionFlag;
              UPDATE Canvas SET ComicPageIndex = 0, ComicIsLeftPage = 1, ComicStoryStoryName = 'Template',
-                 ComicStoryStoryIndex = 3;
+                 ComicStoryStoryIndex = 3, ComicStoryNombreStart = 1, CropFrameOptionFlag = 2;
              ALTER TABLE Layer ADD COLUMN LayerRenderThumbnail;
              ALTER TABLE Layer ADD COLUMN LayerUuid;
              UPDATE Layer SET LayerUuid = 'fixture-layer-' || MainId;
              ALTER TABLE Layer ADD COLUMN VectorNormalStrokeIndex;
              ALTER TABLE Layer ADD COLUMN ComicStoryInfoType;
              UPDATE Layer SET ComicStoryInfoType = 1 WHERE LayerType = 800;
+             UPDATE Layer SET ComicStoryInfoType = 2 WHERE LayerType = 800 AND LayerName = '(ノンブル)';
              UPDATE Layer SET VectorNormalStrokeIndex =
                  (SELECT MainId FROM VectorObjectList v WHERE v.LayerId = Layer.MainId);
              ALTER TABLE Mipmap ADD COLUMN LayerId;
