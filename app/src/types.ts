@@ -27,6 +27,9 @@ export interface TextView {
   fontName: string | null;
   vertical: boolean;
   inBalloon: boolean;
+  /** Ink colour; white for 白抜き. */
+  color?: string;
+  bold?: boolean;
 }
 
 export interface LayerView {

@@ -344,12 +344,14 @@ fn new_text_takes_one_run_from_a_text_styled_in_parts() {
         (0x1a, runs(vec![run(0, 45, 2, &[1, 0]), run(47, 166, 2, &[0, 0])])),
         (0x10, runs(vec![run(0, 45, 2, &[0, 0])])),
         (0x20, 400i32.to_le_bytes().to_vec()),
+        (0x22, vec![0; 12]),
     ]);
-    let text = NewText {
+    let mut text = NewText {
         text: "やあ".into(),
         frame: [0, 0, 100, 300],
         font_size_pt: 9.0,
         vertical: true,
+        color: None,
     };
     let retargeted = retarget_text_attributes(&blob, &text).unwrap();
     let items = parse_tlv(&retargeted).unwrap();
@@ -358,6 +360,15 @@ fn new_text_takes_one_run_from_a_text_styled_in_parts() {
     assert_eq!(value(0x1a), runs(vec![run(0, 2, 2, &[1, 0])]));
     assert!(value(0x10).is_empty());
     assert_eq!(value(0x20), 900i32.to_le_bytes());
+    assert_eq!(value(0x22), vec![0; 12]);
+    text.color = Some([255, 255, 255]);
+    let white = retarget_text_attributes(&blob, &text).unwrap();
+    let (_, color) = parse_tlv(&white)
+        .unwrap()
+        .into_iter()
+        .find(|(tag, _)| *tag == 0x22)
+        .unwrap();
+    assert_eq!(color, &[0xff; 12]);
     // A run list that does not add up is refused rather than guessed at.
     let broken = build_tlv(&[(0x1a, runs(vec![run(0, 45, 9, &[1, 0])]))]);
     assert!(retarget_text_attributes(&broken, &text).is_err());
@@ -388,6 +399,7 @@ fn new_text_takes_one_run_in_the_added_attributes_too() {
         frame: [0, 0, 300, 100],
         font_size_pt: 9.0,
         vertical: false,
+        color: None,
     };
     let retargeted = retarget_add_attributes(&blob, &text).unwrap();
     let items = parse_tlv(&retargeted[4..]).unwrap();

@@ -1,6 +1,8 @@
 // Drawing the parts of a name page (mm coordinates) onto a 2D canvas, shared
 // by the editor and the export (CSP layers, PDF).
-import { MM_PER_PT, type Line, type Panel, type Point, type Stroke } from "./project";
+import { pageBalloons } from "./balloon";
+import { borderLines, borderWidthMm, dashes, effectStrokes, stacked } from "./koma";
+import { MM_PER_PT, type Line, type Page, type Panel, type Point, type Stroke } from "./project";
 import { drawText } from "./render";
 
 /** Page millimetres → canvas pixels: `px = mm * scale + offset`. */
@@ -42,26 +44,120 @@ export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke, m: MmT
   }
 }
 
-export function drawPanel(ctx: CanvasRenderingContext2D, panel: Panel, m: MmToPx, color = INK, minWidthPx = 1): void {
-  tracePath(ctx, panel.shape, m, true);
-  ctx.strokeStyle = color;
-  ctx.lineJoin = "miter";
-  ctx.lineWidth = Math.max(PANEL_LINE_MM * m.scale, minWidthPx);
-  ctx.stroke();
+/** Ink for background effects: light, so they read as notes under the drawing. */
+const EFFECT_INK = "rgba(27, 26, 24, 0.45)";
+const FILLS: Record<string, string> = { white: "#ffffff", black: INK, gray: "#b9b6b0" };
+
+/**
+ * Panel fills and background effects, bottom panel first, then the はみ出し
+ * areas blanked white. Borders are drawn separately (drawPanelBorders).
+ */
+export function drawPanelFills(ctx: CanvasRenderingContext2D, page: Page, m: MmToPx, minWidthPx = 0.6): void {
+  for (const panel of stacked(page.panels)) {
+    const fill = panel.fill ?? "none";
+    if (fill !== "none") {
+      tracePath(ctx, panel.shape, m, true);
+      ctx.fillStyle = FILLS[fill];
+      ctx.fill();
+    }
+    const effect = panel.effect ?? "none";
+    if (effect === "none") continue;
+    const { lines, stars } = effectStrokes(panel, effect);
+    ctx.save();
+    tracePath(ctx, panel.shape, m, true);
+    ctx.clip();
+    ctx.strokeStyle = fill === "black" ? "rgba(255, 255, 255, 0.6)" : EFFECT_INK;
+    ctx.lineWidth = Math.max(0.2 * m.scale, minWidthPx);
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    for (const [a, b] of lines) {
+      ctx.moveTo(a[0] * m.scale + m.x, a[1] * m.scale + m.y);
+      ctx.lineTo(b[0] * m.scale + m.x, b[1] * m.scale + m.y);
+    }
+    ctx.stroke();
+    for (const star of stars) {
+      tracePath(ctx, star, m, true);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  for (const breakout of page.breakouts ?? []) {
+    if (breakout.shape.length < 3) continue;
+    tracePath(ctx, breakout.shape, m, true);
+    ctx.fillStyle = "#ffffff";
+    ctx.fill();
+  }
 }
 
-/** A balloon filled white; thoughts get a dashed outline. */
-export function drawBalloon(ctx: CanvasRenderingContext2D, line: Line, m: MmToPx, minWidthPx = 0.8): void {
-  if (!line.balloon || line.balloon.length < 3) return;
-  tracePath(ctx, line.balloon, m, true);
-  ctx.fillStyle = "#ffffff";
-  ctx.fill();
-  ctx.setLineDash(line.kind === "thought" ? [Math.max(2 * m.scale, 3), Math.max(1.5 * m.scale, 2)] : []);
-  ctx.strokeStyle = INK;
+/** Panel borders as drawn (open edges, insets and はみ出し taken out). */
+export function drawPanelBorders(
+  ctx: CanvasRenderingContext2D,
+  page: Page,
+  m: MmToPx,
+  color: (panel: Panel) => string = () => INK,
+  minWidthPx = 1,
+): void {
+  ctx.lineJoin = "miter";
+  ctx.lineCap = "butt";
+  for (const line of borderLines(page)) {
+    ctx.strokeStyle = color(line.panel);
+    ctx.lineWidth = Math.max(borderWidthMm(line.panel) * m.scale, minWidthPx);
+    const parts = line.panel.border === "dashed" ? dashes(line.points, line.closed).map((points) => ({ points, closed: false })) : [line];
+    for (const part of parts) {
+      tracePath(ctx, part.points, m, part.closed);
+      ctx.stroke();
+    }
+  }
+}
+
+/** Balloons of a page: tails, links, shapes, 白抜き. */
+export function drawBalloons(ctx: CanvasRenderingContext2D, page: Page, m: MmToPx, minWidthPx = 0.8): void {
+  const width = Math.max(BALLOON_LINE_MM * m.scale, minWidthPx);
   ctx.lineJoin = "round";
-  ctx.lineWidth = Math.max(BALLOON_LINE_MM * m.scale, minWidthPx);
-  ctx.stroke();
-  ctx.setLineDash([]);
+  ctx.lineCap = "round";
+  for (const balloon of pageBalloons(page)) {
+    const fill = balloon.inverted ? INK : "#ffffff";
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = width;
+    for (const extra of balloon.extras) {
+      tracePath(ctx, extra.points, m, extra.closed);
+      if (extra.closed) {
+        ctx.fillStyle = fill;
+        ctx.fill();
+      }
+      ctx.stroke();
+    }
+    if (balloon.outline.length < 3) continue;
+    tracePath(ctx, balloon.outline, m, true);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.setLineDash(balloon.shape === "dashed" ? [Math.max(1.6 * m.scale, 3), Math.max(1.2 * m.scale, 2)] : []);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+/**
+ * Only the paper of the balloons: white, or black when inverted. Vector
+ * layers in CSP hold lines only, so this goes as an image layer under them.
+ */
+export function drawBalloonFills(ctx: CanvasRenderingContext2D, page: Page, m: MmToPx): void {
+  for (const balloon of pageBalloons(page)) {
+    ctx.fillStyle = balloon.inverted ? INK : "#ffffff";
+    for (const extra of balloon.extras) {
+      if (!extra.closed) continue;
+      tracePath(ctx, extra.points, m, true);
+      ctx.fill();
+    }
+    if (balloon.outline.length < 3) continue;
+    tracePath(ctx, balloon.outline, m, true);
+    ctx.fill();
+  }
+}
+
+/** Rough lines under the panel borders, or (over) those drawn in a はみ出し. */
+export function drawStrokes(ctx: CanvasRenderingContext2D, page: Page, m: MmToPx, over: boolean, color: (stroke: Stroke) => string, minWidthPx?: number): void {
+  for (const stroke of page.strokes) if (!!stroke.over === over) drawStroke(ctx, stroke, m, color(stroke), minWidthPx);
 }
 
 export function drawLineText(ctx: CanvasRenderingContext2D, line: Line, m: MmToPx): void {
@@ -74,6 +170,8 @@ export function drawLineText(ctx: CanvasRenderingContext2D, line: Line, m: MmToP
       fontName: null,
       vertical: line.vertical,
       inBalloon: !!line.balloon,
+      color: line.inverted ? "#ffffff" : undefined,
+      bold: line.emphasis,
     },
     { scale: m.scale, offsetX: m.x, offsetY: m.y },
   );
