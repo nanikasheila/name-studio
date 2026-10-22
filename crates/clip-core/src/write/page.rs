@@ -14,7 +14,7 @@ use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension, params_from_iter};
 
 use super::editor::ClipEditor;
-use super::schema::{column_names, merge_schema, table_names};
+use super::schema::{column_names, merge_columns, merge_schema, table_names};
 use super::{Values, set_value, value_of};
 use crate::clip::{ClipDocument, LayerKind, round_half_even};
 use crate::error::Result;
@@ -28,8 +28,11 @@ use crate::vector::{select_vector_objects, transform_vector_data};
 
 /// Not Canvas: a spread sheet has ComicStory/NombreRightLayerCreated columns,
 /// and a single right page that has them (as NULL) makes CSP rebuild its story
-/// info layers and mark the page modified on opening.
-pub(crate) const SCHEMA_TABLES: [&str; 4] = ["Layer", "VectorObjectList", "BrushStyleManager", "BrushStyle"];
+/// info layers and mark the page modified on opening. See [`CANVAS_COLUMNS`].
+const SCHEMA_TABLES: [&str; 4] = ["Layer", "VectorObjectList", "BrushStyleManager", "BrushStyle"];
+/// The Canvas columns a page does take: vector lines find their brush styles
+/// through `Canvas.BrushStyleManager`, and without it CSP opens them empty.
+const CANVAS_COLUMNS: [&str; 1] = ["BrushStyleManager"];
 /// Vector objects refer to brush styles by id, so these rows keep their ids.
 const SHARED_TABLES: [&str; 2] = ["BrushStyleManager", "BrushStyle"];
 const TEXT_BLOBS: [&str; 1] = ["TextLayerAttributes"];
@@ -70,7 +73,7 @@ pub fn write_page(
     editor.renew_ids()?;
     apply_page_settings(&editor.db, page_index.unwrap_or(page.number - 1), canvas_values)?;
     let source = sheet.database();
-    merge_schema(&editor.db, source, &SCHEMA_TABLES)?;
+    merge_page_schema(&editor.db, source)?;
     share_rows(&editor.db, source)?;
     let mut result = PageResult {
         path: output.to_path_buf(),
@@ -678,6 +681,12 @@ pub(crate) fn replace_preview(db: &Connection, image: &crate::RgbaImage) -> Resu
         (shrunk.to_png()?, row_id),
     )?;
     Ok(())
+}
+
+/// Give the page the tables and columns layers copied from `source` need.
+pub(crate) fn merge_page_schema(target: &Connection, source: &Connection) -> Result<()> {
+    merge_schema(target, source, &SCHEMA_TABLES)?;
+    merge_columns(target, source, "Canvas", Some(&CANVAS_COLUMNS))
 }
 
 /// Copy brush styles (keeping ids) when the template has none.

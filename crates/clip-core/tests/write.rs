@@ -572,6 +572,21 @@ fn writes_vector_and_text_layers_copied_from_the_sheet() {
             .unwrap()
             .clone()
     };
+    // Vector lines find their brush styles through Canvas; without it CSP
+    // opens the layers empty.
+    let manager: i64 = page
+        .database()
+        .query_row("SELECT BrushStyleManager FROM Canvas", [], |row| row.get(0))
+        .unwrap();
+    let managers: i64 = page
+        .database()
+        .query_row(
+            "SELECT COUNT(*) FROM BrushStyleManager WHERE MainId = ?1",
+            [manager],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!((manager, managers), (8, 1));
     let frame = find("コマ枠");
     assert_eq!(frame.kind, LayerKind::Vector);
     let objects = page.vector_objects(&frame).unwrap();
