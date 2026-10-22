@@ -157,8 +157,56 @@ pub const ATTR_LENGTH: u32 = 0x27;
 /// Offset of the text from its frame, `i32` × 2 (block width for 縦書き).
 pub const ATTR_ORIGIN: u32 = 0x48;
 const VERTICAL_BIT: u32 = 0x10;
-/// Style-run tags: `u32` run count, then per run `u32` start, `u32` length, ...
-const RUN_TAGS: [u32; 8] = [0x0b, 0x1a, 0x0c, 0x0d, 0x1d, 0x41, 0x1e, 0x12];
+/// Style-run tags: `u32` run count, then per run `u32` start, `u32` length,
+/// a `u32` and the run's data. The `u32` is the data size, except for
+/// [`ATTR_FONT_RUNS`]. A plain one-style text has one run each.
+const RUN_TAGS: [u32; 8] = [ATTR_FONT_RUNS, 0x1a, 0x0c, 0x0d, 0x1d, 0x41, 0x1e, 0x12];
+/// Font runs: the `u32` is a set of flags and the data is 16 bytes, then a
+/// `u16` count of UTF-16 units of the font name and the name.
+const ATTR_FONT_RUNS: u32 = 0x0b;
+/// Run tags a plain text leaves empty (seen set on parts of a text CSP
+/// styled differently); a new text drops them.
+const EXTRA_RUN_TAGS: [u32; 10] = [0x0e, 0x0f, 0x10, 0x11, 0x13, 0x14, 0x15, 0x16, 0x1b, 0x1c];
+
+/// One style run: start, length, the `u32` after them and the data.
+type Run<'a> = (u32, u32, u32, &'a [u8]);
+
+/// The runs of run tag `id`, if `value` is exactly a run list.
+fn parse_runs(id: u32, value: &[u8]) -> Option<Vec<Run<'_>>> {
+    let count = le_u32(value, 0).ok()?;
+    let mut runs = Vec::new();
+    let mut offset = 4;
+    for _ in 0..count {
+        let start = le_u32(value, offset).ok()?;
+        let length = le_u32(value, offset + 4).ok()?;
+        let field = le_u32(value, offset + 8).ok()?;
+        let data_at = offset + 12;
+        let size = if id == ATTR_FONT_RUNS {
+            let name = value.get(data_at + 16..data_at + 18)?;
+            18 + 2 * u16::from_le_bytes([name[0], name[1]]) as usize
+        } else {
+            field as usize
+        };
+        runs.push((start, length, field, value.get(data_at..data_at + size)?));
+        offset = data_at + size;
+    }
+    (offset == value.len()).then_some(runs)
+}
+
+/// One run over the whole text, styled like the first run of `value`.
+fn single_run(id: u32, value: &[u8], length: u32) -> Result<Vec<u8>> {
+    let runs =
+        parse_runs(id, value).ok_or_else(|| CspError::format(format!("Text attribute 0x{id:x} is not a run list")))?;
+    let Some((_, _, field, data)) = runs.first() else {
+        return Ok(value.to_vec());
+    };
+    let mut out = Vec::with_capacity(16 + data.len());
+    for number in [1, 0, length, *field] {
+        out.extend_from_slice(&number.to_le_bytes());
+    }
+    out.extend_from_slice(data);
+    Ok(out)
+}
 
 /// A new text block, in layer-local pixels.
 #[derive(Debug, Clone, PartialEq)]
@@ -219,11 +267,12 @@ fn retarget(blob: &[u8], text: &NewText, runs: bool) -> Result<Vec<u8>> {
     for (id, value) in parse_tlv(blob)? {
         let mut value = value.to_vec();
         if RUN_TAGS.contains(&id) {
-            if runs && value.len() >= 12 {
-                if le_u32(&value, 0)? != 1 {
-                    return Err(CspError::format(format!("Text attribute 0x{id:x} has several runs")));
-                }
-                value[8..12].copy_from_slice(&length.to_le_bytes());
+            if runs && !value.is_empty() {
+                value = single_run(id, &value, length)?;
+            }
+        } else if EXTRA_RUN_TAGS.contains(&id) {
+            if runs {
+                value.clear();
             }
         } else {
             match id {

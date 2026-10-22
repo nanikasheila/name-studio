@@ -173,7 +173,15 @@ pub fn text_attributes(bbox: [i32; 4], font_size_pt: f64, font: &str) -> Vec<u8>
     name.extend(font.as_bytes());
     name.extend(0u16.to_le_bytes());
     build_tlv(&[
-        (0x0b, vec![1, 2]),
+        // One font run as CSP writes it: count, start, length, flags, 16 bytes, no name.
+        (
+            0x0b,
+            [1u32, 0, 1, 0x1a]
+                .iter()
+                .flat_map(|v| v.to_le_bytes())
+                .chain([0; 18])
+                .collect(),
+        ),
         (0x20, ((font_size_pt * 100.0).round() as i32).to_le_bytes().to_vec()),
         (0x2a, bbox.iter().flat_map(|v| v.to_le_bytes()).collect()),
         (0x39, name),
