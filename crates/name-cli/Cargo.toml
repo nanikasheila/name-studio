@@ -9,4 +9,5 @@ path = "src/main.rs"
 
 [dependencies]
 clip-core = { path = "../clip-core" }
+name-model = { path = "../name-model" }
 serde_json = "1.0.154"

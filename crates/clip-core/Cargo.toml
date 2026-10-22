@@ -11,5 +11,9 @@ rusqlite = { version = "0.40.2", features = ["bundled", "serialize"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["preserve_order"] }
 
+[features]
+# Builders for synthetic .clip files, for tests in this and other crates.
+fixtures = []
+
 [dev-dependencies]
 tempfile = "3.27.0"
