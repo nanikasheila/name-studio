@@ -1,10 +1,14 @@
-// Name Studio front end: open a name sheet, look at it whole or spread by spread.
+// Name Studio front end: open a name sheet and look at it whole or spread by
+// spread, or edit name data (see workbench.ts).
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import { buildRequest, folderOf, summarize, type ExportForm, type ExportReport, type Fit } from "./export";
 import { dialogueByPage, effectiveVisibility, initiallyHidden, spreads } from "./pages";
 import { drawSheet, type PlacedImage, type Transform } from "./render";
+import { newProject } from "./project";
 import type { LayerView, PageCell, SheetView } from "./types";
+import { PROJECT_EXTENSION, Workbench } from "./workbench";
 
 const OVERVIEW_MAX_WIDTH = 4096;
 const MARGIN = 24;
@@ -49,9 +53,31 @@ async function pngToImage(bytes: ArrayBuffer): Promise<ImageBitmap | null> {
   return createImageBitmap(new Blob([bytes], { type: "image/png" }));
 }
 
-async function openSheet(): Promise<void> {
-  const path = await open({ multiple: false, filters: [{ name: "CLIP STUDIO PAINT", extensions: ["clip"] }] });
+async function openFile(): Promise<void> {
+  if (!(await workbench.confirmDiscard())) return;
+  const path = await open({
+    multiple: false,
+    filters: [
+      { name: "ネームデータとネーム用紙", extensions: [PROJECT_EXTENSION, "clip"] },
+      { name: "ネームデータ", extensions: [PROJECT_EXTENSION] },
+      { name: "CLIP STUDIO PAINT のネーム用紙", extensions: ["clip"] },
+    ],
+  });
   if (typeof path !== "string") return;
+  if (path.toLowerCase().endsWith(`.${PROJECT_EXTENSION}`)) {
+    try {
+      await workbench.load(path);
+      showWorkspace("editor");
+    } catch (error) {
+      setStatus(`開けませんでした: ${error}`);
+    }
+    return;
+  }
+  await openSheet(path);
+}
+
+async function openSheet(path: string): Promise<void> {
+  showWorkspace("viewer");
   setStatus("読み込み中…");
   try {
     const started = performance.now();
@@ -66,7 +92,9 @@ async function openSheet(): Promise<void> {
     state.overviewFactor = Math.max(1, Math.ceil(sheet.canvas.widthPx / OVERVIEW_MAX_WIDTH));
     $("file-name").textContent = sheet.fileName;
     $("empty").hidden = true;
-    for (const id of ["mode-sheet", "mode-spread", "next", "prev", "export"]) $<HTMLButtonElement>(id).disabled = false;
+    for (const id of ["mode-sheet", "mode-spread", "next", "prev", "export", "import-project"]) {
+      $<HTMLButtonElement>(id).disabled = false;
+    }
     renderPanels();
     draw();
     await loadOverview(sheet);
@@ -360,6 +388,15 @@ canvas.addEventListener("dblclick", (event) => {
 });
 
 window.addEventListener("keydown", (event) => {
+  if (workspace === "editor") {
+    if (workbench.handleKey(event)) event.preventDefault();
+    return;
+  }
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "o") {
+    event.preventDefault();
+    void openFile();
+    return;
+  }
   if (!state.sheet) return;
   // Right-bound book: the next page is to the left.
   if (event.key === "ArrowLeft") flip(1);
@@ -367,7 +404,7 @@ window.addEventListener("keydown", (event) => {
   if (event.key === "Escape") setMode("sheet");
 });
 
-$("open").addEventListener("click", openSheet);
+$("open").addEventListener("click", openFile);
 $("mode-sheet").addEventListener("click", () => {
   state.view = null;
   setMode("sheet");
@@ -383,6 +420,7 @@ $<HTMLInputElement>("first-alone").addEventListener("change", (event) => {
 $("tab-layers").addEventListener("click", () => selectTab("layers"));
 $("tab-lines").addEventListener("click", () => selectTab("lines"));
 window.addEventListener("resize", () => {
+  workbench.editor.resize();
   resizeCanvas();
   if (state.mode === "sheet") state.view = null;
   draw();
@@ -489,3 +527,50 @@ $("export-make-work").addEventListener("change", (event) => {
   $("work-fields").hidden = !exportForm.makeWork;
 });
 $("export-run").addEventListener("click", runExport);
+
+// --- editing name data ---------------------------------------------------------
+
+let workspace: "viewer" | "editor" = "viewer";
+
+const workbench = new Workbench(setStatus, (title) => {
+  $("file-name").textContent = title;
+  document.title = `${title} — Name Studio`;
+});
+
+function showWorkspace(next: "viewer" | "editor"): void {
+  workspace = next;
+  $("viewer").hidden = next !== "viewer";
+  $("editor").hidden = next !== "editor";
+  for (const node of document.querySelectorAll<HTMLElement>(".viewer-only")) node.hidden = next !== "viewer";
+  for (const node of document.querySelectorAll<HTMLElement>(".editor-only")) node.hidden = next !== "editor";
+  if (next === "editor") workbench.editor.resize();
+  else {
+    $("file-name").textContent = state.sheet?.fileName ?? "ファイルが開かれていません";
+    document.title = "Name Studio";
+    resizeCanvas();
+    draw();
+  }
+}
+
+$("new-project").addEventListener("click", async () => {
+  if (!(await workbench.confirmDiscard())) return;
+  showWorkspace("editor");
+  workbench.show(newProject("新しいネーム", 16), null, "16 ページの白紙のネームを作りました。左の「ページ」で作品名を付けられます");
+});
+
+$("import-project").addEventListener("click", async () => {
+  if (!state.sheetPath || !(await workbench.confirmDiscard())) return;
+  try {
+    showWorkspace("editor");
+    await workbench.importSheet(state.sheetPath);
+  } catch (error) {
+    showWorkspace("viewer");
+    setStatus(`取り込めませんでした: ${error}`);
+  }
+});
+
+$("save").addEventListener("click", () => void workbench.save());
+
+void getCurrentWindow().onCloseRequested(async (event) => {
+  if (!(await workbench.confirmDiscard())) event.preventDefault();
+});

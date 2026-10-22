@@ -1,9 +1,11 @@
 //! Name Studio desktop app: opens a CSP name sheet, shows it page by page
-//! and writes it out as page files and a CSP EX work.
+//! and writes it out as page files and a CSP EX work; edits the name data
+//! (.namestudio) made from a sheet or from scratch.
 //!
-//! The document stays on the Rust side (in [`AppState`]); the front end gets
-//! a [`sheet::SheetView`] once and asks for raster pixels as PNG when it
-//! needs them.
+//! The sheet stays on the Rust side (in [`AppState`]); the front end gets a
+//! [`sheet::SheetView`] once and asks for raster pixels as PNG when it needs
+//! them. The name data is edited in the front end and checked here when it
+//! is saved.
 
 pub mod sheet;
 
@@ -13,8 +15,10 @@ use std::sync::Mutex;
 use clip_core::ClipDocument;
 use clip_core::layout::ReadingOrder;
 use clip_core::plan::Fit;
+use clip_core::raster::{Filter, resize};
 use clip_core::write::split::{DEFAULT_NAME_PATTERN, SplitOptions, SplitReport, split_sheet};
-use serde::Deserialize;
+use name_model::{PageFormat, Project};
+use serde::{Deserialize, Serialize};
 use tauri::ipc::Response;
 
 #[derive(Default)]
@@ -146,6 +150,74 @@ async fn export_pages(request: ExportRequest, state: tauri::State<'_, AppState>)
         .map_err(|error| error.to_string())
 }
 
+/// The sheet at `path`, reading it unless it is the one already open.
+fn ensure_sheet(state: &AppState, path: &str) -> Result<(), String> {
+    let mut guard = state.document.lock().map_err(|_| "内部エラー（ロック）".to_owned())?;
+    if guard.as_ref().is_some_and(|document| document.path == Path::new(path)) {
+        return Ok(());
+    }
+    *guard = Some(ClipDocument::read(path).map_err(|error| format!("{path}: {error}"))?);
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct ImportResult {
+    project: Project,
+    warnings: Vec<String>,
+}
+
+/// Make name data from a name sheet; the sheet stays open for its roughs.
+#[tauri::command]
+async fn import_project(path: String, state: tauri::State<'_, AppState>) -> Result<ImportResult, String> {
+    ensure_sheet(&state, &path)?;
+    let guard = state.document.lock().map_err(|_| "内部エラー（ロック）".to_owned())?;
+    let document = guard.as_ref().ok_or("ファイルが開かれていません")?;
+    let (project, warnings) =
+        name_model::import::import_sheet(document, PageFormat::default()).map_err(|error| error.to_string())?;
+    Ok(ImportResult { project, warnings })
+}
+
+#[tauri::command]
+async fn load_project(path: String) -> Result<Project, String> {
+    Project::load(&path).map_err(|error| error.to_string())
+}
+
+/// Check and save the name data; nothing is written when it has problems.
+#[tauri::command]
+async fn save_project(path: String, project: Project) -> Result<(), String> {
+    project.save(&path).map_err(|error| error.to_string())
+}
+
+/// Part of a raster layer of the source sheet, at most `max_height` pixels high, as PNG.
+#[tauri::command]
+async fn rough_image(
+    sheet: String,
+    layer_id: i64,
+    crop: [f64; 4],
+    max_height: u32,
+    state: tauri::State<'_, AppState>,
+) -> Result<Response, String> {
+    ensure_sheet(&state, &sheet)?;
+    let region = (
+        crop[0].floor() as i64,
+        crop[1].floor() as i64,
+        crop[2].ceil() as i64,
+        crop[3].ceil() as i64,
+    );
+    let image = with_layer(&state, layer_id, |document, layer| {
+        document.layer_pixels_in_box(layer, region)
+    })?;
+    let image = if image.height > max_height.max(1) {
+        let width = (image.width as f64 * max_height as f64 / image.height as f64)
+            .round()
+            .max(1.0) as u32;
+        resize(&image, width, max_height, Filter::Box)
+    } else {
+        image
+    };
+    Ok(Response::new(image.to_png().map_err(|error| error.to_string())?))
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -155,7 +227,11 @@ pub fn run() {
             layer_overview,
             layer_region,
             export_defaults,
-            export_pages
+            export_pages,
+            import_project,
+            load_project,
+            save_project,
+            rough_image
         ])
         .run(tauri::generate_context!())
         .expect("error while running Name Studio");
