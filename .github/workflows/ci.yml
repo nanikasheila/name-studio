@@ -10,8 +10,7 @@ permissions:
 
 env:
   # Python reference implementation (name_splitter/csp) used by tools/compare_with_python.py.
-  # Switch to main once the .clip / .cmc stack (PR #16-#19) is merged there.
-  REFERENCE_REF: nanikasheila/feat-cmc-writer
+  REFERENCE_REF: main
 
 jobs:
   rust:
