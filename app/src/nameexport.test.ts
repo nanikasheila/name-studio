@@ -91,6 +91,9 @@ describe("editable layers", () => {
     expect(vertical).toMatchObject({ kind: "text", text: "はじめ\nまして", frame: [200, 150, 300, 525] });
     // 9 pt on the name at 10 px/mm is 31.75 px: 9 pt at 254 dpi.
     expect(vertical.kind === "text" && vertical.fontSizePt).toBeCloseTo(9);
+    expect(vertical).not.toHaveProperty("color");
+    across.inverted = true;
+    expect(textLayers(page, m, 254).find((layer) => layer.kind === "text" && !layer.vertical)).toMatchObject({ color: [255, 255, 255] });
     const horizontal = layers.find((layer) => layer.kind === "text" && !layer.vertical)!;
     expect(horizontal).toMatchObject({ frame: [700, 650, 950, 750] });
   });

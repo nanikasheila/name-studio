@@ -156,6 +156,9 @@ pub const ATTR_DIRECTION: u32 = 0x21;
 pub const ATTR_LENGTH: u32 = 0x27;
 /// Offset of the text from its frame, `i32` × 2 (block width for 縦書き).
 pub const ATTR_ORIGIN: u32 = 0x48;
+/// Text colour: per channel a `u16` (8-bit value × 257), written twice.
+/// Seen black (all 0) on dialogue and white (all `ff`) on text over black.
+pub const ATTR_COLOR: u32 = 0x22;
 const VERTICAL_BIT: u32 = 0x10;
 /// Style-run tags: `u32` run count, then per run `u32` start, `u32` length,
 /// a `u32` and the run's data. The `u32` is the data size, except for
@@ -216,6 +219,8 @@ pub struct NewText {
     pub frame: [i32; 4],
     pub font_size_pt: f64,
     pub vertical: bool,
+    /// Text colour (8-bit RGB); `None` keeps the donor's.
+    pub color: Option<[u8; 3]>,
 }
 
 impl NewText {
@@ -227,6 +232,16 @@ impl NewText {
     fn length(&self) -> u32 {
         self.stored_text().encode_utf16().count() as u32
     }
+}
+
+fn color_bytes(color: [u8; 3]) -> Vec<u8> {
+    color
+        .iter()
+        .flat_map(|&channel| {
+            let wide = (u16::from(channel) * 257).to_le_bytes();
+            [wide, wide].concat()
+        })
+        .collect()
 }
 
 fn i32s(values: &[i32]) -> Vec<u8> {
@@ -295,6 +310,11 @@ fn retarget(blob: &[u8], text: &NewText, runs: bool) -> Result<Vec<u8>> {
                 ATTR_BLOCK_SIZE if value.len() == 8 => value = i32s(&[width, height]),
                 ATTR_QUAD if value.len() == 32 => value = i32s(&quad),
                 ATTR_ORIGIN if value.len() == 8 => value = i32s(&[if text.vertical { width } else { 0 }, 0]),
+                ATTR_COLOR if value.len() == 12 => {
+                    if let Some(color) = text.color {
+                        value = color_bytes(color);
+                    }
+                }
                 _ => {}
             }
         }

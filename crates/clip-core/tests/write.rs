@@ -449,6 +449,7 @@ fn writes_vector_and_text_layers_copied_from_the_sheet() {
         frame: [300, 60, 340, 200],
         font_size_pt: 7.5,
         vertical: true,
+        color: None,
     };
     let layers = [
         PageLayer::Vector {

@@ -68,6 +68,7 @@ impl PartDonors {
             frame: [0, 0, 10, 10],
             font_size_pt: 10.0,
             vertical: true,
+            color: None,
         };
         let mut vector = None;
         let mut text = None;

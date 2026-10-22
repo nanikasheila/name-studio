@@ -132,7 +132,15 @@ export interface VectorLineMeta {
 export type LayerMeta =
   | { kind: "raster"; name: string; length: number }
   | { kind: "vector"; name: string; lines: VectorLineMeta[] }
-  | { kind: "text"; text: string; frame: [number, number, number, number]; fontSizePt: number; vertical: boolean };
+  | {
+      kind: "text";
+      text: string;
+      frame: [number, number, number, number];
+      fontSizePt: number;
+      vertical: boolean;
+      /** 8-bit RGB; absent keeps the template text's colour. */
+      color?: [number, number, number];
+    };
 
 export type LinePartKind = Exclude<LayerKind, "text" | "fills" | "balloonFills">;
 
@@ -186,6 +194,7 @@ export function textLayers(page: Page, m: MmToPx, resolution: number): LayerMeta
         frame,
         fontSizePt: (line.fontSizePt * m.scale * 25.4) / resolution,
         vertical: line.vertical,
+        ...(line.inverted ? { color: [255, 255, 255] as [number, number, number] } : {}),
       };
     });
 }
