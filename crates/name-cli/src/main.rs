@@ -12,6 +12,9 @@ usage:
   name-studio-cli inspect <file.clip|file.cmc> [--pixels] [--output FILE]
   name-studio-cli cells <sheet.clip> [--ltr]
   name-studio-cli import <sheet.clip> [--output FILE.namestudio]
+  name-studio-cli split <sheet.clip> --template PAGE.clip --out-dir DIR [--pages 1,2] [--fit basic|trim|cell]
+                  [--order rtl_ttb|ltr_ttb] [--first-page N] [--name PATTERN] [--cmc NAME]
+                  [--story-index N] [--cmc-template WORK.cmc]
   name-studio-cli decode-time <file.clip>";
 
 fn main() -> ExitCode {
@@ -21,6 +24,7 @@ fn main() -> ExitCode {
         Some("cells") => cells(&args[1..]),
         Some("decode-time") => decode_time(&args[1..]),
         Some("import") => import(&args[1..]),
+        Some("split") => split(&args[1..]),
         _ => {
             eprintln!("{USAGE}");
             ExitCode::from(2)
@@ -147,6 +151,142 @@ fn import(args: &[String]) -> ExitCode {
         count(|page| page.strokes.len())
     );
     ExitCode::SUCCESS
+}
+
+/// Write one .clip per page of a name sheet (and a .cmc with `--cmc`).
+fn split(args: &[String]) -> ExitCode {
+    use clip_core::layout::ReadingOrder;
+    use clip_core::plan::Fit;
+    use clip_core::write::split::{DEFAULT_NAME_PATTERN, SplitOptions, split_sheet};
+
+    let usage = |message: &str| {
+        eprintln!("{message}\n{USAGE}");
+        ExitCode::from(2)
+    };
+    let mut sheet = None;
+    let (mut template, mut out_dir, mut pages, mut cmc, mut cmc_template, mut story_index) =
+        (None, None, None, None, None, None);
+    let (mut fit, mut order, mut first_page, mut name) = (
+        Fit::Basic,
+        ReadingOrder::RightToLeft,
+        1,
+        DEFAULT_NAME_PATTERN.to_owned(),
+    );
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        let mut value = || iter.next().cloned();
+        match arg.as_str() {
+            "--template" => template = value().map(PathBuf::from),
+            "--out-dir" => out_dir = value().map(PathBuf::from),
+            "--pages" => pages = value(),
+            "--fit" => {
+                fit = match value().as_deref() {
+                    Some("basic") => Fit::Basic,
+                    Some("trim") => Fit::Trim,
+                    Some("cell") => Fit::Cell,
+                    _ => return usage("--fit must be basic, trim or cell"),
+                }
+            }
+            "--order" => {
+                order = match value().as_deref() {
+                    Some("rtl_ttb") => ReadingOrder::RightToLeft,
+                    Some("ltr_ttb") => ReadingOrder::LeftToRight,
+                    _ => return usage("--order must be rtl_ttb or ltr_ttb"),
+                }
+            }
+            "--first-page" => match value().and_then(|text| text.parse().ok()) {
+                Some(number) => first_page = number,
+                None => return usage("--first-page must be a number"),
+            },
+            "--name" => match value() {
+                Some(pattern) => name = pattern,
+                None => return usage("--name needs a pattern"),
+            },
+            "--cmc" => cmc = value(),
+            "--cmc-template" => cmc_template = value().map(PathBuf::from),
+            "--story-index" => match value().and_then(|text| text.parse().ok()) {
+                Some(number) => story_index = Some(number),
+                None => return usage("--story-index must be a number"),
+            },
+            _ if sheet.is_none() && !arg.starts_with("--") => sheet = Some(PathBuf::from(arg)),
+            _ => return usage(&format!("Unknown option: {arg}")),
+        }
+    }
+    let (Some(sheet), Some(template), Some(out_dir)) = (sheet, template, out_dir) else {
+        return usage("split needs a sheet, --template and --out-dir");
+    };
+    let pages = match pages {
+        Some(text) => match text
+            .split(',')
+            .filter(|part| !part.trim().is_empty())
+            .map(|part| part.trim().parse())
+            .collect()
+        {
+            Ok(numbers) => Some(numbers),
+            Err(_) => return usage(&format!("--pages must be comma-separated numbers, got {text:?}")),
+        },
+        None => None,
+    };
+    let work = match cmc {
+        Some(name) => {
+            let template = cmc_template.or_else(|| {
+                let folder = sheet
+                    .parent()
+                    .filter(|folder| !folder.as_os_str().is_empty())
+                    .unwrap_or(".".as_ref());
+                let mut found: Vec<PathBuf> = std::fs::read_dir(folder)
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                    .map(|entry| entry.path())
+                    .filter(|path| {
+                        path.extension()
+                            .is_some_and(|extension| extension.eq_ignore_ascii_case("cmc"))
+                    })
+                    .collect();
+                found.sort();
+                (found.len() == 1).then(|| found.remove(0))
+            });
+            match template {
+                Some(template) => Some((name, template)),
+                None => return usage("--cmc needs --cmc-template (no single .cmc found next to the sheet)"),
+            }
+        }
+        None => None,
+    };
+    let options = SplitOptions {
+        sheet,
+        template,
+        out_dir,
+        pages,
+        fit,
+        order,
+        first_page,
+        name_pattern: name,
+        work,
+        story_index,
+    };
+    match split_sheet(&options) {
+        Ok(report) => {
+            for page in &report.pages {
+                println!("Wrote {} ({} layers)", page.path.display(), page.layers);
+                for warning in &page.warnings {
+                    eprintln!("Warning: page {}: {warning}", page.number);
+                }
+            }
+            if let Some(work) = &report.work {
+                println!("Wrote {} ({} pages)", work.display(), report.pages.len());
+            }
+            for warning in &report.warnings {
+                eprintln!("Warning: {warning}");
+            }
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("Format error: {error}");
+            ExitCode::from(1)
+        }
+    }
 }
 
 /// Time decoding every raster layer (to compare with the Python reader).
