@@ -12,7 +12,7 @@ import {
   drawStroke,
   type MmToPx,
 } from "./pagedraw";
-import { KIND_LABELS, basicBox, trimBox, type Page, type Project, type RoughImage } from "./project";
+import { KIND_LABELS, MM_PER_PT, basicBox, trimBox, type Page, type Project, type RoughImage } from "./project";
 import { sceneSpans } from "./story";
 
 /** The template page as `begin_name_export` reports it (clip-core `TemplateCanvas`). */
@@ -136,20 +136,29 @@ export function vectorLines(page: Page, kind: LinePartKind, m: MmToPx): VectorLi
   }
 }
 
+/** Room CSP's lines take: its line pitch and character advance, generously. */
+const CSP_LINE_PITCH = 1.8;
+const CSP_CHAR_ADVANCE = 1.1;
+
 /**
  * Each line of dialogue as a CSP text layer: its box in template px and its
- * size in CSP pt (pt of the template's resolution). CSP wraps text at the
- * frame, so the frame gets room to grow along the text (down for vertical,
- * right for horizontal), where its own font runs longer than ours.
+ * size in CSP pt (pt of the template's resolution). CSP hides what does not
+ * fit its frame, so the frame grows away from where the text starts (down
+ * and left for vertical, down and right for horizontal) to hold every line
+ * at CSP's own spacing, never smaller than the box.
  */
 export function textLayers(page: Page, m: MmToPx, resolution: number): LayerMeta[] {
   return page.lines
     .filter((line) => line.text.trim())
     .map((line) => {
       const [x0, y0, x1, y1] = mapBox(line.box, m);
+      const size = line.fontSizePt * MM_PER_PT * m.scale;
+      const lines = line.text.split(/\r?\n/);
+      const across = lines.length * size * CSP_LINE_PITCH;
+      const along = Math.max(...lines.map((text) => [...text].length)) * size * CSP_CHAR_ADVANCE;
       const frame: [number, number, number, number] = line.vertical
-        ? [x0, y0, x1, y1 + (y1 - y0) * 0.25]
-        : [x0, y0, x1 + (x1 - x0) * 0.25, y1];
+        ? [Math.min(x0, x1 - across), y0, x1, Math.max(y1, y0 + along)]
+        : [x0, y0, Math.max(x1, x0 + along), Math.max(y1, y0 + across)];
       return {
         kind: "text",
         text: line.text,
