@@ -137,6 +137,24 @@ export function drawBalloons(ctx: CanvasRenderingContext2D, page: Page, m: MmToP
   }
 }
 
+/**
+ * Only the paper of the balloons: white, or black when inverted. Vector
+ * layers in CSP hold lines only, so this goes as an image layer under them.
+ */
+export function drawBalloonFills(ctx: CanvasRenderingContext2D, page: Page, m: MmToPx): void {
+  for (const balloon of pageBalloons(page)) {
+    ctx.fillStyle = balloon.inverted ? INK : "#ffffff";
+    for (const extra of balloon.extras) {
+      if (!extra.closed) continue;
+      tracePath(ctx, extra.points, m, true);
+      ctx.fill();
+    }
+    if (balloon.outline.length < 3) continue;
+    tracePath(ctx, balloon.outline, m, true);
+    ctx.fill();
+  }
+}
+
 /** Rough lines under the panel borders, or (over) those drawn in a はみ出し. */
 export function drawStrokes(ctx: CanvasRenderingContext2D, page: Page, m: MmToPx, over: boolean, color: (stroke: Stroke) => string, minWidthPx?: number): void {
   for (const stroke of page.strokes) if (!!stroke.over === over) drawStroke(ctx, stroke, m, color(stroke), minWidthPx);

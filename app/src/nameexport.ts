@@ -4,7 +4,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { pageBalloons } from "./balloon";
 import { borderLines, borderWidthMm, dashes } from "./koma";
-import { BALLOON_LINE_MM, drawBalloons, drawLineText, drawPanelBorders, drawPanelFills, drawStrokes, type MmToPx } from "./pagedraw";
+import { BALLOON_LINE_MM, drawBalloonFills, drawBalloons, drawLineText, drawPanelBorders, drawPanelFills, drawStrokes, type MmToPx } from "./pagedraw";
 import { KIND_LABELS, basicBox, trimBox, type Page, type Project, type RoughImage } from "./project";
 import { sceneSpans } from "./story";
 
@@ -55,16 +55,17 @@ export function mapBox([x0, y0, x1, y1]: number[], m: MmToPx): [number, number, 
   return [x0 * m.scale + m.x, y0 * m.scale + m.y, x1 * m.scale + m.x, y1 * m.scale + m.y];
 }
 
-export type LayerKind = "strokes" | "fills" | "panels" | "overStrokes" | "balloons" | "text";
+export type LayerKind = "strokes" | "fills" | "panels" | "overStrokes" | "balloonFills" | "balloons" | "text";
 
 /** Layers of a page, bottom first. */
-export const LAYER_ORDER: LayerKind[] = ["strokes", "fills", "panels", "overStrokes", "balloons", "text"];
+export const LAYER_ORDER: LayerKind[] = ["strokes", "fills", "panels", "overStrokes", "balloonFills", "balloons", "text"];
 
 export const LAYER_NAMES: Record<LayerKind, string> = {
   strokes: "ラフ線",
   fills: "コマの塗り・効果",
   panels: "コマ枠",
   overStrokes: "はみ出し（ラフ線）",
+  balloonFills: "フキダシの塗り",
   balloons: "フキダシ",
   text: "セリフ",
 };
@@ -82,6 +83,7 @@ export function partCount(page: Page, kind: LayerKind): number {
       );
     case "panels":
       return page.panels.length;
+    case "balloonFills":
     case "balloons":
       return pageBalloons(page).length;
     case "text":
@@ -91,7 +93,7 @@ export function partCount(page: Page, kind: LayerKind): number {
 
 /** Parts CSP can hold as vector lines; fills and effects are always an image. */
 export function canBeVector(kind: LayerKind): kind is LinePartKind {
-  return kind !== "text" && kind !== "fills";
+  return kind !== "text" && kind !== "fills" && kind !== "balloonFills";
 }
 
 /** Draw one kind of part of a page (transparent elsewhere). */
@@ -106,6 +108,9 @@ export function drawPart(ctx: CanvasRenderingContext2D, page: Page, kind: LayerK
       break;
     case "panels":
       drawPanelBorders(ctx, page, m, undefined, 1);
+      break;
+    case "balloonFills":
+      drawBalloonFills(ctx, page, m);
       break;
     case "balloons":
       drawBalloons(ctx, page, m, 1);
@@ -129,7 +134,7 @@ export type LayerMeta =
   | { kind: "vector"; name: string; lines: VectorLineMeta[] }
   | { kind: "text"; text: string; frame: [number, number, number, number]; fontSizePt: number; vertical: boolean };
 
-export type LinePartKind = Exclude<LayerKind, "text" | "fills">;
+export type LinePartKind = Exclude<LayerKind, "text" | "fills" | "balloonFills">;
 
 /** One kind of line part of a page as vector lines (`m`: mm → template px). */
 export function vectorLines(page: Page, kind: LinePartKind, m: MmToPx): VectorLineMeta[] {
@@ -261,6 +266,8 @@ export async function exportToCsp(
       const pngs: Uint8Array[] = [];
       overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
       for (const kind of LAYER_ORDER) {
+        // Image balloons carry their own paper.
+        if (kind === "balloonFills" && !vector) continue;
         if (kind === "text" ? text : vector && canBeVector(kind)) {
           if (kind === "text") layers.push(...textLayers(page, full, start.resolution));
           else if (canBeVector(kind)) layers.push({ kind: "vector", name: LAYER_NAMES[kind], lines: vectorLines(page, kind, full) });
