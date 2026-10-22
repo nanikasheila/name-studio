@@ -5,7 +5,10 @@ use std::io::Write;
 
 use clip_core::container::CsfContainer;
 use clip_core::offscreen::{self, OffscreenParameters};
-use clip_core::text::{build_tlv, parse_text_attributes, parse_tlv, split_attribute_array, transform_text_attributes};
+use clip_core::text::{
+    NewText, build_tlv, parse_text_attributes, parse_tlv, retarget_add_attributes, retarget_text_attributes,
+    split_attribute_array, transform_text_attributes,
+};
 use clip_core::vector::{parse_vector_data, select_vector_objects, transform_vector_data};
 use clip_core::{ClipDocument, LayerKind};
 use flate2::Compression;
@@ -310,8 +313,91 @@ fn round_trips_and_scales_text_attributes() {
     assert_eq!(scaled.bbox, Some((101, 127, 151, 377)));
     assert_eq!(scaled.font_size_pt, Some(20.0));
     assert_eq!(scaled.font_name.as_deref(), Some("Font"));
+    // CSP's rendering of the text (Offscreen 3760) is not copied with it.
+    let cached = build_tlv(&[(0x32, 3760u32.to_le_bytes().to_vec())]);
+    let moved = transform_text_attributes(&cached, 2.5, 1.0, 2.0).unwrap();
+    assert_eq!(parse_tlv(&moved).unwrap(), vec![(0x32, &0u32.to_le_bytes()[..])]);
     assert!(split_attribute_array(&[5, 0, 0, 0, 1]).is_err());
     assert!(parse_tlv(&blob[..blob.len() - 1]).is_err());
+}
+
+/// A style run: start, length, a `u32` and the data.
+fn run(start: u32, length: u32, field: u32, data: &[u8]) -> Vec<u8> {
+    let mut out: Vec<u8> = [start, length, field].iter().flat_map(|n| n.to_le_bytes()).collect();
+    out.extend_from_slice(data);
+    out
+}
+
+#[test]
+fn new_text_takes_one_run_from_a_text_styled_in_parts() {
+    // Font runs carry 16 bytes and a UTF-16 font name; other runs say their size.
+    let mut font_name = vec![0u8; 16];
+    font_name.extend_from_slice(&2u16.to_le_bytes());
+    font_name.extend("明朝".encode_utf16().flat_map(|unit| unit.to_le_bytes()));
+    let plain = [vec![0u8; 16], vec![0, 0]].concat();
+    let runs = |parts: Vec<Vec<u8>>| [(parts.len() as u32).to_le_bytes().to_vec(), parts.concat()].concat();
+    let blob = build_tlv(&[
+        (
+            0x0b,
+            runs(vec![run(0, 45, 0x32, &font_name), run(47, 166, 0x1a, &plain)]),
+        ),
+        (0x1a, runs(vec![run(0, 45, 2, &[1, 0]), run(47, 166, 2, &[0, 0])])),
+        (0x10, runs(vec![run(0, 45, 2, &[0, 0])])),
+        (0x20, 400i32.to_le_bytes().to_vec()),
+    ]);
+    let text = NewText {
+        text: "やあ".into(),
+        frame: [0, 0, 100, 300],
+        font_size_pt: 9.0,
+        vertical: true,
+    };
+    let retargeted = retarget_text_attributes(&blob, &text).unwrap();
+    let items = parse_tlv(&retargeted).unwrap();
+    let value = |id: u32| items.iter().find(|(tag, _)| *tag == id).unwrap().1.to_vec();
+    assert_eq!(value(0x0b), runs(vec![run(0, 2, 0x32, &font_name)]));
+    assert_eq!(value(0x1a), runs(vec![run(0, 2, 2, &[1, 0])]));
+    assert!(value(0x10).is_empty());
+    assert_eq!(value(0x20), 900i32.to_le_bytes());
+    // A run list that does not add up is refused rather than guessed at.
+    let broken = build_tlv(&[(0x1a, runs(vec![run(0, 45, 9, &[1, 0])]))]);
+    assert!(retarget_text_attributes(&broken, &text).is_err());
+}
+
+#[test]
+fn new_text_takes_one_run_in_the_added_attributes_too() {
+    // There runs carry only their size and data; CSP keeps one per run and
+    // rewrites a list longer than the text's runs when it opens the page.
+    let runs = |parts: &[&[u8]]| {
+        let mut out = (parts.len() as u32).to_le_bytes().to_vec();
+        for part in parts {
+            out.extend((part.len() as u32).to_le_bytes());
+            out.extend_from_slice(part);
+        }
+        out
+    };
+    let entry = build_tlv(&[
+        (0x0b, runs(&[&[0, 3, 1], &[0, 0, 1], &[0, 2, 1]])),
+        (0x1a, runs(&[&[1, 0, 0, 0], &[1, 0, 0, 0]])),
+        (0x14, runs(&[&[1, 0, 0, 0]])),
+        (0x20, 400i32.to_le_bytes().to_vec()),
+        (0x32, 3760u32.to_le_bytes().to_vec()),
+    ]);
+    let blob = [(entry.len() as u32).to_le_bytes().to_vec(), entry].concat();
+    let text = NewText {
+        text: "やあ".into(),
+        frame: [0, 0, 300, 100],
+        font_size_pt: 9.0,
+        vertical: false,
+    };
+    let retargeted = retarget_add_attributes(&blob, &text).unwrap();
+    let items = parse_tlv(&retargeted[4..]).unwrap();
+    let value = |id: u32| items.iter().find(|(tag, _)| *tag == id).unwrap().1.to_vec();
+    assert_eq!(value(0x0b), runs(&[&[0, 3, 1]]));
+    assert_eq!(value(0x1a), runs(&[&[1, 0, 0, 0]]));
+    assert!(value(0x14).is_empty());
+    assert_eq!(value(0x20), 900i32.to_le_bytes());
+    // The donor's rendering of its own text is not carried over.
+    assert_eq!(value(0x32), 0u32.to_le_bytes());
 }
 
 #[test]

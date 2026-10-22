@@ -20,16 +20,30 @@ use crate::clip::{ClipDocument, LayerKind, round_half_even};
 use crate::error::Result;
 use crate::plan::{CellTransform, PlannedContent, PlannedPage};
 use crate::raster::{Filter, decode_png, resize};
-use crate::text::{build_tlv, parse_tlv, split_attribute_array, transform_text_attributes};
+use crate::text::{
+    ATTR_BBOX, ATTR_BLOCK_SIZE, ATTR_QUAD, ATTR_RENDER_CACHE, build_tlv, parse_tlv, split_attribute_array,
+    transform_text_attributes,
+};
 use crate::vector::{select_vector_objects, transform_vector_data};
 
-const SCHEMA_TABLES: [&str; 5] = ["Layer", "Canvas", "VectorObjectList", "BrushStyleManager", "BrushStyle"];
+/// Not Canvas: a spread sheet has ComicStory/NombreRightLayerCreated columns,
+/// and a single right page that has them (as NULL) makes CSP rebuild its story
+/// info layers and mark the page modified on opening.
+pub(crate) const SCHEMA_TABLES: [&str; 4] = ["Layer", "VectorObjectList", "BrushStyleManager", "BrushStyle"];
 /// Vector objects refer to brush styles by id, so these rows keep their ids.
 const SHARED_TABLES: [&str; 2] = ["BrushStyleManager", "BrushStyle"];
 const TEXT_BLOBS: [&str; 1] = ["TextLayerAttributes"];
 const TEXT_ARRAYS: [&str; 2] = ["TextLayerAttributesArray", "TextLayerAddAttributesV01"];
 /// Style runs of a text: u32 count, then (u32 start, u32 length, ...).
 const RUN_TAG: u32 = 0x0B;
+/// CropFrameOptionFlag bits CSP sets for a single left / right page (a spread has 17).
+const LEFT_PAGE_FLAG: i64 = 2;
+const RIGHT_PAGE_FLAG: i64 = 4;
+/// Layer.ComicStoryInfoType of the (ノンブル) layer.
+const NOMBRE_INFO: i64 = 2;
+
+/// The TLV items of one text attribute block, as edited in place.
+type TextItems = Vec<(u32, Vec<u8>)>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PageResult {
@@ -102,7 +116,7 @@ pub(crate) fn apply_page_settings(db: &Connection, page_index: i64, canvas_value
             replace_story_index(db, old, *new)?;
         }
     }
-    Ok(())
+    update_nombre(db)
 }
 
 fn add_content(
@@ -228,7 +242,234 @@ fn set_page_index(db: &Connection, index: i64) -> Result<()> {
         "UPDATE Canvas SET ComicPageIndex = ?1, ComicIsLeftPage = ?2",
         (index, left as i64),
     )?;
+    if let Some(Value::Integer(flag)) = canvas_value(db, "CropFrameOptionFlag")?
+        && flag & (LEFT_PAGE_FLAG | RIGHT_PAGE_FLAG) != 0
+    {
+        let side = if left { LEFT_PAGE_FLAG } else { RIGHT_PAGE_FLAG };
+        let flag = (flag & !(LEFT_PAGE_FLAG | RIGHT_PAGE_FLAG)) | side;
+        db.execute("UPDATE Canvas SET CropFrameOptionFlag = ?1", [flag])?;
+    }
+    if (template_left.unwrap_or(0) != 0) != left {
+        mirror_nombre(db)?;
+    }
     Ok(())
+}
+
+/// The (ノンブル) layer of a single page. A spread has a second one for its
+/// right page; only single pages are templates.
+fn nombre_layer(db: &Connection) -> Result<Option<i64>> {
+    if !has_column(db, "Layer", "ComicStoryInfoType")? {
+        return Ok(None);
+    }
+    let mut statement = db.prepare("SELECT MainId FROM Layer WHERE ComicStoryInfoType = ?1")?;
+    let ids: Vec<i64> = statement
+        .query_map([NOMBRE_INFO], |row| row.get(0))?
+        .collect::<std::result::Result<_, _>>()?;
+    Ok(if ids.len() == 1 { Some(ids[0]) } else { None })
+}
+
+fn canvas_width(db: &Connection) -> Result<i64> {
+    let (width, resolution, unit): (f64, f64, i64) = db.query_row(
+        "SELECT CanvasWidth, CanvasResolution, CanvasUnit FROM Canvas",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    )?;
+    Ok(round_half_even(canvas_width_px(width, resolution, unit)))
+}
+
+fn layer_offset_x(db: &Connection, layer_id: i64) -> Result<i64> {
+    let offset: Option<i64> = db.query_row("SELECT LayerOffsetX FROM Layer WHERE MainId = ?1", [layer_id], |row| {
+        row.get(0)
+    })?;
+    Ok(offset.unwrap_or(0))
+}
+
+/// Move the (ノンブル) to the other side of the page.
+///
+/// The hidden ノンブル sits at the binding edge, which is on the other side
+/// for left and right pages. CSP moves it when it opens a page whose side
+/// differs from where the template had it, and then marks the page as
+/// modified. The text block's bbox is mirrored across the canvas width.
+fn mirror_nombre(db: &Connection) -> Result<()> {
+    let Some(layer_id) = nombre_layer(db)? else {
+        return Ok(());
+    };
+    let width = canvas_width(db)?;
+    let offset = layer_offset_x(db, layer_id)?;
+    let mirror = |x0: i64, x1: i64| (width - (x1 + offset) - offset, width - (x0 + offset) - offset);
+    edit_text_blocks(db, layer_id, &|items| map_bbox_x(items, &mirror))
+}
+
+/// Write the page's own number into the (ノンブル) text.
+///
+/// The template's ノンブル shows the template's page number; CSP writes
+/// `ComicStoryNombreStart + ComicPageIndex` there. The text and its style run
+/// change, and the block widens or narrows by the template's width per
+/// character, keeping the edge nearer to the page border (the binding edge).
+fn update_nombre(db: &Connection) -> Result<()> {
+    if !has_column(db, "Canvas", "ComicPageIndex")? || !has_column(db, "Canvas", "ComicStoryNombreStart")? {
+        return Ok(());
+    }
+    let Some(layer_id) = nombre_layer(db)? else {
+        return Ok(());
+    };
+    let (index, start): (Option<i64>, Option<i64>) =
+        db.query_row("SELECT ComicPageIndex, ComicStoryNombreStart FROM Canvas", [], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })?;
+    let number = (start.unwrap_or(1) + index.unwrap_or(0)).to_string();
+    let (string, attributes): (Value, Value) = db.query_row(
+        "SELECT TextLayerString, TextLayerAttributes FROM Layer WHERE MainId = ?1",
+        [layer_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    let old = match string {
+        Value::Blob(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+        Value::Text(text) => text,
+        _ => String::new(),
+    };
+    if old.is_empty() || old == number {
+        return Ok(());
+    }
+    let (old_length, new_length) = (old.chars().count() as i64, number.chars().count() as i64);
+    let width = canvas_width(db)?;
+    let offset = layer_offset_x(db, layer_id)?;
+    let resize = |items: TextItems| -> TextItems {
+        let Some(block) = items
+            .iter()
+            .find(|(tag, value)| *tag == ATTR_BLOCK_SIZE && value.len() == 8)
+            .map(|(_, value)| value.clone())
+        else {
+            return items;
+        };
+        let [block_width, height] = i32_pair(&block);
+        let new_width = round_half_even(block_width as f64 * new_length as f64 / old_length as f64).max(1);
+        let grow = new_width - block_width as i64;
+        let keep_border_edge = |x0: i64, x1: i64| {
+            if x0 + offset < width - (x1 + offset) {
+                (x0, x1 + grow)
+            } else {
+                (x0 - grow, x1)
+            }
+        };
+        map_bbox_x(items, &keep_border_edge)
+            .into_iter()
+            .map(|(tag, mut value)| {
+                if tag == ATTR_BLOCK_SIZE {
+                    value = [new_width as i32, height]
+                        .iter()
+                        .flat_map(|n| n.to_le_bytes())
+                        .collect();
+                } else if tag == ATTR_QUAD && value.len() == 32 {
+                    // The right-hand x of the quad, in 1/100 px.
+                    for position in [2, 4] {
+                        let at = position * 4;
+                        let x = i32::from_le_bytes(value[at..at + 4].try_into().unwrap()) as i64 + grow * 100;
+                        value[at..at + 4].copy_from_slice(&(x as i32).to_le_bytes());
+                    }
+                }
+                (tag, value)
+            })
+            .collect()
+    };
+    db.execute(
+        "UPDATE Layer SET TextLayerString = ?1 WHERE MainId = ?2",
+        (number.as_bytes(), layer_id),
+    )?;
+    if let Value::Blob(attributes) = attributes {
+        let moved = move_run_length(&attributes, new_length - old_length)?;
+        db.execute(
+            "UPDATE Layer SET TextLayerAttributes = ?1 WHERE MainId = ?2",
+            (moved, layer_id),
+        )?;
+    }
+    edit_text_blocks(db, layer_id, &resize)?;
+    drop_render_cache(db, layer_id)
+}
+
+fn i32_pair(value: &[u8]) -> [i32; 2] {
+    [
+        i32::from_le_bytes(value[0..4].try_into().unwrap()),
+        i32::from_le_bytes(value[4..8].try_into().unwrap()),
+    ]
+}
+
+fn map_bbox_x(items: TextItems, change: &dyn Fn(i64, i64) -> (i64, i64)) -> TextItems {
+    items
+        .into_iter()
+        .map(|(tag, value)| {
+            if tag != ATTR_BBOX || value.len() != 16 {
+                return (tag, value);
+            }
+            let number = |at: usize| i32::from_le_bytes(value[at..at + 4].try_into().unwrap());
+            let (x0, x1) = change(number(0) as i64, number(8) as i64);
+            let bbox: Vec<u8> = [x0 as i32, number(4), x1 as i32, number(12)]
+                .iter()
+                .flat_map(|n| n.to_le_bytes())
+                .collect();
+            (tag, bbox)
+        })
+        .collect()
+}
+
+/// Apply `edit` to the TLV items of every attribute blob of one text layer.
+fn edit_text_blocks(db: &Connection, layer_id: i64, edit: &dyn Fn(TextItems) -> TextItems) -> Result<()> {
+    let owned = |blob: &[u8]| -> Result<Vec<u8>> {
+        let items = parse_tlv(blob)?
+            .into_iter()
+            .map(|(tag, value)| (tag, value.to_vec()))
+            .collect();
+        Ok(build_tlv(&edit(items)))
+    };
+    for column in TEXT_BLOBS.iter().chain(TEXT_ARRAYS.iter()) {
+        if !has_column(db, "Layer", column)? {
+            continue;
+        }
+        let blob: Value = db.query_row(
+            &format!("SELECT \"{column}\" FROM Layer WHERE MainId = ?1"),
+            [layer_id],
+            |row| row.get(0),
+        )?;
+        let Value::Blob(blob) = blob else { continue };
+        if blob.is_empty() {
+            continue;
+        }
+        let value = if TEXT_BLOBS.contains(column) {
+            owned(&blob)?
+        } else {
+            let mut joined = Vec::new();
+            for block in split_attribute_array(&blob)? {
+                let block = owned(block)?;
+                joined.extend((block.len() as u32).to_le_bytes());
+                joined.extend(block);
+            }
+            joined
+        };
+        db.execute(
+            &format!("UPDATE Layer SET \"{column}\" = ?1 WHERE MainId = ?2"),
+            (value, layer_id),
+        )?;
+    }
+    Ok(())
+}
+
+/// Make CSP draw a story info / ノンブル text anew instead of its cached
+/// image: CSP shows the image the file caches for the text (TLV 0x32 →
+/// Offscreen) rather than the text, so a changed text kept showing the
+/// template's "… 3話" or page number.
+fn drop_render_cache(db: &Connection, layer_id: i64) -> Result<()> {
+    edit_text_blocks(db, layer_id, &|items| {
+        items
+            .into_iter()
+            .map(|(tag, value)| {
+                if tag == ATTR_RENDER_CACHE && value.len() == 4 {
+                    (tag, vec![0; 4])
+                } else {
+                    (tag, value)
+                }
+            })
+            .collect()
+    })
 }
 
 fn set_canvas_values(db: &Connection, values: &Values) -> Result<()> {
@@ -279,7 +520,8 @@ fn replace_episode(text: &str, old: i64, new: i64) -> String {
 /// CSP shows the text stored in the story info layer (for example
 /// "ユメノストラ 3話") rather than rebuilding it from the Canvas settings, so
 /// a template from another episode would keep showing that episode. The
-/// character count of its single style run (TLV 0x0b) follows the change.
+/// character count of its single style run (TLV 0x0b) follows the change,
+/// and the cached rendering of the text (TLV 0x32) is cleared.
 fn replace_story_index(db: &Connection, old: i64, new: i64) -> Result<()> {
     if !has_column(db, "Layer", "ComicStoryInfoType")? {
         return Ok(());
@@ -318,6 +560,7 @@ fn replace_story_index(db: &Connection, old: i64, new: i64) -> Result<()> {
                 (moved, layer_id),
             )?;
         }
+        drop_render_cache(db, layer_id)?;
     }
     Ok(())
 }
@@ -438,7 +681,7 @@ pub(crate) fn replace_preview(db: &Connection, image: &crate::RgbaImage) -> Resu
 }
 
 /// Copy brush styles (keeping ids) when the template has none.
-fn share_rows(target: &Connection, source: &Connection) -> Result<()> {
+pub(crate) fn share_rows(target: &Connection, source: &Connection) -> Result<()> {
     let (source_tables, target_tables) = (table_names(source)?, table_names(target)?);
     for table in SHARED_TABLES {
         if !source_tables.contains(table) || !target_tables.contains(table) {

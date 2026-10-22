@@ -28,6 +28,7 @@ export class ExportDialog {
     workName: "",
     storyIndex: "",
   };
+  private editable = true;
   private busy = false;
 
   constructor(private readonly host: ExportDialogHost) {
@@ -44,6 +45,9 @@ export class ExportDialog {
     $<HTMLInputElement>("ne-make-work").addEventListener("change", (event) => {
       this.form.makeWork = (event.target as HTMLInputElement).checked;
       this.show();
+    });
+    $<HTMLInputElement>("ne-editable").addEventListener("change", (event) => {
+      this.editable = (event.target as HTMLInputElement).checked;
     });
     $("ne-run").addEventListener("click", () => void this.run());
   }
@@ -75,6 +79,7 @@ export class ExportDialog {
     path("ne-template", this.form.template);
     path("ne-out-dir", this.form.outDir);
     path("ne-work-template", this.form.workTemplate);
+    $<HTMLInputElement>("ne-editable").checked = this.editable;
     $<HTMLInputElement>("ne-make-work").checked = this.form.makeWork;
     $("ne-work-fields").hidden = !this.form.makeWork;
     $<HTMLInputElement>("ne-work-name").value = this.form.workName;
@@ -140,11 +145,22 @@ export class ExportDialog {
             workName: request.workName,
             storyIndex: request.storyIndex,
             inputs: this.sources(),
+            donors: project.source ? [project.source.path] : [],
           },
+          this.editable,
           progress,
         );
         const lines = [`${report.pages.length} ページを書き出しました（${seconds()} 秒）`];
         if (report.work) lines.push(`作品ファイル: ${report.work}`);
+        if (this.editable) {
+          const missing = [!report.vectorLayers && "ベクター線", !report.textLayers && "テキスト"].filter(Boolean);
+          if (missing.length) {
+            lines.push(
+              `ひな形とネーム用紙に CSP の${missing.join("と")}レイヤーが見つからないため、その部分は画像レイヤーにしました。` +
+                "CSP の .clip のネーム用紙から取り込んだネームなら、用紙の線やテキストを写して使えます。",
+            );
+          }
+        }
         this.message(lines.join("\n"));
         this.host.status(`${report.pages.length} ページを ${this.form.outDir} に書き出しました`);
       } else {
