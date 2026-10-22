@@ -363,12 +363,14 @@ fn new_text_takes_one_run_from_a_text_styled_in_parts() {
     assert_eq!(value(0x22), vec![0; 12]);
     text.color = Some([255, 255, 255]);
     let white = retarget_text_attributes(&blob, &text).unwrap();
-    let (_, color) = parse_tlv(&white)
-        .unwrap()
-        .into_iter()
-        .find(|(tag, _)| *tag == 0x22)
-        .unwrap();
-    assert_eq!(color, &[0xff; 12]);
+    let white = parse_tlv(&white).unwrap();
+    let value = |id: u32| white.iter().find(|(tag, _)| *tag == id).unwrap().1.to_vec();
+    assert_eq!(value(0x22), vec![0xff; 12]);
+    // The font run's own colour wins over 0x22 in CSP, so it is white too.
+    let mut white_font = font_name.clone();
+    white_font[1] = 1;
+    white_font[2..8].fill(0xff);
+    assert_eq!(value(0x0b), runs(vec![run(0, 2, 0x32, &white_font)]));
     // A run list that does not add up is refused rather than guessed at.
     let broken = build_tlv(&[(0x1a, runs(vec![run(0, 45, 9, &[1, 0])]))]);
     assert!(retarget_text_attributes(&broken, &text).is_err());
@@ -394,7 +396,7 @@ fn new_text_takes_one_run_in_the_added_attributes_too() {
         (0x32, 3760u32.to_le_bytes().to_vec()),
     ]);
     let blob = [(entry.len() as u32).to_le_bytes().to_vec(), entry].concat();
-    let text = NewText {
+    let mut text = NewText {
         text: "やあ".into(),
         frame: [0, 0, 300, 100],
         font_size_pt: 9.0,
@@ -410,6 +412,12 @@ fn new_text_takes_one_run_in_the_added_attributes_too() {
     assert_eq!(value(0x20), 900i32.to_le_bytes());
     // The donor's rendering of its own text is not carried over.
     assert_eq!(value(0x32), 0u32.to_le_bytes());
+    // A recoloured text flags its font run as coloured here as well.
+    let plain = build_tlv(&[(0x0b, runs(&[&[0, 2, 1]]))]);
+    let plain = [(plain.len() as u32).to_le_bytes().to_vec(), plain].concat();
+    text.color = Some([255, 255, 255]);
+    let white = retarget_add_attributes(&plain, &text).unwrap();
+    assert_eq!(parse_tlv(&white[4..]).unwrap(), vec![(0x0b, &runs(&[&[0, 3, 1]])[..])]);
 }
 
 #[test]

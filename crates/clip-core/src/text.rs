@@ -159,8 +159,9 @@ pub const ATTR_DIRECTION: u32 = 0x21;
 pub const ATTR_LENGTH: u32 = 0x27;
 /// Offset of the text from its frame, `i32` × 2 (block width for 縦書き).
 pub const ATTR_ORIGIN: u32 = 0x48;
-/// Text colour: per channel a `u16` (8-bit value × 257), written twice.
-/// Seen black (all 0) on dialogue and white (all `ff`) on text over black.
+/// Default text colour: per channel a `u16` (8-bit value × 257), written
+/// twice. Seen black (all 0) on dialogue and white (all `ff`) on text over
+/// black. A font run with [`RUN_HAS_COLOR`] overrides it.
 pub const ATTR_COLOR: u32 = 0x22;
 /// `MainId` of the Offscreen holding CSP's rendering of the text (`u32`).
 /// A copied layer must not point at the donor's id, which in the new file is
@@ -172,8 +173,14 @@ const VERTICAL_BIT: u32 = 0x10;
 /// [`ATTR_FONT_RUNS`]. A plain one-style text has one run each.
 const RUN_TAGS: [u32; 8] = [ATTR_FONT_RUNS, 0x1a, 0x0c, 0x0d, 0x1d, 0x41, 0x1e, 0x12];
 /// Font runs: the `u32` is a set of flags and the data is 16 bytes, then a
-/// `u16` count of UTF-16 units of the font name and the name.
+/// `u16` count of UTF-16 units of the font name and the name. Data byte 1
+/// holds flags, with byte 1 of the run's data in `TextLayerAddAttributesV01`
+/// the same.
 const ATTR_FONT_RUNS: u32 = 0x0b;
+/// Font run flag: the run has its own colour, `u16` R, G, B (8-bit value ×
+/// 257) at data bytes 2..8. CSP draws it instead of [`ATTR_COLOR`], so a
+/// donor's black dialogue stays black unless the run is recoloured too.
+const RUN_HAS_COLOR: u8 = 0x01;
 /// Run tags a plain text leaves empty (seen set on parts of a text CSP
 /// styled differently); a new text drops them.
 const EXTRA_RUN_TAGS: [u32; 10] = [0x0e, 0x0f, 0x10, 0x11, 0x13, 0x14, 0x15, 0x16, 0x1b, 0x1c];
@@ -209,6 +216,21 @@ fn single_add_run(id: u32, value: &[u8]) -> Result<Vec<u8>> {
     }
     out.extend_from_slice(data);
     Ok(out)
+}
+
+/// Give the one font run of `value` (as [`single_run`] or [`single_add_run`]
+/// makes it) its own `color`. The add-attributes run only carries the flag.
+fn color_font_run(value: &mut [u8], color: [u8; 3], counted_run: bool) {
+    let data = if counted_run { 16 } else { 8 };
+    if let Some(flags) = value.get_mut(data + 1) {
+        *flags |= RUN_HAS_COLOR;
+    }
+    if counted_run {
+        let channels: Vec<u8> = color.iter().flat_map(|&c| (u16::from(c) * 257).to_le_bytes()).collect();
+        if let Some(slot) = value.get_mut(data + 2..data + 8) {
+            slot.copy_from_slice(&channels);
+        }
+    }
 }
 
 /// The runs of run tag `id`, if `value` is exactly a run list.
@@ -327,6 +349,9 @@ fn retarget(blob: &[u8], text: &NewText, counted_runs: bool) -> Result<Vec<u8>> 
                 } else {
                     single_add_run(id, &value)?
                 };
+                if let (ATTR_FONT_RUNS, Some(color)) = (id, text.color) {
+                    color_font_run(&mut value, color, counted_runs);
+                }
             }
         } else if EXTRA_RUN_TAGS.contains(&id) {
             value.clear();
