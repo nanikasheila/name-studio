@@ -1,6 +1,6 @@
 //! Consistency checks run when a project is loaded or saved.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use crate::model::{FORMAT_VERSION, Project};
 
@@ -22,6 +22,8 @@ pub fn validate(project: &Project) -> Vec<String> {
         }
     };
     let characters: HashSet<&str> = project.characters.iter().map(|c| c.id.as_str()).collect();
+    // 見開き id → page numbers of its halves.
+    let mut spreads: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
     for character in &project.characters {
         check_id(&character.id, &mut problems);
     }
@@ -33,7 +35,23 @@ pub fn validate(project: &Project) -> Vec<String> {
             if panel.shape.len() < 3 {
                 problems.push(format!("{number} ページのコマ {} の頂点が足りません", panel.id));
             }
+            if !panel.spread.is_empty() {
+                spreads.entry(panel.spread.as_str()).or_default().push(number);
+            }
+            if panel.open_edges.iter().any(|&edge| edge as usize >= panel.shape.len()) {
+                problems.push(format!(
+                    "{number} ページのコマ {} の開いた辺の番号が範囲外です",
+                    panel.id
+                ));
+            }
         }
+        for breakout in &page.breakouts {
+            check_id(&breakout.id, &mut problems);
+            if breakout.shape.len() < 3 {
+                problems.push(format!("{number} ページのはみ出し {} の頂点が足りません", breakout.id));
+            }
+        }
+        let lines: HashSet<&str> = page.lines.iter().map(|l| l.id.as_str()).collect();
         for line in &page.lines {
             check_id(&line.id, &mut problems);
             if let Some(speaker) = &line.speaker
@@ -52,6 +70,14 @@ pub fn validate(project: &Project) -> Vec<String> {
                     line.id
                 ));
             }
+            if let Some(target) = &line.link_to
+                && (target == &line.id || !lines.contains(target.as_str()))
+            {
+                problems.push(format!(
+                    "{number} ページのセリフ {} のつなぎ先 {target} が同じページにありません",
+                    line.id
+                ));
+            }
         }
         for stroke in &page.strokes {
             check_id(&stroke.id, &mut problems);
@@ -64,6 +90,12 @@ pub fn validate(project: &Project) -> Vec<String> {
         check_id(&brush.id, &mut problems);
         if !(brush.size_mm.is_finite() && brush.size_mm > 0.0) {
             problems.push(format!("ブラシ「{}」の大きさが正しくありません", brush.name));
+        }
+    }
+    for (spread, pages) in &spreads {
+        let facing = pages.len() == 2 && pages[0].abs_diff(pages[1]) == 1;
+        if pages.len() > 2 || (pages.len() == 2 && !facing) {
+            problems.push(format!("見開きのコマ {spread} が隣り合う 2 ページに分かれていません"));
         }
     }
     for scene in &project.scenes {

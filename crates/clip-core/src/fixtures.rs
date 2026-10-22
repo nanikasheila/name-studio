@@ -173,7 +173,15 @@ pub fn text_attributes(bbox: [i32; 4], font_size_pt: f64, font: &str) -> Vec<u8>
     name.extend(font.as_bytes());
     name.extend(0u16.to_le_bytes());
     build_tlv(&[
-        (0x0b, vec![1, 2]),
+        // One font run as CSP writes it: count, start, length, flags, 16 bytes, no name.
+        (
+            0x0b,
+            [1u32, 0, 1, 0x1a]
+                .iter()
+                .flat_map(|v| v.to_le_bytes())
+                .chain([0; 18])
+                .collect(),
+        ),
         (0x20, ((font_size_pt * 100.0).round() as i32).to_le_bytes().to_vec()),
         (0x2a, bbox.iter().flat_map(|v| v.to_le_bytes()).collect()),
         (0x39, name),
@@ -309,14 +317,17 @@ fn add_editing_schema(database: &Connection, canvas: FixtureCanvas) {
              ALTER TABLE Canvas ADD COLUMN ComicIsLeftPage;
              ALTER TABLE Canvas ADD COLUMN ComicStoryStoryName;
              ALTER TABLE Canvas ADD COLUMN ComicStoryStoryIndex;
+             ALTER TABLE Canvas ADD COLUMN ComicStoryNombreStart;
+             ALTER TABLE Canvas ADD COLUMN CropFrameOptionFlag;
              UPDATE Canvas SET ComicPageIndex = 0, ComicIsLeftPage = 1, ComicStoryStoryName = 'Template',
-                 ComicStoryStoryIndex = 3;
+                 ComicStoryStoryIndex = 3, ComicStoryNombreStart = 1, CropFrameOptionFlag = 2;
              ALTER TABLE Layer ADD COLUMN LayerRenderThumbnail;
              ALTER TABLE Layer ADD COLUMN LayerUuid;
              UPDATE Layer SET LayerUuid = 'fixture-layer-' || MainId;
              ALTER TABLE Layer ADD COLUMN VectorNormalStrokeIndex;
              ALTER TABLE Layer ADD COLUMN ComicStoryInfoType;
              UPDATE Layer SET ComicStoryInfoType = 1 WHERE LayerType = 800;
+             UPDATE Layer SET ComicStoryInfoType = 2 WHERE LayerType = 800 AND LayerName = '(ノンブル)';
              UPDATE Layer SET VectorNormalStrokeIndex =
                  (SELECT MainId FROM VectorObjectList v WHERE v.LayerId = Layer.MainId);
              ALTER TABLE Mipmap ADD COLUMN LayerId;
@@ -331,6 +342,16 @@ fn add_editing_schema(database: &Connection, canvas: FixtureCanvas) {
              UPDATE MipmapInfo SET NextIndex = 0;",
         )
         .expect("editing schema");
+    if canvas.double_page {
+        // CSP adds these for the second page's story info on spreads only.
+        database
+            .execute_batch(
+                "ALTER TABLE Canvas ADD COLUMN ComicStoryRightLayerCreated;
+                 ALTER TABLE Canvas ADD COLUMN ComicNombreRightLayerCreated;
+                 UPDATE Canvas SET ComicStoryRightLayerCreated = 1, ComicNombreRightLayerCreated = 1;",
+            )
+            .expect("spread columns");
+    }
     for (table, label, link, owner) in EDITING_SCHEME {
         database
             .execute(

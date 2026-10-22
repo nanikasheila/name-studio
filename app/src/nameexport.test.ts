@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapBox, packBody, projectToTemplate, scriptText, textLayers, vectorLines } from "./nameexport";
+import { LAYER_ORDER, canBeVector, mapBox, packBody, partCount, projectToTemplate, scriptText, textLayers, vectorLines, type LayerMeta } from "./nameexport";
 import { addCharacter, addLine, addScene, basicBox, newProject, rectShape } from "./project";
 
 describe("projectToTemplate", () => {
@@ -39,6 +39,7 @@ describe("editable layers", () => {
     page.strokes = [{ id: "s1", points: [[1, 2, 0], [3, 4, 1]], widthMm: 0.5, closed: false }];
     const line = addLine(project, page, [5, 5], "やあ");
     line.balloon = [[0, 0], [4, 0], [4, 4]];
+    line.balloonShape = "custom";
     const [panel] = vectorLines(page, "panels", m);
     expect(panel.closed).toBe(true);
     expect(panel.points).toEqual([[100, 50, 1], [200, 50, 1], [200, 250, 1], [100, 250, 1]]);
@@ -52,6 +53,27 @@ describe("editable layers", () => {
     expect(stroke.widthPx).toBeCloseTo(5);
   });
 
+  it("leaves open edges out and splits strokes over the borders into their own layer", () => {
+    const project = newProject("t", 1);
+    const page = project.pages[0];
+    page.panels = [{ id: "p1", shape: rectShape([0, 0, 10, 20]), order: 1, openEdges: [0], fill: "black" }];
+    page.strokes = [
+      { id: "s1", points: [[1, 2, 1], [3, 4, 1]], widthMm: 0.5, closed: false },
+      { id: "s2", points: [[1, 2, 1], [3, 4, 1]], widthMm: 0.5, closed: false, over: true },
+    ];
+    page.breakouts = [{ id: "b1", shape: rectShape([20, 20, 30, 30]) }];
+    const [panel] = vectorLines(page, "panels", m);
+    expect(panel.closed).toBe(false);
+    expect(panel.points).toEqual([[200, 50, 1], [200, 250, 1], [100, 250, 1], [100, 50, 1]]);
+    expect(vectorLines(page, "strokes", m)).toHaveLength(1);
+    expect(vectorLines(page, "overStrokes", m)).toHaveLength(1);
+    expect(partCount(page, "fills")).toBe(2);
+    addLine(project, page, [50, 50], "白");
+    expect(partCount(page, "balloonFills")).toBe(1);
+    expect(LAYER_ORDER.indexOf("balloonFills")).toBe(LAYER_ORDER.indexOf("balloons") - 1);
+    expect(LAYER_ORDER.filter((kind) => !canBeVector(kind))).toEqual(["fills", "balloonFills", "text"]);
+  });
+
   it("makes a text layer per line, sized in pt of the template resolution", () => {
     const project = newProject("t", 1);
     const page = project.pages[0];
@@ -59,18 +81,30 @@ describe("editable layers", () => {
     said.box = [10, 10, 20, 40];
     said.fontSizePt = 9;
     addLine(project, page, [50, 50], "  ");
-    const across = addLine(project, page, [80, 80], "横");
+    const across = addLine(project, page, [80, 80], "一\n二\n三\n四\n五");
     across.vertical = false;
     across.box = [60, 60, 80, 70];
+    across.fontSizePt = 9;
     const layers = textLayers(page, m, 254);
     expect(layers).toHaveLength(2);
     const vertical = layers.find((layer) => layer.kind === "text" && layer.vertical)!;
-    // Room to run on downwards for vertical text, rightwards for horizontal.
-    expect(vertical).toMatchObject({ kind: "text", text: "はじめ\nまして", frame: [200, 150, 300, 525] });
+    expect(vertical).toMatchObject({ kind: "text", text: "はじめ\nまして" });
     // 9 pt on the name at 10 px/mm is 31.75 px: 9 pt at 254 dpi.
     expect(vertical.kind === "text" && vertical.fontSizePt).toBeCloseTo(9);
+    // Two columns at CSP's pitch need more than the 100 px box: the frame
+    // grows to the left, keeping the right edge where vertical text starts.
+    const frame = (layer: LayerMeta) => (layer.kind === "text" ? layer.frame : []);
+    const [vx0, vy0, vx1, vy1] = frame(vertical);
+    expect([vy0, vx1, vy1]).toEqual([150, 300, 450]);
+    expect(vx0).toBeCloseTo(300 - 2 * 31.75 * 1.8);
+    expect(vertical).not.toHaveProperty("color");
+    across.inverted = true;
+    expect(textLayers(page, m, 254).find((layer) => layer.kind === "text" && !layer.vertical)).toMatchObject({ color: [255, 255, 255] });
+    // Five lines of horizontal text run past the 100 px box: it grows downwards.
     const horizontal = layers.find((layer) => layer.kind === "text" && !layer.vertical)!;
-    expect(horizontal).toMatchObject({ frame: [700, 650, 950, 750] });
+    const [hx0, hy0, hx1, hy1] = frame(horizontal);
+    expect([hx0, hy0, hx1]).toEqual([700, 650, 900]);
+    expect(hy1).toBeCloseTo(650 + 5 * 31.75 * 1.8);
   });
 });
 

@@ -3,12 +3,47 @@
 // canvas, origin at its top left. Functions here change the project in place;
 // the editor takes a snapshot before each change for undo.
 
+import { storedOutline } from "./balloon";
+import { inheritOpenEdges } from "./koma";
+
 export type Point = [number, number];
 /** `[x0, y0, x1, y1]` in millimetres. */
 export type BoxMm = [number, number, number, number];
 
 export type Binding = "right" | "left";
-export type LineKind = "speech" | "thought" | "narration" | "sfx";
+export type LineKind = "speech" | "thought" | "narration" | "sfx" | "aside";
+
+/** 枠線: solid, 太枠, 枠なし, 破線 (flashback), 波線 (dream). */
+export type PanelBorder = "solid" | "thick" | "none" | "dashed" | "wavy";
+/** 塗り: none lets panels under it show; white covers them (inset panels). */
+export type PanelFill = "none" | "white" | "black" | "gray";
+/** Background effect: 流線, 集中線, ウニフラ, キラキラ. */
+export type PanelEffect = "none" | "speed" | "focus" | "flash" | "sparkle";
+
+/** フキダシの形; "auto" follows the kind of line. */
+export type BalloonShape =
+  | "auto"
+  | "ellipse"
+  | "rounded"
+  | "box"
+  | "polygon"
+  | "cloud"
+  | "spike"
+  | "burst"
+  | "wavy"
+  | "flash"
+  | "electric"
+  | "dashed"
+  | "none"
+  /** An outline imported from CSP, kept as it is in `balloon`. */
+  | "custom";
+export type TailStyle = "wedge" | "bubbles" | "line" | "zigzag";
+
+/** しっぽ: from the balloon towards the speaker (who may be off the panel). */
+export interface Tail {
+  tip: Point;
+  style?: TailStyle;
+}
 
 export interface PageFormat {
   canvasMm: [number, number];
@@ -21,6 +56,24 @@ export interface Panel {
   id: string;
   shape: Point[];
   order: number;
+  border?: PanelBorder;
+  /** Edges not drawn (裁ち切り): edge i runs from shape[i] to shape[i + 1]. */
+  openEdges?: number[];
+  fill?: PanelFill;
+  effect?: PanelEffect;
+  /** Stacking order; inset panels (はめ込み) sit above with 1. */
+  z?: number;
+  /** 演出メモ */
+  note?: string;
+  /** 見開き: shared by the two halves of a panel across the gutter. */
+  spread?: string;
+}
+
+/** はみ出し: an area over the panels where borders and gutters are blanked. */
+export interface Breakout {
+  id: string;
+  shape: Point[];
+  note?: string;
 }
 
 export interface Line {
@@ -32,7 +85,16 @@ export interface Line {
   box: BoxMm;
   fontSizePt: number;
   vertical: boolean;
+  /** Balloon outline with tails and links merged in (what exports draw). */
   balloon?: Point[];
+  balloonShape?: BalloonShape;
+  tails?: Tail[];
+  /** 連結: joined to this line's balloon. */
+  linkTo?: string;
+  /** 白抜き: black balloon, white text. */
+  inverted?: boolean;
+  /** 強調: bold. */
+  emphasis?: boolean;
 }
 
 export interface Stroke {
@@ -41,6 +103,8 @@ export interface Stroke {
   points: [number, number, number][];
   widthMm: number;
   closed: boolean;
+  /** Drawn over the panel borders (in a はみ出し). */
+  over?: boolean;
   /** Id of the brush it was drawn with; none is the plain pen. */
   brush?: string;
   /** Start / end left by an eraser: no 入り抜き there. */
@@ -104,6 +168,7 @@ export interface Page {
   lines: Line[];
   strokes: Stroke[];
   roughs: RoughImage[];
+  breakouts: Breakout[];
 }
 
 export interface Character {
@@ -151,7 +216,7 @@ export interface Project {
   nextId: number;
 }
 
-export const FORMAT_VERSION = 1;
+export const FORMAT_VERSION = 2;
 export const MM_PER_PT = 25.4 / 72;
 /** Dialogue size on the manuscript (B4 trim, printed smaller in the book). */
 export const DEFAULT_FONT_PT = 13;
@@ -163,6 +228,7 @@ export const KIND_LABELS: Record<LineKind, string> = {
   thought: "モノローグ",
   narration: "ナレーション",
   sfx: "描き文字",
+  aside: "小書き",
 };
 
 /** A3 canvas, B4 trim and a 180 x 270 mm basic frame (same as the Rust default). */
@@ -189,7 +255,7 @@ export function newProject(title: string, pageCount: number): Project {
 }
 
 export function emptyPage(id: string): Page {
-  return { id, memo: "", panels: [], lines: [], strokes: [], roughs: [] };
+  return { id, memo: "", panels: [], lines: [], strokes: [], roughs: [], breakouts: [] };
 }
 
 /** Fill in fields the Rust side leaves out when they are empty. */
@@ -209,17 +275,26 @@ export function normalize(project: Project): Project {
     brush.thickness ??= 100;
     brush.rotation ??= 0;
   }
+  const beforeShapes = (project.formatVersion ?? 1) < 2;
   for (const page of project.pages) {
     page.memo ??= "";
     page.panels ??= [];
     page.lines ??= [];
     page.strokes ??= [];
     page.roughs ??= [];
-    for (const line of page.lines) line.kind ??= "speech";
+    page.breakouts ??= [];
+    for (const line of page.lines) {
+      line.kind ??= "speech";
+      // Before balloon shapes (format 1), an outline the editor did not make
+      // (it made 40-point ellipses and 4-point boxes) came from CSP.
+      if (beforeShapes && !line.balloonShape && line.balloon && line.balloon.length !== 40 && line.balloon.length !== 4) line.balloonShape = "custom";
+    }
   }
   for (const scene of project.scenes) scene.summary ??= "";
   for (const point of project.emotions) point.note ??= "";
   project.pageFormat.basicOffsetMm ??= [0, 0];
+  // Saved again by this version, the file may hold parts older versions drop.
+  project.formatVersion = Math.max(project.formatVersion ?? FORMAT_VERSION, FORMAT_VERSION);
   return project;
 }
 
@@ -442,9 +517,24 @@ export function cutPanels(project: Project, page: Page, a: Point, b: Point, gutt
       panels.push(panel);
       continue;
     }
-    panels.push({ ...panel, shape: halves[0] });
+    // Both halves keep the panel's look; edges cut from an open edge stay open.
+    const [first, second] = halves.map((shape) => {
+      const half: Panel = { ...panel, shape };
+      const open = inheritOpenEdges(panel.shape, panel.openEdges, shape);
+      if (open.length) half.openEdges = open;
+      else delete half.openEdges;
+      return half;
+    });
+    if (panel.spread) {
+      // A 見開き has one half per page: it stays with the part at the gutter.
+      const [w] = project.pageFormat.canvasMm;
+      const atGutter = (half: Panel) => half.shape.some(([x]) => x <= 0.05 || x >= w - 0.05);
+      if (atGutter(first)) delete second.spread;
+      else delete first.spread;
+    }
+    panels.push(first);
     const id = newId(project, "panel");
-    panels.push({ id, shape: halves[1], order: 0 });
+    panels.push({ ...second, id, order: 0 });
     created.push(id);
   }
   if (!created.length) return created;
@@ -490,29 +580,21 @@ export function textSize(text: string, fontSizePt: number, vertical: boolean): [
 
 /** Outline for a line's balloon, or undefined for kinds drawn without one. */
 export function balloonFor(kind: LineKind, box: BoxMm): Point[] | undefined {
-  const [x0, y0, x1, y1] = box;
-  const pad = 3;
-  if (kind === "sfx") return undefined;
-  if (kind === "narration") return rectShape([x0 - pad, y0 - pad, x1 + pad, y1 + pad]);
-  const [cx, cy] = boxCenter(box);
-  // An ellipse through the box corners, with some air.
-  const rx = ((x1 - x0) / 2) * Math.SQRT2 + pad;
-  const ry = ((y1 - y0) / 2) * Math.SQRT2 + pad;
-  const points: Point[] = [];
-  const steps = 40;
-  for (let i = 0; i < steps; i++) {
-    const angle = (i / steps) * Math.PI * 2;
-    points.push([cx + rx * Math.cos(angle), cy + ry * Math.sin(angle)]);
-  }
-  return points;
+  return storedOutline({ id: "", text: "", kind, box, fontSizePt: DEFAULT_FONT_PT, vertical: true });
 }
 
 /** Resize a line's box around its centre to fit its text, and redo its balloon. */
 export function fitLine(line: Line): void {
   const [w, h] = textSize(line.text, line.fontSizePt, line.vertical);
   const [cx, cy] = boxCenter(line.box);
-  line.box = [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2];
-  const balloon = balloonFor(line.kind, line.box);
+  const box: BoxMm = [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2];
+  if (line.balloonShape === "custom" && line.balloon) {
+    // An imported outline follows its text.
+    const [ox, oy] = boxCenter(line.box);
+    line.balloon = line.balloon.map(([x, y]) => [x + cx - ox, y + cy - oy]);
+  }
+  line.box = box;
+  const balloon = storedOutline(line);
   if (balloon) line.balloon = balloon;
   else delete line.balloon;
 }
@@ -533,6 +615,7 @@ export function addLine(project: Project, page: Page, center: Point, text = "セ
   return line;
 }
 
+/** Move a line with its balloon; tails keep pointing at their speakers. */
 export function moveLine(line: Line, dx: number, dy: number): void {
   const [x0, y0, x1, y1] = line.box;
   line.box = [x0 + dx, y0 + dy, x1 + dx, y1 + dy];

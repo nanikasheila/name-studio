@@ -13,7 +13,9 @@ use clip_core::layout::{
 };
 use clip_core::{ClipDocument, ClipLayer, LayerKind, Result};
 
-use crate::model::{BoxMm, Line, LineKind, Page, PageFormat, Panel, Project, RoughImage, SourceSheet, Stroke};
+use crate::model::{
+    BalloonShape, BoxMm, Line, LineKind, Page, PageFormat, Panel, Project, RoughImage, SourceSheet, Stroke,
+};
 
 const MM_PER_INCH: f64 = 25.4;
 const EDGE_TOLERANCE_PX: f64 = 3.0;
@@ -110,7 +112,11 @@ pub fn import_sheet(document: &ClipDocument, format: PageFormat) -> Result<(Proj
                     t.point(rect.x1, rect.y1),
                     t.point(rect.x0, rect.y1),
                 ];
-                project.pages[index].panels.push(Panel { id, shape, order: 0 });
+                project.pages[index].panels.push(Panel {
+                    id,
+                    shape,
+                    ..Panel::default()
+                });
             }
         }
     }
@@ -263,8 +269,7 @@ fn import_strokes(
             points: points.collect(),
             width_mm: object.brush_size * t.scale,
             closed: object.closed(),
-            brush: None,
-            cut: None,
+            ..Stroke::default()
         });
     }
     Ok(())
@@ -337,6 +342,13 @@ fn import_lines(
             font_size_pt: block.font_size_pt.unwrap_or(10.0) * font_scale(&t),
             vertical: h >= w,
             balloon: balloon.map(|object| object.points.iter().map(|(x, y)| t.point(x + dx, y + dy)).collect()),
+            // CSP's own outline is kept as drawn.
+            balloon_shape: if balloon.is_some() {
+                BalloonShape::Custom
+            } else {
+                BalloonShape::Auto
+            },
+            ..Line::default()
         };
         project.pages[page_index].lines.push(line);
     }

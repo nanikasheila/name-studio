@@ -380,6 +380,9 @@ enum LayerMeta {
         frame: [f64; 4],
         font_size_pt: f64,
         vertical: bool,
+        /// 8-bit RGB; absent keeps the template text's colour.
+        #[serde(default)]
+        color: Option<[u8; 3]>,
     },
 }
 
@@ -477,11 +480,13 @@ async fn export_name_page(app: tauri::AppHandle, request: tauri::ipc::Request<'_
                         frame,
                         font_size_pt,
                         vertical,
+                        color,
                     } => PageLayer::Text(NewText {
                         text,
                         frame: frame.map(|value| value.round() as i32),
                         font_size_pt,
                         vertical,
+                        color,
                     }),
                 });
             }
