@@ -8,21 +8,44 @@
   </head>
   <body>
     <header class="toolbar">
-      <button id="open" class="primary">ネーム用紙を開く</button>
+      <button id="open" class="primary" title="ネームデータ（.namestudio）かネーム用紙（.clip）を開く（Ctrl+O）">開く…</button>
+      <button id="new-project" title="白紙のネームを作る">新しいネーム</button>
+      <button id="save" class="editor-only" title="保存（Ctrl+S）" hidden>保存</button>
       <span id="file-name" class="file-name">ファイルが開かれていません</span>
       <div class="spacer"></div>
-      <div class="segmented" role="group" aria-label="表示">
-        <button id="mode-sheet" class="active" disabled>全体</button>
-        <button id="mode-spread" disabled>見開き</button>
+      <div class="viewer-only toolbar-group">
+        <div class="segmented" role="group" aria-label="表示">
+          <button id="mode-sheet" class="active" disabled>全体</button>
+          <button id="mode-spread" disabled>見開き</button>
+        </div>
+        <div class="pager">
+          <button id="next" title="次へ（←）" disabled>◀</button>
+          <span id="page-label">-</span>
+          <button id="prev" title="前へ（→）" disabled>▶</button>
+        </div>
+        <label class="check"><input type="checkbox" id="first-alone" checked /> 1ページ目を単独</label>
+        <button id="import-project" title="このネーム用紙からネームデータを作って編集する" disabled>編集する</button>
+        <button id="export" disabled>ページに書き出す…</button>
       </div>
-      <div class="pager">
-        <button id="next" title="次へ（←）" disabled>◀</button>
-        <span id="page-label">-</span>
-        <button id="prev" title="前へ（→）" disabled>▶</button>
+      <div class="editor-only toolbar-group" hidden>
+        <div class="segmented" role="group" aria-label="道具">
+          <button id="tool-select" class="active" title="選ぶ・動かす（V）">選択</button>
+          <button id="tool-cut" title="コマを割る。コマの外をドラッグすると新しいコマ（K）">コマ割り</button>
+          <button id="tool-text" title="クリックでセリフを置く（T）">セリフ</button>
+          <button id="tool-pen" title="ラフを描く（P）">ペン</button>
+          <button id="tool-eraser" title="ラフの線を消す（E）">消しゴム</button>
+        </div>
+        <button id="undo" title="元に戻す（Ctrl+Z）" disabled>↶</button>
+        <button id="redo" title="やり直す（Ctrl+Shift+Z）" disabled>↷</button>
+        <div class="pager">
+          <button id="editor-next" title="次の見開き（←）">◀</button>
+          <span id="editor-page-label">-</span>
+          <button id="editor-prev" title="前の見開き（→）">▶</button>
+        </div>
+        <label class="check"><input type="checkbox" id="editor-first-alone" checked /> 1ページ目を単独</label>
       </div>
-      <label class="check"><input type="checkbox" id="first-alone" checked /> 1ページ目を単独</label>
     </header>
-    <main class="workspace">
+    <main id="viewer" class="workspace">
       <aside class="sidebar">
         <div class="tabs" role="tablist">
           <button id="tab-layers" class="active" role="tab">レイヤー</button>
@@ -33,10 +56,66 @@
       </aside>
       <section class="stage">
         <canvas id="canvas"></canvas>
-        <div id="empty" class="empty">CLIP STUDIO PAINT のネーム用紙（.clip）を開いてください</div>
+        <div id="empty" class="empty">ネームデータ（.namestudio）か CLIP STUDIO PAINT のネーム用紙（.clip）を開いてください</div>
       </section>
     </main>
+    <main id="editor" class="workspace" hidden>
+      <aside class="sidebar">
+        <div class="tabs" role="tablist">
+          <button id="tab-pages" class="active" role="tab">ページ</button>
+          <button id="tab-script" role="tab">台本</button>
+          <button id="tab-cast" role="tab">人物</button>
+        </div>
+        <div id="side-pages" class="panel"></div>
+        <div id="side-script" class="panel" hidden></div>
+        <div id="side-cast" class="panel" hidden></div>
+      </aside>
+      <section class="stage">
+        <canvas id="editor-canvas"></canvas>
+      </section>
+      <aside id="inspector" class="inspector"></aside>
+    </main>
     <footer id="status" class="status"></footer>
+    <dialog id="export-dialog" class="export">
+      <form method="dialog" id="export-form">
+        <h2>ページに書き出す</h2>
+        <p class="hint">ネーム用紙のページ枠ごとに、レイヤーを保ったままの .clip を作ります。元のファイルは変更しません。</p>
+        <div class="field">
+          <span>ひな形のページ</span>
+          <output id="export-template" class="path">未選択</output>
+          <button type="button" id="pick-template">選ぶ…</button>
+          <small>同じ作品の設定で CSP が保存した、空のページ（.clip）</small>
+        </div>
+        <div class="field">
+          <span>書き出し先</span>
+          <output id="export-out-dir" class="path">未選択</output>
+          <button type="button" id="pick-out-dir">選ぶ…</button>
+        </div>
+        <div class="field">
+          <span>合わせ方</span>
+          <select id="export-fit">
+            <option value="basic">内枠を基本枠に合わせる</option>
+            <option value="trim">内枠を仕上がり線に合わせる</option>
+            <option value="cell">ページ枠全体をキャンバスに収める</option>
+          </select>
+        </div>
+        <label class="check"><input type="checkbox" id="export-make-work" checked /> 作品ファイル（.cmc）も作る</label>
+        <div class="field" id="work-fields">
+          <span>作品のひな形</span>
+          <output id="export-work-template" class="path">未選択</output>
+          <button type="button" id="pick-work-template">選ぶ…</button>
+          <span>作品名</span>
+          <input id="export-work-name" type="text" />
+          <span>話数</span>
+          <input id="export-story-index" type="number" min="0" placeholder="ひな形のまま" />
+        </div>
+        <p id="export-message" class="message" role="status"></p>
+        <div class="actions">
+          <button value="cancel" formnovalidate>閉じる</button>
+          <button type="button" id="export-run" class="primary">書き出す</button>
+        </div>
+      </form>
+    </dialog>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

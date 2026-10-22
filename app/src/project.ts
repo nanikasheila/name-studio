@@ -1,0 +1,654 @@
+// ネームデータ（正本）: the same shapes as crates/name-model/src/model.rs, and
+// the edits the editor makes to them. Coordinates are millimetres on the page
+// canvas, origin at its top left. Functions here change the project in place;
+// the editor takes a snapshot before each change for undo.
+
+export type Point = [number, number];
+/** `[x0, y0, x1, y1]` in millimetres. */
+export type BoxMm = [number, number, number, number];
+
+export type Binding = "right" | "left";
+export type LineKind = "speech" | "thought" | "narration" | "sfx";
+
+export interface PageFormat {
+  canvasMm: [number, number];
+  trimMm: [number, number];
+  basicMm: [number, number];
+  basicOffsetMm: [number, number];
+}
+
+export interface Panel {
+  id: string;
+  shape: Point[];
+  order: number;
+}
+
+export interface Line {
+  id: string;
+  text: string;
+  kind: LineKind;
+  speaker?: string;
+  panel?: string;
+  box: BoxMm;
+  fontSizePt: number;
+  vertical: boolean;
+  balloon?: Point[];
+}
+
+export interface Stroke {
+  id: string;
+  /** `[x, y, pressure]`, pressure 0..1. */
+  points: [number, number, number][];
+  widthMm: number;
+  closed: boolean;
+}
+
+export interface RoughImage {
+  id: string;
+  layerId: number;
+  layerName: string;
+  sheetCrop: [number, number, number, number];
+  box: BoxMm;
+}
+
+export interface Page {
+  id: string;
+  memo: string;
+  panels: Panel[];
+  lines: Line[];
+  strokes: Stroke[];
+  roughs: RoughImage[];
+}
+
+export interface Character {
+  id: string;
+  name: string;
+  color?: string;
+}
+
+export interface Scene {
+  id: string;
+  title: string;
+  summary: string;
+  firstPage: string;
+  lastPage: string;
+  storyTime?: string;
+  storyOrder?: number;
+}
+
+export interface EmotionPoint {
+  character: string;
+  page: string;
+  value: number;
+  note: string;
+}
+
+export interface SourceSheet {
+  path: string;
+  resolution: number;
+  cells: [number, number, number, number][];
+}
+
+export interface Project {
+  formatVersion: number;
+  title: string;
+  storyIndex?: number;
+  author: string;
+  binding: Binding;
+  pageFormat: PageFormat;
+  pages: Page[];
+  characters: Character[];
+  scenes: Scene[];
+  emotions: EmotionPoint[];
+  source?: SourceSheet;
+  nextId: number;
+}
+
+export const FORMAT_VERSION = 1;
+export const MM_PER_PT = 25.4 / 72;
+/** Dialogue size on the manuscript (B4 trim, printed smaller in the book). */
+export const DEFAULT_FONT_PT = 13;
+/** Gap between panels side by side (左右) and one above the other (上下). */
+export const DEFAULT_GUTTERS = { across: 2, down: 6 };
+
+export const KIND_LABELS: Record<LineKind, string> = {
+  speech: "セリフ",
+  thought: "モノローグ",
+  narration: "ナレーション",
+  sfx: "描き文字",
+};
+
+/** A3 canvas, B4 trim and a 180 x 270 mm basic frame (same as the Rust default). */
+export function defaultPageFormat(): PageFormat {
+  return { canvasMm: [297, 420], trimMm: [257, 364], basicMm: [180, 270], basicOffsetMm: [0, 0] };
+}
+
+export function newProject(title: string, pageCount: number): Project {
+  const project: Project = {
+    formatVersion: FORMAT_VERSION,
+    title,
+    author: "",
+    binding: "right",
+    pageFormat: defaultPageFormat(),
+    pages: [],
+    characters: [],
+    scenes: [],
+    emotions: [],
+    nextId: 1,
+  };
+  for (let i = 0; i < pageCount; i++) project.pages.push(emptyPage(newId(project, "page")));
+  return project;
+}
+
+export function emptyPage(id: string): Page {
+  return { id, memo: "", panels: [], lines: [], strokes: [], roughs: [] };
+}
+
+/** Fill in fields the Rust side leaves out when they are empty. */
+export function normalize(project: Project): Project {
+  project.characters ??= [];
+  project.scenes ??= [];
+  project.emotions ??= [];
+  project.author ??= "";
+  for (const page of project.pages) {
+    page.memo ??= "";
+    page.panels ??= [];
+    page.lines ??= [];
+    page.strokes ??= [];
+    page.roughs ??= [];
+    for (const line of page.lines) line.kind ??= "speech";
+  }
+  for (const scene of project.scenes) scene.summary ??= "";
+  for (const point of project.emotions) point.note ??= "";
+  project.pageFormat.basicOffsetMm ??= [0, 0];
+  return project;
+}
+
+export function newId(project: Project, prefix: string): string {
+  return `${prefix}${project.nextId++}`;
+}
+
+// --- geometry ----------------------------------------------------------------
+
+function centred(format: PageFormat, size: [number, number], offset: [number, number]): BoxMm {
+  const x0 = (format.canvasMm[0] - size[0]) / 2 + offset[0];
+  const y0 = (format.canvasMm[1] - size[1]) / 2 + offset[1];
+  return [x0, y0, x0 + size[0], y0 + size[1]];
+}
+
+export function trimBox(format: PageFormat): BoxMm {
+  return centred(format, format.trimMm, [0, 0]);
+}
+
+export function basicBox(format: PageFormat): BoxMm {
+  return centred(format, format.basicMm, format.basicOffsetMm);
+}
+
+export function bounds(points: readonly (readonly number[])[]): BoxMm {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of points) {
+    x0 = Math.min(x0, x);
+    y0 = Math.min(y0, y);
+    x1 = Math.max(x1, x);
+    y1 = Math.max(y1, y);
+  }
+  return [x0, y0, x1, y1];
+}
+
+export function rectShape([x0, y0, x1, y1]: BoxMm): Point[] {
+  return [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+}
+
+export function area(shape: readonly Point[]): number {
+  let sum = 0;
+  for (let i = 0; i < shape.length; i++) {
+    const [x0, y0] = shape[i];
+    const [x1, y1] = shape[(i + 1) % shape.length];
+    sum += x0 * y1 - x1 * y0;
+  }
+  return Math.abs(sum) / 2;
+}
+
+export function centroid(shape: readonly Point[]): Point {
+  const [x0, y0, x1, y1] = bounds(shape);
+  return [(x0 + x1) / 2, (y0 + y1) / 2];
+}
+
+export function insidePolygon(shape: readonly Point[], [x, y]: Point): boolean {
+  let inside = false;
+  for (let i = 0, j = shape.length - 1; i < shape.length; j = i++) {
+    const [xi, yi] = shape[i];
+    const [xj, yj] = shape[j];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+export function insideBox([x0, y0, x1, y1]: BoxMm, [x, y]: Point): boolean {
+  return x0 <= x && x <= x1 && y0 <= y && y <= y1;
+}
+
+/** Distance from `p` to the segment `a`-`b`. */
+export function segmentDistance(p: Point, a: Point, b: Point): number {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const length = dx * dx + dy * dy;
+  const t = length === 0 ? 0 : Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / length));
+  return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
+}
+
+/** Keep the part of `shape` where `side(point) >= 0` (Sutherland–Hodgman, one edge). */
+function clipHalfPlane(shape: readonly Point[], side: (p: Point) => number): Point[] {
+  const result: Point[] = [];
+  for (let i = 0; i < shape.length; i++) {
+    const current = shape[i];
+    const next = shape[(i + 1) % shape.length];
+    const sc = side(current);
+    const sn = side(next);
+    if (sc >= 0) result.push(current);
+    if ((sc >= 0) !== (sn >= 0)) {
+      const t = sc / (sc - sn);
+      result.push([current[0] + t * (next[0] - current[0]), current[1] + t * (next[1] - current[1])]);
+    }
+  }
+  return dedupe(result);
+}
+
+function dedupe(shape: Point[]): Point[] {
+  const result: Point[] = [];
+  for (const point of shape) {
+    const last = result[result.length - 1];
+    if (!last || Math.hypot(last[0] - point[0], last[1] - point[1]) > 1e-6) result.push(point);
+  }
+  if (result.length > 1) {
+    const [first, last] = [result[0], result[result.length - 1]];
+    if (Math.hypot(first[0] - last[0], first[1] - last[1]) <= 1e-6) result.pop();
+  }
+  return result;
+}
+
+/** The gutter for a cut from `a` to `b`: mostly vertical cuts separate panels side by side. */
+export function gutterFor(a: Point, b: Point, gutters = DEFAULT_GUTTERS): number {
+  return Math.abs(b[0] - a[0]) < Math.abs(b[1] - a[1]) ? gutters.across : gutters.down;
+}
+
+/**
+ * Cut a polygon along the straight line through `a` and `b`, leaving `gutter`
+ * mm between the two halves. Returns null when the line misses the polygon or
+ * one half would be too small to be a panel.
+ */
+export function splitShape(shape: readonly Point[], a: Point, b: Point, gutter: number): [Point[], Point[]] | null {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const length = Math.hypot(dx, dy);
+  if (length < 1e-6) return null;
+  const distance = (p: Point) => ((p[0] - a[0]) * dy - (p[1] - a[1]) * dx) / length;
+  const first = clipHalfPlane(shape, (p) => distance(p) - gutter / 2);
+  const second = clipHalfPlane(shape, (p) => -distance(p) - gutter / 2);
+  const minimum = 4; // mm²
+  if (first.length < 3 || second.length < 3 || area(first) < minimum || area(second) < minimum) return null;
+  return [first, second];
+}
+
+/** Whether the segment `a`-`b` crosses the polygon's outline or lies inside it. */
+export function segmentTouches(shape: readonly Point[], a: Point, b: Point): boolean {
+  if (insidePolygon(shape, a) || insidePolygon(shape, b)) return true;
+  const cross = (o: Point, p: Point, q: Point) => (p[0] - o[0]) * (q[1] - o[1]) - (p[1] - o[1]) * (q[0] - o[0]);
+  for (let i = 0; i < shape.length; i++) {
+    const c = shape[i];
+    const d = shape[(i + 1) % shape.length];
+    const d1 = cross(a, b, c);
+    const d2 = cross(a, b, d);
+    const d3 = cross(c, d, a);
+    const d4 = cross(c, d, b);
+    if (d1 * d2 < 0 && d3 * d4 < 0) return true;
+  }
+  return false;
+}
+
+/** Make an almost horizontal or vertical cut exactly so (within `degrees`). */
+export function snapCut(a: Point, b: Point, degrees = 6): Point {
+  const angle = (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
+  const off = (target: number) => Math.abs(((angle - target + 540) % 360) - 180);
+  if (off(0) <= degrees || off(180) <= degrees) return [b[0], a[1]];
+  if (off(90) <= degrees || off(-90) <= degrees) return [a[0], b[1]];
+  return b;
+}
+
+/** Edges a panel corner snaps to: the canvas, the trim and the basic frame. */
+export function snapLines(format: PageFormat): { xs: number[]; ys: number[] } {
+  const trim = trimBox(format);
+  const basic = basicBox(format);
+  return {
+    xs: [0, format.canvasMm[0], trim[0], trim[2], basic[0], basic[2]],
+    ys: [0, format.canvasMm[1], trim[1], trim[3], basic[1], basic[3]],
+  };
+}
+
+export function snapPoint([x, y]: Point, lines: { xs: number[]; ys: number[] }, tolerance: number): Point {
+  const nearest = (value: number, candidates: number[]) => {
+    let best = value;
+    let distance = tolerance;
+    for (const candidate of candidates) {
+      if (Math.abs(candidate - value) <= distance) {
+        best = candidate;
+        distance = Math.abs(candidate - value);
+      }
+    }
+    return best;
+  };
+  return [nearest(x, lines.xs), nearest(y, lines.ys)];
+}
+
+// --- panels --------------------------------------------------------------------
+
+/**
+ * Reading order of panels in a right-bound book (same rule as the Rust
+ * import): rows top to bottom, a panel starts a new row when its top is below
+ * the current row's middle; right to left inside a row.
+ */
+export function orderPanels(page: Page, binding: Binding = "right"): void {
+  const sorted = [...page.panels].sort((a, b) => bounds(a.shape)[1] - bounds(b.shape)[1]);
+  const rows = new Map<Panel, number>();
+  let row = 0;
+  let rowMiddle = -Infinity;
+  sorted.forEach((panel, index) => {
+    const [, y0, , y1] = bounds(panel.shape);
+    if (index > 0 && y0 >= rowMiddle) row++;
+    if (index === 0 || y0 >= rowMiddle) rowMiddle = (y0 + y1) / 2;
+    rows.set(panel, row);
+  });
+  const side = (panel: Panel) => (binding === "right" ? -bounds(panel.shape)[2] : bounds(panel.shape)[0]);
+  sorted.sort((a, b) => rows.get(a)! - rows.get(b)! || side(a) - side(b));
+  sorted.forEach((panel, index) => (panel.order = index + 1));
+  page.panels = sorted;
+}
+
+export function addPanel(project: Project, page: Page, shape: Point[]): Panel {
+  const panel: Panel = { id: newId(project, "panel"), shape, order: page.panels.length + 1 };
+  page.panels.push(panel);
+  orderPanels(page, project.binding);
+  assignPanels(page);
+  return panel;
+}
+
+/** Split every panel the cut `a`-`b` touches. Returns the ids of the new panels. */
+export function cutPanels(project: Project, page: Page, a: Point, b: Point, gutters = DEFAULT_GUTTERS): string[] {
+  const gutter = gutterFor(a, b, gutters);
+  const created: string[] = [];
+  const panels: Panel[] = [];
+  for (const panel of page.panels) {
+    const halves = segmentTouches(panel.shape, a, b) ? splitShape(panel.shape, a, b, gutter) : null;
+    if (!halves) {
+      panels.push(panel);
+      continue;
+    }
+    panels.push({ ...panel, shape: halves[0] });
+    const id = newId(project, "panel");
+    panels.push({ id, shape: halves[1], order: 0 });
+    created.push(id);
+  }
+  if (!created.length) return created;
+  page.panels = panels;
+  orderPanels(page, project.binding);
+  assignPanels(page);
+  return created;
+}
+
+export function removePanel(page: Page, panelId: string, binding: Binding = "right"): void {
+  page.panels = page.panels.filter((panel) => panel.id !== panelId);
+  orderPanels(page, binding);
+  assignPanels(page);
+}
+
+/** Give each line the panel its centre is in. */
+export function assignPanels(page: Page): void {
+  for (const line of page.lines) {
+    const center = boxCenter(line.box);
+    const panel = [...page.panels].sort((a, b) => a.order - b.order).find((p) => insidePolygon(p.shape, center));
+    if (panel) line.panel = panel.id;
+    else delete line.panel;
+  }
+}
+
+// --- lines -----------------------------------------------------------------------
+
+export function boxCenter([x0, y0, x1, y1]: BoxMm): Point {
+  return [(x0 + x1) / 2, (y0 + y1) / 2];
+}
+
+/** Line pitch as a multiple of the font size. */
+export const LINE_PITCH = 1.15;
+
+/** Size of a text block, in mm: vertical columns right to left, or horizontal rows. */
+export function textSize(text: string, fontSizePt: number, vertical: boolean): [number, number] {
+  const size = fontSizePt * MM_PER_PT;
+  const rows = text.replace(/\r\n?/g, "\n").split("\n");
+  const longest = Math.max(1, ...rows.map((row) => [...row].length));
+  const across = size * (1 + (rows.length - 1) * LINE_PITCH);
+  return vertical ? [across, longest * size] : [longest * size, across];
+}
+
+/** Outline for a line's balloon, or undefined for kinds drawn without one. */
+export function balloonFor(kind: LineKind, box: BoxMm): Point[] | undefined {
+  const [x0, y0, x1, y1] = box;
+  const pad = 3;
+  if (kind === "sfx") return undefined;
+  if (kind === "narration") return rectShape([x0 - pad, y0 - pad, x1 + pad, y1 + pad]);
+  const [cx, cy] = boxCenter(box);
+  // An ellipse through the box corners, with some air.
+  const rx = ((x1 - x0) / 2) * Math.SQRT2 + pad;
+  const ry = ((y1 - y0) / 2) * Math.SQRT2 + pad;
+  const points: Point[] = [];
+  const steps = 40;
+  for (let i = 0; i < steps; i++) {
+    const angle = (i / steps) * Math.PI * 2;
+    points.push([cx + rx * Math.cos(angle), cy + ry * Math.sin(angle)]);
+  }
+  return points;
+}
+
+/** Resize a line's box around its centre to fit its text, and redo its balloon. */
+export function fitLine(line: Line): void {
+  const [w, h] = textSize(line.text, line.fontSizePt, line.vertical);
+  const [cx, cy] = boxCenter(line.box);
+  line.box = [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2];
+  const balloon = balloonFor(line.kind, line.box);
+  if (balloon) line.balloon = balloon;
+  else delete line.balloon;
+}
+
+export function addLine(project: Project, page: Page, center: Point, text = "セリフ", kind: LineKind = "speech"): Line {
+  const line: Line = {
+    id: newId(project, "line"),
+    text,
+    kind,
+    box: [center[0], center[1], center[0], center[1]],
+    fontSizePt: kind === "narration" ? DEFAULT_FONT_PT - 1 : DEFAULT_FONT_PT,
+    vertical: true,
+  };
+  fitLine(line);
+  page.lines.push(line);
+  assignPanels(page);
+  sortLines(page);
+  return line;
+}
+
+export function moveLine(line: Line, dx: number, dy: number): void {
+  const [x0, y0, x1, y1] = line.box;
+  line.box = [x0 + dx, y0 + dy, x1 + dx, y1 + dy];
+  if (line.balloon) line.balloon = line.balloon.map(([x, y]) => [x + dx, y + dy]);
+}
+
+/** Manga reading order: by panel, then from the top right towards the bottom left. */
+export function sortLines(page: Page): void {
+  const order = new Map(page.panels.map((panel) => [panel.id, panel.order]));
+  const key = (line: Line) => {
+    const [cx, cy] = boxCenter(line.box);
+    return { panel: line.panel ? order.get(line.panel) ?? Infinity : Infinity, diagonal: cy - cx };
+  };
+  page.lines.sort((a, b) => {
+    const ka = key(a);
+    const kb = key(b);
+    return ka.panel - kb.panel || ka.diagonal - kb.diagonal;
+  });
+}
+
+export function movePanel(panel: Panel, dx: number, dy: number): void {
+  panel.shape = panel.shape.map(([x, y]) => [x + dx, y + dy]);
+}
+
+export function moveStroke(stroke: Stroke, dx: number, dy: number): void {
+  stroke.points = stroke.points.map(([x, y, p]) => [x + dx, y + dy, p]);
+}
+
+// --- strokes -------------------------------------------------------------------
+
+export function addStroke(project: Project, page: Page, points: [number, number, number][], widthMm: number): Stroke | null {
+  if (points.length < 2) return null;
+  const stroke: Stroke = { id: newId(project, "stroke"), points: simplify(points, 0.15), widthMm, closed: false };
+  page.strokes.push(stroke);
+  return stroke;
+}
+
+/** Drop points closer than `tolerance` mm to the previous kept one. */
+export function simplify(points: [number, number, number][], tolerance: number): [number, number, number][] {
+  const result: [number, number, number][] = [];
+  for (const point of points) {
+    const last = result[result.length - 1];
+    if (!last || Math.hypot(point[0] - last[0], point[1] - last[1]) >= tolerance) result.push(point);
+  }
+  const end = points[points.length - 1];
+  if (result[result.length - 1] !== end) result.push(end);
+  return result;
+}
+
+export function strokeHit(stroke: Stroke, point: Point, radius: number): boolean {
+  const pts = stroke.points;
+  if (pts.length === 1) return Math.hypot(pts[0][0] - point[0], pts[0][1] - point[1]) <= radius;
+  for (let i = 1; i < pts.length; i++) {
+    const a: Point = [pts[i - 1][0], pts[i - 1][1]];
+    const b: Point = [pts[i][0], pts[i][1]];
+    if (segmentDistance(point, a, b) <= radius + stroke.widthMm / 2) return true;
+  }
+  return false;
+}
+
+/** Remove strokes under the eraser; returns how many went. */
+export function eraseStrokes(page: Page, point: Point, radius: number): number {
+  const before = page.strokes.length;
+  page.strokes = page.strokes.filter((stroke) => !strokeHit(stroke, point, radius));
+  return before - page.strokes.length;
+}
+
+// --- pages -----------------------------------------------------------------------
+
+export function pageIndex(project: Project, pageId: string): number {
+  return project.pages.findIndex((page) => page.id === pageId);
+}
+
+export function insertPage(project: Project, index: number): Page {
+  const page = emptyPage(newId(project, "page"));
+  project.pages.splice(Math.max(0, Math.min(index, project.pages.length)), 0, page);
+  return page;
+}
+
+/** Remove a page with what refers to it: emotion values and scene ends. */
+export function removePage(project: Project, pageId: string): void {
+  const index = pageIndex(project, pageId);
+  if (index < 0) return;
+  project.pages.splice(index, 1);
+  project.emotions = project.emotions.filter((point) => point.page !== pageId);
+  const neighbour = (forward: boolean) => {
+    const near = forward ? project.pages[index] : project.pages[index - 1];
+    return (near ?? project.pages[index - 1] ?? project.pages[index])?.id;
+  };
+  project.scenes = project.scenes.flatMap((scene) => {
+    if (scene.firstPage === pageId) scene.firstPage = neighbour(true) ?? "";
+    if (scene.lastPage === pageId) scene.lastPage = neighbour(false) ?? "";
+    const first = pageIndex(project, scene.firstPage);
+    const last = pageIndex(project, scene.lastPage);
+    return first < 0 || last < 0 || first > last ? [] : [scene];
+  });
+}
+
+export function movePage(project: Project, pageId: string, step: number): void {
+  const index = pageIndex(project, pageId);
+  const target = index + step;
+  if (index < 0 || target < 0 || target >= project.pages.length) return;
+  const [page] = project.pages.splice(index, 1);
+  project.pages.splice(target, 0, page);
+  // Keep scenes in page order after the move.
+  for (const scene of project.scenes) {
+    if (pageIndex(project, scene.firstPage) > pageIndex(project, scene.lastPage)) {
+      [scene.firstPage, scene.lastPage] = [scene.lastPage, scene.firstPage];
+    }
+  }
+}
+
+// --- characters, scenes and emotions ----------------------------------------------
+
+const PALETTE = ["#d1495b", "#2e86ab", "#edae49", "#66a182", "#8e6c8a", "#e07a5f", "#3d5a80", "#81b29a"];
+
+export function addCharacter(project: Project, name: string): Character {
+  const character: Character = {
+    id: newId(project, "character"),
+    name,
+    color: PALETTE[project.characters.length % PALETTE.length],
+  };
+  project.characters.push(character);
+  return character;
+}
+
+export function removeCharacter(project: Project, characterId: string): void {
+  project.characters = project.characters.filter((character) => character.id !== characterId);
+  project.emotions = project.emotions.filter((point) => point.character !== characterId);
+  for (const page of project.pages) {
+    for (const line of page.lines) if (line.speaker === characterId) delete line.speaker;
+  }
+}
+
+/** Set (or with `null`, clear) how a character feels at a page. */
+export function setEmotion(project: Project, characterId: string, pageId: string, value: number | null, note?: string): void {
+  const existing = project.emotions.find((point) => point.character === characterId && point.page === pageId);
+  if (value === null) {
+    project.emotions = project.emotions.filter((point) => point !== existing);
+    return;
+  }
+  const clamped = Math.max(-1, Math.min(1, value));
+  if (existing) {
+    existing.value = clamped;
+    if (note !== undefined) existing.note = note;
+  } else {
+    project.emotions.push({ character: characterId, page: pageId, value: clamped, note: note ?? "" });
+  }
+}
+
+export function addScene(project: Project, firstPage: string, lastPage: string, title: string): Scene {
+  const scene: Scene = { id: newId(project, "scene"), title, summary: "", firstPage, lastPage };
+  project.scenes.push(scene);
+  sortScenes(project);
+  return scene;
+}
+
+export function sortScenes(project: Project): void {
+  project.scenes.sort((a, b) => pageIndex(project, a.firstPage) - pageIndex(project, b.firstPage));
+}
+
+/** The scene a page belongs to (the first one that covers it). */
+export function sceneOf(project: Project, pageId: string): Scene | undefined {
+  const index = pageIndex(project, pageId);
+  return project.scenes.find(
+    (scene) => pageIndex(project, scene.firstPage) <= index && index <= pageIndex(project, scene.lastPage),
+  );
+}
+
+/** Lines in reading order, with their page number (1-based). */
+export function script(project: Project): { page: number; line: Line }[] {
+  return project.pages.flatMap((page, index) => page.lines.map((line) => ({ page: index + 1, line })));
+}
+
+/** Count of characters spoken per page, a rough measure of how text heavy it is. */
+export function textAmount(page: Page): number {
+  return page.lines.reduce((sum, line) => sum + [...line.text.replace(/\s/g, "")].length, 0);
+}

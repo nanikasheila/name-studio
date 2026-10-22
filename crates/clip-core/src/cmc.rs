@@ -13,8 +13,8 @@ use rusqlite::{Connection, OpenFlags};
 use crate::error::{CspError, Result};
 use crate::sql::{Row, select_rows};
 
-const SQLITE_MAGIC: &[u8; 16] = b"SQLite format 3\0";
-const PAGE_NODE_TYPE: i64 = 2;
+pub const SQLITE_MAGIC: &[u8; 16] = b"SQLite format 3\0";
+pub const PAGE_NODE_TYPE: i64 = 2;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CmcPage {

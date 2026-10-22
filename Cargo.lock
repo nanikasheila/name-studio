@@ -332,6 +332,7 @@ dependencies = [
 name = "clip-core"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "flate2",
  "png",
  "rayon",
@@ -339,6 +340,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "uuid",
 ]
 
 [[package]]
@@ -1931,6 +1933,7 @@ name = "name-studio-app"
 version = "0.1.0"
 dependencies = [
  "clip-core",
+ "name-model",
  "serde",
  "serde_json",
  "tauri",

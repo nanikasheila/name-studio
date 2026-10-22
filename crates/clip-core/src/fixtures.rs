@@ -277,6 +277,126 @@ fn flatten<'a>(layers: &'a [FixtureLayer], result: &mut Vec<&'a FixtureLayer>) {
 
 /// Write a .clip whose root folder (MainId 1) contains `layers`.
 pub fn build_clip(path: &Path, canvas: FixtureCanvas, layers: Vec<FixtureLayer>) -> PathBuf {
+    build(path, canvas, layers, false)
+}
+
+/// Like [`build_clip`], plus what the writers need from a CSP file: the
+/// schema tables (ParamScheme, ElemScheme, ExternalTableAndColumnName),
+/// layer thumbnails, mipmap chains, page position and story columns, and a
+/// real (white) preview at a quarter of the canvas size.
+pub fn build_editable_clip(path: &Path, canvas: FixtureCanvas, layers: Vec<FixtureLayer>) -> PathBuf {
+    build(path, canvas, layers, true)
+}
+
+/// (table, column, link table, owner type) as CSP lists them in ParamScheme.
+const EDITING_SCHEME: [(&str, &str, &str, i64); 10] = [
+    ("Layer", "LayerRenderMipmap", "Mipmap", 0),
+    ("Layer", "LayerRenderThumbnail", "LayerThumbnail", 0),
+    ("Layer", "VectorNormalStrokeIndex", "VectorObjectList", 0),
+    ("Mipmap", "BaseMipmapInfo", "MipmapInfo", 0),
+    ("Mipmap", "LayerId", "", 4),
+    ("MipmapInfo", "Offscreen", "Offscreen", 0),
+    ("MipmapInfo", "LayerId", "", 4),
+    ("Offscreen", "LayerId", "", 4),
+    ("LayerThumbnail", "LayerId", "", 4),
+    ("VectorObjectList", "LayerId", "", 4),
+];
+
+fn add_editing_schema(database: &Connection, canvas: FixtureCanvas) {
+    database
+        .execute_batch(
+            "ALTER TABLE Canvas ADD COLUMN ComicPageIndex;
+             ALTER TABLE Canvas ADD COLUMN ComicIsLeftPage;
+             ALTER TABLE Canvas ADD COLUMN ComicStoryStoryName;
+             ALTER TABLE Canvas ADD COLUMN ComicStoryStoryIndex;
+             UPDATE Canvas SET ComicPageIndex = 0, ComicIsLeftPage = 1, ComicStoryStoryName = 'Template',
+                 ComicStoryStoryIndex = 3;
+             ALTER TABLE Layer ADD COLUMN LayerRenderThumbnail;
+             ALTER TABLE Layer ADD COLUMN LayerUuid;
+             UPDATE Layer SET LayerUuid = 'fixture-layer-' || MainId;
+             ALTER TABLE Layer ADD COLUMN VectorNormalStrokeIndex;
+             ALTER TABLE Layer ADD COLUMN ComicStoryInfoType;
+             UPDATE Layer SET ComicStoryInfoType = 1 WHERE LayerType = 800;
+             UPDATE Layer SET VectorNormalStrokeIndex =
+                 (SELECT MainId FROM VectorObjectList v WHERE v.LayerId = Layer.MainId);
+             ALTER TABLE Mipmap ADD COLUMN LayerId;
+             ALTER TABLE MipmapInfo ADD COLUMN LayerId;
+             ALTER TABLE MipmapInfo ADD COLUMN NextIndex;
+             ALTER TABLE Offscreen ADD COLUMN LayerId;
+             CREATE TABLE LayerThumbnail(MainId, LayerId);
+             CREATE TABLE ParamScheme(TableName, LabelName, LinkTable, OwnerType);
+             CREATE TABLE ElemScheme(TableName, ElemType, MaxIndex);
+             CREATE TABLE ExternalTableAndColumnName(TableName, ColumnName);
+             INSERT INTO ExternalTableAndColumnName VALUES('Offscreen', 'BlockData'), ('VectorObjectList', 'VectorData');
+             UPDATE MipmapInfo SET NextIndex = 0;",
+        )
+        .expect("editing schema");
+    for (table, label, link, owner) in EDITING_SCHEME {
+        database
+            .execute(
+                "INSERT INTO ParamScheme VALUES(?1, ?2, ?3, ?4)",
+                params![table, label, link, owner],
+            )
+            .expect("scheme");
+    }
+    let layers: Vec<(i64, i64)> = {
+        let mut statement = database
+            .prepare("SELECT MainId, LayerRenderMipmap FROM Layer")
+            .expect("layers");
+        statement
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .expect("layers")
+            .map(Result::unwrap)
+            .collect()
+    };
+    for (layer_id, mipmap) in layers.into_iter().filter(|(_, mipmap)| *mipmap != 0) {
+        database
+            .execute("INSERT INTO LayerThumbnail VALUES(?1, ?2)", [mipmap, layer_id])
+            .expect("thumbnail");
+        database
+            .execute(
+                "UPDATE Layer SET LayerRenderThumbnail = ?1 WHERE MainId = ?2",
+                [mipmap, layer_id],
+            )
+            .expect("thumbnail");
+        for table in ["Mipmap", "MipmapInfo", "Offscreen"] {
+            database
+                .execute(
+                    &format!("UPDATE {table} SET LayerId = ?1 WHERE MainId = ?2"),
+                    [layer_id, mipmap],
+                )
+                .expect("owner");
+        }
+    }
+    for table in [
+        "Layer",
+        "Mipmap",
+        "MipmapInfo",
+        "Offscreen",
+        "LayerThumbnail",
+        "VectorObjectList",
+    ] {
+        database
+            .execute(
+                &format!("INSERT INTO ElemScheme VALUES(?1, 0, (SELECT COALESCE(MAX(MainId), 0) FROM {table}))"),
+                [table],
+            )
+            .expect("elem scheme");
+    }
+    let preview = crate::RgbaImage {
+        width: canvas.width_px().div_ceil(4),
+        height: canvas.height_px().div_ceil(4),
+        pixels: vec![255; canvas.width_px().div_ceil(4) as usize * canvas.height_px().div_ceil(4) as usize * 4],
+    };
+    database
+        .execute(
+            "UPDATE CanvasPreview SET ImageData = ?1",
+            [preview.to_png().expect("preview")],
+        )
+        .expect("preview");
+}
+
+fn build(path: &Path, canvas: FixtureCanvas, layers: Vec<FixtureLayer>, editable: bool) -> PathBuf {
     let database = Connection::open_in_memory().expect("in-memory database");
     database
         .execute_batch(
@@ -291,7 +411,8 @@ pub fn build_clip(path: &Path, canvas: FixtureCanvas, layers: Vec<FixtureLayer>)
              CREATE TABLE MipmapInfo(MainId, Offscreen);
              CREATE TABLE Offscreen(MainId, Attribute, BlockData);
              CREATE TABLE VectorObjectList(MainId, LayerId, VectorData);
-             CREATE TABLE CanvasPreview(MainId, ImageData);",
+             CREATE TABLE CanvasPreview(MainId, ImageData);
+             CREATE TABLE ExternalChunk(ExternalID, Offset);",
         )
         .expect("schema");
     database
@@ -361,7 +482,8 @@ pub fn build_clip(path: &Path, canvas: FixtureCanvas, layers: Vec<FixtureLayer>)
                     next,
                     first_child,
                     mipmap,
-                    layer.text,
+                    // CSP stores the text as a UTF-8 blob.
+                    layer.text.as_ref().map(|text| text.as_bytes().to_vec()),
                     layer.frame_folder.then_some(1),
                     layer.text_attributes,
                     array,
@@ -374,6 +496,9 @@ pub fn build_clip(path: &Path, canvas: FixtureCanvas, layers: Vec<FixtureLayer>)
     database
         .execute("INSERT INTO CanvasPreview VALUES(1, x'89504e47')", [])
         .expect("preview");
+    if editable {
+        add_editing_schema(&database, canvas);
+    }
     std::fs::write(path, container(&database, &externals)).expect("write fixture");
     path.to_path_buf()
 }
@@ -388,4 +513,38 @@ fn sibling_after(parent: &FixtureLayer, main_id: i64) -> Option<i64> {
         }
     }
     None
+}
+
+/// Write a minimal .cmc whose pages link to `page_files` in order.
+pub fn build_cmc(path: &Path, page_files: &[&str]) -> PathBuf {
+    let database = Connection::open(path).expect("cmc");
+    database
+        .execute_batch(
+            "CREATE TABLE Project(ProjectInternalVersion, ProjectRootCanvasNode, ComicStoryStoryName,
+                 ComicStoryAuthorName, ComicBindPosition, ComicStartPage, ComicCoverExist, MaxCanvasFileIndex,
+                 DefaultPageUnit, DefaultPageWidth, DefaultPageHeight, DefaultPageResolution,
+                 DefaultPageDoublePage, DefaultPageTemplateName, ComicStoryStoryIndex DEFAULT 3);
+             CREATE TABLE CanvasNode(MainId, Type, NextIndex, FirstChildIndex, PageFlag, Memo, LinkPath);",
+        )
+        .expect("cmc schema");
+    database
+        .execute(
+            "INSERT INTO Project VALUES('1.1.0', 1, 'Story', 'Author', 1, 1, 0, ?1, 2, 182.0, 257.0, 600.0, 0, '', 3)",
+            [page_files.len() as i64],
+        )
+        .expect("project");
+    database
+        .execute("INSERT INTO CanvasNode VALUES(1, 0, 0, 2, 0, '', NULL)", [])
+        .expect("root");
+    for (index, file) in page_files.iter().enumerate() {
+        let id = index as i64 + 2;
+        let next = if index + 1 < page_files.len() { id + 1 } else { 0 };
+        database
+            .execute(
+                "INSERT INTO CanvasNode VALUES(?1, 2, ?2, 0, 0, '', ?3)",
+                params![id, next, format!(".:{file}")],
+            )
+            .expect("page node");
+    }
+    path.to_path_buf()
 }

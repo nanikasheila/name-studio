@@ -7,18 +7,27 @@
 ファイル形式の解析結果は csp-name-splitter の
 [docs/formats/csp-file-format.md](https://github.com/nanikasheila/csp-name-splitter/blob/nanikasheila/feat-cmc-writer/docs/formats/csp-file-format.md) を参照してください。
 
-## できること（N1 の途中）
+## できること
 
 - CSP のネーム用紙（.clip）を開いて、全体表示と右綴じの見開き表示で見直す
 - ページ枠（テンプレートの四角形）から 1〜N ページを自動で割り当てる
 - レイヤーの表示切り替え、ページごとのセリフ一覧（縦書きで表示）
+- ネーム用紙をページごとの .clip と作品ファイル（.cmc）に書き出す（レイヤーを保ったまま）
+- ネームデータ（.namestudio）の編集。ネーム用紙から取り込むか、白紙から作る
+  - コマ割り: コマを横切る線で割る（間白つき、斜めも可）、囲んで新しいコマ、角をドラッグして形を変える（枠に吸い付く）
+  - セリフ: クリックで置く、縦書き・種類（セリフ／モノローグ／ナレーション／描き文字）・話者・文字の大きさ。フキダシは文字に合わせて伸び縮み
+  - ラフ: ペン（筆圧つき）と消しゴム。取り込んだネーム用紙のラフ画像を下に薄く表示
+  - ページの追加・削除・並べ替え、ページのメモ、台本（全セリフを読み順に）、登場人物
+  - 元に戻す・やり直す（Ctrl+Z / Ctrl+Shift+Z）、保存（Ctrl+S）
+  - 道具の切り替え: V 選択、K コマ割り、T セリフ、P ペン、E 消しゴム。Space＋ドラッグで移動、ホイールで拡大縮小
 
 ## 構成
 
 | 場所 | 中身 |
 | --- | --- |
 | `crates/clip-core` | .clip / .cmc の読み取り（レイヤーツリー、ラスター画素、ベクター、テキスト、ページ枠、ページ一覧） |
-| `crates/name-cli` | コマンドライン（`name-studio-cli inspect` / `cells` / `decode-time`） |
+| `crates/name-model` | ネームデータ（正本、.namestudio）。ページ・コマ・セリフ・ラフ線・シーン・登場人物・感情の値 |
+| `crates/name-cli` | コマンドライン（`inspect` / `cells` / `import` / `split` / `decode-time`） |
 | `app/` | 画面（Tauri 2 + TypeScript）。`app/src-tauri` が Rust 側 |
 | `tools/compare_with_python.py` | Python 版（csp-name-splitter の `name_splitter/csp`）と出力を突き合わせる |
 

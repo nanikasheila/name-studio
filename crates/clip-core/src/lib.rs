@@ -2,8 +2,8 @@
 //!
 //! Ported from the Python reference implementation in
 //! `name_splitter/csp` of csp-name-splitter; the format notes live in
-//! `docs/formats/csp-file-format.md` there. Files are only read here: CSP
-//! itself is never touched.
+//! `docs/formats/csp-file-format.md` there. Input files are only read: CSP
+//! itself is never touched; pages and works are written as new files.
 
 mod bytes;
 pub mod clip;
@@ -15,9 +15,12 @@ pub mod fixtures;
 pub mod inspect;
 pub mod layout;
 pub mod offscreen;
+pub mod plan;
+pub mod raster;
 mod sql;
 pub mod text;
 pub mod vector;
+pub mod write;
 
 pub use clip::{ClipCanvas, ClipDocument, ClipLayer, LayerKind};
 pub use cmc::{CmcPage, CmcProject};

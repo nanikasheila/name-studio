@@ -137,3 +137,22 @@ fn refuses_broken_projects() {
     assert!(matches!(project.to_json(), Err(ProjectError::Invalid(_))));
     assert!(matches!(Project::from_json("{}"), Err(ProjectError::Json(_))));
 }
+
+/// A project saved by the editor (app/src/project.ts) reads back and saves unchanged.
+#[test]
+fn reads_what_the_editor_writes() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/editor-project.namestudio");
+    let project = Project::load(&path).expect("editor project");
+    assert_eq!(project.pages.len(), 3);
+    let page = &project.pages[1];
+    assert_eq!(page.panels.len(), 6);
+    assert!(
+        page.lines
+            .iter()
+            .all(|line| line.panel.is_some() && line.balloon.is_some())
+    );
+    assert_eq!(project.characters.len(), 1);
+    assert_eq!(project.pages[2].strokes.len(), 1);
+    let again = Project::from_json(&project.to_json().unwrap()).unwrap();
+    assert_eq!(again, project);
+}
