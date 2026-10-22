@@ -1,0 +1,12 @@
+[package]
+name = "name-cli"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "name-studio-cli"
+path = "src/main.rs"
+
+[dependencies]
+clip-core = { path = "../clip-core" }
+serde_json = "1.0.154"
