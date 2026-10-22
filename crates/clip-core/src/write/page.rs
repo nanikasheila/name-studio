@@ -169,8 +169,8 @@ fn add_content(
     }
     if content.kind == LayerKind::Text && !content.items.is_empty() && sheet.text_blocks(layer)?.len() > 1 {
         warnings.push(format!(
-            "Text layer {}: only whole layers are copied; all blocks were kept",
-            layer.main_id
+            "テキストレイヤー「{}」はレイヤーごと写したため、ほかのページの文字も含まれます",
+            layer.name
         ));
     }
     Ok(new_id)
@@ -193,7 +193,7 @@ fn transform_array(blob: &[u8], scale: f64, dx: f64, dy: f64, column: &str, warn
             })
             .collect(),
         Err(_) => {
-            warnings.push(format!("{column} has an unknown layout and was copied unchanged"));
+            warnings.push(format!("{column} の形式が分からないため、そのまま写しました"));
             blob.to_vec()
         }
     }

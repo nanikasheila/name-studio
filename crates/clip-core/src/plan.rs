@@ -29,7 +29,7 @@ const EDGE_TOLERANCE_PX: f64 = 3.0;
 
 pub type Box4 = (f64, f64, f64, f64);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Fit {
     Basic,
@@ -177,17 +177,21 @@ pub fn plan_sheet(
     };
     if options.fit == Fit::Basic && options.basic.is_none() && options.trim.is_some() {
         plan.warnings
-            .push("No basic frame size known: inner frames are fitted to the trim frame instead".into());
+            .push("ひな形に基本枠の大きさがないため、内枠を仕上がり線に合わせました".into());
     }
     if options.fit != Fit::Cell && plan.target().is_none() {
-        let name = if options.fit == Fit::Basic { "basic" } else { "trim" };
+        let name = if options.fit == Fit::Basic {
+            "基本枠"
+        } else {
+            "仕上がり線"
+        };
         plan.warnings.push(format!(
-            "No {name} frame size known: cells are fitted to the whole page instead"
+            "ひな形に{name}の大きさがないため、ページ枠全体をキャンバスに収めました"
         ));
     }
     if cells.is_empty() {
         plan.warnings
-            .push("No page cells found: the sheet has no repeated vector rectangles".into());
+            .push("ページ枠が見つかりません（同じ大きさのベクターの四角形が繰り返し描かれていません）".into());
         return Ok(plan);
     }
     let template = template_rectangles(&rects);
@@ -219,7 +223,7 @@ pub fn plan_sheet(
     }
     if target.is_some() && cells.iter().any(|cell| cell.frame.is_none()) {
         plan.warnings
-            .push("Some cells have no inner frame: they are fitted to the whole page instead".into());
+            .push("内枠のないページ枠は、枠全体をキャンバスに収めました".into());
     }
     Ok(plan)
 }
@@ -349,8 +353,9 @@ fn assign(
             touched.sort_unstable();
             if touched.len() > 1 {
                 warnings.push(format!(
-                    "Text layer {} ({:?}) has balloons on pages {touched:?}; it is copied whole to each of them",
-                    layer.main_id, layer.name
+                    "テキストレイヤー「{}」のフキダシが複数のページ（{}）にあるため、レイヤーごとそれぞれに写しました",
+                    layer.name,
+                    touched.iter().map(usize::to_string).collect::<Vec<_>>().join("・")
                 ));
             }
             Ok(touched
