@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { ask, save } from "@tauri-apps/plugin-dialog";
 import { PageEditor, isTyping, type Selection, type Tool } from "./editor";
 import { History } from "./history";
+import { Overview, type OverviewKind } from "./overview";
 import {
   KIND_LABELS,
   addCharacter,
@@ -60,6 +61,8 @@ export class Workbench {
   private readonly history = new History<Project>();
   private readonly state: WorkbenchState = { project: null, path: null, dirty: false, pending: null, roughs: new Map() };
   private sideTab: "pages" | "script" | "cast" = "pages";
+  readonly overview: Overview;
+  private view: "edit" | OverviewKind = "edit";
 
   constructor(private readonly setStatus: (message: string) => void, private readonly onTitle: (title: string) => void) {
     this.editor = new PageEditor($<HTMLCanvasElement>("editor-canvas"), {
@@ -71,7 +74,29 @@ export class Workbench {
       rough: (rough) => this.rough(rough),
       status: (message) => this.setStatus(message),
     });
+    this.overview = new Overview($("overview"), {
+      project: () => this.state.project,
+      edit: (change) => this.edit(change),
+      openPage: (pageNumber) => {
+        this.setView("edit");
+        this.editor.selection = null;
+        this.editor.showPage(pageNumber);
+        this.renderAll();
+      },
+    });
     this.bindControls();
+  }
+
+  setView(view: "edit" | OverviewKind): void {
+    this.view = view;
+    for (const name of ["edit", "structure", "emotion", "timeline"] as const) {
+      $(`view-${name}`).classList.toggle("active", name === view);
+    }
+    for (const node of document.querySelectorAll<HTMLElement>(".edit-only")) node.hidden = view !== "edit";
+    $("overview").hidden = view === "edit";
+    if (view === "edit") this.editor.resize();
+    else this.overview.kind = view;
+    this.renderAll();
   }
 
   get project(): Project | null {
@@ -232,7 +257,8 @@ export class Workbench {
   // --- rendering ------------------------------------------------------------------------
 
   renderAll(): void {
-    this.editor.draw();
+    if (this.view === "edit") this.editor.draw();
+    else this.overview.render();
     this.renderSide();
     this.renderInspector();
     this.updateTitle();
@@ -287,6 +313,7 @@ export class Workbench {
         element("span", { className: "count", textContent: `コマ ${page.panels.length}・字 ${textAmount(page)}` }),
       );
       item.addEventListener("click", () => {
+        if (this.view !== "edit") this.setView("edit");
         this.editor.selection = null;
         this.editor.showPage(index + 1);
         this.renderAll();
@@ -313,6 +340,7 @@ export class Workbench {
           element("span", { className: "text", textContent: line.text.replace(/\s+/g, " ") }),
         );
         row.addEventListener("click", () => {
+          if (this.view !== "edit") this.setView("edit");
           this.editor.showPage(index + 1);
           this.editor.select({ kind: "line", pageId: page.id, id: line.id });
           this.renderAll();
@@ -547,6 +575,9 @@ export class Workbench {
       this.editor.spreadIndex = 0;
       this.renderAll();
     });
+    for (const name of ["edit", "structure", "emotion", "timeline"] as const) {
+      $(`view-${name}`).addEventListener("click", () => this.setView(name));
+    }
     for (const tab of ["pages", "script", "cast"] as const) {
       $(`tab-${tab}`).addEventListener("click", () => {
         this.sideTab = tab;
@@ -580,6 +611,12 @@ export class Workbench {
       return true;
     }
     if (mod) return false;
+    const views: Record<string, "edit" | OverviewKind> = { F1: "edit", F2: "structure", F3: "emotion", F4: "timeline" };
+    if (views[event.key]) {
+      this.setView(views[event.key]);
+      return true;
+    }
+    if (this.view !== "edit") return false;
     const tools: Record<string, Tool> = { v: "select", k: "cut", t: "text", p: "pen", e: "eraser" };
     const tool = tools[event.key.toLowerCase()];
     if (tool) {
