@@ -72,6 +72,7 @@ jobs:
       - name: Compare with the Python reference
         env:
           CSP_NAME_SPLITTER: reference
+          PYTHONUTF8: "1"
         run: |
           pip install -e reference
           python tools/compare_with_python.py

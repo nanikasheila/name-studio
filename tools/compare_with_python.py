@@ -280,4 +280,7 @@ def main(extra: list[str]) -> int:
 
 
 if __name__ == "__main__":
+    # Windows consoles default to a legacy code page; the work names are Japanese.
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
     sys.exit(main(sys.argv[1:]))
