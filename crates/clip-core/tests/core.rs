@@ -399,6 +399,7 @@ fn new_text_takes_one_run_in_the_added_attributes_too() {
         frame: [0, 0, 300, 100],
         font_size_pt: 9.0,
         vertical: false,
+        color: None,
     };
     let retargeted = retarget_add_attributes(&blob, &text).unwrap();
     let items = parse_tlv(&retargeted[4..]).unwrap();
