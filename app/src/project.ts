@@ -41,6 +41,52 @@ export interface Stroke {
   points: [number, number, number][];
   widthMm: number;
   closed: boolean;
+  /** Id of the brush it was drawn with; none is the plain pen. */
+  brush?: string;
+  /** Start / end left by an eraser: no 入り抜き there. */
+  cut?: [boolean, boolean];
+}
+
+export type BrushKind = "pen" | "eraser";
+/** 触れた部分 / 交点まで / 線全体. */
+export type EraseMode = "touched" | "intersection" | "whole";
+
+/** `min` at the lightest pressure, 1 at the hardest, along `curve` (control points in 0..1). */
+export interface PressureCurve {
+  min: number;
+  curve?: [number, number][];
+}
+
+export interface BrushTip {
+  /** White PNG with the tip's coverage in alpha. */
+  pngBase64: string;
+  width: number;
+  height: number;
+  /** Stamp spacing in % of the size. */
+  interval: number;
+  enabled: boolean;
+}
+
+/** A pen or eraser, often taken from CLIP STUDIO PAINT (crates/name-model Brush). */
+export interface Brush {
+  id: string;
+  name: string;
+  kind: BrushKind;
+  sizeMm: number;
+  sizePressure?: PressureCurve;
+  opacity: number;
+  opacityPressure?: PressureCurve;
+  hardness: number;
+  /** 手ブレ補正, 0..100. */
+  stabilization: number;
+  taperInMm: number;
+  taperOutMm: number;
+  /** Tip height in % of its width, and its angle in degrees. */
+  thickness: number;
+  rotation: number;
+  tip?: BrushTip;
+  erase?: EraseMode;
+  source?: string;
 }
 
 export interface RoughImage {
@@ -101,6 +147,7 @@ export interface Project {
   scenes: Scene[];
   emotions: EmotionPoint[];
   source?: SourceSheet;
+  brushes: Brush[];
   nextId: number;
 }
 
@@ -134,6 +181,7 @@ export function newProject(title: string, pageCount: number): Project {
     characters: [],
     scenes: [],
     emotions: [],
+    brushes: [],
     nextId: 1,
   };
   for (let i = 0; i < pageCount; i++) project.pages.push(emptyPage(newId(project, "page")));
@@ -150,6 +198,17 @@ export function normalize(project: Project): Project {
   project.scenes ??= [];
   project.emotions ??= [];
   project.author ??= "";
+  project.brushes ??= [];
+  for (const brush of project.brushes) {
+    brush.kind ??= "pen";
+    brush.opacity ??= 1;
+    brush.hardness ??= 1;
+    brush.stabilization ??= 0;
+    brush.taperInMm ??= 0;
+    brush.taperOutMm ??= 0;
+    brush.thickness ??= 100;
+    brush.rotation ??= 0;
+  }
   for (const page of project.pages) {
     page.memo ??= "";
     page.panels ??= [];
@@ -504,9 +563,16 @@ export function moveStroke(stroke: Stroke, dx: number, dy: number): void {
 
 // --- strokes -------------------------------------------------------------------
 
-export function addStroke(project: Project, page: Page, points: [number, number, number][], widthMm: number): Stroke | null {
+export function addStroke(
+  project: Project,
+  page: Page,
+  points: [number, number, number][],
+  widthMm: number,
+  brush?: string,
+): Stroke | null {
   if (points.length < 2) return null;
   const stroke: Stroke = { id: newId(project, "stroke"), points: simplify(points, 0.15), widthMm, closed: false };
+  if (brush) stroke.brush = brush;
   page.strokes.push(stroke);
   return stroke;
 }
@@ -539,6 +605,156 @@ export function eraseStrokes(page: Page, point: Point, radius: number): number {
   const before = page.strokes.length;
   page.strokes = page.strokes.filter((stroke) => !strokeHit(stroke, point, radius));
   return before - page.strokes.length;
+}
+
+type StrokePoint = [number, number, number];
+
+/** Erase like a CSP vector eraser; returns how many strokes changed. */
+export function eraseWith(project: Project, page: Page, point: Point, radius: number, mode: EraseMode): number {
+  if (mode === "whole") return eraseStrokes(page, point, radius);
+  const others = page.strokes.slice();
+  let changed = 0;
+  const result: Stroke[] = [];
+  for (const stroke of page.strokes) {
+    if (stroke.points.length < 2 || !strokeHit(stroke, point, radius)) {
+      result.push(stroke);
+      continue;
+    }
+    const pieces =
+      mode === "touched"
+        ? cutAround(stroke.points, point, radius + stroke.widthMm / 2)
+        : cutBetweenCrossings(stroke, others, point);
+    changed++;
+    for (const [index, piece] of pieces.entries()) {
+      const part: Stroke = { ...stroke, id: index === 0 ? stroke.id : newId(project, "stroke"), points: piece.points };
+      const cut: [boolean, boolean] = [piece.cutStart || !!stroke.cut?.[0], piece.cutEnd || !!stroke.cut?.[1]];
+      if (cut[0] || cut[1]) part.cut = cut;
+      else delete part.cut;
+      result.push(part);
+    }
+  }
+  page.strokes = result;
+  return changed;
+}
+
+/** A piece left of a line, and whether each of its ends is where the eraser cut. */
+interface Piece {
+  points: StrokePoint[];
+  cutStart: boolean;
+  cutEnd: boolean;
+}
+
+/** 触れた部分: the runs of the line outside the circle. */
+function cutAround(points: StrokePoint[], center: Point, radius: number): Piece[] {
+  // Put extra points where segments pass the circle so the cut lands close to it.
+  const step = Math.max(radius / 3, 0.05);
+  const dense: StrokePoint[] = [points[0]];
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1];
+    const b = points[i];
+    if (segmentDistance(center, [a[0], a[1]], [b[0], b[1]]) <= radius) {
+      const count = Math.min(Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / step), 2000);
+      for (let k = 1; k < count; k++) dense.push(lerpPoint(a, b, k / count));
+    }
+    dense.push(b);
+  }
+  const pieces: Piece[] = [];
+  let run: StrokePoint[] = [];
+  let start = 0;
+  dense.forEach((p, index) => {
+    if (Math.hypot(p[0] - center[0], p[1] - center[1]) > radius) {
+      if (!run.length) start = index;
+      run.push(p);
+      return;
+    }
+    if (run.length >= 2) pieces.push({ points: run, cutStart: start > 0, cutEnd: true });
+    run = [];
+  });
+  if (run.length >= 2) pieces.push({ points: run, cutStart: start > 0, cutEnd: false });
+  return pieces;
+}
+
+/** 交点まで: remove the stretch under the eraser up to the nearest crossings with other lines. */
+function cutBetweenCrossings(stroke: Stroke, others: Stroke[], center: Point): Piece[] {
+  const pts = stroke.points;
+  const lengths = [0];
+  for (let i = 1; i < pts.length; i++) lengths.push(lengths[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  const total = lengths[lengths.length - 1];
+  // Where along the line the eraser is.
+  let at = 0;
+  let best = Infinity;
+  for (let i = 1; i < pts.length; i++) {
+    const t = projectOnSegment(center, pts[i - 1], pts[i]);
+    const p = lerpPoint(pts[i - 1], pts[i], t);
+    const d = Math.hypot(p[0] - center[0], p[1] - center[1]);
+    if (d < best) {
+      best = d;
+      at = lengths[i - 1] + t * (lengths[i] - lengths[i - 1]);
+    }
+  }
+  let from = 0;
+  let to = total;
+  for (const other of others) {
+    if (other === stroke) continue;
+    for (let i = 1; i < pts.length; i++) {
+      for (let j = 1; j < other.points.length; j++) {
+        const t = crossing(pts[i - 1], pts[i], other.points[j - 1], other.points[j]);
+        if (t === null) continue;
+        const distance = lengths[i - 1] + t * (lengths[i] - lengths[i - 1]);
+        if (distance < at) from = Math.max(from, distance);
+        else if (distance > at) to = Math.min(to, distance);
+      }
+    }
+  }
+  const pieces: Piece[] = [
+    { points: slicePolyline(pts, lengths, 0, from), cutStart: false, cutEnd: true },
+    { points: slicePolyline(pts, lengths, to, total), cutStart: true, cutEnd: false },
+  ];
+  return pieces.filter(({ points: piece }) =>
+    piece.length >= 2 && Math.hypot(piece[0][0] - piece[piece.length - 1][0], piece[0][1] - piece[piece.length - 1][1]) > 1e-6,
+  );
+}
+
+function lerpPoint(a: StrokePoint, b: StrokePoint, t: number): StrokePoint {
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+}
+
+function projectOnSegment(p: Point, a: StrokePoint, b: StrokePoint): number {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const length = dx * dx + dy * dy;
+  return length === 0 ? 0 : Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / length));
+}
+
+/** Where segment ab crosses cd, as a fraction of ab; null when they do not. */
+function crossing(a: readonly number[], b: readonly number[], c: readonly number[], d: readonly number[]): number | null {
+  const rx = b[0] - a[0];
+  const ry = b[1] - a[1];
+  const sx = d[0] - c[0];
+  const sy = d[1] - c[1];
+  const denominator = rx * sy - ry * sx;
+  if (Math.abs(denominator) < 1e-12) return null;
+  const t = ((c[0] - a[0]) * sy - (c[1] - a[1]) * sx) / denominator;
+  const u = ((c[0] - a[0]) * ry - (c[1] - a[1]) * rx) / denominator;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1 ? t : null;
+}
+
+/** The part of a line between two distances along it. */
+function slicePolyline(pts: StrokePoint[], lengths: number[], from: number, to: number): StrokePoint[] {
+  if (to - from <= 1e-9) return [];
+  const at = (distance: number): StrokePoint => {
+    for (let i = 1; i < pts.length; i++) {
+      if (distance <= lengths[i] || i === pts.length - 1) {
+        const span = lengths[i] - lengths[i - 1];
+        return lerpPoint(pts[i - 1], pts[i], span === 0 ? 0 : (distance - lengths[i - 1]) / span);
+      }
+    }
+    return pts[pts.length - 1];
+  };
+  const result: StrokePoint[] = [at(from)];
+  for (let i = 0; i < pts.length; i++) if (lengths[i] > from && lengths[i] < to) result.push(pts[i]);
+  result.push(at(to));
+  return result;
 }
 
 // --- pages -----------------------------------------------------------------------

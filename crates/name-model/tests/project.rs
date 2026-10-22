@@ -156,3 +156,37 @@ fn reads_what_the_editor_writes() {
     let again = Project::from_json(&project.to_json().unwrap()).unwrap();
     assert_eq!(again, project);
 }
+
+/// Pens taken from CSP and the strokes drawn with them survive a save.
+#[test]
+fn keeps_brushes_and_the_brush_of_each_stroke() {
+    let json = r#"{
+      "formatVersion": 1, "title": "t", "binding": "right",
+      "pageFormat": {"canvasMm": [297, 420], "trimMm": [257, 364], "basicMm": [180, 270], "basicOffsetMm": [0, 0]},
+      "pages": [{"id": "page1", "strokes": [
+        {"id": "stroke2", "points": [[1, 2, 0.5], [3, 4, 1]], "widthMm": 0.5, "closed": false, "brush": "brush3", "cut": [false, true]}
+      ]}],
+      "brushes": [
+        {"id": "brush3", "name": "丸ペン", "kind": "pen", "sizeMm": 0.5,
+         "sizePressure": {"min": 0, "curve": [[0, 0], [0.66, 0.08], [1, 1]]},
+         "opacity": 1, "hardness": 1, "stabilization": 6, "taperInMm": 0.8, "taperOutMm": 0.8,
+         "thickness": 100, "rotation": 0,
+         "tip": {"pngBase64": "iVBORw0KGgo=", "width": 4, "height": 2, "interval": 10, "enabled": false},
+         "source": "CSP: ペン / 丸ペン"},
+        {"id": "brush4", "name": "硬め", "kind": "eraser", "sizeMm": 2.5, "erase": "intersection"}
+      ],
+      "nextId": 5
+    }"#;
+    let project = Project::from_json(json).unwrap();
+    assert_eq!(project.brushes.len(), 2);
+    assert_eq!(project.pages[0].strokes[0].brush.as_deref(), Some("brush3"));
+    assert_eq!(project.pages[0].strokes[0].cut, Some([false, true]));
+    assert_eq!(project.brushes[1].erase, Some(name_model::EraseMode::Intersection));
+    assert_eq!(project.brushes[1].opacity, 1.0);
+    let again = Project::from_json(&project.to_json().unwrap()).unwrap();
+    assert_eq!(again, project);
+    let mut broken = project.clone();
+    broken.brushes[1].id = "brush3".into();
+    broken.brushes[0].size_mm = 0.0;
+    assert_eq!(validate(&broken).len(), 2);
+}

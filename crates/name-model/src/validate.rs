@@ -60,6 +60,12 @@ pub fn validate(project: &Project) -> Vec<String> {
             check_id(&rough.id, &mut problems);
         }
     }
+    for brush in &project.brushes {
+        check_id(&brush.id, &mut problems);
+        if !(brush.size_mm.is_finite() && brush.size_mm > 0.0) {
+            problems.push(format!("ブラシ「{}」の大きさが正しくありません", brush.name));
+        }
+    }
     for scene in &project.scenes {
         check_id(&scene.id, &mut problems);
         match (

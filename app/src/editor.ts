@@ -2,8 +2,9 @@
 // into edits (select and move, cut panels, place lines, draw and erase).
 // Coordinates on a page are millimetres; each page of the spread has its own
 // mm → screen mapping.
+import { brushOf, followFactor } from "./brush";
 import { spreads } from "./pages";
-import { INK, drawBalloon, drawLineText, drawPanel, drawStroke, tracePath } from "./pagedraw";
+import { INK, drawBalloon, drawLineText, drawPanel, drawStroke, onTipLoaded, tracePath } from "./pagedraw";
 import {
   addLine,
   addPanel,
@@ -12,7 +13,7 @@ import {
   basicBox,
   bounds,
   cutPanels,
-  eraseStrokes,
+  eraseWith,
   insideBox,
   insidePolygon,
   moveLine,
@@ -26,6 +27,7 @@ import {
   sortLines,
   strokeHit,
   trimBox,
+  type Brush,
   type Line,
   type Page,
   type Point,
@@ -70,7 +72,7 @@ type Drag =
   | { kind: "vertex"; slot: Slot; panelId: string; vertex: number; moved: boolean }
   | { kind: "cut"; slot: Slot; a: Point; b: Point; free: boolean }
   | { kind: "frame"; slot: Slot; a: Point; b: Point }
-  | { kind: "pen"; slot: Slot; points: [number, number, number][] }
+  | { kind: "pen"; slot: Slot; points: [number, number, number][]; last: [number, number, number] }
   | { kind: "erase"; slot: Slot; erased: number };
 
 const ACCENT = "#2f6fdb";
@@ -84,6 +86,10 @@ export class PageEditor {
   spreadIndex = 0;
   firstAlone = true;
   penWidthMm = 0.4;
+  /** Brushes in use (ids in the project); null is the plain pen / eraser. */
+  penBrush: string | null = null;
+  eraserBrush: string | null = null;
+  eraserSizeMm = 2;
   /** Snap panel corners to the frames. */
   snap = true;
   private zoom = 1;
@@ -96,6 +102,7 @@ export class PageEditor {
 
   constructor(private readonly canvas: HTMLCanvasElement, private readonly host: EditorHost) {
     this.ctx = canvas.getContext("2d")!;
+    onTipLoaded(() => this.draw());
     canvas.addEventListener("pointerdown", (event) => this.pointerDown(event));
     canvas.addEventListener("pointermove", (event) => this.pointerMove(event));
     canvas.addEventListener("pointerup", (event) => this.pointerUp(event));
@@ -272,7 +279,8 @@ export class PageEditor {
 
     const m = { scale, x: slot.x, y: slot.y };
     for (const stroke of page.strokes) {
-      drawStroke(ctx, stroke, m, this.isSelected(page, "stroke", stroke.id) ? ACCENT : "#3a3834");
+      const color = this.isSelected(page, "stroke", stroke.id) ? ACCENT : "#3a3834";
+      drawStroke(ctx, stroke, m, color, 0.7, brushOf(this.host.project(), stroke));
     }
 
     for (const panel of page.panels) {
@@ -365,17 +373,9 @@ export class PageEditor {
     }
     if (drag?.kind === "pen") {
       const { slot, points } = drag;
-      ctx.strokeStyle = "#3a3834";
-      ctx.lineWidth = Math.max(this.penWidthMm * slot.scale, 0.7);
-      ctx.lineCap = "round";
-      ctx.beginPath();
-      points.forEach(([x, y], i) => {
-        const px = slot.x + x * slot.scale;
-        const py = slot.y + y * slot.scale;
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      });
-      ctx.stroke();
+      const brush = this.brush("pen");
+      const stroke = { id: "", points, widthMm: this.penWidthMm, closed: false, brush: brush?.id };
+      drawStroke(ctx, stroke, { scale: slot.scale, x: slot.x, y: slot.y }, "#3a3834", 0.7, brush);
     }
     if (this.tool === "eraser" && this.pointer) {
       ctx.strokeStyle = ACCENT;
@@ -386,8 +386,15 @@ export class PageEditor {
     }
   }
 
-  private eraserRadiusPx(): number {
-    return 8;
+  /** The brush chosen for the pen or the eraser, if it is still in the project. */
+  brush(kind: "pen" | "eraser"): Brush | undefined {
+    const id = kind === "pen" ? this.penBrush : this.eraserBrush;
+    return id ? this.host.project()?.brushes.find((brush) => brush.id === id) : undefined;
+  }
+
+  /** The plain eraser is a fixed 8 px on screen; a brush eraser has its size on the page. */
+  private eraserRadiusPx(scale = this.slots[0]?.scale ?? 1): number {
+    return this.brush("eraser") ? Math.max((this.eraserSizeMm / 2) * scale, 3) : 8;
   }
 
   private isSelected(page: Page, kind: Selection["kind"], id: string): boolean {
@@ -493,9 +500,11 @@ export class PageEditor {
         this.select({ kind: "line", pageId: slot.page.id, id: line.id });
         return;
       }
-      case "pen":
-        this.drag = { kind: "pen", slot, points: [[...point, pressureOf(event)]] };
+      case "pen": {
+        const first: [number, number, number] = [...point, pressureOf(event)];
+        this.drag = { kind: "pen", slot, points: [first], last: first };
         return;
+      }
       case "eraser": {
         this.host.begin();
         this.drag = { kind: "erase", slot, erased: 0 };
@@ -547,9 +556,14 @@ export class PageEditor {
         if (drag.kind === "cut") drag.free = event.altKey;
         break;
       case "pen": {
+        // 手ブレ補正: each point moves only part of the way towards the pen.
+        const follow = followFactor(this.brush("pen")?.stabilization ?? 0);
         const events = event.getCoalescedEvents?.() ?? [event];
         for (const e of events.length ? events : [event]) {
-          drag.points.push([...this.toPage(drag.slot, e.offsetX, e.offsetY), pressureOf(e)]);
+          const raw: [number, number, number] = [...this.toPage(drag.slot, e.offsetX, e.offsetY), pressureOf(e)];
+          const previous = drag.points[drag.points.length - 1];
+          drag.points.push(previous.map((value, i) => value + (raw[i] - value) * follow) as [number, number, number]);
+          drag.last = raw;
         }
         break;
       }
@@ -611,7 +625,9 @@ export class PageEditor {
       }
       case "pen": {
         this.host.begin();
-        const stroke = addStroke(project, drag.slot.page, drag.points, this.penWidthMm);
+        // The smoothed line catches up with where the pen left the page.
+        if (drag.points.length > 1) drag.points.push(drag.last);
+        const stroke = addStroke(project, drag.slot.page, drag.points, this.penWidthMm, this.brush("pen")?.id);
         if (stroke) this.host.commit();
         else this.host.cancel();
         break;
@@ -628,7 +644,10 @@ export class PageEditor {
   }
 
   private erase(slot: Slot, point: Point): void {
-    const erased = eraseStrokes(slot.page, point, this.eraserRadiusPx() / slot.scale);
+    const project = this.host.project();
+    if (!project) return;
+    const mode = this.brush("eraser")?.erase ?? "whole";
+    const erased = eraseWith(project, slot.page, point, this.eraserRadiusPx(slot.scale) / slot.scale, mode);
     if (this.drag?.kind === "erase") this.drag.erased += erased;
   }
 

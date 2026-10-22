@@ -15,7 +15,8 @@ usage:
   name-studio-cli split <sheet.clip> --template PAGE.clip --out-dir DIR [--pages 1,2] [--fit basic|trim|cell]
                   [--order rtl_ttb|ltr_ttb] [--first-page N] [--name PATTERN] [--cmc NAME]
                   [--story-index N] [--cmc-template WORK.cmc]
-  name-studio-cli decode-time <file.clip>";
+  name-studio-cli decode-time <file.clip>
+  name-studio-cli subtools <tool.sut|EditImageTool.todb> [--materials DIR] [--tips]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -25,6 +26,7 @@ fn main() -> ExitCode {
         Some("decode-time") => decode_time(&args[1..]),
         Some("import") => import(&args[1..]),
         Some("split") => split(&args[1..]),
+        Some("subtools") => subtools(&args[1..]),
         _ => {
             eprintln!("{USAGE}");
             ExitCode::from(2)
@@ -321,5 +323,48 @@ fn decode_time(args: &[String]) -> ExitCode {
             }
         }
     }
+    ExitCode::SUCCESS
+}
+
+/// Print the pens and erasers of a .sut or of CSP's tool database as JSON.
+fn subtools(args: &[String]) -> ExitCode {
+    let mut input = None;
+    let mut materials = None;
+    let mut tips = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--materials" => materials = iter.next().map(PathBuf::from),
+            "--tips" => tips = true,
+            _ if input.is_none() => input = Some(PathBuf::from(arg)),
+            _ => {
+                eprintln!("{USAGE}");
+                return ExitCode::from(2);
+            }
+        }
+    }
+    let Some(input) = input else {
+        eprintln!("{USAGE}");
+        return ExitCode::from(2);
+    };
+    let mut tools = match clip_core::subtool::read_sub_tools(&input, materials.as_deref()) {
+        Ok(tools) => tools,
+        Err(error) => {
+            eprintln!("Format error: {error}");
+            return ExitCode::from(1);
+        }
+    };
+    if !tips {
+        // The pictures are long; say only how big they are.
+        for tool in &mut tools {
+            if let Some(tip) = &mut tool.tip {
+                tip.png_base64 = format!("({} bytes)", tip.png_base64.len());
+            }
+        }
+    }
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&tools).expect("sub tools always serialize")
+    );
     ExitCode::SUCCESS
 }

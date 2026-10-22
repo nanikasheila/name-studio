@@ -263,6 +263,8 @@ fn import_strokes(
             points: points.collect(),
             width_mm: object.brush_size * t.scale,
             closed: object.closed(),
+            brush: None,
+            cut: None,
         });
     }
     Ok(())
