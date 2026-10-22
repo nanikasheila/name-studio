@@ -111,7 +111,8 @@ pub fn split_attribute_array(blob: &[u8]) -> Result<Vec<&[u8]>> {
 }
 
 /// `blob` with its bbox mapped to `p * scale + d` and font size, block size
-/// and quad scaled. Everything else is copied unchanged.
+/// and quad scaled, and no [`ATTR_RENDER_CACHE`]: CSP's rendering of the
+/// text stays behind in the source file. Everything else is copied unchanged.
 pub fn transform_text_attributes(blob: &[u8], scale: f64, dx: f64, dy: f64) -> Result<Vec<u8>> {
     if scale <= 0.0 {
         return Err(CspError::format("scale must be positive"));
@@ -129,6 +130,8 @@ pub fn transform_text_attributes(blob: &[u8], scale: f64, dx: f64, dy: f64) -> R
             .iter()
             .flat_map(|number| number.to_le_bytes())
             .collect()
+        } else if id == ATTR_RENDER_CACHE && value.len() == 4 {
+            0u32.to_le_bytes().to_vec()
         } else if matches!(id, ATTR_FONT_SIZE | ATTR_BLOCK_SIZE | ATTR_QUAD)
             && !value.is_empty()
             && value.len() % 4 == 0
@@ -159,6 +162,10 @@ pub const ATTR_ORIGIN: u32 = 0x48;
 /// Text colour: per channel a `u16` (8-bit value × 257), written twice.
 /// Seen black (all 0) on dialogue and white (all `ff`) on text over black.
 pub const ATTR_COLOR: u32 = 0x22;
+/// `MainId` of the Offscreen holding CSP's rendering of the text (`u32`).
+/// A copied layer must not point at the donor's id, which in the new file is
+/// missing or belongs to another layer; 0 makes CSP render the text afresh.
+pub const ATTR_RENDER_CACHE: u32 = 0x32;
 const VERTICAL_BIT: u32 = 0x10;
 /// Style-run tags: `u32` run count, then per run `u32` start, `u32` length,
 /// a `u32` and the run's data. The `u32` is the data size, except for
@@ -173,6 +180,36 @@ const EXTRA_RUN_TAGS: [u32; 10] = [0x0e, 0x0f, 0x10, 0x11, 0x13, 0x14, 0x15, 0x1
 
 /// One style run: start, length, the `u32` after them and the data.
 type Run<'a> = (u32, u32, u32, &'a [u8]);
+
+/// The per-run data of a run tag in `TextLayerAddAttributesV01`: `u32`
+/// count, then per run a `u32` size and the data. Kept if `value` is
+/// exactly such a list.
+fn parse_add_runs(value: &[u8]) -> Option<Vec<&[u8]>> {
+    let count = le_u32(value, 0).ok()?;
+    let mut runs = Vec::new();
+    let mut offset = 4;
+    for _ in 0..count {
+        let size = le_u32(value, offset).ok()? as usize;
+        runs.push(value.get(offset + 4..offset + 4 + size)?);
+        offset += 4 + size;
+    }
+    (offset == value.len()).then_some(runs)
+}
+
+/// The first run of an add-attributes run list on its own.
+fn single_add_run(id: u32, value: &[u8]) -> Result<Vec<u8>> {
+    let runs = parse_add_runs(value)
+        .ok_or_else(|| CspError::format(format!("Added text attribute 0x{id:x} is not a run list")))?;
+    let Some(data) = runs.first() else {
+        return Ok(value.to_vec());
+    };
+    let mut out = Vec::with_capacity(8 + data.len());
+    for number in [1, data.len() as u32] {
+        out.extend_from_slice(&number.to_le_bytes());
+    }
+    out.extend_from_slice(data);
+    Ok(out)
+}
 
 /// The runs of run tag `id`, if `value` is exactly a run list.
 fn parse_runs(id: u32, value: &[u8]) -> Option<Vec<Run<'_>>> {
@@ -249,15 +286,17 @@ fn i32s(values: &[i32]) -> Vec<u8> {
 }
 
 /// `blob` (the attributes of a CSP-made single-run text) rewritten for `text`:
-/// character counts, size, direction and geometry. Fails when a style tag
-/// has more than one run, which this does not know how to merge.
+/// character counts, size, direction and geometry. A text styled in parts
+/// becomes one run styled like its first part.
 pub fn retarget_text_attributes(blob: &[u8], text: &NewText) -> Result<Vec<u8>> {
     retarget(blob, text, true)
 }
 
 /// `TextLayerAddAttributesV01` (`u32` length + attributes per block) for one
 /// block: the first entry of `blob`, with size, direction and geometry as in
-/// [`retarget_text_attributes`]. Its style runs carry no character counts.
+/// [`retarget_text_attributes`]. Its style runs carry no character counts;
+/// they are cut to the first run too, or CSP rewrites them on opening and
+/// marks the page changed.
 pub fn retarget_add_attributes(blob: &[u8], text: &NewText) -> Result<Vec<u8>> {
     let first = split_attribute_array(blob)?
         .into_iter()
@@ -269,7 +308,7 @@ pub fn retarget_add_attributes(blob: &[u8], text: &NewText) -> Result<Vec<u8>> {
     Ok(result)
 }
 
-fn retarget(blob: &[u8], text: &NewText, runs: bool) -> Result<Vec<u8>> {
+fn retarget(blob: &[u8], text: &NewText, counted_runs: bool) -> Result<Vec<u8>> {
     let length = text.length();
     let [x0, y0, x1, y1] = text.frame;
     let (width, height) = (x1 - x0, y1 - y0);
@@ -282,13 +321,15 @@ fn retarget(blob: &[u8], text: &NewText, runs: bool) -> Result<Vec<u8>> {
     for (id, value) in parse_tlv(blob)? {
         let mut value = value.to_vec();
         if RUN_TAGS.contains(&id) {
-            if runs && !value.is_empty() {
-                value = single_run(id, &value, length)?;
+            if !value.is_empty() {
+                value = if counted_runs {
+                    single_run(id, &value, length)?
+                } else {
+                    single_add_run(id, &value)?
+                };
             }
         } else if EXTRA_RUN_TAGS.contains(&id) {
-            if runs {
-                value.clear();
-            }
+            value.clear();
         } else {
             match id {
                 ATTR_FONT_SIZE if value.len() == 4 => {
@@ -309,6 +350,7 @@ fn retarget(blob: &[u8], text: &NewText, runs: bool) -> Result<Vec<u8>> {
                 ATTR_BBOX if value.len() == 16 => value = i32s(&text.frame),
                 ATTR_BLOCK_SIZE if value.len() == 8 => value = i32s(&[width, height]),
                 ATTR_QUAD if value.len() == 32 => value = i32s(&quad),
+                ATTR_RENDER_CACHE if value.len() == 4 => value = 0u32.to_le_bytes().to_vec(),
                 ATTR_ORIGIN if value.len() == 8 => value = i32s(&[if text.vertical { width } else { 0 }, 0]),
                 ATTR_COLOR if value.len() == 12 => {
                     if let Some(color) = text.color {
