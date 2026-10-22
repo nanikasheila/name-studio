@@ -6,20 +6,26 @@ How: Builds the synthetic test files from ``tests/csp_fixtures.py`` (plus any
      .clip / .cmc given on the command line, e.g. real files kept outside the
      repository), runs ``inspect --pixels`` in both and compares the JSON.
 
-Usage (from the csp-name-splitter root, after ``cargo build --release`` in
-name-studio/):
-    python name-studio/tools/compare_with_python.py [extra files...]
+The Python reference lives in the csp-name-splitter repository. Point
+``CSP_NAME_SPLITTER`` at a checkout of it (default: a sibling folder).
+
+Usage (after ``cargo build --release -p name-cli``):
+    CSP_NAME_SPLITTER=../csp-name-splitter python tools/compare_with_python.py [extra files...]
 """
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 
-ROOT = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(ROOT), str(ROOT / "tests")]
+ROOT = Path(__file__).resolve().parents[1]
+REFERENCE = Path(os.environ.get("CSP_NAME_SPLITTER", ROOT.parent / "csp-name-splitter")).resolve()
+if not (REFERENCE / "name_splitter" / "csp").is_dir():
+    sys.exit(f"Python reference not found at {REFERENCE}; set CSP_NAME_SPLITTER")
+sys.path[:0] = [str(REFERENCE), str(REFERENCE / "tests")]
 
 from PIL import Image  # noqa: E402
 
@@ -30,7 +36,7 @@ from name_splitter.csp import inspect_file  # noqa: E402
 from name_splitter.csp.clip_reader import read_clip  # noqa: E402
 from name_splitter.csp.name_layout import detect_document_cells  # noqa: E402
 
-BINARY = ROOT / "name-studio" / "target" / "release" / ("name-studio-cli.exe" if sys.platform == "win32" else "name-studio-cli")
+BINARY = ROOT / "target" / "release" / ("name-studio-cli.exe" if sys.platform == "win32" else "name-studio-cli")
 FLOAT_TOLERANCE = 1e-9
 
 

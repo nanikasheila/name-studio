@@ -1,0 +1,37 @@
+name: Build Windows app
+
+# Builds the installer so the app can be tried without a Rust / Node setup.
+# The installer is not signed yet, so Windows shows a SmartScreen warning.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Build installer
+        working-directory: app
+        run: |
+          npm ci
+          npx tauri build --bundles nsis
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: name-studio-windows-installer
+          path: target/release/bundle/nsis/*.exe
+          if-no-files-found: error

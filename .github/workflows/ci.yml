@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  # Python reference implementation (name_splitter/csp) used by tools/compare_with_python.py.
+  # Switch to main once the .clip / .cmc stack (PR #16-#19) is merged there.
+  REFERENCE_REF: nanikasheila/feat-cmc-writer
+
+jobs:
+  rust:
+    name: Rust and app (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install WebView build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Front end (type check, tests, build)
+        working-directory: app
+        run: |
+          npm ci
+          npm run build
+          npm test
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Run tests
+        run: cargo test
+
+      - name: Build CLI
+        run: cargo build --release -p name-cli
+
+      - uses: actions/checkout@v4
+        with:
+          repository: nanikasheila/csp-name-splitter
+          ref: ${{ env.REFERENCE_REF }}
+          path: reference
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compare with the Python reference
+        env:
+          CSP_NAME_SPLITTER: reference
+        run: |
+          pip install -e reference
+          python tools/compare_with_python.py
