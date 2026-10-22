@@ -1,0 +1,19 @@
+[package]
+name = "name-studio-app"
+version = "0.1.0"
+edition = "2024"
+description = "ネーム制作専用ツール"
+
+[lib]
+name = "name_studio_app"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+clip-core = { path = "../../crates/clip-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
