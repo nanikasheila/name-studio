@@ -226,6 +226,8 @@ export class PageEditor {
   snap = true;
   /** 変形 (Ctrl+T): the transform frame on a panel, a balloon, a fill or a はみ出し. */
   private transforming = false;
+  /** Hidden on screen from the レイヤー list (`kind:id`); exports keep them. */
+  readonly hidden = new Set<string>();
   private zoom = 1;
   private pan: [number, number] = [0, 0];
   /** 画面の回転 (radians, clockwise): the whole view turns about the middle of the stage. */
@@ -689,9 +691,25 @@ export class PageEditor {
     ctx.restore();
   }
 
+  /** The page as shown: without what the レイヤー list hides. */
+  private visiblePage(page: Page): Page {
+    if (!this.hidden.size) return page;
+    const shown = <T extends { id: string }>(kind: string, list: T[]) => list.filter((item) => !this.hidden.has(`${kind}:${item.id}`));
+    return {
+      ...page,
+      panels: shown("panel", page.panels),
+      lines: shown("line", page.lines),
+      strokes: shown("stroke", page.strokes),
+      breakouts: shown("breakout", page.breakouts),
+      ...(page.fills ? { fills: shown("fill", page.fills) } : {}),
+      ...(page.stickies ? { stickies: shown("sticky", page.stickies) } : {}),
+    };
+  }
+
   private drawPage(project: Project, slot: Slot): void {
     const ctx = this.ctx;
-    const { page, scale } = slot;
+    const { scale } = slot;
+    const page = this.visiblePage(slot.page);
     const [pageW, pageH] = project.pageFormat.canvasMm;
     const sx = (x: number) => slot.x + x * scale;
     const sy = (y: number) => slot.y + y * scale;
@@ -1349,7 +1367,8 @@ export class PageEditor {
   // --- hit testing ---------------------------------------------------------------
 
   private hit(slot: Slot, point: Point): Selection | null {
-    const page = slot.page;
+    // What is hidden cannot be picked on the page.
+    const page = this.visiblePage(slot.page);
     const tolerance = 6 / slot.scale;
     // 付箋 lie on top of everything.
     for (const sticky of [...(page.stickies ?? [])].reverse()) {
