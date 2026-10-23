@@ -5,6 +5,7 @@ import { ask, save } from "@tauri-apps/plugin-dialog";
 import { Autosaver, autosaveToFile, formatTime } from "./autosave";
 import { addBrushes, loadLibrary } from "./brush";
 import { BrushDialog } from "./brushdialog";
+import { dragSort } from "./dragsort";
 import {
   ERASE_MODE_LABELS,
   PANEL_CARRIES_KEY,
@@ -48,6 +49,8 @@ import {
   fitLine,
   insertPage,
   movePage,
+  movePagesTo,
+  pageBlock,
   normalize,
   orderPanels,
   pageIndex,
@@ -145,6 +148,7 @@ export class Workbench {
         this.editor.showPage(pageNumber);
         this.renderAll();
       },
+      movePages: (first, last, target) => this.movePages(first, last, target),
     });
     this.exportDialog = new ExportDialog({
       project: () => this.state.project,
@@ -487,9 +491,30 @@ export class Workbench {
       });
       return item;
     });
+    // Drag a page (a 見開き moves as a pair) to put it elsewhere.
+    dragSort(items, {
+      axis: "y",
+      block: (index) => pageBlock(project, index),
+      drop: (first, last, target) => this.movePages(first, last, target),
+    });
     const add = element("button", { textContent: "最後にページを足す" });
     add.addEventListener("click", () => this.edit((p) => insertPage(p, p.pages.length)));
     $("side-pages").replaceChildren(work, ...items, element("div", { className: "side-actions" }, add));
+  }
+
+  /** Move pages by dragging and keep the same pages in view. */
+  movePages(first: number, last: number, target: number): void {
+    const project = this.state.project;
+    if (!project) return;
+    const shown = this.editor.currentPages().map((number) => project.pages[number - 1]?.id);
+    let moved = false;
+    this.edit((p) => (moved = movePagesTo(p, first, last, target)));
+    if (!moved) return;
+    const index = project.pages.findIndex((page) => page.id === shown[0]);
+    if (index >= 0) this.editor.showPage(index + 1);
+    const count = last - first + 1;
+    this.setStatus(`${count === 1 ? `${first + 1} ページ` : `${first + 1}–${last + 1} ページ`}を動かしました（元に戻すは Ctrl+Z）`);
+    this.renderAll();
   }
 
   private renderScript(project: Project): void {
@@ -831,7 +856,7 @@ export class Workbench {
       inset,
       element("p", {
         className: "hint",
-        textContent: `セリフ ${lines} 件。角の四角をドラッグすると形を変えられます（枠に吸い付きます。Alt で吸い付かない）。重なり ${panel.z ?? 0}。`,
+        textContent: `セリフ ${lines} 件。角の四角をドラッグすると形を変えられます（枠に吸い付きます。Alt で吸い付かない）。右上の番号を別のコマへドラッグ（または Alt + ドラッグ）すると中身を入れ替えます。重なり ${panel.z ?? 0}。`,
       }),
       remove,
     ];

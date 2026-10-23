@@ -29,6 +29,7 @@ import {
   snapPoint,
   simplify,
   sortLines,
+  swapPanelContents,
   splitAtX,
   wantsSpread,
   carryContents,
@@ -40,6 +41,7 @@ import {
   type EraseMode,
   type Line,
   type Page,
+  type Panel,
   type Point,
   type Project,
   type RoughImage,
@@ -104,7 +106,8 @@ type Drag =
   | { kind: "lasso"; slot: Slot; points: Point[] }
   | { kind: "pick"; slot: Slot; points: Point[] }
   | { kind: "eraseLasso"; slot: Slot; points: Point[] }
-  | { kind: "erase"; slot: Slot; erased: number };
+  | { kind: "erase"; slot: Slot; erased: number }
+  | { kind: "swap"; slot: Slot; panelId: string; at: [number, number]; to: { slot: Slot; panelId: string } | null };
 
 const ACCENT = "#2f6fdb";
 const MARGIN = 28;
@@ -463,11 +466,13 @@ export class PageEditor {
         ctx.stroke();
         ctx.setLineDash([]);
       }
-      const [, y0, x1] = bounds(panel.shape);
-      const radius = Math.max(4 * scale, 7);
-      // Numbers stay inside the page even for panels that run off it.
-      const nx = Math.min(sx(x1), sx(pageW)) - radius - 3;
-      const ny = Math.max(sy(y0), sy(0)) + radius + 3;
+      const { x: nx, y: ny, radius } = this.badge(slot, panel, pageW);
+      const swapping = this.drag?.kind === "swap" && this.drag.to?.panelId === panel.id && this.drag.to.slot.page === page;
+      if (swapping) {
+        tracePath(ctx, panel.shape, m, true);
+        ctx.fillStyle = "rgba(47, 111, 219, 0.18)";
+        ctx.fill();
+      }
       ctx.fillStyle = selected ? ACCENT : "rgba(47, 111, 219, 0.75)";
       ctx.beginPath();
       ctx.arc(nx, ny, radius, 0, Math.PI * 2);
@@ -566,6 +571,22 @@ export class PageEditor {
       ctx.stroke();
       ctx.setLineDash([]);
     }
+    if (drag?.kind === "swap" && this.pointer) {
+      // An arrow from the panel's number to where its contents go.
+      ctx.strokeStyle = ACCENT;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(drag.at[0], drag.at[1]);
+      ctx.lineTo(this.pointer[0], this.pointer[1]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = ACCENT;
+      ctx.font = "12px sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "bottom";
+      ctx.fillText(drag.to ? "ここに入れ替え" : "入れ替えるコマへ", this.pointer[0] + 10, this.pointer[1] - 6);
+    }
     if (drag?.kind === "pen") {
       const { slot, points } = drag;
       const brush = this.brush("pen");
@@ -661,6 +682,30 @@ export class PageEditor {
     );
   }
 
+  /** Where a panel's number sits (screen px). Numbers stay inside the page even for panels that run off it. */
+  private badge(slot: Slot, panel: Panel, pageW: number): { x: number; y: number; radius: number } {
+    const [, y0, x1] = bounds(panel.shape);
+    const radius = Math.max(4 * slot.scale, 7);
+    return {
+      x: Math.min(slot.x + x1 * slot.scale, slot.x + pageW * slot.scale) - radius - 3,
+      y: Math.max(slot.y + y0 * slot.scale, slot.y) + radius + 3,
+      radius,
+    };
+  }
+
+  /** The panel whose number is under the pointer. */
+  private badgeAt(slot: Slot, sx: number, sy: number, pageW: number): Panel | undefined {
+    return [...stacked(slot.page.panels)].reverse().find((panel) => {
+      const { x, y, radius } = this.badge(slot, panel, pageW);
+      return Math.hypot(x - sx, y - sy) <= radius + 2;
+    });
+  }
+
+  /** The topmost panel at a point of a page (insets over their panel). */
+  private panelAt(page: Page, point: Point): Panel | undefined {
+    return [...stacked(page.panels)].reverse().find((panel) => insidePolygon(panel.shape, point));
+  }
+
   /** The tail tip of the selected line under the pointer, or -1. */
   private tailAt(slot: Slot, sx: number, sy: number): number {
     const s = this.selection;
@@ -714,6 +759,15 @@ export class PageEditor {
     const point = this.toPage(slot, sx, sy);
     switch (this.tipEraser ? "eraser" : this.tool) {
       case "select": {
+        // コマの入れ替え: drag a panel's number (or Alt + drag the panel) onto another panel.
+        const numbered = this.badgeAt(slot, sx, sy, project.pageFormat.canvasMm[0]);
+        const altPanel = event.altKey ? this.panelAt(slot.page, point) : undefined;
+        const swapping = numbered ?? altPanel;
+        if (swapping) {
+          this.select({ kind: "panel", pageId: slot.page.id, id: swapping.id });
+          this.drag = { kind: "swap", slot, panelId: swapping.id, at: [sx, sy], to: null };
+          return;
+        }
         const tail = this.tailAt(slot, sx, sy);
         if (tail >= 0) {
           this.host.begin();
@@ -827,6 +881,13 @@ export class PageEditor {
     const point = this.toPage(drag.slot, event.offsetX, event.offsetY);
     const project = this.host.project()!;
     switch (drag.kind) {
+      case "swap": {
+        // The panel under the pointer, on this page or the facing one.
+        const under = this.slotAt(event.offsetX, event.offsetY, project);
+        const target = under && this.panelAt(under.page, this.toPage(under, event.offsetX, event.offsetY));
+        drag.to = under && target && !(under.page === drag.slot.page && target.id === drag.panelId) ? { slot: under, panelId: target.id } : null;
+        break;
+      }
       case "move": {
         const dx = point[0] - drag.last[0];
         const dy = point[1] - drag.last[1];
@@ -1032,6 +1093,18 @@ export class PageEditor {
         if (drag.erased) this.host.commit();
         else this.host.cancel();
         break;
+      case "swap": {
+        const from = drag.slot.page.panels.find((panel) => panel.id === drag.panelId);
+        const to = drag.to;
+        const target = to && to.slot.page.panels.find((panel) => panel.id === to.panelId);
+        if (!from || !to || !target) break;
+        this.host.begin();
+        swapPanelContents(drag.slot.page, from, to.slot.page, target);
+        this.host.commit();
+        this.select({ kind: "panel", pageId: to.slot.page.id, id: target.id });
+        this.host.status(`コマ ${from.order} とコマ ${target.order} の中身を入れ替えました（元に戻すは Ctrl+Z）`);
+        break;
+      }
       case "pan":
         break;
     }

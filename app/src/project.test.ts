@@ -18,6 +18,10 @@ import {
   eraseStrokes,
   insertPage,
   movePage,
+  movePagesTo,
+  moveScene,
+  pageBlock,
+  swapPanelContents,
   newProject,
   orderPanels,
   pickInside,
@@ -282,5 +286,67 @@ describe("コマに中身が付いてくる", () => {
     panel.shape = rectShape([15, 17, 215, 117]);
     followPanel(page, panel, before);
     expect(inside.points.map((p) => Math.round(p[0]))).toEqual([85, 105]);
+  });
+});
+
+describe("入れ替え", () => {
+  const ids = (project: ReturnType<typeof newProject>) => project.pages.map((page) => page.id);
+
+  it("moves pages by dragging, keeping a 見開き together", () => {
+    const project = newProject("t", 6);
+    const [p1, p2, p3, p4, p5, p6] = ids(project);
+    project.pages[1].joinNext = true;
+    expect(pageBlock(project, 2)).toEqual([1, 2]);
+    expect(pageBlock(project, 1)).toEqual([1, 2]);
+    expect(movePagesTo(project, 1, 2, 6)).toBe(true);
+    expect(ids(project)).toEqual([p1, p4, p5, p6, p2, p3]);
+    // Dropping between the two halves of a 見開き goes before the pair.
+    expect(movePagesTo(project, 0, 0, 5)).toBe(true);
+    expect(ids(project)).toEqual([p4, p5, p6, p1, p2, p3]);
+    expect(movePagesTo(project, 0, 0, 1)).toBe(false);
+  });
+
+  it("keeps scenes on the pages that stay; a moved page joins the scene it lands in", () => {
+    const project = newProject("t", 6);
+    const [p1, p2, p3, p4, p5, p6] = ids(project);
+    const a = addScene(project, p1, p3, "A");
+    const b = addScene(project, p4, p6, "B");
+    movePagesTo(project, 0, 0, 5);
+    expect(ids(project)).toEqual([p2, p3, p4, p5, p1, p6]);
+    expect([a.firstPage, a.lastPage]).toEqual([p2, p3]);
+    expect([b.firstPage, b.lastPage]).toEqual([p4, p6]);
+    expect(sceneOf(project, p1)).toBe(b);
+  });
+
+  it("moves a whole scene before another", () => {
+    const project = newProject("t", 6);
+    const [p1, p2, p3, p4, p5, p6] = ids(project);
+    const a = addScene(project, p1, p2, "A");
+    const b = addScene(project, p3, p4, "B");
+    const c = addScene(project, p5, p6, "C");
+    expect(moveScene(project, c.id, 0)).toBe(true);
+    expect(ids(project)).toEqual([p5, p6, p1, p2, p3, p4]);
+    expect(project.scenes.map((scene) => scene.title)).toEqual(["C", "A", "B"]);
+    expect([a.firstPage, a.lastPage, b.firstPage, b.lastPage]).toEqual([p1, p2, p3, p4]);
+    expect(moveScene(project, a.id, project.pages.length)).toBe(true);
+    expect(ids(project)).toEqual([p5, p6, p3, p4, p1, p2]);
+  });
+
+  it("swaps what two panels hold, also across pages", () => {
+    const project = newProject("t", 2);
+    const [page, next] = project.pages;
+    const big = addPanel(project, page, rectShape([10, 10, 110, 110]));
+    const small = addPanel(project, page, rectShape([120, 10, 170, 60]));
+    const there = addPanel(project, next, rectShape([10, 10, 60, 60]));
+    const drawing = addStroke(project, page, [[40, 40, 0.5], [60, 40, 0.5]], 0.5)!;
+    const said = addLine(project, page, [140, 30], "小さいコマ");
+    swapPanelContents(page, big, page, small);
+    expect(panelContents(page, small).strokes).toEqual([drawing.id]);
+    expect(panelContents(page, big).lines).toEqual([said.id]);
+    expect(said.panel).toBe(big.id);
+    swapPanelContents(page, small, next, there);
+    expect(page.strokes).toEqual([]);
+    expect(next.strokes).toEqual([drawing]);
+    expect(panelContents(next, there).strokes).toEqual([drawing.id]);
   });
 });

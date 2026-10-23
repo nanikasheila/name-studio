@@ -228,3 +228,12 @@ dialog.versions { width: min(640px, calc(100vw - 32px)); }
 .version .time { font-variant-numeric: tabular-nums; }
 .version .what { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-version { color: var(--muted); font-size: 12px; }
+
+/* Reordering by dragging (dragsort.ts) */
+.drop-mark { position: fixed; z-index: 50; pointer-events: none; background: var(--accent); border-radius: 2px; }
+.drop-mark.y { height: 3px; }
+.drop-mark.x { width: 4px; }
+.dragging { opacity: 0.45; }
+.drag-handle { cursor: grab; color: var(--muted); user-select: none; touch-action: none; padding: 0 4px; }
+.page-item, .thumb { touch-action: none; user-select: none; }
+body.sorting { user-select: none; cursor: grabbing; }
