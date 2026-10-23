@@ -1237,9 +1237,11 @@ function cutInside(points: StrokePoint[], shape: readonly Point[]): Piece[] {
   return pieces;
 }
 
-/** 範囲選択: rough lines mostly inside `shape` and dialogue whose box centre is. */
-export function pickInside(page: Page, shape: readonly Point[]): { strokes: string[]; lines: string[] } {
-  if (shape.length < 3) return { strokes: [], lines: [] };
+/** 範囲選択: rough lines mostly inside `shape`, dialogue whose box centre is, and panels, fills and はみ出し wholly inside (not halves of 見開き panels). */
+export function pickInside(page: Page, shape: readonly Point[]): { strokes: string[]; lines: string[]; panels: string[]; fills: string[]; breakouts: string[] } {
+  if (shape.length < 3) return { strokes: [], lines: [], panels: [], fills: [], breakouts: [] };
+  // Panels, fills and はみ出し only when all of them is inside.
+  const whole = (points: readonly Point[]) => points.length > 0 && points.every((point) => insidePolygon(shape, point));
   const strokes = page.strokes
     .filter((stroke) => {
       const inside = stroke.points.filter(([x, y]) => insidePolygon(shape, [x, y])).length;
@@ -1249,7 +1251,13 @@ export function pickInside(page: Page, shape: readonly Point[]): { strokes: stri
   const lines = page.lines
     .filter(({ box: [x0, y0, x1, y1] }) => insidePolygon(shape, [(x0 + x1) / 2, (y0 + y1) / 2]))
     .map((line) => line.id);
-  return { strokes, lines };
+  return {
+    strokes,
+    lines,
+    panels: page.panels.filter((panel) => !panel.spread && whole(panel.shape)).map((panel) => panel.id),
+    fills: (page.fills ?? []).filter((fill) => whole(fill.shape)).map((fill) => fill.id),
+    breakouts: page.breakouts.filter((breakout) => whole(breakout.shape)).map((breakout) => breakout.id),
+  };
 }
 
 /** A line split where it crosses `x` (the gutter of a spread): runs in order,

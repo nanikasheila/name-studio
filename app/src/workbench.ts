@@ -20,6 +20,7 @@ import {
   SHOW_NOTES_KEY,
   PageEditor,
   isTyping,
+  pickedSummary,
   writeFlag,
   type EditorEraseMode,
   type Selection,
@@ -831,15 +832,13 @@ export class Workbench {
       }
     }
     if (s?.kind === "group") {
-      const strokes = s.items?.filter((item) => item.kind === "stroke").length ?? 0;
-      const lines = (s.items?.length ?? 0) - strokes;
       const remove = element("button", { className: "danger", textContent: "選んだものを消す（Delete）" });
       remove.addEventListener("click", () => this.deleteSelection());
       return panel.replaceChildren(
         element("h2", { textContent: "範囲選択" }),
         element("p", {
           className: "hint",
-          textContent: `ラフの線 ${strokes} 本、セリフ ${lines} 個。ドラッグや矢印キーでまとめて動かせます。枠の四角で大きさ（Shift で縦横別々、Alt で中心から）、上の丸で向き（Shift で 15° ずつ）。Ctrl+C / Ctrl+V でほかのページへも写せます。`,
+          textContent: `${pickedSummary(s.items ?? [])}。ドラッグや矢印キーでまとめて動かせます（コマは中に描いたものと一緒に）。枠の四角で大きさ（Shift で縦横別々、Alt で中心から）、上の丸で向き（Shift で 15° ずつ）、Ctrl + 角で自由変形。Shift + クリックで足す・外す。Ctrl+C / Ctrl+V でほかのページへも写せます。`,
         }),
         ...this.transformButtons(),
         remove,
@@ -1348,10 +1347,19 @@ export class Workbench {
       if (s.kind === "sticky") removeSticky(page, s.id);
       if (s.kind === "fill" && page.fills) page.fills = page.fills.filter((fill) => fill.id !== s.id);
       if (s.kind === "group") {
-        const ids = new Set(s.items?.map((item) => item.id));
-        page.strokes = page.strokes.filter((stroke) => !ids.has(stroke.id));
-        page.lines = page.lines.filter((line) => !ids.has(line.id));
-        for (const line of page.lines) if (line.linkTo && ids.has(line.linkTo)) delete line.linkTo;
+        const ids = (kind: string) => new Set(s.items?.filter((item) => item.kind === kind).map((item) => item.id));
+        const [strokes, lines, panels, fills, breakouts] = ["stroke", "line", "panel", "fill", "breakout"].map(ids);
+        page.strokes = page.strokes.filter((stroke) => !strokes.has(stroke.id));
+        page.lines = page.lines.filter((line) => !lines.has(line.id));
+        for (const line of page.lines) if (line.linkTo && lines.has(line.linkTo)) delete line.linkTo;
+        page.breakouts = page.breakouts.filter((breakout) => !breakouts.has(breakout.id));
+        if (page.fills) page.fills = page.fills.filter((fill) => !fills.has(fill.id));
+        if (panels.size) {
+          // What was drawn in the panels stays, as when one panel is removed.
+          page.panels = page.panels.filter((panel) => !panels.has(panel.id));
+          orderPanels(page, project.binding);
+          assignPanels(page);
+        }
       }
       if (s.kind === "line") {
         // Balloons joined to the removed one come loose.
