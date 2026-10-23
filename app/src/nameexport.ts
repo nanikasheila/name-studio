@@ -2,7 +2,7 @@
 // vector lines and texts where CSP-made layers to copy are found, plus the
 // work .cmc), a PDF to read or share, and the script as text.
 import { invoke } from "@tauri-apps/api/core";
-import { pageBalloons } from "./balloon";
+import { balloonExtent, pageBalloons } from "./balloon";
 import { widthFactors } from "./brush";
 import { borderLines, borderWidthMm, dashes, framePanels, type Side } from "./koma";
 import {
@@ -21,6 +21,7 @@ import {
   KIND_LABELS,
   MM_PER_PT,
   basicBox,
+  bounds,
   splitAtX,
   trimBox,
   type Brush,
@@ -310,6 +311,90 @@ export function frameMetas(project: Project, page: Page, m: MmToPx, gutter: Side
   };
 }
 
+/**
+ * The layer of the name's memos (panel memos and the page memo), a 下描き
+ * layer: seen while inking, never printed. 付箋 stay in the app: they are for
+ * planning, and long ones would cover the panels.
+ */
+export const NOTES_LAYER_NAME = "メモ（ネーム）";
+const NOTE_TEXT_MM = 3;
+
+/** Whether a page has any memo to write. */
+export function hasNotes(page: Page): boolean {
+  return !!page.memo?.trim() || page.panels.some((panel) => panel.note?.trim());
+}
+
+/** `text` broken into rows no wider than `width` (px at the context's font), `max` rows at most. */
+function noteRows(ctx: CanvasRenderingContext2D, text: string, width: number, max: number): string[] {
+  const rows: string[] = [];
+  for (const paragraph of text.replace(/\r\n?/g, "\n").split("\n")) {
+    let row = "";
+    for (const char of paragraph) {
+      if (row && ctx.measureText(row + char).width > width) {
+        rows.push(row);
+        row = "";
+      }
+      row += char;
+    }
+    rows.push(row);
+  }
+  if (rows.length > max) rows.splice(max - 1, rows.length, rows[max - 1] + "…");
+  return rows;
+}
+
+/**
+ * The name's memos as they show in the app: each panel's memo on a pale tag
+ * in a corner of the panel clear of its balloons, and the page memo under
+ * the basic frame.
+ */
+export function drawNotes(ctx: CanvasRenderingContext2D, project: Project, page: Page, m: MmToPx): void {
+  const size = NOTE_TEXT_MM * m.scale;
+  const pad = size * 0.4;
+  const [tx0, ty0, tx1, ty1] = trimBox(project.pageFormat);
+  const px = (x: number) => x * m.scale + m.x;
+  const py = (y: number) => y * m.scale + m.y;
+  ctx.save();
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.font = `${size}px "Yu Gothic UI", "Yu Gothic", "Hiragino Sans", "Noto Sans JP", sans-serif`;
+  const tag = (x: number, y: number, rows: string[], fill: string, w: number) => {
+    const h = rows.length * size * 1.25 + 2 * pad;
+    ctx.fillStyle = fill;
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = "#4a3f12";
+    rows.forEach((row, i) => ctx.fillText(row, x + pad, y + pad + i * size * 1.25));
+  };
+  for (const panel of page.panels) {
+    if (!panel.note?.trim()) continue;
+    const [x0, y0, x1, y1] = bounds(panel.shape);
+    // A 裁ち切り panel's tag stays inside the trim.
+    const [left, top, right, bottom] = [px(Math.max(x0, tx0)), py(Math.max(y0, ty0)), px(Math.min(x1, tx1)), py(Math.min(y1, ty1))];
+    const room = Math.max(size * 6, Math.min(right - left - 2 * pad, size * 20));
+    const rows = noteRows(ctx, panel.note, room - 2 * pad, 4);
+    const w = Math.max(...rows.map((row) => ctx.measureText(row).width)) + 2 * pad;
+    const h = rows.length * size * 1.25 + 2 * pad;
+    const balloons = page.lines.filter((line) => line.panel === panel.id).map((line) => balloonExtent(line).map((v, i) => (i % 2 ? py(v) : px(v))));
+    const clear = ([x, y]: number[]) => balloons.every(([bx0, by0, bx1, by1]) => x + w < bx0 || x > bx1 || y + h < by0 || y > by1);
+    const corners = [
+      [left + pad, top + pad],
+      [left + pad, bottom - pad - h],
+      [right - pad - w, bottom - pad - h],
+    ];
+    const [x, y] = corners.find(clear) ?? corners[0];
+    tag(x, y, rows, "rgba(255, 246, 194, 0.92)", w);
+  }
+  if (page.memo?.trim()) {
+    // Below the basic frame, where the page is usually blank (the panels' tags are at their tops).
+    const width = (tx1 - tx0) * m.scale - 4 * pad;
+    const rows = noteRows(ctx, page.memo, width - 2 * pad, 3);
+    const h = rows.length * size * 1.25 + 2 * pad;
+    const below = py(basicBox(project.pageFormat)[3]) + 2 * pad;
+    const y = below + h <= py(ty1) - pad ? below : py(ty0) + 2 * pad;
+    tag(px(tx0) + 2 * pad, y, rows, "rgba(214, 234, 248, 0.92)", Math.max(...rows.map((row) => ctx.measureText(row).width)) + 2 * pad);
+  }
+  ctx.restore();
+}
+
 /** Room CSP's lines take: its line pitch and character advance, generously. */
 const CSP_LINE_PITCH = 1.8;
 const CSP_CHAR_ADVANCE = 1.1;
@@ -378,6 +463,8 @@ export interface CspExportRequest {
   draftLayers?: string[];
   /** Panels as a コマ枠フォルダー (copied from a finished page among the donors), with an empty layer in it to ink on. */
   frameFolders?: boolean;
+  /** The name's memos as a 下描き image layer on top (on unless false). */
+  notes?: boolean;
 }
 
 /** A written file read back (clip-core `verify::FileCheck`). */
@@ -452,6 +539,8 @@ export async function exportToCsp(
   confirmImages?: (missing: string[]) => Promise<boolean>,
 ): Promise<CspExportReport | null> {
   await loadTips(project.brushes);
+  const notes = request.notes !== false && project.pages.some(hasNotes);
+  if (notes) request = { ...request, draftLayers: [...(request.draftLayers ?? []), NOTES_LAYER_NAME] };
   const start = await invoke<NameExportStart>("begin_name_export", { request });
   const vector = editable && start.vectorLayers;
   const text = editable && start.textLayers;
@@ -542,6 +631,16 @@ export async function exportToCsp(
           png = await encode(drawing, "image/png");
         }
         layers.push({ kind: "raster", name: LAYER_NAMES[kind], length: png.length });
+        pngs.push(png);
+      }
+      if (notes) {
+        let png: Uint8Array = new Uint8Array();
+        if (placed.some(({ page }) => hasNotes(page))) {
+          ctx.clearRect(0, 0, width, height);
+          for (const { page, m, right } of placed) clipped(ctx, factor, right, () => drawNotes(ctx, project, page, scaled(m, factor)));
+          png = await encode(drawing, "image/png");
+        }
+        layers.push({ kind: "raster", name: NOTES_LAYER_NAME, length: png.length });
         pngs.push(png);
       }
       const overlayPng = vector || text ? await encode(overlay, "image/png") : new Uint8Array();

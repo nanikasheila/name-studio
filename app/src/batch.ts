@@ -18,6 +18,8 @@ export interface BatchExport {
   draftRough?: boolean;
   /** Panels as a コマ枠フォルダー (--frame-folders). */
   frameFolders?: boolean;
+  /** The name's memos as a 下描き layer (on unless --no-notes). */
+  notes?: boolean;
   report: string;
 }
 
@@ -59,6 +61,7 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
         donors: [...(task.donors ?? []), project.source?.path].filter((path): path is string => !!path),
         draftLayers: task.draftRough === false ? [] : ROUGH_LAYERS,
         frameFolders: task.frameFolders === true,
+        notes: task.notes !== false,
       },
       true,
       status,

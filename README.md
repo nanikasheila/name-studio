@@ -99,7 +99,7 @@ cargo build --release -p name-cli
 
 ```bash
 name-studio-app --export-csp ネーム.namestudio --template page.clip --out 書き出し先 \
-  [--work-template 作品.cmc --work-name 第1話] [--story-index 1] [--donor 見本.clip] [--no-draft-rough] [--frame-folders] [--report 結果.json]
+  [--work-template 作品.cmc --work-name 第1話] [--story-index 1] [--donor 見本.clip] [--no-draft-rough] [--no-notes] [--frame-folders] [--report 結果.json]
 ```
 
 線とセリフを CSP で直せるベクター・テキストのレイヤーにするには、CSP がそのレイヤーを作った .clip が要ります。
@@ -107,6 +107,8 @@ name-studio-app --export-csp ネーム.namestudio --template page.clip --out 書
 見つからない部分は画像レイヤーになります（画面では書き出す前に聞き、結果の JSON では `summary` の先頭に「注意」を書きます）。
 
 ラフ線（はみ出しのラフ線、ネーム用紙のラフも）は下描きレイヤー・不透明度 50% で書き出します。CSP でその上に新しいレイヤーを作ってペン入れでき、塗りつぶしの参照や画像の書き出しには入りません（画面のチェック、`--no-draft-rough` で普通のレイヤーに）。
+
+コマのメモとページのメモは、いちばん上の下描きレイヤー「メモ（ネーム）」に、アプリの画面と同じ札で書きます（ペン入れ中に見られ、印刷されない。付箋は書かない。画面のチェック、`--no-notes` で書かない）。
 
 コマ枠フォルダー（試験中）: 画面の「コマ枠をコマ枠フォルダーにする」か `--frame-folders` で、コマを CSP のコマ枠フォルダー「コマ」の枠にし、その中に空の「ペン入れ」レイヤーを入れます（そこに描くとコマの外にはみ出しません）。枠線の太さはネームのとおり、裁ち切りの辺はキャンバスの外まで伸ばします。マスクと枠線の画像は CSP が開くときに枠から描きます（CSP 自身もそう保存します）。コマ枠フォルダーの設定は、コマ枠フォルダーを作って保存した CSP のページ（仕上げた原稿など）を見本のページに選ぶとそこから写します。点線・波線・枠なし・はめ込み・見開きの半分・はみ出しで切れるコマ・のど側の裁ち切りは、これまでどおり「コマ枠」ベクターレイヤーの線にします。
 
