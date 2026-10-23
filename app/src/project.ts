@@ -370,6 +370,8 @@ export interface Character {
   id: string;
   name: string;
   color?: string;
+  /** 口調のメモ: how the character talks. */
+  tone?: string;
 }
 
 export interface Scene {
@@ -1532,4 +1534,16 @@ export function swapPanelContents(pageA: Page, panelA: Panel, pageB: Page, panel
     assignPanels(page);
     sortLines(page);
   }
+}
+
+/** How many pages at the end have nothing on them (no panels, lines, strokes, roughs, fills or memo). */
+export function trailingEmptyPages(project: Project): number {
+  let count = 0;
+  for (let i = project.pages.length - 1; i >= 0; i--) {
+    const page = project.pages[i];
+    const filled = page.panels.length + page.lines.length + page.strokes.length + page.roughs.length + (page.fills?.length ?? 0) > 0 || page.memo.trim() !== "";
+    if (filled) break;
+    count++;
+  }
+  return count;
 }

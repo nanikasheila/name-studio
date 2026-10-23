@@ -392,7 +392,7 @@ interface Row {
   black?: number[];
 }
 
-interface Pattern {
+export interface Pattern {
   id: string;
   label: string;
   note: string;
@@ -504,10 +504,72 @@ export const PATTERNS: Pattern[] = [
   },
 ];
 
-/** Panels of a pattern on the page's basic frame (not yet added to the page). */
-export function patternPanels(project: Project, patternId: string, gutters = DEFAULT_GUTTERS): Panel[] {
+/** How many panels a pattern makes (with its inset). */
+export function patternCount(patternId: string): number {
   const pattern = PATTERNS.find((p) => p.id === patternId);
-  if (!pattern) return [];
+  return pattern ? pattern.rows.reduce((sum, row) => sum + row.cells.length, 0) + (pattern.inset !== undefined ? 1 : 0) : 0;
+}
+
+/** Rows thin enough to be a pause: never split nor joined. */
+const PAUSE_WEIGHT = 0.3;
+const MOST_ACROSS = 3;
+
+/**
+ * The pattern made to have `count` panels, keeping its look: fewer by joining
+ * the cells of the busiest row (then dropping the inset, then joining rows),
+ * more by splitting the tallest row with the fewest cells (up to three across,
+ * then a new row at the bottom).
+ */
+export function fitPattern(pattern: Pattern, count: number): Pattern {
+  const rows: Row[] = pattern.rows.map((row) => ({ ...row, cells: [...row.cells], ...(row.black ? { black: [...row.black] } : {}) }));
+  let inset = pattern.inset;
+  const total = () => rows.reduce((sum, row) => sum + row.cells.length, 0) + (inset !== undefined ? 1 : 0);
+  const want = Math.max(1, Math.round(count));
+  while (total() > want) {
+    const busy = rows
+      .map((row, index) => ({ row, index }))
+      .filter(({ row }) => row.cells.length > 1)
+      .sort((a, b) => b.row.cells.length - a.row.cells.length || b.index - a.index)[0];
+    if (busy) {
+      // The last two cells (the left end) become one.
+      const cells = busy.row.cells;
+      cells.splice(cells.length - 2, 2, cells[cells.length - 2] + cells[cells.length - 1]);
+      busy.row.black = busy.row.black?.filter((c) => c < cells.length);
+      continue;
+    }
+    if (inset !== undefined) {
+      inset = undefined;
+      continue;
+    }
+    if (rows.length < 2) break;
+    // Join the thinnest row into the one above (or below, for the first).
+    const thin = rows.reduce((best, row, index) => (row.weight < rows[best].weight ? index : best), rows.length - 1);
+    const into = thin > 0 ? thin - 1 : 1;
+    rows[into].weight += rows[thin].weight;
+    rows.splice(thin, 1);
+  }
+  while (total() < want) {
+    const open = rows
+      .map((row, index) => ({ row, index }))
+      .filter(({ row, index }) => row.weight >= PAUSE_WEIGHT && row.cells.length < MOST_ACROSS && index !== inset && !row.black?.length);
+    open.sort((a, b) => a.row.cells.length - b.row.cells.length || b.row.weight - a.row.weight || a.index - b.index);
+    if (open.length) {
+      open[0].row.cells.push(1);
+      continue;
+    }
+    rows.push({ weight: 1, cells: want - total() > 1 ? [1, 1] : [1] });
+  }
+  return { ...pattern, rows, inset };
+}
+
+/**
+ * Panels of a pattern on the page's basic frame (not yet added to the page).
+ * With `count`, made to have that many panels ({@link fitPattern}).
+ */
+export function patternPanels(project: Project, patternId: string, gutters = DEFAULT_GUTTERS, count?: number): Panel[] {
+  const found = PATTERNS.find((p) => p.id === patternId);
+  if (!found) return [];
+  const pattern = count && count !== patternCount(patternId) ? fitPattern(found, count) : found;
   const format = project.pageFormat;
   const [bx0, by0, bx1, by1] = basicBox(format);
   const total = pattern.rows.reduce((sum, row) => sum + row.weight, 0);
@@ -580,15 +642,15 @@ export function patternPanels(project: Project, patternId: string, gutters = DEF
   return panels;
 }
 
-/** Replace the page's panels with a pattern. */
 /**
- * Replace the page's panels with a pattern's. What was in the panels goes
- * along in panel order (the first panel's into the new first panel, and so
- * on; past the last new panel, into the last), with the panels' memos.
+ * Replace the page's panels with a pattern's (with `count`, made to have that
+ * many). What was in the panels goes along in panel order (the first panel's
+ * into the new first panel, and so on; past the last new panel, into the
+ * last), with the panels' memos.
  */
-export function applyPattern(project: Project, page: Page, patternId: string): void {
+export function applyPattern(project: Project, page: Page, patternId: string, count?: number): void {
   const before = [...page.panels].sort((a, b) => a.order - b.order).map((panel) => ({ note: panel.note, carried: carryContents(page, panel) }));
-  page.panels = patternPanels(project, patternId);
+  page.panels = patternPanels(project, patternId, DEFAULT_GUTTERS, count);
   orderPanels(page, project.binding);
   const after = [...page.panels].sort((a, b) => a.order - b.order);
   const shared = new Map<Panel, number>();

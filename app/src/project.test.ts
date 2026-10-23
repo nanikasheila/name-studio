@@ -366,3 +366,15 @@ describe("入れ替え", () => {
     expect(a.note).toBeUndefined();
   });
 });
+
+describe("ネーム用紙の空のページ", () => {
+  it("counts the empty pages at the end only", async () => {
+    const { trailingEmptyPages, newProject, addLine } = await import("./project");
+    const project = newProject("t", 6);
+    expect(trailingEmptyPages(project)).toBe(6);
+    addLine(project, project.pages[1], [100, 100], "あ");
+    expect(trailingEmptyPages(project)).toBe(4);
+    project.pages[4].memo = "余白: 引用";
+    expect(trailingEmptyPages(project)).toBe(1);
+  });
+});

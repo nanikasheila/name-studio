@@ -14,6 +14,8 @@ export interface ExportDialogHost {
   status(message: string): void;
   /** Show a line of dialogue on its page, selected. */
   goTo(pageId: string, lineId: string): void;
+  /** Give speech with no tail one; how many were added. */
+  addTails(): number;
 }
 
 type Kind = "csp" | "pdf" | "text";
@@ -104,6 +106,15 @@ export class ExportDialog {
       }),
     );
     if (issues.length > 60) list.append(Object.assign(document.createElement("p"), { className: "hint", textContent: `ほか ${issues.length - 60} 件` }));
+    if (issues.some((issue) => issue.kind === "tail")) {
+      const fix = Object.assign(document.createElement("button"), { type: "button", className: "fix", textContent: "しっぽのないセリフ全部にしっぽを付ける（コマのラフの人物へ向ける）" });
+      fix.addEventListener("click", () => {
+        this.host.addTails();
+        const updated = this.host.project();
+        if (updated) this.renderCheck(updated);
+      });
+      list.prepend(fix);
+    }
   }
 
   private sources(): string[] {

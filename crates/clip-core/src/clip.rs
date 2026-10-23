@@ -71,6 +71,10 @@ pub struct ClipCanvas {
     pub basic_size_px: Option<(i64, i64)>,
     /// Offset of the basic frame from the trim frame's centre.
     pub basic_offset_px: (i64, i64),
+    /// 作品名 of the comic settings (empty when none).
+    pub story_name: String,
+    /// 話数 of the comic settings (0 when none).
+    pub story_index: i64,
 }
 
 impl ClipCanvas {
@@ -102,6 +106,8 @@ impl ClipCanvas {
                 to_pixels(row.real("CropFrameInnerOffsetX"), &crop_unit, resolution),
                 to_pixels(row.real("CropFrameInnerOffsetY"), &crop_unit, resolution),
             ),
+            story_name: row.text("ComicStoryStoryName").unwrap_or_default().trim().to_owned(),
+            story_index: row.int("ComicStoryStoryIndex"),
             width,
             height,
             unit,

@@ -102,6 +102,7 @@ dialog.export::backdrop { background: rgb(0 0 0 / 0.35); }
 .name-check-list { display: flex; flex-direction: column; gap: 2px; max-height: 160px; overflow: auto; margin-top: 6px; }
 .name-check-list button { text-align: left; border: none; background: none; padding: 2px 4px; font-size: 12px; }
 .name-check-list button:hover { background: rgb(0 0 0 / 0.05); }
+.name-check-list button.fix { align-self: flex-start; border: 1px solid #c9a24a; border-radius: 4px; background: #fff; padding: 3px 8px; margin-bottom: 4px; }
 .export .message.error { color: #c0392b; }
 .export .actions { display: flex; justify-content: flex-end; gap: 8px; }
 #work-fields[hidden] { display: none; }
@@ -496,3 +497,17 @@ button.small { padding: 1px 6px; font-size: 12px; }
 .new-name .row-field { display: grid; grid-template-columns: 6em 1fr; align-items: center; gap: 8px; margin: 8px 0; }
 .new-name .row-field input, .new-name .row-field select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
 .new-name .row-field input[type="number"] { width: 6em; }
+.inspector input.count, input.count[type="number"] { width: 4.5em; }
+.cast-block { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.cast-block textarea.tone { font: inherit; font-size: 12px; resize: vertical; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
+.cast-block button.count { border: none; background: none; padding: 0 4px; cursor: pointer; }
+.cast-lines { margin: 0; padding-left: 0; list-style: none; font-size: 12px; max-height: 220px; overflow: auto; }
+.cast-lines li { padding: 2px 4px; cursor: pointer; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cast-lines li:hover { background: rgb(0 0 0 / 0.05); }
+.note-item { display: flex; align-items: center; gap: 6px; padding: 4px 2px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 13px; }
+.note-item:hover { background: rgb(0 0 0 / 0.04); }
+.note-item .swatch { width: 10px; height: 10px; border-radius: 2px; border: 1px solid rgb(0 0 0 / 0.2); flex: none; }
+.note-item .note-text { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tone-hint { margin-top: -4px; }
+.inspector .page-memo { font-size: 12px; background: var(--panel, #f6f4ee); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; margin-bottom: 8px; max-height: 6.5em; overflow: auto; white-space: pre-wrap; }
+.inspector .page-memo .label { display: block; color: var(--muted); font-size: 11px; }

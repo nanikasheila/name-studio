@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { scriptText } from "./nameexport";
-import { addCharacter, addLine, addPanel, addScene, newProject, rectShape } from "./project";
-import { applyScript, panelBoxes, parseScript, readLine } from "./scriptimport";
+import { addCharacter, addLine, addPanel, addScene, basicBox, newProject, rectShape } from "./project";
+import { applyScript, findPattern, panelBoxes, parseScript, readLine } from "./scriptimport";
 
 const MARKDOWN = `# 星の約束
 
@@ -155,5 +155,42 @@ describe("台本の取り込み: 第4話の試作から", () => {
     const [thought, phone] = project.pages[0].lines;
     expect(thought.balloonShape).toBe("polygon");
     expect(phone.balloonShape).toBe("electric");
+  });
+});
+
+describe("台本でコマ割りの型", () => {
+  it("reads 型： lines and fits the pattern to the page's panels", () => {
+    expect(findPattern("導入")).toBe("opening");
+    expect(findPattern("大ゴマ＋はめ込み")).toBe("bigInset");
+    expect(findPattern("3段")).toBe("three");
+    expect(findPattern("大きく")).toBeUndefined();
+    const script = [
+      "### 1ページ",
+      "型：導入",
+      "- コマ1",
+      "- ミカ「a」",
+      "- コマ2",
+      "- ミカ「b」",
+      "- コマ3",
+      "- ミカ「c」",
+      "### 2ページ",
+      "- コマ1",
+      "- ミカ「d」",
+      "- コマ2",
+      "- ミカ「e」",
+    ].join("\n");
+    const doc = parseScript(script);
+    expect(doc.pages.map((page) => page.pattern)).toEqual(["opening", undefined]);
+    expect(doc.pages[0].notes).toEqual([]);
+    const project = newProject("t", 1);
+    applyScript(project, doc, { startPage: 0, makePanels: true, pattern: "three" });
+    expect(project.pages[0].panels.length).toBe(3);
+    // 導入: the first panel bleeds off the top.
+    const first = [...project.pages[0].panels].sort((a, b) => a.order - b.order)[0];
+    expect(Math.min(...first.shape.map(([, y]) => y))).toBeLessThan(basicBox(project.pageFormat)[1] - 1);
+    expect(project.pages[1].panels.length).toBe(2);
+    for (const page of project.pages) {
+      for (const line of page.lines) expect(line.panel).toBeDefined();
+    }
   });
 });

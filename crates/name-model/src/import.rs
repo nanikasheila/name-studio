@@ -11,6 +11,9 @@
 use clip_core::layout::{
     PageCell, ReadingOrder, Rect, as_rectangle, detect_page_cells, find_rectangles, template_rectangles,
 };
+use std::path::{Path, PathBuf};
+
+use clip_core::cmc::CmcProject;
 use clip_core::{ClipDocument, ClipLayer, LayerKind, Result};
 
 use crate::model::{
@@ -66,11 +69,7 @@ pub fn cell_transform(cell: &PageCell, format: &PageFormat) -> SheetToPage {
 
 /// Import a name sheet into a new project.
 pub fn import_sheet(document: &ClipDocument, format: PageFormat) -> Result<(Project, Vec<String>)> {
-    let title = document
-        .path
-        .file_stem()
-        .map(|stem| stem.to_string_lossy().into_owned())
-        .unwrap_or_default();
+    let title = sheet_title(document);
     let mut project = Project::new(&title);
     project.page_format = format;
     let mut warnings = Vec::new();
@@ -167,6 +166,60 @@ pub fn import_sheet(document: &ClipDocument, format: PageFormat) -> Result<(Proj
             .collect(),
     });
     Ok((project, warnings))
+}
+
+/// The name's title: the work (.cmc) the sheet is a page of, named after its
+/// file; else the comic settings' 作品名 (and 話数); else the sheet's file name.
+pub fn sheet_title(document: &ClipDocument) -> String {
+    let path = &document.path;
+    let stem = |p: &Path| {
+        p.file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    };
+    if let Some(work) = owning_work(path) {
+        return stem(&work);
+    }
+    let canvas = &document.canvas;
+    if !canvas.story_name.is_empty() {
+        return if canvas.story_index > 0 {
+            format!("{} 第{}話", canvas.story_name, canvas.story_index)
+        } else {
+            canvas.story_name.clone()
+        };
+    }
+    stem(path)
+}
+
+/// A .cmc in the sheet's folder or the one above whose pages include the sheet.
+fn owning_work(sheet: &Path) -> Option<PathBuf> {
+    let same = |a: &Path, b: &Path| match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    };
+    let folder = sheet.parent()?;
+    let folders = [Some(folder), folder.parent()];
+    for dir in folders.into_iter().flatten() {
+        let Ok(entries) = std::fs::read_dir(if dir.as_os_str().is_empty() {
+            Path::new(".")
+        } else {
+            dir
+        }) else {
+            continue;
+        };
+        let mut works: Vec<PathBuf> = entries
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("cmc")))
+            .collect();
+        works.sort();
+        for work in works {
+            let Ok(project) = CmcProject::read(&work) else { continue };
+            if project.page_file_paths().iter().any(|page| same(page, sheet)) {
+                return Some(work);
+            }
+        }
+    }
+    None
 }
 
 /// Visible leaf layers, skipping the paper and the story information.
@@ -329,12 +382,32 @@ fn import_lines(
         };
         let t = transforms[page_index];
         let box_mm = t.box_(sheet_box);
+        let text = strings.get(index).cloned().unwrap_or_default();
+        let centre = [(box_mm[0] + box_mm[2]) / 2.0, (box_mm[1] + box_mm[3]) / 2.0];
+        let panel = panel_holding(&project.pages[page_index], centre);
+        // Writing in the sheet's margin (a quote, a note to self) is not
+        // dialogue: past the trim, or bare text outside the basic frame and
+        // every panel. It goes into the page memo.
+        let inside = |b: BoxMm| b[0] <= centre[0] && centre[0] <= b[2] && b[1] <= centre[1] && centre[1] <= b[3];
+        let format = &project.page_format;
+        let margin =
+            !inside(format.trim_box()) || (balloon.is_none() && panel.is_none() && !inside(format.basic_box()));
+        if margin {
+            let memo = &mut project.pages[page_index].memo;
+            let note = text.trim();
+            if !note.is_empty() {
+                if !memo.is_empty() {
+                    memo.push('\n');
+                }
+                memo.push_str("余白: ");
+                memo.push_str(note);
+            }
+            continue;
+        }
         let id = project.new_id("line");
-        let page = &project.pages[page_index];
-        let panel = panel_holding(page, [(box_mm[0] + box_mm[2]) / 2.0, (box_mm[1] + box_mm[3]) / 2.0]);
         let line = Line {
             id,
-            text: strings.get(index).cloned().unwrap_or_default(),
+            text,
             kind: LineKind::Speech,
             speaker: None,
             panel,

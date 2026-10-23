@@ -101,6 +101,7 @@ fn saves_and_loads_through_json() {
         id: "chara1".into(),
         name: "主人公".into(),
         color: Some("#d04040".into()),
+        tone: Some("です・ます。驚くと関西弁".into()),
     });
     project.pages[0].lines[0].speaker = Some("chara1".into());
     let first = project.pages[0].id.clone();
@@ -311,4 +312,73 @@ fn keeps_own_story_shapes() {
     assert!(saved.contains("\"shapes\""));
     let again = Project::from_json(&saved).unwrap();
     assert_eq!(again, project);
+}
+
+#[test]
+fn margin_writing_goes_to_the_page_memo() {
+    let folder = tempfile::tempdir().unwrap();
+    let canvas = FixtureCanvas {
+        width_mm: 100.0,
+        height_mm: 60.0,
+        resolution: 254.0,
+        double_page: false,
+    };
+    let layers = vec![
+        FixtureLayer::paper(2),
+        FixtureLayer::vector(
+            3,
+            "枠",
+            vec![
+                rectangle(520.0, 20.0, 980.0, 580.0),
+                rectangle(570.0, 70.0, 930.0, 530.0),
+                rectangle(20.0, 20.0, 480.0, 580.0),
+                rectangle(70.0, 70.0, 430.0, 530.0),
+            ],
+        ),
+        FixtureLayer::text(4, "セリフ", [700, 200, 730, 300], 4.0),
+        // Between the frame and the cell's edge: a quote in the margin.
+        FixtureLayer::text(5, "引用文", [528, 100, 560, 400], 4.0),
+    ];
+    let path = build_clip(&folder.path().join("page0002.clip"), canvas, layers);
+    let (project, _) = import_sheet(&ClipDocument::read(&path).unwrap(), PageFormat::default()).unwrap();
+    let page = &project.pages[0];
+    assert_eq!(page.lines.len(), 1);
+    assert_eq!(page.lines[0].text, "セリフ");
+    assert_eq!(page.memo, "余白: 引用文");
+}
+
+#[test]
+fn titles_the_name_after_its_work() {
+    let folder = tempfile::tempdir().unwrap();
+    let path = sheet(folder.path());
+    // Not a page of any work: the sheet's file name.
+    assert_eq!(
+        import_sheet(&ClipDocument::read(&path).unwrap(), PageFormat::default())
+            .unwrap()
+            .0
+            .title,
+        "name"
+    );
+    // A page of a work: the work's file name.
+    clip_core::fixtures::build_cmc(&folder.path().join("ユメノストラ第4話.cmc"), &["name.clip"]);
+    let (project, _) = import_sheet(&ClipDocument::read(&path).unwrap(), PageFormat::default()).unwrap();
+    assert_eq!(project.title, "ユメノストラ第4話");
+}
+
+#[test]
+fn titles_the_name_from_the_comic_settings() {
+    let folder = tempfile::tempdir().unwrap();
+    let canvas = FixtureCanvas {
+        width_mm: 100.0,
+        height_mm: 60.0,
+        resolution: 254.0,
+        double_page: false,
+    };
+    let path = clip_core::fixtures::build_editable_clip(
+        &folder.path().join("page0002.clip"),
+        canvas,
+        vec![FixtureLayer::paper(2)],
+    );
+    let (project, _) = import_sheet(&ClipDocument::read(&path).unwrap(), PageFormat::default()).unwrap();
+    assert_eq!(project.title, "Template 第3話");
 }

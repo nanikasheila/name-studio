@@ -2,6 +2,7 @@
 // file, see what will be read, choose where it goes, then deal it out.
 import { applyPlot, looksLikePlot, parsePlot, type PlotDoc, type PlotImportReport } from "./plotimport";
 import { applyScript, parseScript, type ScriptDoc, type ScriptImportReport } from "./scriptimport";
+import { PATTERNS } from "./koma";
 import type { Project } from "./project";
 
 export interface ScriptDialogHost {
@@ -43,6 +44,8 @@ export class ScriptDialog {
     $("sd-mode").addEventListener("change", () => this.preview());
     $("sd-notes").addEventListener("change", () => this.preview());
     $("sd-run").addEventListener("click", () => this.run());
+    const pattern = $<HTMLSelectElement>("sd-pattern");
+    for (const item of PATTERNS) pattern.append(Object.assign(document.createElement("option"), { value: item.id, textContent: item.label, title: item.note }));
   }
 
   open(): void {
@@ -69,6 +72,8 @@ export class ScriptDialog {
     $("sd-script-hint").hidden = asPlot;
     $("sd-start-row").hidden = asPlot;
     $("sd-panels-row").hidden = asPlot;
+    $("sd-pattern-row").hidden = asPlot;
+    $("sd-pattern-hint").hidden = asPlot;
     $("sd-notes-row").hidden = !asPlot;
     if (this.plot && project) {
       const plot = this.plot;
@@ -100,10 +105,12 @@ export class ScriptDialog {
     const start = this.start(project);
     const added = Math.max(0, start + pages.length - project.pages.length);
     const scenes = new Set(pages.map((page) => page.scene).filter(Boolean)).size;
+    const shaped = pages.filter((page) => page.pattern).length;
     summary.textContent = [
       `${pages.length} ページ・コマ ${panels}・セリフ ${lines}${scenes ? `・シーン ${scenes}` : ""}${this.doc.title ? `（${this.doc.title}）` : ""}`,
       `${start + 1} ページから入れます${added ? `（ページを ${added} 枚足します）` : ""}。`,
       fresh.length ? `新しい登場人物: ${fresh.join("、")}` : "",
+      shaped ? `型を指定したページ: ${shaped}` : "",
       ...this.doc.warnings,
     ]
       .filter(Boolean)
@@ -131,8 +138,9 @@ export class ScriptDialog {
     if (!project || !doc) return;
     const start = this.start(project);
     const makePanels = $<HTMLInputElement>("sd-panels").checked;
+    const pattern = $<HTMLSelectElement>("sd-pattern").value || undefined;
     let report: ScriptImportReport | null = null;
-    this.host.edit((p) => (report = applyScript(p, doc, { startPage: start, makePanels })));
+    this.host.edit((p) => (report = applyScript(p, doc, { startPage: start, makePanels, pattern })));
     $<HTMLDialogElement>("script-dialog").close();
     if (report) this.host.done(report, start + 1);
   }
