@@ -665,6 +665,9 @@ pub struct Character {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
+    /// 口調のメモ: how the character talks, to keep the dialogue in voice.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tone: Option<String>,
 }
 
 /// A scene: a run of pages, with its place in story time for the timeline.

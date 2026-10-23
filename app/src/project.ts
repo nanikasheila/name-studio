@@ -370,6 +370,8 @@ export interface Character {
   id: string;
   name: string;
   color?: string;
+  /** 口調のメモ: how the character talks. */
+  tone?: string;
 }
 
 export interface Scene {

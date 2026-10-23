@@ -144,7 +144,9 @@ export class Workbench {
   readonly editor: PageEditor;
   private readonly history = new History<Project>();
   private readonly state: WorkbenchState = { project: null, path: null, dirty: false, revision: 0, pending: null, roughs: new Map() };
-  private sideTab: "pages" | "script" | "cast" | "layers" = "pages";
+  /** Characters whose lines are listed in the 人物 tab. */
+  private openCast = new Set<string>();
+  private sideTab: "pages" | "script" | "cast" | "notes" | "layers" = "pages";
   private readonly layerView = new LayerView({
     selected: (ref) => this.layerSelected(ref),
     select: (ref) => this.selectLayer(ref),
@@ -235,14 +237,7 @@ export class Workbench {
       projectPath: () => this.state.path,
       rough: (rough) => this.loadRough(rough),
       status: (message) => this.setStatus(message),
-      goTo: (pageId, lineId) => {
-        const index = this.state.project?.pages.findIndex((p) => p.id === pageId) ?? -1;
-        if (index < 0) return;
-        if (this.view !== "edit") this.setView("edit");
-        this.editor.showPage(index + 1);
-        this.editor.select({ kind: "line", pageId, id: lineId });
-        this.renderAll();
-      },
+      goTo: (pageId, lineId) => this.goTo(pageId, "line", lineId),
       addTails: () => this.addTails(),
     });
     this.brushDialog = new BrushDialog({
@@ -551,14 +546,16 @@ export class Workbench {
     $("side-pages").hidden = this.sideTab !== "pages";
     $("side-script").hidden = this.sideTab !== "script";
     $("side-cast").hidden = this.sideTab !== "cast";
+    $("side-notes").hidden = this.sideTab !== "notes";
     $("side-layers").hidden = this.sideTab !== "layers";
-    for (const tab of ["pages", "script", "cast"] as const) $(`tab-${tab}`).classList.toggle("active", this.sideTab === tab);
+    for (const tab of ["pages", "script", "cast", "notes"] as const) $(`tab-${tab}`).classList.toggle("active", this.sideTab === tab);
     $("tab-layers-edit").classList.toggle("active", this.sideTab === "layers");
     const project = this.state.project;
     if (!project) return;
     if (this.sideTab === "pages") this.renderPages(project);
     if (this.sideTab === "script") this.renderScript(project);
     if (this.sideTab === "cast") this.renderCast(project);
+    if (this.sideTab === "notes") this.renderNotes(project);
     if (this.sideTab === "layers") this.renderLayers();
   }
 
@@ -724,15 +721,81 @@ export class Workbench {
       name.addEventListener("change", () => this.edit(() => (character.name = name.value.trim() || character.name)));
       const color = element("input", { type: "color", value: character.color ?? "#2f6fdb" });
       color.addEventListener("change", () => this.edit(() => (character.color = color.value)));
-      const spoken = project.pages.reduce((sum, page) => sum + page.lines.filter((l) => l.speaker === character.id).length, 0);
-      const remove = element("button", { className: "danger", textContent: "削除", title: `セリフ ${spoken} 件の話者が空になります` });
+      const said = project.pages.flatMap((page, index) => page.lines.filter((l) => l.speaker === character.id).map((line) => ({ page, index, line })));
+      const remove = element("button", { className: "danger", textContent: "削除", title: `セリフ ${said.length} 件の話者が空になります` });
       remove.addEventListener("click", () => this.edit((p) => removeCharacter(p, character.id)));
-      return element("div", { className: "cast-item" }, color, name, element("span", { className: "count", textContent: `${spoken}` }), remove);
+      // 口調: kept beside the name, to write the dialogue in voice.
+      const tone = element("textarea", { className: "tone", rows: 2, placeholder: "口調のメモ（一人称・語尾・口ぐせ）", value: character.tone ?? "" });
+      tone.addEventListener("change", () => {
+        const text = tone.value.trim();
+        // Also fires on the blur when the list is drawn again: only a real change is an edit.
+        if (text === (character.tone ?? "")) return;
+        this.edit(() => {
+          if (text) character.tone = text;
+          else delete character.tone;
+        });
+      });
+      // その人のセリフを並べて、口調が揃っているか見る。
+      const open = this.openCast.has(character.id);
+      const toggle = element("button", { className: "count", textContent: `${open ? "▾" : "▸"} ${said.length}`, title: "この人のセリフを並べる" });
+      toggle.addEventListener("click", () => {
+        if (open) this.openCast.delete(character.id);
+        else this.openCast.add(character.id);
+        this.renderCast(project);
+      });
+      const list = open
+        ? [
+            element(
+              "ol",
+              { className: "cast-lines" },
+              ...said.map(({ page, index, line }) => {
+                const item = element("li", { textContent: `${index + 1}  ${line.text.replace(/\s+/g, "")}`, title: "このセリフへ" });
+                item.addEventListener("click", () => this.goTo(page.id, "line", line.id));
+                return item;
+              }),
+            ),
+          ]
+        : [];
+      return element("div", { className: "cast-block" }, element("div", { className: "cast-item" }, color, name, toggle, remove), tone, ...list);
     });
     const add = element("button", { textContent: "人物を足す" });
     add.addEventListener("click", () => this.edit((p) => addCharacter(p, `人物${p.characters.length + 1}`)));
-    const hint = element("p", { className: "hint", textContent: "セリフを選んで、右の欄で話者を選べます。" });
+    const hint = element("p", { className: "hint", textContent: "セリフを選んで、右の欄で話者を選べます。数を押すとその人のセリフを並べます。" });
     $("side-cast").replaceChildren(...rows, element("div", { className: "side-actions" }, add), hint);
+  }
+
+  /** 付箋の一覧: every page's stickies in one place, the open questions of the name. */
+  private renderNotes(project: Project): void {
+    const items = project.pages.flatMap((page, index) =>
+      (page.stickies ?? []).map((sticky) => {
+        const swatch = element("span", { className: "swatch" });
+        swatch.style.background = STICKY_COLORS[sticky.color ?? "yellow"].fill;
+        const text = element("span", { className: "note-text", textContent: sticky.text.trim() || "（空の付箋）" });
+        const where = element("span", { className: "count", textContent: `${index + 1}` });
+        const row = element("div", { className: "note-item", title: "この付箋へ" }, swatch, where, text);
+        row.addEventListener("click", () => this.goTo(page.id, "sticky", sticky.id));
+        const done = element("button", { className: "small", textContent: "済み", title: "決まったので付箋を外す（元に戻すで戻せます）" });
+        done.addEventListener("click", (event) => {
+          event.stopPropagation();
+          this.edit(() => removeSticky(page, sticky.id));
+        });
+        row.append(done);
+        return row;
+      }),
+    );
+    const head = element("p", { className: "hint", textContent: items.length ? `付箋 ${items.length} 枚（未決のこと）。押すとその付箋へ、決まったら「済み」。` : "付箋はありません。付箋ツールでページに貼ると、ここに集まります。" });
+    $("side-notes").replaceChildren(head, ...items);
+  }
+
+  /** Show a page in the editor with one of its things selected. */
+  private goTo(pageId: string, kind: "line" | "sticky", id: string): void {
+    const index = this.state.project?.pages.findIndex((p) => p.id === pageId) ?? -1;
+    if (index < 0) return;
+    if (this.view !== "edit") this.setView("edit");
+    if (this.editor.tool !== "select") this.setTool("select");
+    this.editor.showPage(index + 1);
+    this.editor.select({ kind, pageId, id });
+    this.renderAll();
   }
 
   // --- inspector --------------------------------------------------------------------------
@@ -823,6 +886,15 @@ export class Workbench {
     }
   }
 
+  /** そのページのメモ（プロット）, kept in sight while working on its panels and dialogue. */
+  private pageMemo(project: Project, page: Page): HTMLElement[] {
+    const memo = page.memo.trim();
+    if (!memo) return [];
+    const box = element("div", { className: "page-memo", title: "ページのメモ（ページを選ぶと直せます）" });
+    box.append(element("span", { className: "label", textContent: `${pageIndex(project, page.id) + 1} ページのメモ` }), element("div", { textContent: memo }));
+    return [box];
+  }
+
   private renderInspectorPanel(): void {
     const panel = $("inspector");
     const project = this.state.project;
@@ -838,11 +910,11 @@ export class Workbench {
     }
     if (s?.kind === "line") {
       const line = page.lines.find((l) => l.id === s.id);
-      if (line) return panel.replaceChildren(...this.lineInspector(project, page, line));
+      if (line) return panel.replaceChildren(...this.pageMemo(project, page), ...this.lineInspector(project, page, line));
     }
     if (s?.kind === "panel") {
       const target = page.panels.find((p) => p.id === s.id);
-      if (target) return panel.replaceChildren(...this.panelInspector(project, page, target.id, target.order));
+      if (target) return panel.replaceChildren(...this.pageMemo(project, page), ...this.panelInspector(project, page, target.id, target.order));
     }
     if (s?.kind === "sticky") {
       const sticky = page.stickies?.find((n) => n.id === s.id);
@@ -1072,6 +1144,7 @@ export class Workbench {
       element("h2", { textContent: `${pageIndex(project, page.id) + 1} ページのセリフ${panelNumber ? `（${panelNumber} コマ目）` : ""}` }),
       element("label", {}, "文字", text),
       element("div", { className: "row" }, element("label", {}, "種類", kind), element("label", {}, "話者", speaker)),
+      ...(toneOf(project, line.speaker) ? [element("p", { className: "hint tone-hint", textContent: `口調: ${toneOf(project, line.speaker)}` })] : []),
       element("div", { className: "row" }, element("label", {}, "文字の大きさ（pt）", size), element("label", { className: "inline" }, vertical, "縦書き")),
       element("div", { className: "row" }, emphasis, inverted),
       element("h3", { textContent: "フキダシ" }),
@@ -1619,7 +1692,7 @@ export class Workbench {
     for (const name of ["edit", "board", "structure", "emotion", "timeline"] as const) {
       $(`view-${name}`).addEventListener("click", () => this.setView(name));
     }
-    for (const tab of ["pages", "script", "cast"] as const) {
+    for (const tab of ["pages", "script", "cast", "notes"] as const) {
       $(`tab-${tab}`).addEventListener("click", () => {
         this.sideTab = tab;
         this.renderSide();
@@ -1783,4 +1856,9 @@ export class Workbench {
 
 function round(value: number): number {
   return Math.round(value * 10) / 10;
+}
+
+/** The 口調 memo of a speaker, if they have one. */
+function toneOf(project: Project, speaker: string | undefined): string | undefined {
+  return speaker ? project.characters.find((character) => character.id === speaker)?.tone : undefined;
 }

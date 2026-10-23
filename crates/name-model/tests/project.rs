@@ -101,6 +101,7 @@ fn saves_and_loads_through_json() {
         id: "chara1".into(),
         name: "主人公".into(),
         color: Some("#d04040".into()),
+        tone: Some("です・ます。驚くと関西弁".into()),
     });
     project.pages[0].lines[0].speaker = Some("chara1".into());
     let first = project.pages[0].id.clone();
