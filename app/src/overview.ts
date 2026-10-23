@@ -6,7 +6,7 @@ import { dragSort } from "./dragsort";
 import { Board } from "./board";
 import { addScene, bounds, moveScene, pageBlock, pageIndex, setEmotion, sortScenes, type Project } from "./project";
 import { pageParts, storyShapes } from "./shapes";
-import { emotionSeries, pageStats, planAdvice, planParts, sceneSpans, timeline, uncoveredRuns, type SceneSpan } from "./story";
+import { emotionRuns, emotionSeries, markSpeakingPages, pageStats, speakingPages, planAdvice, planParts, sceneSpans, timeline, uncoveredRuns, type SceneSpan } from "./story";
 
 export type OverviewKind = "board" | "structure" | "emotion" | "timeline";
 
@@ -22,6 +22,8 @@ export interface OverviewHost {
   makeOption(first: number, last: number): void;
   /** Say what was done in the status bar. */
   status?(message: string): void;
+  /** Open the dialog that takes in a Markdown script or plot. */
+  importText?(): void;
 }
 
 const SVG = "http://www.w3.org/2000/svg";
@@ -503,15 +505,18 @@ export class Overview {
     for (const { character, samples } of series) {
       const color = character.color ?? "#2a78d6";
       const editing = character.id === this.editing;
-      if (samples.length > 1) {
-        chart.append(
-          svg("polyline", {
-            points: samples.map((s) => `${scale.center(s.index)},${y(s.value)}`).join(" "),
-            class: `series${editing ? " editing" : ""}`,
-            stroke: color,
-          }),
-        );
-      }
+      // Solid over pages next to each other; dotted across pages with no value.
+      const runs = emotionRuns(samples);
+      runs.forEach((run, i) => {
+        if (run.length > 1) {
+          chart.append(svg("polyline", { points: run.map((s) => `${scale.center(s.index)},${y(s.value)}`).join(" "), class: `series${editing ? " editing" : ""}`, stroke: color }));
+        }
+        const next = runs[i + 1]?.[0];
+        const end = run[run.length - 1];
+        if (next) {
+          chart.append(svg("line", { x1: scale.center(end.index), y1: y(end.value), x2: scale.center(next.index), y2: y(next.value), class: `series gap${editing ? " editing" : ""}`, stroke: color }));
+        }
+      });
       for (const sample of samples) {
         chart.append(svg("circle", { cx: scale.center(sample.index), cy: y(sample.value), r: 4, class: "marker", fill: color }));
       }
@@ -566,6 +571,11 @@ export class Overview {
     chart.append(plot);
 
     const editing = characters.find((c) => c.id === this.editing)!;
+    const known = new Set(emotionSeries(project, editing.id).map((sample) => sample.index));
+    const missing = speakingPages(project, editing.id).filter((index) => !known.has(index)).length;
+    const mark = html("button", { textContent: `${editing.name} が話すページに点を打つ（${missing}）`, disabled: !missing, title: "まだ値のないページに、前後の値の間をとって点を打つ" });
+    mark.addEventListener("click", () => this.host.edit((p) => markSpeakingPages(p, editing.id)));
+    legend.append(mark);
     return [
       html("h2", { textContent: "感情曲線" }),
       html("p", { className: "hint", textContent: "人物を選んで、図をクリック（ドラッグ）するとそのページの値が入ります。Alt＋クリックか右クリックで消します。" }),

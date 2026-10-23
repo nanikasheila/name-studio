@@ -117,8 +117,10 @@ export function parseScript(source: string): ScriptDoc {
   };
   const currentPage = (): ScriptPage => page ?? newPage();
   const newPanel = () => {
+    // The page first: starting one clears the current panel.
+    const target = currentPage();
     panel = { notes: [], lines: [] };
-    currentPage().panels.push(panel);
+    target.panels.push(panel);
     return panel;
   };
   for (const row of rows) {

@@ -245,3 +245,44 @@ export function sceneAtPage(project: Project, index: number): SceneSpan | undefi
 export function uncoveredRunAt(project: Project, index: number): [number, number] | undefined {
   return uncoveredRuns(project).find(([a, b]) => a <= index && index <= b);
 }
+
+// --- 感情曲線の点 ----------------------------------------------------------------------
+
+/** Runs of samples on pages next to each other; the curve is drawn solid only within a run. */
+export function emotionRuns(samples: EmotionSample[]): EmotionSample[][] {
+  const runs: EmotionSample[][] = [];
+  for (const sample of samples) {
+    const run = runs[runs.length - 1];
+    if (run && sample.index - run[run.length - 1].index === 1) run.push(sample);
+    else runs.push([sample]);
+  }
+  return runs;
+}
+
+/** Pages (0-based) on which a character speaks. */
+export function speakingPages(project: Project, characterId: string): number[] {
+  return project.pages.flatMap((page, index) => (page.lines.some((line) => line.speaker === characterId) ? [index] : []));
+}
+
+/**
+ * Put a point on every page where the character speaks and has no value
+ * yet: in line between the values on either side (the one side's value at
+ * the ends, 0 when there is none). Returns how many points were added.
+ */
+export function markSpeakingPages(project: Project, characterId: string): number {
+  const known = emotionSeries(project, characterId);
+  const has = new Set(known.map((sample) => sample.index));
+  let added = 0;
+  for (const index of speakingPages(project, characterId)) {
+    if (has.has(index)) continue;
+    const before = [...known].reverse().find((sample) => sample.index < index);
+    const after = known.find((sample) => sample.index > index);
+    const value =
+      before && after
+        ? before.value + ((after.value - before.value) * (index - before.index)) / (after.index - before.index)
+        : (before ?? after)?.value ?? 0;
+    project.emotions.push({ character: characterId, page: project.pages[index].id, value: Math.round(value * 10) / 10, note: "" });
+    added++;
+  }
+  return added;
+}

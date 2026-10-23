@@ -40,7 +40,7 @@ import {
   splitPart,
   storyShapes,
 } from "./shapes";
-import { emotionSeries, HEAVY_TEXT, moveSceneEdge, sceneAtPage, sceneSpans, setStoryRank, timeline, uncoveredRunAt, type SceneSpan } from "./story";
+import { emotionRuns, emotionSeries, HEAVY_TEXT, markSpeakingPages, moveSceneEdge, sceneAtPage, sceneSpans, setStoryRank, speakingPages, timeline, uncoveredRunAt, type SceneSpan } from "./story";
 import type { OverviewHost } from "./overview";
 
 const SVG = "http://www.w3.org/2000/svg";
@@ -275,6 +275,24 @@ export class Board {
       }),
     );
     cast.append(addCast);
+    const who = project.characters.find((c) => c.id === this.character);
+    if (who) {
+      const speaking = speakingPages(project, who.id);
+      const known = new Set(emotionSeries(project, who.id).map((sample) => sample.index));
+      const missing = speaking.filter((index) => !known.has(index)).length;
+      const mark = html("button", {
+        className: "chip",
+        textContent: `話すページに点（${missing}）`,
+        title: `${who.name} が話すページで、まだ値のない所に点を打つ（前後の値の間をとる）。曲線の下の小さな印が話すページ`,
+        disabled: !missing,
+      });
+      mark.addEventListener("click", () => {
+        let added = 0;
+        this.edit((p) => (added = markSpeakingPages(p, who.id)));
+        this.host.status?.(`${who.name} が話す ${added} ページに点を打ちました。なぞって直せます（元に戻すは Ctrl+Z）`);
+      });
+      cast.append(mark);
+    }
 
     const zoom = html("input", { type: "range", min: String(MIN_COLUMN), max: String(MAX_COLUMN), value: String(this.column), title: "ページの幅（Ctrl＋ホイールでも）" });
     zoom.addEventListener("input", () => this.zoomTo(Number(zoom.value)));
@@ -294,6 +312,7 @@ export class Board {
       html("span", { className: "board-caption", textContent: "感情:" }),
       cast,
       html("div", { className: "spacer" }),
+      ...(this.host.importText ? [importButton(() => this.host.importText!())] : []),
       html("label", { className: "board-zoom" }, "幅 ", zoom),
       fit,
     );
@@ -708,7 +727,20 @@ export class Board {
     for (const { character, samples } of series) {
       const color = character.color ?? "#2a78d6";
       const editing = character.id === this.character;
-      if (samples.length > 1) group.append(svg("polyline", { points: samples.map((s) => `${center(s.index)},${y(s.value)}`).join(" "), class: `curve${editing ? " editing" : ""}`, stroke: color }));
+      // Solid over pages next to each other; dotted across pages with no value.
+      const runs = emotionRuns(samples);
+      runs.forEach((run, i) => {
+        if (run.length > 1) group.append(svg("polyline", { points: run.map((s) => `${center(s.index)},${y(s.value)}`).join(" "), class: `curve${editing ? " editing" : ""}`, stroke: color }));
+        const next = runs[i + 1]?.[0];
+        const end = run[run.length - 1];
+        if (next) group.append(svg("line", { x1: center(end.index), y1: y(end.value), x2: center(next.index), y2: y(next.value), class: `curve gap${editing ? " editing" : ""}`, stroke: color }));
+      });
+      // Where the character speaks: ticks along the bottom.
+      if (editing) {
+        for (const index of speakingPages(project, character.id)) {
+          group.append(svg("rect", { x: center(index) - 1.5, y: top + EMOTION - 7, width: 3, height: 5, rx: 1, class: "speaks", fill: color }));
+        }
+      }
       for (const sample of samples) group.append(svg("circle", { cx: center(sample.index), cy: y(sample.value), r: editing ? 4 : 3, class: "curve-point", fill: color }));
       const last = samples[samples.length - 1];
       if (last && project.characters.length <= 5) group.append(svg("text", { x: center(last.index) + 7, y: y(last.value) + 4, class: "curve-label" }, character.name));
@@ -1288,6 +1320,12 @@ export function drawThumb(ctx: CanvasRenderingContext2D, project: Project, page:
       ctx.fillRect(x0 * m.scale + m.x, y0 * m.scale + m.y, (x1 - x0) * m.scale, (y1 - y0) * m.scale);
     }
   }
+}
+
+function importButton(open: () => void): HTMLButtonElement {
+  const button = html("button", { textContent: "プロット取り込み…", title: "Markdown のプロット（### 1ページ…）をページのメモ・シーン・付箋に振り分ける。台本も取り込める" });
+  button.addEventListener("click", open);
+  return button;
 }
 
 function diamond(cx: number, cy: number, r: number): string {

@@ -483,3 +483,8 @@ body.focus-mode #editor > .sidebar, body.focus-mode #editor > .inspector { displ
 .insp-preview { border: 1px solid var(--line); align-self: center; cursor: zoom-in; }
 button.small { padding: 1px 6px; font-size: 12px; }
 .chip.static { border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; font-size: 12px; background: var(--panel); }
+.chart .series.gap, .board-chart .curve.gap { stroke-dasharray: 2 4; stroke-width: 1.5; }
+.board-chart .speaks { opacity: 0.8; pointer-events: none; }
+.new-name .row-field { display: grid; grid-template-columns: 6em 1fr; align-items: center; gap: 8px; margin: 8px 0; }
+.new-name .row-field input, .new-name .row-field select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
+.new-name .row-field input[type="number"] { width: 6em; }
