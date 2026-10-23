@@ -179,9 +179,11 @@ export function parseScript(source: string): ScriptDoc {
     return page;
   };
   const currentPage = (): ScriptPage => page ?? newPage();
-  const newPanel = () => {
+  const newPanel = (number?: number) => {
     // The page first: starting one clears the current panel.
     const target = currentPage();
+    // A numbered panel past the next one (［1］ then ［3］, as the app writes a page whose 2 has no dialogue): empty ones between.
+    while (number && target.panels.length < number - 1 && number <= 40) target.panels.push({ notes: [], lines: [] });
     panel = { notes: [], lines: [] };
     target.panels.push(panel);
     return panel;
@@ -208,7 +210,7 @@ export function parseScript(source: string): ScriptDoc {
         const subtitle = numbered ? text.replace(PAGE_NUMBER, "").trim() : text;
         if (subtitle) page!.notes.push(subtitle);
       } else {
-        newPanel();
+        newPanel(Number(/^(?:コマ|\[|［)?\s*(\d+)/.exec(text)?.[1] ?? 0));
         const note = text.replace(/^(?:コマ|\[|［)?\s*\d*\s*(?:コマ目?|\]|］)?\s*[:：]?\s*/, "").trim();
         if (note) panel!.notes.push(note);
       }
@@ -223,6 +225,8 @@ export function parseScript(source: string): ScriptDoc {
     }
     if (line.startsWith("■")) {
       newPage();
+      const number = /^\s*(\d+)\s*ページ/.exec(plain(line.slice(1)));
+      if (number) page!.number = Number(number[1]);
       const rest = plain(line.slice(1)).replace(/^\d+\s*ページ/, "").trim();
       if (rest) page!.notes.push(rest);
       continue;
@@ -237,10 +241,10 @@ export function parseScript(source: string): ScriptDoc {
       currentPage().pattern = findPattern(asked[1]);
       continue;
     }
-    const panelMark = /^(?:[［[]\s*(\d+)\s*[］\]]|【\s*コマ\s*\d*\s*】|コマ\s*\d+(?:\s|$|[:：]))\s*(.*)$/.exec(bare);
+    const panelMark = /^(?:[［[]\s*(\d+)\s*[］\]]|【\s*コマ\s*(\d*)\s*】|コマ\s*(\d+)(?:\s|$|[:：]))\s*(.*)$/.exec(bare);
     if (panelMark) {
-      newPanel();
-      const rest = plain(panelMark[2] ?? "");
+      newPanel(Number(panelMark[1] ?? panelMark[2] ?? panelMark[3] ?? 0));
+      const rest = plain(panelMark[4] ?? "");
       if (rest) {
         const said = readLine(rest);
         if (said) panel!.lines.push(said);
@@ -495,7 +499,9 @@ export function applyScript(project: Project, doc: ScriptDoc, options: ScriptImp
     // Taken in again: notes already in the memo are not added twice.
     const fresh = scriptPage.notes.filter((note) => !page.memo.includes(note));
     if (fresh.length) page.memo = [page.memo, ...fresh].filter(Boolean).join("\n");
-    const used = scriptPage.panels.filter((panel) => panel.lines.length || panel.notes.length);
+    // The script's panels up to the last with something in it (an empty one between keeps its place).
+    const filled = scriptPage.panels.map((panel) => panel.lines.length > 0 || panel.notes.length > 0);
+    const used = scriptPage.panels.slice(0, filled.lastIndexOf(true) + 1);
     if (options.update && page.lines.length) {
       updatePage(project, page, used, speakers, report);
       if (scriptPage.scene) sceneStarts.push({ title: scriptPage.scene, first: page.id, last: page.id });

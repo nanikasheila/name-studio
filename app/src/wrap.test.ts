@@ -32,6 +32,10 @@ describe("wrapping dialogue", () => {
     expect(wrapDialogue("はい。")).toBe("はい。");
   });
 
+  it("breaks at a full-width space, as the app writes breaks out", () => {
+    expect(wrapDialogue("残れば、エイコと　離れる")).toBe("残れば、エイコと\n離れる");
+  });
+
   it("wraps narrower when asked", () => {
     const text = "わたしはずっとここで待っているからね、きっと帰ってきてね";
     const narrow = wrapDialogue(text, 5).split("\n");

@@ -201,6 +201,18 @@ describe("台本を直して取り込み直す", () => {
     expect([again.changed, again.added, again.removed, again.kept]).toEqual([0, 0, 0, 8]);
   });
 
+  it("takes back the script the app writes without changing anything", () => {
+    const project = newProject("新しいネーム", 3);
+    applyScript(project, parseScript(MARKDOWN), { startPage: 0, makePanels: true });
+    // Panel 1 of page 1 with nothing in it: the text skips it (［2］ first).
+    project.pages[0].lines = project.pages[0].lines.filter((line) => line.panel !== project.pages[0].panels.find((p) => p.order === 1)!.id);
+    project.pages[0].panels[0].note = "";
+    const text = scriptText(project);
+    expect(text).toContain("［2］");
+    const report = applyScript(project, parseScript(text), { startPage: 0, makePanels: true, update: true });
+    expect([report.changed, report.added, report.removed]).toEqual([0, 0, 0]);
+  });
+
   it("reads the page number of a page heading", () => {
     expect(parseScript("### 5ページ 電話\n#### コマ\nA「もしもし」\n### P6\nB「はい」").pages.map((p) => p.number)).toEqual([5, 6]);
   });
