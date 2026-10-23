@@ -254,12 +254,42 @@ export interface CspExportRequest {
   donors: string[];
 }
 
+/** A written file read back (clip-core `verify::FileCheck`). */
+export interface FileCheck {
+  path: string;
+  /** Empty when the file holds what was written. */
+  problems: string[];
+  layers: number;
+  vectorLines: number;
+  texts: number;
+}
+
 export interface CspExportReport {
   pages: string[];
   work: string | null;
   /** Which parts were written as editable vector / text layers. */
   vectorLayers: boolean;
   textLayers: boolean;
+  /** 自己確認 of each page, in page order. */
+  checks: FileCheck[];
+  workCheck: FileCheck | null;
+}
+
+/** The self-check in a few lines: all fine, or what is wrong where. */
+export function checkSummary(report: Pick<CspExportReport, "checks" | "workCheck">): { ok: boolean; lines: string[] } {
+  const lines: string[] = [];
+  for (const [index, check] of report.checks.entries()) {
+    for (const problem of check.problems) lines.push(`${index + 1} ページ: ${problem}`);
+  }
+  for (const problem of report.workCheck?.problems ?? []) lines.push(`作品: ${problem}`);
+  if (lines.length) return { ok: false, lines: [`自己確認で ${lines.length} 件の問題が見つかりました:`, ...lines] };
+  const vectors = report.checks.reduce((sum, check) => sum + check.vectorLines, 0);
+  const texts = report.checks.reduce((sum, check) => sum + check.texts, 0);
+  const work = report.workCheck ? "、作品のページの並び" : "";
+  return {
+    ok: true,
+    lines: [`自己確認 OK: ${report.checks.length} ページを読み直し、レイヤー・ベクター線 ${vectors} 本・テキスト ${texts} 個${work}が書いたとおりでした`],
+  };
 }
 
 /**
@@ -293,6 +323,7 @@ export async function exportToCsp(
     overlay.height = Math.round((start.heightPx * overlay.width) / start.widthPx);
     const small = scaled(full, overlay.width / start.widthPx);
     const overlayCtx = overlay.getContext("2d")!;
+    const checks: FileCheck[] = [];
     for (const [index, page] of project.pages.entries()) {
       progress(`${index + 1} / ${project.pages.length} ページを書き出し中…`);
       const layers: LayerMeta[] = [];
@@ -330,12 +361,12 @@ export async function exportToCsp(
         roughs: project.source ? roughs : [],
         overlayLength: overlayPng.length,
       };
-      await invoke("export_name_page", packBody(meta, [...pngs, overlayPng]));
+      checks.push(await invoke<FileCheck>("export_name_page", packBody(meta, [...pngs, overlayPng])));
     }
     drawing.width = 0;
     overlay.width = 0;
-    const report = await invoke<{ pages: string[]; work: string | null }>("finish_name_export");
-    return { ...report, vectorLayers: vector, textLayers: text };
+    const report = await invoke<{ pages: string[]; work: string | null; workCheck: FileCheck | null }>("finish_name_export");
+    return { ...report, vectorLayers: vector, textLayers: text, checks };
   } catch (error) {
     await invoke("cancel_name_export").catch(() => undefined);
     throw error;

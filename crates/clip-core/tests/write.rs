@@ -625,3 +625,124 @@ fn writes_vector_and_text_layers_copied_from_the_sheet() {
             .all(|layer| layer.name != "あ" && layer.name != "テンプレート")
     );
 }
+
+#[test]
+fn checks_written_pages_and_works() {
+    use clip_core::text::NewText;
+    use clip_core::vector::NewVectorLine;
+    use clip_core::write::raster_page::{PageLayer, RasterLayer, RasterWorkWriter, WorkOptions};
+    use clip_core::write::verify::{ExpectedLayer, check_clip, verify_page, verify_work};
+    let folder = tempfile::tempdir().unwrap();
+    let template_path = template(folder.path());
+    let sheet_path = sheet(folder.path());
+    let cmc_path = build_cmc(&folder.path().join("template").join("name.cmc"), &["page.clip"]);
+    let mut writer = RasterWorkWriter::new(WorkOptions {
+        template: template_path.clone(),
+        out_dir: folder.path().join("out"),
+        name_pattern: DEFAULT_NAME_PATTERN.into(),
+        work: Some(("確認".into(), cmc_path)),
+        story_index: None,
+        inputs: vec![sheet_path.clone()],
+        donor_sources: vec![sheet_path.clone()],
+    })
+    .unwrap();
+    let mut rough = RgbaImage::transparent(200, 280);
+    rough.paste(
+        &RgbaImage {
+            width: 30,
+            height: 20,
+            pixels: [0, 0, 0, 255].repeat(600),
+        },
+        100,
+        150,
+    );
+    let white = NewText {
+        text: "白抜き".into(),
+        frame: [300, 60, 340, 200],
+        font_size_pt: 8.0,
+        vertical: true,
+        color: Some([255, 255, 255]),
+    };
+    let layers = vec![
+        PageLayer::Raster(RasterLayer {
+            name: "ラフ".into(),
+            image: rough,
+        }),
+        PageLayer::Raster(RasterLayer {
+            name: "空".into(),
+            image: RgbaImage::transparent(400, 560),
+        }),
+        PageLayer::Vector {
+            name: "コマ枠".into(),
+            lines: vec![NewVectorLine {
+                points: vec![(20.0, 30.0, 1.0), (380.0, 30.0, 1.0), (380.0, 250.0, 1.0)],
+                closed: true,
+                width_px: 4.0,
+            }],
+        },
+        PageLayer::Text(white.clone()),
+    ];
+    let (width, height) = (writer.canvas.width_px, writer.canvas.height_px);
+    let expected: Vec<ExpectedLayer> = layers
+        .iter()
+        .map(|layer| ExpectedLayer::of(layer, width, height))
+        .collect();
+    assert_eq!(
+        expected[0],
+        ExpectedLayer::Raster {
+            name: "ラフ".into(),
+            bbox: Some([200.0, 300.0, 260.0, 340.0])
+        }
+    );
+    let canvas = writer.canvas;
+    let page = writer.write_page(&layers, None).unwrap();
+    let report = writer.finish().unwrap();
+    let check = verify_page(&page, &expected, &canvas);
+    assert!(check.ok(), "{:?}", check.problems);
+    assert_eq!((check.vector_lines, check.texts), (1, 1));
+    assert!(check_clip(&page).ok());
+    let work = report.work.unwrap();
+    assert!(verify_work(&work, Some(&report.pages)).ok());
+
+    // What the page was meant to hold, but is not there.
+    let mut wrong = expected.clone();
+    wrong[0] = ExpectedLayer::Raster {
+        name: "ラフ".into(),
+        bbox: Some([10.0, 10.0, 60.0, 60.0]),
+    };
+    wrong[1] = ExpectedLayer::Raster {
+        name: "空".into(),
+        bbox: Some([0.0, 0.0, 10.0, 10.0]),
+    };
+    wrong[2] = ExpectedLayer::Vector {
+        name: "コマ枠".into(),
+        lines: 2,
+    };
+    wrong[3] = ExpectedLayer::Text {
+        text: "白抜き".into(),
+        color: Some([0, 0, 0]),
+    };
+    let problems = verify_page(&page, &wrong, &canvas).problems;
+    assert_eq!(problems.len(), 4, "{problems:?}");
+    assert!(problems[0].contains("ずれ") && problems[1].contains("空です"));
+    assert!(problems[2].contains("1 本") && problems[3].contains("#ffffff"));
+
+    // The faults CSP has shown: vectors without the brush style manager.
+    let broken = folder.path().join("broken.clip");
+    let editor = ClipEditor::open(&page).unwrap();
+    editor
+        .db
+        .execute("UPDATE Canvas SET BrushStyleManager = NULL", [])
+        .unwrap();
+    editor.save(&broken).unwrap();
+    let problems = check_clip(&broken).problems;
+    assert!(
+        problems.iter().any(|problem| problem.contains("BrushStyleManager")),
+        "{problems:?}"
+    );
+
+    // A work whose page went missing.
+    std::fs::remove_file(&report.pages[0]).unwrap();
+    let problems = verify_work(&work, None).problems;
+    assert!(problems[0].contains("ありません"), "{problems:?}");
+}

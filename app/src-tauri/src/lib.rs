@@ -24,6 +24,7 @@ use clip_core::write::raster_page::{
     PageLayer, RasterLayer, RasterWorkWriter, TemplateCanvas, WorkOptions, WorkReport,
 };
 use clip_core::write::split::{DEFAULT_NAME_PATTERN, SplitOptions, SplitReport, split_sheet};
+use clip_core::write::verify::{self, ExpectedLayer, FileCheck};
 use name_model::versions::{self, Recovery, VersionInfo, VersionKind, VersionStore};
 use name_model::{PageFormat, Project};
 use serde::{Deserialize, Serialize};
@@ -155,10 +156,30 @@ async fn export_pages(request: ExportRequest, state: tauri::State<'_, AppState>)
         work,
         story_index: request.story_index,
     };
-    tauri::async_runtime::spawn_blocking(move || split_sheet(&options))
-        .await
-        .map_err(|error| error.to_string())?
-        .map_err(|error| error.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut report = split_sheet(&options).map_err(|error| error.to_string())?;
+        // 自己確認: read every page (and the work) back.
+        for page in &mut report.pages {
+            page.warnings.extend(
+                verify::check_clip(&page.path)
+                    .problems
+                    .into_iter()
+                    .map(|p| format!("自己確認: {p}")),
+            );
+        }
+        if let Some(work) = &report.work {
+            let pages: Vec<PathBuf> = report.pages.iter().map(|page| page.path.clone()).collect();
+            report.warnings.extend(
+                verify::verify_work(work, Some(&pages))
+                    .problems
+                    .into_iter()
+                    .map(|problem| format!("自己確認（作品）: {problem}")),
+            );
+        }
+        Ok(report)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 /// The sheet at `path`, reading it unless it is the one already open.
@@ -551,9 +572,10 @@ fn rough_layer(
     Ok(page)
 }
 
-/// Write the next page from its layer images (raw body, see [`split_body`]).
+/// Write the next page from its layer images (raw body, see [`split_body`]),
+/// then read it back to check it holds what was sent.
 #[tauri::command]
-async fn export_name_page(app: tauri::AppHandle, request: tauri::ipc::Request<'_>) -> Result<String, String> {
+async fn export_name_page(app: tauri::AppHandle, request: tauri::ipc::Request<'_>) -> Result<FileCheck, String> {
     let body = raw_body(&request)?;
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
@@ -619,10 +641,14 @@ async fn export_name_page(app: tauri::AppHandle, request: tauri::ipc::Request<'_
                 [] => None,
                 png => Some(decode_png(png).map_err(|error| error.to_string())?),
             };
-            writer
+            let expected: Vec<ExpectedLayer> = layers
+                .iter()
+                .map(|layer| ExpectedLayer::of(layer, width, height))
+                .collect();
+            let path = writer
                 .write_page(&layers, overlay.as_ref())
-                .map(|path| path.display().to_string())
-                .map_err(|error| error.to_string())
+                .map_err(|error| error.to_string())?;
+            Ok(verify::verify_page(&path, &expected, &writer.canvas))
         })();
         *state.name_export.lock().map_err(lock_error)? = Some(writer);
         result
@@ -631,18 +657,34 @@ async fn export_name_page(app: tauri::AppHandle, request: tauri::ipc::Request<'_
     .map_err(|error| error.to_string())?
 }
 
-/// Finish: write the work (.cmc) around the pages written so far.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NameExportReport {
+    #[serde(flatten)]
+    report: WorkReport,
+    /// The work read back (none without a work).
+    work_check: Option<FileCheck>,
+}
+
+/// Finish: write the work (.cmc) around the pages written so far, and check it.
 #[tauri::command]
-async fn finish_name_export(state: tauri::State<'_, AppState>) -> Result<WorkReport, String> {
+async fn finish_name_export(state: tauri::State<'_, AppState>) -> Result<NameExportReport, String> {
     let writer = state
         .name_export
         .lock()
         .map_err(lock_error)?
         .take()
         .ok_or("書き出しが始まっていません")?;
-    tauri::async_runtime::spawn_blocking(move || writer.finish().map_err(|error| error.to_string()))
-        .await
-        .map_err(|error| error.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        let report = writer.finish().map_err(|error| error.to_string())?;
+        let work_check = report
+            .work
+            .as_ref()
+            .map(|work| verify::verify_work(work, Some(&report.pages)));
+        Ok(NameExportReport { report, work_check })
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LAYER_ORDER, canBeVector, mapBox, packBody, partCount, projectToTemplate, scriptText, textLayers, vectorLines, type LayerMeta } from "./nameexport";
+import { LAYER_ORDER, canBeVector, checkSummary, mapBox, packBody, partCount, projectToTemplate, scriptText, textLayers, vectorLines, type LayerMeta } from "./nameexport";
 import { addCharacter, addLine, addScene, basicBox, newProject, rectShape } from "./project";
 
 describe("projectToTemplate", () => {
@@ -141,5 +141,21 @@ describe("scriptText", () => {
       "■ 2 ページ",
       "",
     ]);
+  });
+});
+
+describe("checkSummary", () => {
+  const check = (problems: string[] = [], vectorLines = 2, texts = 1) => ({ path: "p.clip", problems, layers: 5, vectorLines, texts });
+  it("says all is well with what was read back", () => {
+    const summary = checkSummary({ checks: [check(), check()], workCheck: check([], 0, 0) });
+    expect(summary.ok).toBe(true);
+    expect(summary.lines[0]).toContain("2 ページ");
+    expect(summary.lines[0]).toContain("ベクター線 4 本");
+    expect(summary.lines[0]).toContain("作品");
+  });
+  it("lists problems by page", () => {
+    const summary = checkSummary({ checks: [check(), check(["レイヤー「コマ枠」の線が 0 本"])], workCheck: check(["ない"]) });
+    expect(summary.ok).toBe(false);
+    expect(summary.lines).toEqual(["自己確認で 2 件の問題が見つかりました:", "2 ページ: レイヤー「コマ枠」の線が 0 本", "作品: ない"]);
   });
 });

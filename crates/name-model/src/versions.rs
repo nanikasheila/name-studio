@@ -161,7 +161,12 @@ impl VersionStore {
     }
 
     /// Keep `project` as a version, unless it is the same as the newest one.
-    pub fn record(&self, project: &Project, kind: VersionKind, time_ms: u64) -> Result<Option<VersionInfo>, ProjectError> {
+    pub fn record(
+        &self,
+        project: &Project,
+        kind: VersionKind,
+        time_ms: u64,
+    ) -> Result<Option<VersionInfo>, ProjectError> {
         let json = project.to_json()?;
         let hash = format!("{:016x}", fnv1a(json.as_bytes()));
         let mut index = self.read_index()?;
@@ -197,7 +202,12 @@ impl VersionStore {
     }
 
     /// An autosave version, at most one per `interval_ms` (saved versions count).
-    pub fn record_auto(&self, project: &Project, time_ms: u64, interval_ms: u64) -> Result<Option<VersionInfo>, ProjectError> {
+    pub fn record_auto(
+        &self,
+        project: &Project,
+        time_ms: u64,
+        interval_ms: u64,
+    ) -> Result<Option<VersionInfo>, ProjectError> {
         let index = self.read_index()?;
         if index
             .versions
@@ -229,7 +239,9 @@ impl VersionStore {
         }
         let file = std::fs::File::open(self.dir.join(id)).map_err(ProjectError::Io)?;
         let mut json = String::new();
-        GzDecoder::new(file).read_to_string(&mut json).map_err(ProjectError::Io)?;
+        GzDecoder::new(file)
+            .read_to_string(&mut json)
+            .map_err(ProjectError::Io)?;
         Project::from_json(&json)
     }
 
@@ -311,7 +323,10 @@ mod tests {
         let mut project = Project::new(title);
         for _ in 0..pages {
             let id = project.new_id("page");
-            project.pages.push(crate::Page { id, ..crate::Page::default() });
+            project.pages.push(crate::Page {
+                id,
+                ..crate::Page::default()
+            });
         }
         project
     }
@@ -330,10 +345,21 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let store = VersionStore::open(root.path(), Some(Path::new("a.namestudio")));
         assert!(store.list().unwrap().is_empty());
-        let first = store.record(&project("一", 2), VersionKind::Saved, 1_000).unwrap().unwrap();
+        let first = store
+            .record(&project("一", 2), VersionKind::Saved, 1_000)
+            .unwrap()
+            .unwrap();
         // The same content again is not a new version.
-        assert!(store.record(&project("一", 2), VersionKind::Auto, 2_000).unwrap().is_none());
-        let second = store.record(&project("二", 3), VersionKind::Auto, 3_000).unwrap().unwrap();
+        assert!(
+            store
+                .record(&project("一", 2), VersionKind::Auto, 2_000)
+                .unwrap()
+                .is_none()
+        );
+        let second = store
+            .record(&project("二", 3), VersionKind::Auto, 3_000)
+            .unwrap()
+            .unwrap();
         let listed = store.list().unwrap();
         assert_eq!(listed, vec![second.clone(), first.clone()]);
         assert_eq!(listed[0].pages, 3);
@@ -356,7 +382,9 @@ mod tests {
         let store = VersionStore::open(root.path(), None);
         store.record(&project("saved", 1), VersionKind::Saved, 0).unwrap();
         for i in 0..KEEP_AUTO + 5 {
-            store.record(&project(&format!("auto {i}"), 1), VersionKind::Auto, 10 + i as u64).unwrap();
+            store
+                .record(&project(&format!("auto {i}"), 1), VersionKind::Auto, 10 + i as u64)
+                .unwrap();
         }
         let listed = store.list().unwrap();
         assert_eq!(listed.iter().filter(|v| v.kind == VersionKind::Auto).count(), KEEP_AUTO);
