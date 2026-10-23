@@ -589,6 +589,8 @@ export class PageEditor {
       cancelAnimationFrame(this.overlayFrame);
       this.overlayFrame = 0;
     }
+    // A hidden editor (a file loading before the editor shows) has no pixels to draw.
+    if (!this.canvas.width || !this.canvas.height) return;
     const ctx = this.ctx;
     if (this.drag?.kind === "pen" && this.base) {
       // While a line is drawn nothing else changes: the pages as they were, then the line.
