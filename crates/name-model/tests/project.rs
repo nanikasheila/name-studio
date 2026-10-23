@@ -281,3 +281,27 @@ fn keeps_alternatives() {
     assert_eq!(again, project);
     assert!(validate(&project).is_empty());
 }
+
+/// 話の型: an own story shape made in the app survives a save.
+#[test]
+fn keeps_own_story_shapes() {
+    let json = r##"{
+      "formatVersion": 2, "title": "t", "binding": "right",
+      "pageFormat": {"canvasMm": [297, 420], "trimMm": [257, 364], "basicMm": [180, 270], "basicOffsetMm": [0, 0]},
+      "pages": [{"id": "page1"}],
+      "plan": {"targetPages": 32, "structure": "shape-ab12", "shapes": [
+        {"id": "shape-ab12", "label": "自分の型", "parts": [
+          {"name": "はじまり", "share": 0.3, "color": "#4f86d9"}, {"name": "おわり", "share": 0.7}
+        ], "beats": [{"name": "転機", "at": 0.5}]}
+      ]},
+      "nextId": 2
+    }"##;
+    let project = Project::from_json(json).unwrap();
+    let plan = project.plan.as_ref().unwrap();
+    assert_eq!(plan.shapes[0].parts[0].color.as_deref(), Some("#4f86d9"));
+    assert_eq!(plan.shapes[0].beats[0].at, 0.5);
+    let saved = project.to_json().unwrap();
+    assert!(saved.contains("\"shapes\""));
+    let again = Project::from_json(&saved).unwrap();
+    assert_eq!(again, project);
+}

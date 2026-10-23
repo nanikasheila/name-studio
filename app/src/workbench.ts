@@ -47,6 +47,7 @@ import {
 } from "./koma";
 import { joinPanels, joinedShape, neighbours } from "./komaedit";
 import { Overview, type OverviewKind } from "./overview";
+import { pageParts } from "./shapes";
 import {
   KIND_LABELS,
   TONE_LABELS,
@@ -169,6 +170,7 @@ export class Workbench {
       },
       movePages: (first, last, target) => this.movePages(first, last, target),
       makeOption: (first, last) => this.makeOption(first, last),
+      status: (message) => this.setStatus(message),
     });
     this.scriptDialog = new ScriptDialog({
       project: () => this.state.project,
@@ -212,7 +214,7 @@ export class Workbench {
 
   setView(view: "edit" | OverviewKind): void {
     this.view = view;
-    for (const name of ["edit", "structure", "emotion", "timeline"] as const) {
+    for (const name of ["edit", "board", "structure", "emotion", "timeline"] as const) {
       $(`view-${name}`).classList.toggle("active", name === view);
     }
     for (const node of document.querySelectorAll<HTMLElement>(".edit-only")) node.hidden = view !== "edit";
@@ -510,17 +512,21 @@ export class Workbench {
     );
     const work = element("div", { className: "cast-item work" }, title, story);
     const current = new Set(this.editor.currentPages());
+    // 話の型の色分け: each page marked with the part it falls in.
+    const parts = pageParts(project);
     const items = project.pages.map((page, index) => {
       const scene = sceneOf(project, page.id);
       const sceneLabel = scene && scene.firstPage === page.id ? element("span", { className: "scene", textContent: scene.title }) : "";
+      const part = parts[index];
       const item = element(
         "div",
-        { className: `page-item${current.has(index + 1) ? " current" : ""}` },
+        { className: `page-item${current.has(index + 1) ? " current" : ""}${part ? " tinted" : ""}`, title: part ? `${part.name}` : "" },
         element("span", { className: "number", textContent: String(index + 1) }),
         element("span", { className: "memo" }, sceneLabel, page.memo.split("\n")[0] || ""),
         ...this.optionTag(project, page),
         element("span", { className: "count", textContent: `コマ ${page.panels.length}・字 ${textAmount(page)}${page.stickies?.length ? `・付箋 ${page.stickies.length}` : ""}` }),
       );
+      if (part) item.style.setProperty("--part", part.color);
       item.addEventListener("click", () => {
         if (this.view !== "edit") this.setView("edit");
         this.editor.selection = null;
@@ -1407,7 +1413,7 @@ export class Workbench {
       this.editor.spreadIndex = 0;
       this.renderAll();
     });
-    for (const name of ["edit", "structure", "emotion", "timeline"] as const) {
+    for (const name of ["edit", "board", "structure", "emotion", "timeline"] as const) {
       $(`view-${name}`).addEventListener("click", () => this.setView(name));
     }
     for (const tab of ["pages", "script", "cast"] as const) {
@@ -1454,6 +1460,7 @@ export class Workbench {
   run(action: ActionId): boolean {
     const views: Partial<Record<ActionId, "edit" | OverviewKind>> = {
       "view.edit": "edit",
+      "view.board": "board",
       "view.structure": "structure",
       "view.emotion": "emotion",
       "view.timeline": "timeline",

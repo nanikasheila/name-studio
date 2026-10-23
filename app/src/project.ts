@@ -260,11 +260,34 @@ export function removeSticky(page: Page, id: string): void {
   if (!page.stickies.length) delete page.stickies;
 }
 
-export type StructureId = "kishotenketsu" | "threeAct" | "johakyu";
+/** A story shape that comes with the app. */
+export type BuiltinShapeId = "kishotenketsu" | "threeAct" | "johakyu" | "saveTheCat";
+
+/** 話の型: parts over the pages (by share) and beats at points in them. */
+export interface StoryShape {
+  id: string;
+  label: string;
+  parts: ShapePart[];
+  /** Turning points (ビート), at 0..1 of the pages. */
+  beats?: ShapeBeat[];
+}
+
+export interface ShapePart {
+  name: string;
+  /** Share of the pages; the shares of a shape need not add up to 1. */
+  share: number;
+  color?: string;
+}
+
+export interface ShapeBeat {
+  name: string;
+  at: number;
+}
 
 /** Story shapes to hold the page split against: parts and their share of the pages. */
-export const STRUCTURES: Record<StructureId, { label: string; parts: { name: string; share: number }[] }> = {
+export const STRUCTURES: Record<BuiltinShapeId, StoryShape> = {
   kishotenketsu: {
+    id: "kishotenketsu",
     label: "起承転結",
     parts: [
       { name: "起", share: 0.2 },
@@ -274,14 +297,21 @@ export const STRUCTURES: Record<StructureId, { label: string; parts: { name: str
     ],
   },
   threeAct: {
+    id: "threeAct",
     label: "三幕構成",
     parts: [
       { name: "第1幕（設定）", share: 0.25 },
       { name: "第2幕（対立）", share: 0.5 },
       { name: "第3幕（解決）", share: 0.25 },
     ],
+    beats: [
+      { name: "第1ターニングポイント", at: 0.25 },
+      { name: "ミッドポイント", at: 0.5 },
+      { name: "第2ターニングポイント", at: 0.75 },
+    ],
   },
   johakyu: {
+    id: "johakyu",
     label: "序破急",
     parts: [
       { name: "序", share: 0.25 },
@@ -289,12 +319,39 @@ export const STRUCTURES: Record<StructureId, { label: string; parts: { name: str
       { name: "急", share: 0.25 },
     ],
   },
+  // Blake Snyder's beat sheet, its 110 pages scaled to the name.
+  saveTheCat: {
+    id: "saveTheCat",
+    label: "Save the Cat",
+    parts: [
+      { name: "セットアップ", share: 10 / 110 },
+      { name: "きっかけ・悩みのとき", share: 15 / 110 },
+      { name: "お楽しみ", share: 30 / 110 },
+      { name: "迫り来る悪い奴ら", share: 20 / 110 },
+      { name: "心の暗闇", share: 10 / 110 },
+      { name: "フィナーレ", share: 25 / 110 },
+    ],
+    beats: [
+      { name: "オープニング・イメージ", at: 0 },
+      { name: "テーマの提示", at: 5 / 110 },
+      { name: "きっかけ", at: 12 / 110 },
+      { name: "第1ターニングポイント", at: 25 / 110 },
+      { name: "サブプロット", at: 30 / 110 },
+      { name: "ミッドポイント", at: 55 / 110 },
+      { name: "すべてを失って", at: 75 / 110 },
+      { name: "第2ターニングポイント", at: 85 / 110 },
+      { name: "ファイナル・イメージ", at: 1 },
+    ],
+  },
 };
 
 /** 構成補助: what the name is aimed at. */
 export interface Plan {
   targetPages?: number;
-  structure?: StructureId;
+  /** Id of a built-in shape or of one in `shapes`. */
+  structure?: string;
+  /** オリジナルの型 made for this name. */
+  shapes?: StoryShape[];
 }
 
 export interface Character {
@@ -1376,8 +1433,9 @@ export function moveScene(project: Project, sceneId: string, target: number): bo
 }
 
 /**
- * コマの入れ替え: the dialogue and rough lines of two panels change places
- * (the panels stay), fitted to their new panel as when a panel is reshaped.
+ * コマの入れ替え: the dialogue, rough lines, fills and 演出メモ of two panels
+ * change places (the panels stay), fitted to their new panel as when a panel
+ * is reshaped.
  * The panels may be on different pages.
  */
 export function swapPanelContents(pageA: Page, panelA: Panel, pageB: Page, panelB: Panel): void {
@@ -1388,16 +1446,28 @@ export function swapPanelContents(pageA: Page, panelA: Panel, pageB: Page, panel
     const take = (from: Page, to: Page, carried: CarriedContents) => {
       const strokes = new Set(carried.strokes.map((s) => s.id));
       const lines = new Set(carried.lines.map((l) => l.id));
+      const fills = new Set((carried.fills ?? []).map((f) => f.id));
       to.strokes.push(...from.strokes.filter((s) => strokes.has(s.id)));
       to.lines.push(...from.lines.filter((l) => lines.has(l.id)));
       from.strokes = from.strokes.filter((s) => !strokes.has(s.id));
       from.lines = from.lines.filter((l) => !lines.has(l.id));
+      if (fills.size) {
+        (to.fills ??= []).push(...(from.fills ?? []).filter((f) => fills.has(f.id)));
+        from.fills = (from.fills ?? []).filter((f) => !fills.has(f.id));
+        if (!from.fills.length) delete from.fills;
+      }
     };
     take(pageA, pageB, carriedA);
     take(pageB, pageA, carriedB);
   }
   followPanel(pageB, panelB, carriedA);
   followPanel(pageA, panelA, carriedB);
+  // The 演出メモ is about what is in the panel, so it goes along.
+  const [noteA, noteB] = [panelA.note, panelB.note];
+  if (noteB) panelA.note = noteB;
+  else delete panelA.note;
+  if (noteA) panelB.note = noteA;
+  else delete panelB.note;
   for (const page of new Set([pageA, pageB])) {
     assignPanels(page);
     sortLines(page);
