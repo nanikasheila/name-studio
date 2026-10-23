@@ -10,7 +10,7 @@ import { AltDialog } from "./altdialog";
 import { ScriptDialog } from "./scriptdialog";
 import { ShortcutDialog } from "./shortcutdialog";
 import { PenDialog } from "./pendialog";
-import { arrangePage, arrangePanel } from "./arrange";
+import { arrangePage, arrangePanel, fitSpills } from "./arrange";
 import { LayerView, moveIntoPanel, type LayerRef } from "./layers";
 import { penPreferences } from "./pen";
 import { comboOf, Shortcuts, type ActionId } from "./shortcuts";
@@ -64,7 +64,9 @@ import {
   basicBox,
   fitLine,
   setDefaultShape,
+  setLineText,
   setLineKind,
+  wrapTypedLine,
   insertPage,
   movePage,
   movePagesTo,
@@ -218,7 +220,12 @@ export class Workbench {
         this.editor.showPage(firstPage);
         this.renderAll();
         const who = report.characters.length ? `、登場人物 ${report.characters.join("・")} を足しました` : "";
-        this.setStatus(`台本を ${report.pages} ページに入れました（セリフ ${report.lines}、作ったコマ ${report.panels}${who}）。元に戻すは Ctrl+Z`);
+        const scenes = report.replacedScenes ? `、重なっていたシーン ${report.replacedScenes} を台本のシーンに置き換えました` : "";
+        const fixed = report.changed + report.added + report.removed + report.kept;
+        const inserted = report.insertedPages ? `、ページを ${report.insertedPages} 枚入れました` : "";
+        const left = report.leftPages.length ? `、台本にないページ ${report.leftPages.join("・")} はそのまま` : "";
+        const update = fixed ? `。セリフを台本に合わせました: 書き換え ${report.changed}・足す ${report.added}・消す ${report.removed}・そのまま ${report.kept}${inserted}${left}` : "";
+        this.setStatus(`台本を ${report.pages} ページに入れました（セリフ ${report.lines}、作ったコマ ${report.panels}${who}${scenes}）${update}。元に戻すは Ctrl+Z`);
       },
       plotDone: (report) => {
         // The plot is about the whole: show it on the board.
@@ -239,6 +246,12 @@ export class Workbench {
       status: (message) => this.setStatus(message),
       goTo: (pageId, lineId) => this.goTo(pageId, "line", lineId),
       addTails: () => this.addTails(),
+      fitSpills: () => {
+        let redone = 0;
+        this.edit((p) => (redone = fitSpills(p)));
+        this.setStatus(redone ? `はみ出したセリフのあるコマ ${redone} 個を並べ直しました（元に戻すは Ctrl+Z）` : "はみ出したセリフはありません");
+        return redone;
+      },
     });
     this.brushDialog = new BrushDialog({
       project: () => this.state.project,
@@ -1015,10 +1028,14 @@ export class Workbench {
 
   private lineInspector(project: Project, page: Page, line: Line): HTMLElement[] {
     const text = element("textarea", { value: line.text, spellcheck: false });
-    this.liveText(text, (value) => {
-      line.text = value;
-      fitLine(line);
-    });
+    this.liveText(text, (value) => setLineText(line, value));
+    // Done typing a long line in one go: broken into short lines (before the change is recorded).
+    text.addEventListener("change", () => {
+      if (wrapTypedLine(line)) {
+        text.value = line.text;
+        this.editor.draw();
+      }
+    }, { capture: true });
     const kind = element("select");
     for (const [value, label] of Object.entries(KIND_LABELS)) kind.append(element("option", { value, textContent: label }));
     kind.value = line.kind;
@@ -1046,7 +1063,7 @@ export class Workbench {
       this.edit(() => {
         const value = Number(size.value);
         if (value > 0) line.fontSizePt = value;
-        fitLine(line);
+        setLineText(line, line.text);
       }),
     );
     const vertical = element("input", { type: "checkbox", checked: line.vertical });

@@ -15,7 +15,7 @@ use super::raster_page::{PageLayer, TemplateCanvas};
 use crate::clip::{ClipDocument, ClipLayer, LayerKind};
 use crate::cmc::CmcProject;
 use crate::text::text_color;
-use crate::vector::brush_style_of;
+use crate::vector::{FrameTemplate, brush_style_of};
 
 /// What one written layer should hold, without its pixels.
 #[derive(Debug, Clone, PartialEq)]
@@ -33,6 +33,12 @@ pub enum ExpectedLayer {
     Text {
         text: String,
         color: Option<[u8; 3]>,
+    },
+    /// A コマ枠フォルダー with this many frames, holding the `ink` layer.
+    Frames {
+        name: String,
+        frames: usize,
+        ink: Option<String>,
     },
 }
 
@@ -65,12 +71,19 @@ impl ExpectedLayer {
                 text: text.stored_text(),
                 color: text.color,
             },
+            PageLayer::Frames { name, frames, ink } => ExpectedLayer::Frames {
+                name: name.clone(),
+                frames: frames.iter().filter(|frame| frame.points.len() >= 3).count(),
+                ink: ink.clone(),
+            },
         }
     }
 
     fn describe(&self) -> String {
         match self {
-            ExpectedLayer::Raster { name, .. } | ExpectedLayer::Vector { name, .. } => format!("レイヤー「{name}」"),
+            ExpectedLayer::Raster { name, .. }
+            | ExpectedLayer::Vector { name, .. }
+            | ExpectedLayer::Frames { name, .. } => format!("レイヤー「{name}」"),
             ExpectedLayer::Text { text, .. } => {
                 let first: String = text.lines().next().unwrap_or_default().chars().take(16).collect();
                 format!("セリフ「{first}」")
@@ -237,6 +250,36 @@ fn check_layer(document: &ClipDocument, layer: &ClipLayer, expected: &ExpectedLa
                 Err(error) => problems.push(format!("{what}の線を読めません: {error}")),
             }
         }
+        ExpectedLayer::Frames { name, frames, ink } => {
+            if layer.kind != LayerKind::FrameFolder || layer.name != *name {
+                problems.push(format!(
+                    "{what}の場所に「{}」（{}）があります",
+                    layer.name,
+                    layer.kind.as_str()
+                ));
+                return;
+            }
+            match document.vector_objects(layer) {
+                Ok(objects) if objects.len() != *frames => {
+                    problems.push(format!("{what}のコマが {} 個（書いたのは {frames} 個）", objects.len()))
+                }
+                Ok(objects) if objects.iter().any(|object| object.points.len() < 3 || !object.closed()) => {
+                    problems.push(format!("{what}に閉じていないコマがあります"))
+                }
+                Ok(_) => {}
+                Err(error) => problems.push(format!("{what}のコマを読めません: {error}")),
+            }
+            let row = document.layer_row(layer.main_id);
+            if !layer.has_mask || row.is_none_or(|row| row.int("ComicFrameLineMipmap") == 0) {
+                problems.push(format!("{what}にマスクか枠線の画像がありません"));
+            }
+            let inside: Vec<&str> = layer.children.iter().map(|child| child.name.as_str()).collect();
+            if let Some(ink) = ink
+                && inside != [ink.as_str()]
+            {
+                problems.push(format!("{what}の中に「{ink}」がありません（{inside:?}）"));
+            }
+        }
         ExpectedLayer::Text { text, color } => {
             if layer.kind != LayerKind::Text {
                 problems.push(format!(
@@ -294,6 +337,17 @@ fn check_document(document: &ClipDocument, check: &mut FileCheck) {
                 Err(error) => check
                     .problems
                     .push(format!("ベクターレイヤー「{}」の線を読めません: {error}", layer.name)),
+            },
+            LayerKind::FrameFolder => match document.vector_payloads(layer) {
+                Ok(payloads) => brush_styles.extend(
+                    payloads
+                        .iter()
+                        .filter_map(|payload| FrameTemplate::of(payload).ok().flatten())
+                        .map(|frame| frame.brush_style()),
+                ),
+                Err(error) => check
+                    .problems
+                    .push(format!("コマ枠フォルダー「{}」のコマを読めません: {error}", layer.name)),
             },
             LayerKind::Text => {
                 check.texts += 1;

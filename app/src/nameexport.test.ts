@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LAYER_ORDER, canBeVector, checkSummary, clipLines, imagesNote, missingEditable, exportUnits, mapBox, packBody, partCount, projectToTemplate, scriptText, textLayers, vectorLines, type LayerMeta } from "./nameexport";
+import { LAYER_ORDER, canBeVector, checkSummary, clipLines, imagesNote, missingEditable, exportUnits, frameMetas, hasNotes, mapBox, packBody, partCount, projectToTemplate, scriptText, textLayers, vectorLines, type LayerMeta } from "./nameexport";
 import { addCharacter, addLine, addScene, basicBox, newProject, rectShape } from "./project";
 
 describe("projectToTemplate", () => {
@@ -75,6 +75,31 @@ describe("editable layers", () => {
     expect(partCount(page, "balloonFills")).toBe(1);
     expect(LAYER_ORDER.indexOf("balloonFills")).toBe(LAYER_ORDER.indexOf("balloons") - 1);
     expect(LAYER_ORDER.filter((kind) => !canBeVector(kind))).toEqual(["fills", "balloonFills", "text"]);
+  });
+
+  it("writes plain panels as frames of a コマ枠フォルダー and keeps the others as lines", () => {
+    const project = newProject("t", 1);
+    const page = project.pages[0];
+    page.panels = [
+      { id: "p1", shape: rectShape([10, 10, 50, 40]), order: 1 },
+      { id: "p2", shape: rectShape([10, 45, 50, 80]), order: 2, border: "wavy" },
+    ];
+    const { ids, frames } = frameMetas(project, page, m);
+    expect([...ids]).toEqual(["p1"]);
+    expect(frames).toEqual([{ points: [[200, 150], [600, 150], [600, 450], [200, 450]], widthPx: expect.closeTo(6) }]);
+    expect(vectorLines(page, "panels", m, [], ids).map((line) => line.points.length)).toEqual([vectorLines(page, "panels", m)[1].points.length]);
+  });
+
+  it("knows which pages have memos for the メモ layer", () => {
+    const project = newProject("t", 3);
+    const [plain, noted, stuck] = project.pages;
+    plain.panels = [{ id: "p1", shape: rectShape([10, 10, 50, 40]), order: 1, note: "  " }];
+    noted.panels = [{ id: "p2", shape: rectShape([10, 10, 50, 40]), order: 1, note: "俯瞰" }];
+    stuck.stickies = [{ id: "s1", text: "", at: [0, 0] }];
+    // 付箋 are for planning, not for the pen work.
+    expect(project.pages.map(hasNotes)).toEqual([false, true, false]);
+    plain.memo = "導入";
+    expect(hasNotes(plain)).toBe(true);
   });
 
   it("makes a text layer per line, sized in pt of the template resolution", () => {

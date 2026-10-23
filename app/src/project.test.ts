@@ -28,6 +28,8 @@ import {
   pickInside,
   splitAtX,
   rectShape,
+  setLineText,
+  wrapTypedLine,
   removeCharacter,
   removePage,
   sceneOf,
@@ -118,6 +120,34 @@ describe("lines", () => {
     expect(second.panel).toBe("left");
     expect(page.lines.map((line) => line.text)).toEqual(["先", "後"]);
     expect(first.balloon!.length).toBeGreaterThan(10);
+  });
+
+  it("keeps where reading starts when the text changes, and breaks a long line typed in one go", () => {
+    const project = newProject("test", 1);
+    const line = addLine(project, project.pages[0], [100, 100], "はい");
+    line.tails = [{ tip: [90, 140] }];
+    const [, top, right] = line.box;
+    setLineText(line, "それって\n私の家族とか？");
+    expect(line.box[1]).toBeCloseTo(top);
+    expect(line.box[2]).toBeCloseTo(right);
+    expect(line.tails[0].tip).toEqual([90, 140]);
+    setLineText(line, "この結果は上にもすぐ届く。私の手元だけじゃない");
+    expect(wrapTypedLine(line)).toBe(true);
+    expect(line.text).toBe("この結果は\n上にもすぐ届く。\n私の手元だけじゃない");
+    expect(line.box[2]).toBeCloseTo(right);
+    // Broken by hand: left alone.
+    expect(wrapTypedLine(line)).toBe(false);
+  });
+
+  it("puts a line on an inset (はめ込み) in the inset, not the panel under it", () => {
+    const project = newProject("test", 1);
+    const page = project.pages[0];
+    page.panels = [
+      { id: "big", shape: rectShape([0, 0, 200, 200]), order: 2 },
+      { id: "inset", shape: rectShape([20, 120, 80, 180]), order: 3, z: 1 },
+    ];
+    expect(addLine(project, page, [50, 150], "カツン", "sfx").panel).toBe("inset");
+    expect(addLine(project, page, [150, 50], "ストラ！！").panel).toBe("big");
   });
 });
 

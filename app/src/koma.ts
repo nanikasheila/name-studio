@@ -58,7 +58,7 @@ export const SIDE_LABELS: Record<Side, string> = { top: "上", bottom: "下", le
 const ON_EDGE = 0.05;
 
 /** Whether a page point lies on that side of the canvas edge. */
-function onCanvasSide([x, y]: Point, side: Side, format: PageFormat): boolean {
+export function onCanvasSide([x, y]: Point, side: Side, format: PageFormat): boolean {
   const [w, h] = format.canvasMm;
   switch (side) {
     case "top":
@@ -804,6 +804,54 @@ export function borderLines(page: Page): BorderLine[] {
     }
   });
   return lines;
+}
+
+/** How far (mm) a 裁ち切り edge of a frame reaches past the canvas, so CSP draws its border off the page. */
+const PAST_CANVAS_MM = 3;
+
+/**
+ * The panels a CSP コマ枠フォルダー can hold as they are drawn here, each
+ * with its outline as a frame: a plain border (solid or thick), not an inset
+ * or a 見開き half, and not cut by a panel above or a はみ出し. A 裁ち切り
+ * edge must lie on the canvas edge (and not on `gutter`, the side of a
+ * spread page that meets its facing page); it is moved past the canvas. The
+ * other panels keep their borders as lines.
+ */
+export function framePanels(page: Page, format: PageFormat, gutter: Side | null = null): { panel: Panel; outline: Point[] }[] {
+  const pieces = new Map<string, number>();
+  for (const line of borderLines(page)) pieces.set(line.panel.id, (pieces.get(line.panel.id) ?? 0) + line.points.length);
+  const sides: Side[] = ["top", "bottom", "left", "right"];
+  const result: { panel: Panel; outline: Point[] }[] = [];
+  for (const panel of page.panels) {
+    const border = panel.border ?? "solid";
+    if ((border !== "solid" && border !== "thick") || (panel.z ?? 0) > 0 || panel.spread || panel.shape.length < 3) continue;
+    const runs = borderRuns(panel);
+    // Cut by a panel above or a はみ出し: the drawn border has other points than its runs.
+    if (pieces.get(panel.id) !== runs.reduce((sum, run) => sum + run.points.length, 0)) continue;
+    const n = panel.shape.length;
+    const outline = panel.shape.map((point): Point => [point[0], point[1]]);
+    let framable = true;
+    for (const edge of panel.openEdges ?? []) {
+      const [a, b] = [panel.shape[edge], panel.shape[(edge + 1) % n]];
+      const side = sides.find((side) => onCanvasSide(a, side, format) && onCanvasSide(b, side, format));
+      if (!side || side === gutter) {
+        framable = false;
+        break;
+      }
+      for (const index of [edge, (edge + 1) % n]) {
+        const [x, y] = outline[index];
+        const [w, h] = format.canvasMm;
+        outline[index] = {
+          top: [x, -PAST_CANVAS_MM],
+          bottom: [x, h + PAST_CANVAS_MM],
+          left: [-PAST_CANVAS_MM, y],
+          right: [w + PAST_CANVAS_MM, y],
+        }[side] as Point;
+      }
+    }
+    if (framable) result.push({ panel, outline });
+  }
+  return result;
 }
 
 /** Line width of a panel border on the manuscript, in mm. */

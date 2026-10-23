@@ -437,6 +437,8 @@ fn writes_whole_page_raster_layers_into_a_work() {
         story_index: Some(2),
         inputs: Vec::new(),
         donor_sources: Vec::new(),
+        draft_layers: Vec::new(),
+        frame_folders: false,
     })
     .unwrap();
     assert_eq!((writer.canvas.width_px, writer.canvas.height_px), (400, 560));
@@ -497,6 +499,8 @@ fn writes_whole_page_raster_layers_into_a_work() {
         story_index: None,
         inputs: Vec::new(),
         donor_sources: Vec::new(),
+        draft_layers: Vec::new(),
+        frame_folders: false,
     });
     assert!(refused.is_err());
 }
@@ -519,6 +523,8 @@ fn writes_vector_and_text_layers_copied_from_the_sheet() {
         story_index: None,
         inputs: vec![sheet_path.clone()],
         donor_sources,
+        draft_layers: Vec::new(),
+        frame_folders: false,
     };
     // The template has no vector or text layer to copy: without the sheet
     // there is nothing to make them from.
@@ -652,6 +658,8 @@ fn checks_written_pages_and_works() {
         story_index: None,
         inputs: vec![sheet_path.clone()],
         donor_sources: vec![sheet_path.clone()],
+        draft_layers: vec!["ラフ".into()],
+        frame_folders: false,
     })
     .unwrap();
     let mut rough = RgbaImage::transparent(200, 280);
@@ -709,6 +717,17 @@ fn checks_written_pages_and_works() {
     assert!(check.ok(), "{:?}", check.problems);
     assert_eq!((check.vector_lines, check.texts), (1, 1));
     assert!(check_clip(&page).ok());
+    // The rough is a 下描き layer at half opacity, the others as they were.
+    let written = ClipDocument::read(&page).unwrap();
+    let opacity = |name: &str| {
+        written
+            .layers()
+            .iter()
+            .find(|layer| layer.name == name)
+            .unwrap()
+            .opacity
+    };
+    assert_eq!((opacity("ラフ"), opacity("空")), (0.5, 1.0));
     let work = report.work.unwrap();
     assert!(verify_work(&work, Some(&report.pages)).ok());
 
@@ -884,6 +903,8 @@ fn writes_spread_pages() {
         story_index: None,
         inputs: Vec::new(),
         donor_sources: Vec::new(),
+        draft_layers: Vec::new(),
+        frame_folders: false,
     })
     .unwrap();
     assert_eq!(writer.first_page_left, Some(true));
@@ -938,4 +959,141 @@ fn writes_spread_pages() {
     let spreads: Vec<bool> = project.pages.iter().map(|page| page.page_flag == 1).collect();
     assert_eq!(spreads, [false, true, false]);
     assert_eq!(digest(&template_path), before);
+}
+
+#[test]
+fn writes_panels_as_a_frame_folder_copied_from_a_finished_page() {
+    use clip_core::LayerKind;
+    use clip_core::offscreen::OffscreenParameters;
+    use clip_core::vector::{NewFrame, parse_vector_data};
+    use clip_core::write::raster_page::{PageLayer, RasterWorkWriter, WorkOptions};
+    use clip_core::write::verify::{ExpectedLayer, verify_page};
+    let folder = tempfile::tempdir().unwrap();
+    let template_path = template(folder.path());
+    // A finished page: one frame folder of two panels with the drawing in it.
+    std::fs::create_dir_all(folder.path().join("finished")).unwrap();
+    let finished = build_editable_clip(
+        &folder.path().join("finished").join("page0011.clip"),
+        PAGE,
+        vec![
+            FixtureLayer::paper(2),
+            FixtureLayer::raster(3, "レイヤー 1", vec![(0, (0, 0, 0, 0))]),
+            FixtureLayer::frame_folder(
+                10,
+                "コマ 1",
+                vec![
+                    rectangle(20.0, 20.0, 380.0, 200.0),
+                    rectangle(20.0, 210.0, 380.0, 540.0),
+                ],
+                vec![FixtureLayer::raster(11, "ペン入れ", vec![(0, (5, 5, 20, 20))])],
+            ),
+        ],
+    );
+    let finished_before = digest(&finished);
+    let options = |frame_folders: bool| WorkOptions {
+        template: template_path.clone(),
+        out_dir: folder.path().join("out"),
+        name_pattern: DEFAULT_NAME_PATTERN.into(),
+        work: None,
+        story_index: None,
+        inputs: vec![finished.clone()],
+        donor_sources: vec![finished.clone()],
+        draft_layers: Vec::new(),
+        frame_folders,
+    };
+    // Only looked for when asked (finished pages are big to read).
+    assert!(RasterWorkWriter::new(options(false)).unwrap().donors.frame.is_none());
+    let mut writer = RasterWorkWriter::new(options(true)).unwrap();
+    assert!(writer.donors.frame.is_some());
+    // A slanted panel: its corners are not right angles.
+    let frames = vec![
+        NewFrame {
+            points: vec![(30.0, 30.0), (370.0, 30.0), (370.0, 180.0), (30.0, 220.0)],
+            width_px: 4.0,
+        },
+        NewFrame {
+            points: vec![(30.0, 230.0), (370.0, 190.0), (370.0, 530.0), (30.0, 530.0)],
+            width_px: 4.0,
+        },
+    ];
+    let layers = vec![PageLayer::Frames {
+        name: "コマ".into(),
+        frames: frames.clone(),
+        ink: Some("ペン入れ".into()),
+    }];
+    let canvas = writer.canvas;
+    let expected: Vec<ExpectedLayer> = layers
+        .iter()
+        .map(|layer| ExpectedLayer::of(layer, canvas.width_px, canvas.height_px))
+        .collect();
+    let page = writer.write_page(&layers, None, false).unwrap();
+    writer.finish().unwrap();
+    assert_eq!(digest(&finished), finished_before);
+    let check = verify_page(&page, &expected, &canvas);
+    assert!(check.ok(), "{:?}", check.problems);
+
+    let written = ClipDocument::read(&page).unwrap();
+    let folder_layer = written
+        .layers()
+        .into_iter()
+        .find(|layer| layer.kind == LayerKind::FrameFolder)
+        .unwrap()
+        .clone();
+    assert_eq!(folder_layer.name, "コマ");
+    // The donor's drawing is not copied, only the new empty layer to ink on.
+    let inside: Vec<&str> = folder_layer.children.iter().map(|child| child.name.as_str()).collect();
+    assert_eq!(inside, ["ペン入れ"]);
+    let payload = written.vector_payloads(&folder_layer).unwrap()[0].to_vec();
+    let objects = parse_vector_data(&payload).unwrap();
+    assert_eq!(objects.len(), 2);
+    assert_eq!(objects[0].points, frames[0].points);
+    assert_eq!(objects[0].flags, 0x1118);
+    assert_eq!(objects[0].brush_size, 2.0);
+    // Each corner: the miter length and the outward bisector (CSP's layout).
+    let corner = |object: usize, index: usize| {
+        let mut offset = 8;
+        for _ in 0..object {
+            offset += 96 + 88 * parse_vector_data(&payload).unwrap()[0].points.len();
+        }
+        let at = offset + 96 + 88 * index + 64;
+        let f = |o: usize| f32::from_be_bytes(payload[at + o..at + o + 4].try_into().unwrap());
+        (f(0), f(4), f(8))
+    };
+    let (miter, nx, ny) = corner(0, 0);
+    assert!(
+        (miter - 2.0 * 2f32.sqrt()).abs() < 1e-4 && nx < 0.0 && ny < 0.0,
+        "{miter} {nx} {ny}"
+    );
+    let (_, nx, ny) = corner(0, 2);
+    assert!(nx > 0.0 && ny > 0.0);
+    // Mask and border images are left for CSP to draw from the frames: no
+    // pixels stored, and the mask has one plane.
+    let row = written.layer_row(folder_layer.main_id).unwrap();
+    let base = |mipmap: i64| -> (Vec<u8>, String) {
+        written
+            .database()
+            .query_row(
+                "SELECT o.Attribute, o.BlockData FROM Mipmap m JOIN MipmapInfo i ON i.MainId = m.BaseMipmapInfo \
+                 JOIN Offscreen o ON o.MainId = i.Offscreen WHERE m.MainId = ?1",
+                [mipmap],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        String::from_utf8_lossy(&row.get::<_, Vec<u8>>(1)?).into_owned(),
+                    ))
+                },
+            )
+            .unwrap()
+    };
+    let (mask, mask_block) = base(row.int("LayerLayerMaskMipmap"));
+    let (line, line_block) = base(row.int("ComicFrameLineMipmap"));
+    let (mask, line) = (
+        OffscreenParameters::parse(&mask).unwrap(),
+        OffscreenParameters::parse(&line).unwrap(),
+    );
+    assert_eq!((mask.pixel_kind, mask.total_planes, mask.color_planes), (1, 1, 0));
+    assert_eq!((line.pixel_kind, line.total_planes), (33, 5));
+    for block in [mask_block, line_block] {
+        assert!(block.starts_with("extrnlid") && written.container.external_payload(&block).is_none());
+    }
 }

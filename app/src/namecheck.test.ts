@@ -23,6 +23,15 @@ describe("書き出し前の確認", () => {
     expect(issueSummary(issues)).toContain("しっぽなし 1");
   });
 
+  it("finds a balloon reaching past its own panel's border", () => {
+    const project = newProject("t", 1);
+    const page = project.pages[0];
+    addPanel(project, page, rectShape([40, 40, 160, 70]));
+    const tall = addLine(project, page, [150, 45], "あ\nい\nう\nえ\nお\nか\nき\nく\nけ\nこ", "thought");
+    const issues = checkName(project);
+    expect(issues.filter((issue) => issue.lineId === tall.id).map((issue) => issue.kind)).toEqual(["spill"]);
+  });
+
   it("does not count joined balloons as overlapping", () => {
     const project = newProject("t", 1);
     const page = project.pages[0];

@@ -2,9 +2,9 @@
 // vector lines and texts where CSP-made layers to copy are found, plus the
 // work .cmc), a PDF to read or share, and the script as text.
 import { invoke } from "@tauri-apps/api/core";
-import { pageBalloons } from "./balloon";
+import { balloonExtent, pageBalloons } from "./balloon";
 import { widthFactors } from "./brush";
-import { borderLines, borderWidthMm, dashes } from "./koma";
+import { borderLines, borderWidthMm, dashes, framePanels, type Side } from "./koma";
 import {
   BALLOON_LINE_MM,
   drawBalloonFills,
@@ -21,6 +21,7 @@ import {
   KIND_LABELS,
   MM_PER_PT,
   basicBox,
+  bounds,
   splitAtX,
   trimBox,
   type Brush,
@@ -54,6 +55,8 @@ export interface SpreadLayout {
 export interface NameExportStart extends TemplateCanvas {
   vectorLayers: boolean;
   textLayers: boolean;
+  /** Whether a コマ枠フォルダー was found to copy (only looked for when asked). */
+  frameFolders: boolean;
   /** Whether the book's first page is a left page (from the template); null when unknown. */
   firstPageLeft: boolean | null;
   spread: SpreadLayout | null;
@@ -163,6 +166,12 @@ export const LAYER_NAMES: Record<LayerKind, string> = {
   text: "セリフ",
 };
 
+const NO_FRAME_FOLDER =
+  "コマ枠フォルダーの見本が見つからないため、コマ枠はベクターレイヤーにしました。CSP でコマ枠フォルダーを作って保存したページ（仕上げた原稿など）を「見本のページ」に選ぶと、コマ枠フォルダーで書き出せます。";
+
+/** The rough's layers (the name sheet's rough image too): what is inked over in CSP. */
+export const ROUGH_LAYERS = [LAYER_NAMES.strokes, LAYER_NAMES.overStrokes, "ラフ（ネーム用紙）"];
+
 export function partCount(page: Page, kind: LayerKind): number {
   switch (kind) {
     case "strokes":
@@ -223,10 +232,17 @@ export interface VectorLineMeta {
   widthPx: number;
 }
 
+/** One panel of a コマ枠フォルダー in template px. */
+export interface FrameMeta {
+  points: [number, number][];
+  widthPx: number;
+}
+
 /** One layer of a page as `export_name_page` takes it, bottom first. */
 export type LayerMeta =
   | { kind: "raster"; name: string; length: number }
   | { kind: "vector"; name: string; lines: VectorLineMeta[] }
+  | { kind: "frames"; name: string; frames: FrameMeta[]; ink?: string }
   | {
       kind: "text";
       text: string;
@@ -240,7 +256,14 @@ export type LayerMeta =
 export type LinePartKind = Exclude<LayerKind, "text" | "fills" | "balloonFills">;
 
 /** One kind of line part of a page as vector lines (`m`: mm → template px). */
-export function vectorLines(page: Page, kind: LinePartKind, m: MmToPx, brushes: Brush[] = []): VectorLineMeta[] {
+export function vectorLines(
+  page: Page,
+  kind: LinePartKind,
+  m: MmToPx,
+  brushes: Brush[] = [],
+  /** Panels whose borders go as frames instead. */
+  framed: ReadonlySet<string> = new Set(),
+): VectorLineMeta[] {
   const map = (points: readonly (readonly number[])[], width: (point: readonly number[], index: number) => number) =>
     points.map((point, index): [number, number, number] => [point[0] * m.scale + m.x, point[1] * m.scale + m.y, width(point, index)]);
   switch (kind) {
@@ -258,7 +281,7 @@ export function vectorLines(page: Page, kind: LinePartKind, m: MmToPx, brushes: 
           };
         });
     case "panels":
-      return borderLines(page).flatMap((line) => {
+      return borderLines(page).filter((line) => !framed.has(line.panel.id)).flatMap((line) => {
         const parts = line.panel.border === "dashed" ? dashes(line.points, line.closed).map((points) => ({ points, closed: false })) : [line];
         return parts.map((part) => ({ points: map(part.points, () => 1), closed: part.closed, widthPx: borderWidthMm(line.panel) * m.scale }));
       });
@@ -270,6 +293,106 @@ export function vectorLines(page: Page, kind: LinePartKind, m: MmToPx, brushes: 
         return [...outline, ...extras];
       });
   }
+}
+
+/** The コマ枠フォルダー of a page and the empty layer in it to ink on. */
+export const FRAME_FOLDER_NAME = "コマ";
+export const INK_LAYER_NAME = "ペン入れ";
+
+/** The page's panels a コマ枠フォルダー holds (see `framePanels`), as frames in template px. */
+export function frameMetas(project: Project, page: Page, m: MmToPx, gutter: Side | null = null): { ids: Set<string>; frames: FrameMeta[] } {
+  const framed = framePanels(page, project.pageFormat, gutter);
+  return {
+    ids: new Set(framed.map(({ panel }) => panel.id)),
+    frames: framed.map(({ panel, outline }) => ({
+      points: outline.map(([x, y]): [number, number] => [x * m.scale + m.x, y * m.scale + m.y]),
+      widthPx: borderWidthMm(panel) * m.scale,
+    })),
+  };
+}
+
+/**
+ * The layer of the name's memos (panel memos and the page memo), a 下描き
+ * layer: seen while inking, never printed. 付箋 stay in the app: they are for
+ * planning, and long ones would cover the panels.
+ */
+export const NOTES_LAYER_NAME = "メモ（ネーム）";
+const NOTE_TEXT_MM = 3;
+
+/** Whether a page has any memo to write. */
+export function hasNotes(page: Page): boolean {
+  return !!page.memo?.trim() || page.panels.some((panel) => panel.note?.trim());
+}
+
+/** `text` broken into rows no wider than `width` (px at the context's font), `max` rows at most. */
+function noteRows(ctx: CanvasRenderingContext2D, text: string, width: number, max: number): string[] {
+  const rows: string[] = [];
+  for (const paragraph of text.replace(/\r\n?/g, "\n").split("\n")) {
+    let row = "";
+    for (const char of paragraph) {
+      if (row && ctx.measureText(row + char).width > width) {
+        rows.push(row);
+        row = "";
+      }
+      row += char;
+    }
+    rows.push(row);
+  }
+  if (rows.length > max) rows.splice(max - 1, rows.length, rows[max - 1] + "…");
+  return rows;
+}
+
+/**
+ * The name's memos as they show in the app: each panel's memo on a pale tag
+ * in a corner of the panel clear of its balloons, and the page memo under
+ * the basic frame.
+ */
+export function drawNotes(ctx: CanvasRenderingContext2D, project: Project, page: Page, m: MmToPx): void {
+  const size = NOTE_TEXT_MM * m.scale;
+  const pad = size * 0.4;
+  const [tx0, ty0, tx1, ty1] = trimBox(project.pageFormat);
+  const px = (x: number) => x * m.scale + m.x;
+  const py = (y: number) => y * m.scale + m.y;
+  ctx.save();
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.font = `${size}px "Yu Gothic UI", "Yu Gothic", "Hiragino Sans", "Noto Sans JP", sans-serif`;
+  const tag = (x: number, y: number, rows: string[], fill: string, w: number) => {
+    const h = rows.length * size * 1.25 + 2 * pad;
+    ctx.fillStyle = fill;
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = "#4a3f12";
+    rows.forEach((row, i) => ctx.fillText(row, x + pad, y + pad + i * size * 1.25));
+  };
+  for (const panel of page.panels) {
+    if (!panel.note?.trim()) continue;
+    const [x0, y0, x1, y1] = bounds(panel.shape);
+    // A 裁ち切り panel's tag stays inside the trim.
+    const [left, top, right, bottom] = [px(Math.max(x0, tx0)), py(Math.max(y0, ty0)), px(Math.min(x1, tx1)), py(Math.min(y1, ty1))];
+    const room = Math.max(size * 6, Math.min(right - left - 2 * pad, size * 20));
+    const rows = noteRows(ctx, panel.note, room - 2 * pad, 4);
+    const w = Math.max(...rows.map((row) => ctx.measureText(row).width)) + 2 * pad;
+    const h = rows.length * size * 1.25 + 2 * pad;
+    const balloons = page.lines.filter((line) => line.panel === panel.id).map((line) => balloonExtent(line).map((v, i) => (i % 2 ? py(v) : px(v))));
+    const clear = ([x, y]: number[]) => balloons.every(([bx0, by0, bx1, by1]) => x + w < bx0 || x > bx1 || y + h < by0 || y > by1);
+    const corners = [
+      [left + pad, top + pad],
+      [left + pad, bottom - pad - h],
+      [right - pad - w, bottom - pad - h],
+    ];
+    const [x, y] = corners.find(clear) ?? corners[0];
+    tag(x, y, rows, "rgba(255, 246, 194, 0.92)", w);
+  }
+  if (page.memo?.trim()) {
+    // Below the basic frame, where the page is usually blank (the panels' tags are at their tops).
+    const width = (tx1 - tx0) * m.scale - 4 * pad;
+    const rows = noteRows(ctx, page.memo, width - 2 * pad, 3);
+    const h = rows.length * size * 1.25 + 2 * pad;
+    const below = py(basicBox(project.pageFormat)[3]) + 2 * pad;
+    const y = below + h <= py(ty1) - pad ? below : py(ty0) + 2 * pad;
+    tag(px(tx0) + 2 * pad, y, rows, "rgba(214, 234, 248, 0.92)", Math.max(...rows.map((row) => ctx.measureText(row).width)) + 2 * pad);
+  }
+  ctx.restore();
 }
 
 /** Room CSP's lines take: its line pitch and character advance, generously. */
@@ -336,6 +459,12 @@ export interface CspExportRequest {
   inputs: string[];
   /** .clip files (the name sheet) to copy CSP's vector / text layers from. */
   donors: string[];
+  /** Layers (by name) written as 下描き layers at half opacity: `ROUGH_LAYERS` to ink over the rough. */
+  draftLayers?: string[];
+  /** Panels as a コマ枠フォルダー (copied from a finished page among the donors), with an empty layer in it to ink on. */
+  frameFolders?: boolean;
+  /** The name's memos as a 下描き image layer on top (on unless false). */
+  notes?: boolean;
 }
 
 /** A written file read back (clip-core `verify::FileCheck`). */
@@ -410,9 +539,12 @@ export async function exportToCsp(
   confirmImages?: (missing: string[]) => Promise<boolean>,
 ): Promise<CspExportReport | null> {
   await loadTips(project.brushes);
+  const notes = request.notes !== false && project.pages.some(hasNotes);
+  if (notes) request = { ...request, draftLayers: [...(request.draftLayers ?? []), NOTES_LAYER_NAME] };
   const start = await invoke<NameExportStart>("begin_name_export", { request });
   const vector = editable && start.vectorLayers;
   const text = editable && start.textLayers;
+  const frames = vector && !!request.frameFolders && start.frameFolders;
   try {
     // Asked before anything is written: lines and dialogue CSP cannot edit stop the pen work.
     const missing = editable ? missingEditable(start) : [];
@@ -422,6 +554,7 @@ export async function exportToCsp(
     }
     const full = projectToTemplate(project, start);
     const { units, warnings } = exportUnits(project, start.firstPageLeft, start.spread ? null : start.spreadProblem);
+    if (vector && request.frameFolders && !start.frameFolders) warnings.push(NO_FRAME_FOLDER);
     const checks: FileCheck[] = [];
     // One drawing canvas for the widest page; each page is drawn at its own size.
     const widest = Math.max(start.widthPx, ...(units.some((unit) => unit.length > 1) && start.spread ? [start.spread.widthPx] : []));
@@ -470,7 +603,16 @@ export async function exportToCsp(
             // CSP draws these itself when the page is opened; the thumbnail does not.
             clipped(overlayCtx, toOverlay, right, () => drawPart(overlayCtx, page, kind, scaled(m, toOverlay), project.brushes));
           }
-          if (canBeVector(kind)) {
+          if (kind === "panels" && frames) {
+            // The gutter side of a spread page meets its facing page.
+            const framed = placed.map(({ page, m, right }) => frameMetas(project, page, m, spread ? (right ? "left" : "right") : null));
+            layers.push({ kind: "frames", name: FRAME_FOLDER_NAME, frames: framed.flatMap((one) => one.frames), ink: INK_LAYER_NAME });
+            const lines = placed.flatMap(({ page, m, right }, index) => {
+              const own = vectorLines(page, kind, m, project.brushes, framed[index].ids);
+              return spread ? clipLines(own, spread.gutterPx, right) : own;
+            });
+            if (lines.length) layers.push({ kind: "vector", name: LAYER_NAMES[kind], lines });
+          } else if (canBeVector(kind)) {
             const lines = placed.flatMap(({ page, m, right }) => {
               const own = vectorLines(page, kind, m, project.brushes);
               return spread ? clipLines(own, spread.gutterPx, right) : own;
@@ -489,6 +631,16 @@ export async function exportToCsp(
           png = await encode(drawing, "image/png");
         }
         layers.push({ kind: "raster", name: LAYER_NAMES[kind], length: png.length });
+        pngs.push(png);
+      }
+      if (notes) {
+        let png: Uint8Array = new Uint8Array();
+        if (placed.some(({ page }) => hasNotes(page))) {
+          ctx.clearRect(0, 0, width, height);
+          for (const { page, m, right } of placed) clipped(ctx, factor, right, () => drawNotes(ctx, project, page, scaled(m, factor)));
+          png = await encode(drawing, "image/png");
+        }
+        layers.push({ kind: "raster", name: NOTES_LAYER_NAME, length: png.length });
         pngs.push(png);
       }
       const overlayPng = vector || text ? await encode(overlay, "image/png") : new Uint8Array();

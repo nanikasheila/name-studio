@@ -24,6 +24,18 @@ describe("wrapping dialogue", () => {
     expect(lines.some((line) => line.includes("エレクトリックギター"))).toBe(true);
   });
 
+  it("starts each sentence on a new line, however short", () => {
+    expect(wrapDialogue("迎えをやる。ニイだ")).toBe("迎えをやる。\nニイだ");
+    expect(wrapDialogue("……行く？　決めるのは、あなた")).toBe("……行く？\n決めるのは、あなた");
+    expect(wrapDialogue("えっ！？　何？")).toBe("えっ！？\n何？");
+    expect(wrapDialogue("ストラ！！")).toBe("ストラ！！");
+    expect(wrapDialogue("はい。")).toBe("はい。");
+  });
+
+  it("breaks at a full-width space, as the app writes breaks out", () => {
+    expect(wrapDialogue("残れば、エイコと　離れる")).toBe("残れば、エイコと\n離れる");
+  });
+
   it("wraps narrower when asked", () => {
     const text = "わたしはずっとここで待っているからね、きっと帰ってきてね";
     const narrow = wrapDialogue(text, 5).split("\n");

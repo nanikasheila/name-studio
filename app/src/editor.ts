@@ -39,7 +39,6 @@ import {
   cutPanels,
   eraseInside,
   eraseWith,
-  fitLine,
   insideBox,
   insidePolygon,
   LINE_PITCH,
@@ -65,6 +64,8 @@ import {
   type CarriedContents,
   strokeHit,
   keepStickyOnPage,
+  setLineText,
+  wrapTypedLine,
   trimBox,
   type BoxMm,
   type Brush,
@@ -2576,8 +2577,7 @@ export class PageEditor {
         if (value.trim()) panel.note = value;
         else delete panel.note;
       } else if (line) {
-        line.text = value;
-        fitLine(line);
+        setLineText(line, value);
       }
     };
     const place = () => {
@@ -2623,6 +2623,8 @@ export class PageEditor {
       done = true;
       if (this.inline?.field === field) this.inline = null;
       if (!keep) apply(original);
+      // A long line typed in one go: broken into short lines.
+      else if (line && field.value !== original) wrapTypedLine(line);
       field.remove();
       if (keep && field.value !== original) {
         this.host.commit();

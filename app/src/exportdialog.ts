@@ -2,7 +2,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import { buildRequest, folderOf, overwriteWarning, type ExportForm, type OverwriteCheck } from "./export";
-import { checkSummary, exportPdf, exportToCsp, imagesNote, missingEditable, scriptText } from "./nameexport";
+import { checkSummary, exportPdf, exportToCsp, imagesNote, missingEditable, ROUGH_LAYERS, scriptText } from "./nameexport";
 import { ISSUE_LABELS, checkName, issueSummary } from "./namecheck";
 import type { Project, RoughImage } from "./project";
 
@@ -16,6 +16,8 @@ export interface ExportDialogHost {
   goTo(pageId: string, lineId: string): void;
   /** Give speech with no tail one; how many were added. */
   addTails(): number;
+  /** Lay out again the panels whose dialogue reaches past their border; how many. */
+  fitSpills(): number;
 }
 
 type Kind = "csp" | "pdf" | "text";
@@ -46,6 +48,12 @@ export class ExportDialog {
     storyIndex: "",
   };
   private editable = true;
+  /** The rough written as 下描き layers at half opacity, to ink over. */
+  private draftRough = true;
+  /** Panels as a コマ枠フォルダー (copied from a finished page), with a layer in it to ink on. */
+  private frameFolders = false;
+  /** The name's memos as a 下描き layer, to see while inking. */
+  private notes = true;
   private busy = false;
   /** A CSP page with text and vector layers to copy, when the template has none. */
   private donor = readDonor();
@@ -70,6 +78,15 @@ export class ExportDialog {
     $<HTMLInputElement>("ne-editable").addEventListener("change", (event) => {
       this.editable = (event.target as HTMLInputElement).checked;
     });
+    $<HTMLInputElement>("ne-draft").addEventListener("change", (event) => {
+      this.draftRough = (event.target as HTMLInputElement).checked;
+    });
+    $<HTMLInputElement>("ne-notes").addEventListener("change", (event) => {
+      this.notes = (event.target as HTMLInputElement).checked;
+    });
+    $<HTMLInputElement>("ne-frames").addEventListener("change", (event) => {
+      this.frameFolders = (event.target as HTMLInputElement).checked;
+    });
     $("ne-run").addEventListener("click", () => void this.run());
   }
 
@@ -91,7 +108,7 @@ export class ExportDialog {
     details.classList.toggle("clean", !issues.length);
     $("ne-check-summary").textContent = issues.length
       ? `書き出す前の確認: ${issueSummary(issues)}（押すとそのセリフへ）`
-      : "書き出す前の確認: フキダシの重なり・コマの外・仕上がりの外・しっぽなしはありません";
+      : "書き出す前の確認: フキダシの重なり・コマの外・はみ出し・仕上がりの外・しっぽなしはありません";
     const list = $("ne-check-list");
     list.replaceChildren(
       ...issues.slice(0, 60).map((issue) => {
@@ -110,6 +127,15 @@ export class ExportDialog {
       const fix = Object.assign(document.createElement("button"), { type: "button", className: "fix", textContent: "しっぽのないセリフ全部にしっぽを付ける（コマのラフの人物へ向ける）" });
       fix.addEventListener("click", () => {
         this.host.addTails();
+        const updated = this.host.project();
+        if (updated) this.renderCheck(updated);
+      });
+      list.prepend(fix);
+    }
+    if (issues.some((issue) => issue.kind === "spill")) {
+      const fix = Object.assign(document.createElement("button"), { type: "button", className: "fix", textContent: "はみ出したセリフのコマを並べ直す（改行し直して細く）" });
+      fix.addEventListener("click", () => {
+        this.host.fitSpills();
         const updated = this.host.project();
         if (updated) this.renderCheck(updated);
       });
@@ -137,6 +163,9 @@ export class ExportDialog {
     path("ne-donor", this.donor);
     $("ne-clear-donor").hidden = !this.donor;
     $<HTMLInputElement>("ne-editable").checked = this.editable;
+    $<HTMLInputElement>("ne-draft").checked = this.draftRough;
+    $<HTMLInputElement>("ne-frames").checked = this.frameFolders;
+    $<HTMLInputElement>("ne-notes").checked = this.notes;
     $<HTMLInputElement>("ne-make-work").checked = this.form.makeWork;
     $("ne-work-fields").hidden = !this.form.makeWork;
     $<HTMLInputElement>("ne-work-name").value = this.form.workName;
@@ -227,6 +256,9 @@ export class ExportDialog {
             storyIndex: request.storyIndex,
             inputs: this.sources(),
             donors: [this.donor, project.source?.path].filter((path): path is string => !!path),
+            draftLayers: this.draftRough ? ROUGH_LAYERS : [],
+            frameFolders: this.frameFolders,
+            notes: this.notes,
           },
           this.editable,
           progress,

@@ -5,6 +5,7 @@
 
 import { storedOutline } from "./balloon";
 import { inheritOpenEdges } from "./koma";
+import { wrapDialogue } from "./wrap";
 
 export type Point = [number, number];
 /** `[x0, y0, x1, y1]` in millimetres. */
@@ -776,9 +777,11 @@ export function removePanel(page: Page, panelId: string, binding: Binding = "rig
 
 /** Give each line the panel its centre is in. */
 export function assignPanels(page: Page): void {
+  // A panel on top (an inset, はめ込み) before the one under it, then reading order.
+  const panels = [...page.panels].sort((a, b) => (b.z ?? 0) - (a.z ?? 0) || a.order - b.order);
   for (const line of page.lines) {
     const center = boxCenter(line.box);
-    const panel = [...page.panels].sort((a, b) => a.order - b.order).find((p) => insidePolygon(p.shape, center));
+    const panel = panels.find((p) => insidePolygon(p.shape, center));
     if (panel) line.panel = panel.id;
     else delete line.panel;
   }
@@ -821,6 +824,27 @@ export function fitLine(line: Line): void {
   const balloon = storedOutline(line);
   if (balloon) line.balloon = balloon;
   else delete line.balloon;
+}
+
+/**
+ * New text for a line, its reading start kept where it is: the top right of
+ * vertical text (its first column), the top left of horizontal text. The
+ * balloon grows away from there, and the tails keep pointing where they did.
+ */
+export function setLineText(line: Line, text: string): void {
+  const [x0, y0, x1] = line.box;
+  line.text = text;
+  fitLine(line);
+  moveLine(line, line.vertical ? x1 - line.box[2] : x0 - line.box[0], y0 - line.box[1]);
+}
+
+/** A long line typed in one go, broken the way a letterer would (one already broken by hand is left as it is). */
+export function wrapTypedLine(line: Line): boolean {
+  if (line.kind === "sfx" || line.text.includes("\n")) return false;
+  const wrapped = wrapDialogue(line.text);
+  if (wrapped === line.text) return false;
+  setLineText(line, wrapped);
+  return true;
 }
 
 export function addLine(project: Project, page: Page, center: Point, text = "セリフ", kind: LineKind = "speech"): Line {
@@ -1197,6 +1221,27 @@ export function addScene(project: Project, firstPage: string, lastPage: string, 
   project.scenes.push(scene);
   sortScenes(project);
   return scene;
+}
+
+/**
+ * A scene over pages `first`..`last` (0-based) that takes the place of the
+ * scenes it overlaps; a scene it replaces over the very same pages hands on
+ * its summary when the new one has none. Returns the scene and how many it replaced.
+ */
+export function putScene(project: Project, first: number, last: number, title: string, summary = ""): { scene: Scene; replaced: number } {
+  let kept = "";
+  let replaced = 0;
+  project.scenes = project.scenes.filter((s) => {
+    const [a, b] = [pageIndex(project, s.firstPage), pageIndex(project, s.lastPage)];
+    if (b < first || a > last) return true;
+    if (a === first && b === last) kept = s.summary;
+    // The very same scene taken in again is not counted as replaced.
+    if (!(a === first && b === last && s.title === title)) replaced++;
+    return false;
+  });
+  const scene = addScene(project, project.pages[first].id, project.pages[last].id, title);
+  scene.summary = summary || kept;
+  return { scene, replaced };
 }
 
 export function sortScenes(project: Project): void {

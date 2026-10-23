@@ -167,6 +167,9 @@
         <div id="ne-csp">
           <p class="hint">ページごとに .clip を作り、ラフ線・コマ枠・フキダシ・セリフを別々のレイヤーにします（取り込んだネーム用紙のラフ画像もレイヤーに）。ネームの基本枠を、ひな形の基本枠に合わせます。</p>
           <label class="check"><input type="checkbox" id="ne-editable" checked /> 線をベクターレイヤー、セリフをテキストレイヤーにする（CSP で直せる）</label>
+          <label class="check"><input type="checkbox" id="ne-draft" checked /> ラフ線を下描きレイヤーにする（不透明度 50%。上にペン入れでき、塗りつぶしの参照と画像の書き出しに入らない）</label>
+          <label class="check"><input type="checkbox" id="ne-notes" checked /> コマのメモとページのメモを下描きレイヤー「メモ（ネーム）」に書く（ペン入れ中に見られ、印刷されない。付箋は書かない）</label>
+          <label class="check"><input type="checkbox" id="ne-frames" /> コマ枠をコマ枠フォルダーにする（試験中。中の「ペン入れ」レイヤーに描くとコマの外にはみ出さない。コマ枠フォルダーを作って保存した CSP のページを見本に選ぶ）</label>
           <p class="hint">CSP で描いたベクター線とテキストのレイヤーを、ひな形・見本のページ・取り込み元のネーム用紙・ひな形と同じフォルダーのページから写して使います。見つからないときは書き出す前に知らせます。</p>
           <div class="field">
             <span>ひな形のページ</span>
@@ -290,7 +293,7 @@
             <option value="plot">プロット（ページごとの文）</option>
           </select>
         </div>
-        <p class="hint" id="sd-plot-hint" hidden>プロット: ### 1ページ 見出し の下の文がそのページのメモに、ページ配分の表（| 1〜3 | 3 | 場面 |）か、ページを含む ## の節がシーンに、そのほかの節（論点・仮置きなど）の箇条が付箋になります（「N ページ」と書いてあればそのページ、なければ 1 ページ目）。合計の行は目標ページ数に。</p>
+        <p class="hint" id="sd-plot-hint" hidden>プロット: ### 1ページ 見出し の下の文がそのページのメモに、ページ配分の表（| 1〜3 | 3 | 場面 |）か、ページを含む ## の節がシーンに、そのほかの節（論点・仮置きなど）の箇条が付箋になります（「N ページ」と書いてあればそのページ、なければ中身の近いページ、決め手がなければ 1 ページ目）。合計の行は目標ページ数に。</p>
         <p class="hint" id="sd-script-hint">Markdown で書いた台本を貼り付けるか、ファイル（.md / .txt）を開きます。## がシーン、### 1ページ（または ■）がページ、#### コマ（または [1]）がコマ、名前「セリフ」・名前：セリフ・名前（心の声）・ナレーション：・SE： がセリフになり、それ以外はページやコマのメモに入ります。</p>
         <textarea id="sd-text" rows="12" placeholder="## 出会い&#10;### 1ページ&#10;#### コマ1&#10;ミカ「今日も星が見えないね」&#10;ソラ：見えなくても、あるよ"></textarea>
         <div class="field">
@@ -302,6 +305,7 @@
           <input type="number" id="sd-start" min="1" value="1" />
         </div>
         <label class="check" id="sd-panels-row"><input type="checkbox" id="sd-panels" checked /> コマのないページには、台本のコマの数だけコマを作る</label>
+        <label class="check" id="sd-update-row" hidden><input type="checkbox" id="sd-update" checked /> セリフのあるページは、今のセリフを台本に合わせて直す（変わったセリフだけ書き換え、位置・形・しっぽは残す。台本から消したセリフは消す）</label>
         <label class="check" id="sd-notes-row" hidden><input type="checkbox" id="sd-notes" checked /> 論点・仮置きなどの節を付箋にする</label>
         <div class="field" id="sd-pattern-row">
           <span>作るコマの型</span>
