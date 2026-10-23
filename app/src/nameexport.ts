@@ -11,6 +11,7 @@ import {
   drawBalloons,
   drawLineText,
   drawPanelBorders,
+  drawPageFills,
   drawPanelFills,
   drawStrokes,
   loadTips,
@@ -171,7 +172,8 @@ export function partCount(page: Page, kind: LayerKind): number {
     case "fills":
       return (
         page.panels.filter((panel) => (panel.fill ?? "none") !== "none" || (panel.effect ?? "none") !== "none").length +
-        (page.breakouts ?? []).length
+        (page.breakouts ?? []).length +
+        (page.fills ?? []).length
       );
     case "panels":
       return page.panels.length;
@@ -197,6 +199,7 @@ export function drawPart(ctx: CanvasRenderingContext2D, page: Page, kind: LayerK
       break;
     case "fills":
       drawPanelFills(ctx, page, m, 1);
+      drawPageFills(ctx, page, m);
       break;
     case "panels":
       drawPanelBorders(ctx, page, m, undefined, 1);

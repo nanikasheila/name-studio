@@ -5,8 +5,25 @@
 import { FULL_SPEED_MM, followFactor, postCorrect, tiltOf, usesMotion } from "./brush";
 import { spreads } from "./pages";
 import { addBreakout, moveBreakout, stacked } from "./koma";
-import { INK, drawBalloons, drawLineText, drawPanelBorders, drawPanelFills, drawStroke, drawStrokes, onTipLoaded, tracePath } from "./pagedraw";
+import { joinPanels, moveSeam, seamAt, seamBase, seamLines, snapSeam, type Seam } from "./komaedit";
 import {
+  baseBounds,
+  copySelection,
+  densify,
+  pasteClip,
+  rotation,
+  scaling,
+  straightEnd,
+  transformBase,
+  transformItems,
+  type Affine,
+  type Clip,
+  type ItemRef,
+  type TransformBase,
+} from "./transform";
+import { INK, drawBalloons, drawLineText, drawPageFills, drawPanelBorders, drawPanelFills, drawStroke, drawStrokes, onTipLoaded, tracePath } from "./pagedraw";
+import {
+  addFill,
   addLine,
   addSticky,
   addPanel,
@@ -17,12 +34,17 @@ import {
   cutPanels,
   eraseInside,
   eraseWith,
+  fitLine,
   insideBox,
   insidePolygon,
+  LINE_PITCH,
+  MM_PER_PT,
   moveLine,
   movePanel,
   moveStroke,
   orderPanels,
+  pageIndex,
+  panelContents,
   pickInside,
   rectShape,
   snapCut,
@@ -38,8 +60,10 @@ import {
   type CarriedContents,
   strokeHit,
   trimBox,
+  type BoxMm,
   type Brush,
   type EraseMode,
+  type FillTone,
   type Line,
   type Page,
   type Panel,
@@ -55,10 +79,10 @@ import {
   type StrokePoint,
 } from "./project";
 
-export type Tool = "select" | "cut" | "text" | "pen" | "eraser" | "breakout" | "sticky";
+export type Tool = "select" | "cut" | "text" | "pen" | "eraser" | "fill" | "breakout" | "sticky";
 
 export interface Selection {
-  kind: "panel" | "line" | "stroke" | "breakout" | "group" | "sticky";
+  kind: "panel" | "line" | "stroke" | "breakout" | "group" | "sticky" | "fill";
   pageId: string;
   id: string;
   /** 範囲選択 ("group"): the rough lines and dialogue picked together. */
@@ -88,6 +112,8 @@ export interface EditorHost {
   /** Pixels of a rough from the source sheet, or null while they load. */
   rough(rough: RoughImage): CanvasImageSource | null;
   status(message: string): void;
+  /** Buttons for the bar shown by the selection (most used actions, at hand). */
+  actions(selection: Selection): HTMLElement[];
 }
 
 interface Slot {
@@ -103,23 +129,42 @@ interface Slot {
 
 type Drag =
   | { kind: "pan"; x: number; y: number }
+  | { kind: "turn"; from: number; rotation: number }
   | { kind: "move"; slot: Slot; last: Point; moved: boolean; carried?: CarriedContents }
   | { kind: "vertex"; slot: Slot; panelId: string; vertex: number; moved: boolean; carried?: CarriedContents }
   | { kind: "cut"; slot: Slot; a: Point; b: Point; free: boolean }
   | { kind: "frame"; slot: Slot; a: Point; b: Point }
-  | { kind: "pen"; slot: Slot; points: StrokePoint[]; last: StrokePoint; motion: boolean; time: number; speed: number }
+  | { kind: "pen"; slot: Slot; points: StrokePoint[]; last: StrokePoint; motion: boolean; time: number; speed: number; straight: boolean }
   | { kind: "tail"; slot: Slot; lineId: string; index: number; moved: boolean }
   | { kind: "lasso"; slot: Slot; points: Point[] }
+  | { kind: "fill"; slot: Slot; points: Point[] }
   | { kind: "pick"; slot: Slot; points: Point[] }
   | { kind: "eraseLasso"; slot: Slot; points: Point[] }
   | { kind: "erase"; slot: Slot; erased: number }
-  | { kind: "swap"; slot: Slot; panelId: string; at: [number, number]; to: { slot: Slot; panelId: string } | null };
+  | { kind: "swap"; slot: Slot; panelId: string; at: [number, number]; to: { slot: Slot; panelId: string } | null }
+  | { kind: "seam"; slot: Slot; seam: Seam; base: Map<string, Point[]>; start: Point; moved: boolean; carried: Map<string, CarriedContents> }
+  | { kind: "scale"; slot: Slot; handle: number; base: TransformBase; box: BoxMm; moved: boolean }
+  | { kind: "rotate"; slot: Slot; base: TransformBase; centre: Point; start: number; moved: boolean };
+
+/** Handles of the transform frame: corners from the top left clockwise, then the sides top, right, bottom, left. */
+const FRAME_HANDLES = 8;
+const ROTATE_GAP = 22;
+
+/** What the pointer is over with the select tool, shown before anything is pressed. */
+type Hover =
+  | { kind: "seam"; slot: Slot; seam: Seam }
+  | { kind: "item"; slot: Slot; target: Selection }
+  | { kind: "handle"; slot: Slot; handle: number };
 
 const ACCENT = "#2f6fdb";
 const MARGIN = 28;
 const HANDLE = 5;
 
 export const PANEL_CARRIES_KEY = "namestudio.panelCarries";
+export const SHOW_NOTES_KEY = "namestudio.showNotes";
+
+const NOTE_FONT = '12px "Yu Gothic UI", "Yu Gothic", "Hiragino Sans", "Noto Sans JP", sans-serif';
+const NOTE_ROW = 16;
 
 export function readFlag(key: string, fallback: boolean): boolean {
   try {
@@ -145,11 +190,15 @@ export class PageEditor {
   firstAlone = true;
   /** コマに中身が付いてくる: moving or reshaping a panel takes its contents along. */
   panelCarries = readFlag(PANEL_CARRIES_KEY, true);
+  /** Each panel's memo shown on the page (only on screen, never exported). */
+  showNotes = readFlag(SHOW_NOTES_KEY, true);
   penWidthMm = 0.4;
   /** Brushes in use (ids in the project); null is the plain pen / eraser. */
   penBrush: string | null = null;
   eraserBrush: string | null = null;
   eraserSizeMm = 2;
+  /** 投げなわ塗り: the tone the fill tool fills with. */
+  fillTone: FillTone = "black";
   /** The eraser's way of erasing; the pen's eraser end uses it too. */
   eraseMode: EditorEraseMode = "whole";
   /** The pen's eraser end is down or hovering: erase whatever the tool. */
@@ -158,6 +207,8 @@ export class PageEditor {
   snap = true;
   private zoom = 1;
   private pan: [number, number] = [0, 0];
+  /** 画面の回転 (radians, clockwise): the whole view turns about the middle of the stage. */
+  private rotation = 0;
   private slots: Slot[] = [];
   private drag: Drag | null = null;
   private spaceHeld = false;
@@ -166,6 +217,21 @@ export class PageEditor {
   /** The pages as drawn when a pen line began: only the new line is drawn over it. */
   private base: HTMLCanvasElement | null = null;
   private frame = 0;
+  /** The pages as last drawn, for redrawing only what is over them (hover, eraser ring). */
+  private cache: HTMLCanvasElement | null = null;
+  private overlayFrame = 0;
+  private hover: Hover | null = null;
+  private hoverAt: Point | null = null;
+  private hoverFrame = 0;
+  /** A text being written in place on the page (a panel's memo or dialogue). */
+  private inline: { field: HTMLTextAreaElement; place: () => void; finish: (keep: boolean) => void } | null = null;
+  /** Run once the pointer is up (opening a text field during the press would lose its focus). */
+  private afterUp: (() => void) | null = null;
+  /** What was copied last (Ctrl+C), and how often it was pasted onto its own page. */
+  private clip: Clip | null = null;
+  private pastes = 0;
+  /** The small bar of actions beside the selection. */
+  private readonly bar: HTMLDivElement;
 
   constructor(private readonly canvas: HTMLCanvasElement, private readonly host: EditorHost) {
     // Low latency: the pen line reaches the screen without waiting for the compositor.
@@ -173,15 +239,24 @@ export class PageEditor {
     // A pen held still or its barrel button must not open the context menu.
     canvas.addEventListener("contextmenu", (event) => event.preventDefault());
     onTipLoaded(() => this.draw());
+    this.bar = document.createElement("div");
+    this.bar.className = "action-bar";
+    this.bar.hidden = true;
+    // Presses on the bar are not presses on the page.
+    this.bar.addEventListener("pointerdown", (event) => event.stopPropagation());
+    canvas.parentElement?.append(this.bar);
     canvas.addEventListener("pointerdown", (event) => this.pointerDown(event));
     canvas.addEventListener("pointermove", (event) => this.pointerMove(event));
     canvas.addEventListener("pointerup", (event) => this.pointerUp(event));
     canvas.addEventListener("pointercancel", (event) => this.pointerUp(event));
     canvas.addEventListener("pointerleave", () => {
       this.pointer = null;
-      this.draw();
+      this.hover = null;
+      this.updateCursor();
+      this.requestOverlay();
     });
     canvas.addEventListener("wheel", (event) => this.wheel(event), { passive: false });
+    canvas.addEventListener("dblclick", (event) => this.doubleClick(event));
     window.addEventListener("keydown", (event) => {
       if (event.code === "Space" && !isTyping(event)) {
         this.spaceHeld = true;
@@ -229,16 +304,142 @@ export class PageEditor {
     this.pan = [0, 0];
   }
 
+  /** Ctrl+0: the whole spread, upright. */
+  fitView(): void {
+    this.resetView();
+    this.setRotation(0);
+  }
+
+  /** Turn the view by `degrees` (Shift + Space + drag turns it freely). */
+  rotateView(degrees: number): void {
+    this.setRotation(this.rotation + (degrees * Math.PI) / 180);
+  }
+
+  private setRotation(radians: number): void {
+    const full = Math.PI * 2;
+    this.rotation = ((((radians + Math.PI) % full) + full) % full) - Math.PI;
+    if (Math.abs(this.rotation) < 1e-9) this.rotation = 0;
+    this.applyViewTransform();
+    this.draw();
+    const degrees = Math.round((this.rotation * 180) / Math.PI);
+    this.host.status(degrees ? `画面を ${degrees}° 回しています（Ctrl+0 で戻す）` : "画面の回転を戻しました");
+  }
+
+  /** The middle of the stage (CSS px), which the view turns about. */
+  private centre(): Point {
+    const { width, height } = this.canvas.getBoundingClientRect();
+    return [width / 2, height / 2];
+  }
+
+  /** A vector turned by `radians`. */
+  private turn(x: number, y: number, radians: number): Point {
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    return [x * cos - y * sin, x * sin + y * cos];
+  }
+
+  /** Where an event is in the view before turning (what the pages are laid out in). */
+  private at(event: MouseEvent): Point {
+    if (!this.rotation) return [event.offsetX, event.offsetY];
+    const [cx, cy] = this.centre();
+    const [x, y] = this.turn(event.offsetX - cx, event.offsetY - cy, -this.rotation);
+    return [cx + x, cy + y];
+  }
+
+  /** Where a point of the unturned view shows on screen. */
+  private onScreen([x, y]: Point): Point {
+    if (!this.rotation) return [x, y];
+    const [cx, cy] = this.centre();
+    const [dx, dy] = this.turn(x - cx, y - cy, this.rotation);
+    return [cx + dx, cy + dy];
+  }
+
+  private angleAt(sx: number, sy: number): number {
+    const [cx, cy] = this.centre();
+    const [x, y] = this.turn(sx - cx, sy - cy, this.rotation);
+    return Math.atan2(y, x);
+  }
+
+  private applyViewTransform(): void {
+    const ratio = window.devicePixelRatio || 1;
+    this.ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    if (!this.rotation) return;
+    const [cx, cy] = this.centre();
+    this.ctx.translate(cx, cy);
+    this.ctx.rotate(this.rotation);
+    this.ctx.translate(-cx, -cy);
+  }
+
   setTool(tool: Tool): void {
     this.tool = tool;
     this.updateCursor();
+    this.renderBar();
     this.draw();
   }
 
   select(selection: Selection | null): void {
     this.selection = selection;
     this.host.selectionChanged(selection);
+    this.renderBar();
     this.draw();
+  }
+
+  /** Fill the action bar for the selection (or hide it). */
+  renderBar(): void {
+    const s = this.selection;
+    this.bar.replaceChildren(...(s && this.tool === "select" ? this.host.actions(s) : []));
+    this.placeBar();
+  }
+
+  /** The selection's box on screen (px), when its page is shown. */
+  private selectionScreenBox(): BoxMm | null {
+    const s = this.selection;
+    const slot = s && this.slots.find((x) => x.page.id === s.pageId);
+    if (!s || !slot) return null;
+    const page = slot.page;
+    let box: BoxMm | null = null;
+    if (s.kind === "panel") {
+      const panel = page.panels.find((p) => p.id === s.id);
+      if (panel) box = bounds(panel.shape);
+    } else if (s.kind === "line") {
+      const line = page.lines.find((l) => l.id === s.id);
+      if (line) box = bounds([[line.box[0], line.box[1]], [line.box[2], line.box[3]], ...(line.balloon ?? [])]);
+    } else if (s.kind === "breakout") {
+      const breakout = page.breakouts.find((b) => b.id === s.id);
+      if (breakout) box = bounds(breakout.shape);
+    } else if (s.kind === "sticky") {
+      const sticky = page.stickies?.find((n) => n.id === s.id);
+      if (sticky) box = stickyBox(sticky);
+    } else if (s.kind === "fill") {
+      const fill = page.fills?.find((f) => f.id === s.id);
+      if (fill) box = bounds(fill.shape);
+    } else {
+      box = baseBounds(transformBase(page, this.selectedItems()));
+    }
+    if (!box) return null;
+    const corners = [
+      [box[0], box[1]],
+      [box[2], box[1]],
+      [box[2], box[3]],
+      [box[0], box[3]],
+    ].map(([x, y]) => this.onScreen([slot.x + x * slot.scale, slot.y + y * slot.scale]));
+    return bounds(corners);
+  }
+
+  /** Put the bar above the selection (below it when there is no room), inside the stage. */
+  private placeBar(): void {
+    const box = this.drag || this.inline || !this.bar.childElementCount ? null : this.selectionScreenBox();
+    this.bar.hidden = !box;
+    if (!box) return;
+    const { width, height } = this.canvas.getBoundingClientRect();
+    const w = this.bar.offsetWidth;
+    const h = this.bar.offsetHeight;
+    // Clear of the turning handle above a transform frame.
+    let y = box[1] - h - ROTATE_GAP - 14;
+    if (y < 6) y = Math.min(box[3] + 14, height - h - 6);
+    const x = Math.min(Math.max((box[0] + box[2]) / 2 - w / 2, 6), width - w - 6);
+    this.bar.style.left = `${x}px`;
+    this.bar.style.top = `${Math.max(y, 6)}px`;
   }
 
   /** The page the selection is on, or the right page of the spread. */
@@ -260,7 +461,7 @@ export class PageEditor {
     const { width, height } = this.canvas.getBoundingClientRect();
     this.canvas.width = Math.round(width * ratio);
     this.canvas.height = Math.round(height * ratio);
-    this.ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    this.applyViewTransform();
     this.draw();
   }
 
@@ -365,8 +566,11 @@ export class PageEditor {
       cancelAnimationFrame(this.frame);
       this.frame = 0;
     }
+    if (this.overlayFrame) {
+      cancelAnimationFrame(this.overlayFrame);
+      this.overlayFrame = 0;
+    }
     const ctx = this.ctx;
-    const { width, height } = this.canvas.getBoundingClientRect();
     if (this.drag?.kind === "pen" && this.base) {
       // While a line is drawn nothing else changes: the pages as they were, then the line.
       ctx.save();
@@ -377,13 +581,51 @@ export class PageEditor {
       this.drawOverlay();
       return;
     }
-    ctx.clearRect(0, 0, width, height);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    // A turned view leaves the corners outside the pages: the stage colour there.
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.restore();
     const project = this.host.project();
     if (!project) return;
     this.slots = this.layout(project);
     for (const slot of this.slots) this.drawPage(project, slot);
     this.drawSpreadMark(project);
+    this.keepCache();
+    this.inline?.place();
+    this.placeBar();
     this.drawOverlay();
+  }
+
+  private keepCache(): void {
+    const cache = this.cache ?? document.createElement("canvas");
+    if (cache.width !== this.canvas.width || cache.height !== this.canvas.height) {
+      cache.width = this.canvas.width;
+      cache.height = this.canvas.height;
+    }
+    const ctx = cache.getContext("2d")!;
+    ctx.clearRect(0, 0, cache.width, cache.height);
+    ctx.drawImage(this.canvas, 0, 0);
+    this.cache = cache;
+  }
+
+  /** Redraw only what lies over the pages (hover marks, the eraser ring) on the next frame. */
+  private requestOverlay(): void {
+    if (this.frame || this.overlayFrame) return;
+    this.overlayFrame = requestAnimationFrame(() => {
+      this.overlayFrame = 0;
+      if (!this.cache || this.drag) {
+        this.draw();
+        return;
+      }
+      const ctx = this.ctx;
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      ctx.drawImage(this.cache, 0, 0);
+      ctx.restore();
+      this.drawOverlay();
+    });
   }
 
   /** 見開きページ: a mark under the gutter when the two pages go to CSP as one. */
@@ -441,6 +683,7 @@ export class PageEditor {
     const strokeColor = (stroke: Stroke) => (this.isSelected(page, "stroke", stroke.id) ? ACCENT : "#3a3834");
     drawStrokes(ctx, page, m, false, strokeColor, 0.7, brushes);
     drawPanelFills(ctx, page, m);
+    drawPageFills(ctx, page, m, (id) => (this.isSelected(page, "fill", id) ? ACCENT : null));
     const selectedPanel = page.panels.find((panel) => this.isSelected(page, "panel", panel.id));
     if (selectedPanel) {
       tracePath(ctx, selectedPanel.shape, m, true);
@@ -501,6 +744,7 @@ export class PageEditor {
 
     drawBalloons(ctx, page, m);
     for (const line of page.lines) this.drawLine(project, slot, line);
+    if (this.showNotes) for (const panel of page.panels) if (panel.note) this.drawNote(slot, panel);
     for (const sticky of page.stickies ?? []) this.drawSticky(slot, sticky);
     ctx.restore();
 
@@ -511,6 +755,50 @@ export class PageEditor {
     const memo = page.memo ? `  ${page.memo.split("\n")[0]}` : "";
     const [trimX0, , trimX1] = trimBox(project.pageFormat);
     ctx.fillText(`${slot.index + 1}${memo}`, sx((trimX0 + trimX1) / 2), sy(pageH) + 18);
+  }
+
+  /** Where a panel's memo sits on screen: inside its top-left corner, as wide as the panel allows. */
+  private noteBox(slot: Slot, panel: Panel): { x: number; y: number; w: number; h: number; rows: string[] } {
+    const [x0, y0, x1] = bounds(panel.shape);
+    const left = Math.max(x0, slot.shown[0]);
+    const right = Math.min(x1, slot.shown[1]);
+    const x = slot.x + left * slot.scale + 4;
+    const y = slot.y + Math.max(y0, 0) * slot.scale + 4;
+    // Leave room for the panel's number at the top right.
+    const room = Math.max(60, Math.min((right - left) * slot.scale - 8 - 2 * Math.max(4 * slot.scale, 7) - 6, 280));
+    const ctx = this.ctx;
+    ctx.font = NOTE_FONT;
+    const rows = panel.note ? wrapText(ctx, panel.note, room - 10, 4) : [];
+    const w = rows.length ? Math.min(room, Math.max(...rows.map((row) => ctx.measureText(row).width)) + 10) : 52;
+    return { x, y, w, h: Math.max(rows.length, 1) * NOTE_ROW + 4, rows };
+  }
+
+  /** A panel's memo, on a pale tag in its corner (screen only). */
+  private drawNote(slot: Slot, panel: Panel): void {
+    const ctx = this.ctx;
+    const { x, y, w, h, rows } = this.noteBox(slot, panel);
+    ctx.save();
+    ctx.fillStyle = "rgba(255, 246, 194, 0.92)";
+    ctx.strokeStyle = "rgba(170, 140, 40, 0.6)";
+    ctx.lineWidth = 1;
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    ctx.fillStyle = "#4a3f12";
+    ctx.font = NOTE_FONT;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    rows.forEach((row, i) => ctx.fillText(row, x + 5, y + 4 + i * NOTE_ROW));
+    ctx.restore();
+  }
+
+  /** The panel whose memo tag (or, for the panel under the pointer, its "＋メモ" tag) is at a screen point. */
+  private noteAt(slot: Slot, sx: number, sy: number): Panel | undefined {
+    const hovered = this.hover?.kind === "item" && this.hover.target.kind === "panel" ? this.hover.target.id : null;
+    return slot.page.panels.find((panel) => {
+      if (!(this.showNotes && panel.note) && panel.id !== hovered) return false;
+      const { x, y, w, h } = this.noteBox(slot, panel);
+      return sx >= x && sx <= x + w && sy >= y && sy <= y + h;
+    });
   }
 
   /** 付箋: a coloured note with its text; only here, never in exports. */
@@ -579,6 +867,57 @@ export class PageEditor {
   private drawOverlay(): void {
     const ctx = this.ctx;
     const drag = this.drag;
+    // Slots are laid out again on every draw: the hover's page as it is now placed.
+    const hoverSlot = this.hover && this.slots.find((s) => s.page.id === this.hover!.slot.page.id);
+    const seam = drag?.kind === "seam" ? drag : this.hover?.kind === "seam" && hoverSlot ? { slot: hoverSlot, seam: this.hover.seam } : null;
+    if (seam) {
+      // The border under the pointer (or being moved): its edges, thick.
+      const { slot } = seam;
+      ctx.save();
+      ctx.strokeStyle = ACCENT;
+      ctx.lineWidth = 3;
+      ctx.lineCap = "round";
+      for (const [a, b] of seamLines(slot.page, seam.seam)) {
+        ctx.beginPath();
+        ctx.moveTo(slot.x + a[0] * slot.scale, slot.y + a[1] * slot.scale);
+        ctx.lineTo(slot.x + b[0] * slot.scale, slot.y + b[1] * slot.scale);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    if (!drag && this.hover?.kind === "item" && hoverSlot) {
+      const { target } = this.hover;
+      const slot = hoverSlot;
+      const m = { scale: slot.scale, x: slot.x, y: slot.y };
+      ctx.save();
+      ctx.strokeStyle = "rgba(47, 111, 219, 0.55)";
+      ctx.lineWidth = 2;
+      if (target.kind === "panel") {
+        const panel = slot.page.panels.find((p) => p.id === target.id);
+        if (panel) {
+          tracePath(ctx, panel.shape, m, true);
+          ctx.stroke();
+          if (!panel.note || !this.showNotes) {
+            // An invitation to write the panel's memo right here.
+            const { x, y } = this.noteBox(slot, panel);
+            ctx.fillStyle = "rgba(255, 246, 194, 0.85)";
+            ctx.fillRect(x, y, 52, NOTE_ROW + 4);
+            ctx.fillStyle = "#7a6a2a";
+            ctx.font = NOTE_FONT;
+            ctx.textAlign = "left";
+            ctx.textBaseline = "top";
+            ctx.fillText("＋ メモ", x + 6, y + 4);
+          }
+        }
+      } else if (target.kind === "line") {
+        const line = slot.page.lines.find((l) => l.id === target.id);
+        if (line) {
+          const [x0, y0, x1, y1] = line.box;
+          ctx.strokeRect(slot.x + x0 * slot.scale - 3, slot.y + y0 * slot.scale - 3, (x1 - x0) * slot.scale + 6, (y1 - y0) * slot.scale + 6);
+        }
+      }
+      ctx.restore();
+    }
     if (drag && (drag.kind === "cut" || drag.kind === "frame")) {
       const { slot } = drag;
       const a = drag.a;
@@ -596,6 +935,16 @@ export class PageEditor {
         ctx.strokeRect(slot.x + x0 * slot.scale, slot.y + y0 * slot.scale, (x1 - x0) * slot.scale, (y1 - y0) * slot.scale);
       }
       ctx.setLineDash([]);
+    }
+    if (drag?.kind === "fill" && drag.points.length > 2) {
+      // The area as it will be filled, while it is drawn round.
+      const { slot } = drag;
+      tracePath(ctx, drag.points, { scale: slot.scale, x: slot.x, y: slot.y }, true);
+      ctx.fillStyle = this.fillTone === "black" ? "rgba(40, 38, 34, 0.55)" : this.fillTone === "gray" ? "rgba(150, 146, 140, 0.55)" : "rgba(255, 255, 255, 0.8)";
+      ctx.fill();
+      ctx.strokeStyle = ACCENT;
+      ctx.lineWidth = 1;
+      ctx.stroke();
     }
     if ((drag?.kind === "lasso" || drag?.kind === "pick" || drag?.kind === "eraseLasso") && drag.points.length > 1) {
       const { slot } = drag;
@@ -630,6 +979,7 @@ export class PageEditor {
       const stroke = { id: "", points, widthMm: this.penWidthMm, closed: false, brush: brush?.id, cut };
       drawStroke(ctx, stroke, { scale: slot.scale, x: slot.x, y: slot.y }, "#3a3834", 0.7, brush);
     }
+    this.drawFrame();
     if (this.erasing() && this.eraseMode !== "lasso" && this.pointer) {
       ctx.strokeStyle = ACCENT;
       ctx.lineWidth = 1;
@@ -637,6 +987,185 @@ export class PageEditor {
       ctx.arc(this.pointer[0], this.pointer[1], this.eraserRadiusPx(), 0, Math.PI * 2);
       ctx.stroke();
     }
+  }
+
+  // --- 変形（拡大縮小・回転・反転） -------------------------------------------------------
+
+  /** The rough lines and dialogue selected, which the transform frame works on. */
+  private selectedItems(): ItemRef[] {
+    const s = this.selection;
+    if (s?.kind === "group") return s.items ?? [];
+    if (s?.kind === "stroke") return [{ kind: "stroke", id: s.id }];
+    return [];
+  }
+
+  /** The transform frame on screen: its box (mm), slot and handle positions (px). */
+  private frameGeometry(): { slot: Slot; box: BoxMm; handles: Point[]; rotate: Point } | null {
+    if (this.tool !== "select" || !this.selection) return null;
+    const items = this.selectedItems();
+    const slot = this.slots.find((s) => s.page.id === this.selection!.pageId);
+    if (!items.length || !slot) return null;
+    const box = baseBounds(transformBase(slot.page, items));
+    if (!box) return null;
+    const pad = 3 / slot.scale;
+    const [x0, y0, x1, y1] = [box[0] - pad, box[1] - pad, box[2] + pad, box[3] + pad];
+    const sx = (x: number) => slot.x + x * slot.scale;
+    const sy = (y: number) => slot.y + y * slot.scale;
+    const [cx, cy] = [(x0 + x1) / 2, (y0 + y1) / 2];
+    const handles: Point[] = [
+      [sx(x0), sy(y0)],
+      [sx(x1), sy(y0)],
+      [sx(x1), sy(y1)],
+      [sx(x0), sy(y1)],
+      [sx(cx), sy(y0)],
+      [sx(x1), sy(cy)],
+      [sx(cx), sy(y1)],
+      [sx(x0), sy(cy)],
+    ];
+    return { slot, box: [x0, y0, x1, y1], handles, rotate: [sx(cx), sy(y0) - ROTATE_GAP] };
+  }
+
+  private drawFrame(): void {
+    const drag = this.drag;
+    if (drag && drag.kind !== "scale" && drag.kind !== "rotate") return;
+    const frame = this.frameGeometry();
+    if (!frame) return;
+    const ctx = this.ctx;
+    const [tl, tr, , bl] = frame.handles;
+    ctx.save();
+    ctx.strokeStyle = ACCENT;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.strokeRect(tl[0], tl[1], tr[0] - tl[0], bl[1] - tl[1]);
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo((tl[0] + tr[0]) / 2, tl[1]);
+    ctx.lineTo(...frame.rotate);
+    ctx.stroke();
+    ctx.fillStyle = "#ffffff";
+    ctx.lineWidth = 1.5;
+    for (const [x, y] of frame.handles) {
+      ctx.fillRect(x - HANDLE + 1, y - HANDLE + 1, 2 * HANDLE - 2, 2 * HANDLE - 2);
+      ctx.strokeRect(x - HANDLE + 1, y - HANDLE + 1, 2 * HANDLE - 2, 2 * HANDLE - 2);
+    }
+    ctx.beginPath();
+    ctx.arc(frame.rotate[0], frame.rotate[1], HANDLE, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** The frame handle at a screen point: 0..7, 8 for turning, or -1. */
+  private frameHandleAt(sx: number, sy: number): number {
+    const frame = this.frameGeometry();
+    if (!frame) return -1;
+    if (Math.hypot(frame.rotate[0] - sx, frame.rotate[1] - sy) <= HANDLE + 3) return FRAME_HANDLES;
+    return frame.handles.findIndex(([x, y]) => Math.abs(x - sx) <= HANDLE + 2 && Math.abs(y - sy) <= HANDLE + 2);
+  }
+
+  private static handleCursor(handle: number): string {
+    return handle === FRAME_HANDLES ? "grab" : ["nwse-resize", "nesw-resize", "nwse-resize", "nesw-resize", "ns-resize", "ew-resize", "ns-resize", "ew-resize"][handle];
+  }
+
+  /** Scale from the handle being dragged: the far side stays (the centre with Alt). */
+  private scaleFor(drag: Extract<Drag, { kind: "scale" }>, point: Point, free: boolean, fromCentre: boolean): Affine {
+    const [x0, y0, x1, y1] = drag.box;
+    const [cx, cy] = [(x0 + x1) / 2, (y0 + y1) / 2];
+    const at: Point[] = [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [cx, y0], [x1, cy], [cx, y1], [x0, cy]];
+    const handle = at[drag.handle];
+    const anchor: Point = fromCentre ? [cx, cy] : at[drag.handle < 4 ? (drag.handle + 2) % 4 : 4 + ((drag.handle - 2) % 4)];
+    const ratio = (i: 0 | 1) => {
+      const span = handle[i] - anchor[i];
+      return Math.abs(span) < 1e-6 ? 1 : Math.max(0.05, (point[i] - anchor[i]) / span);
+    };
+    if (drag.handle >= 4) return drag.handle % 2 === 0 ? scaling(1, ratio(1), anchor) : scaling(ratio(0), 1, anchor);
+    if (free) return scaling(ratio(0), ratio(1), anchor);
+    // Corners keep the proportions: how far along the diagonal the pointer is.
+    const [hx, hy] = [handle[0] - anchor[0], handle[1] - anchor[1]];
+    const s = Math.max(0.05, ((point[0] - anchor[0]) * hx + (point[1] - anchor[1]) * hy) / (hx * hx + hy * hy || 1));
+    return scaling(s, s, anchor);
+  }
+
+  /** 左右反転 / 上下反転 / 90° turns of the selected rough lines and dialogue. */
+  transformSelection(how: "flipH" | "flipV" | "left" | "right"): boolean {
+    const page = this.focusPage();
+    const items = this.selectedItems();
+    if (!page || !items.length) return false;
+    const base = transformBase(page, items);
+    const box = baseBounds(base);
+    if (!box) return false;
+    const centre: Point = [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2];
+    const m =
+      how === "flipH" ? scaling(-1, 1, centre) : how === "flipV" ? scaling(1, -1, centre) : rotation(((how === "right" ? 1 : -1) * Math.PI) / 2, centre);
+    this.host.begin();
+    transformItems(page, base, m);
+    assignPanels(page);
+    sortLines(page);
+    this.host.commit();
+    this.draw();
+    return true;
+  }
+
+  // --- コピー・貼り付け -------------------------------------------------------------
+
+  /** Copy what is selected; with `cut`, take it away too (the caller deletes). */
+  copy(): boolean {
+    const page = this.focusPage();
+    const s = this.selection;
+    if (!page || !s) return false;
+    const panel = s.kind === "panel" ? page.panels.find((p) => p.id === s.id) : undefined;
+    const clip = copySelection(page, s, panel ? panelContents(page, panel) : undefined);
+    if (!clip) return false;
+    this.clip = clip;
+    this.pastes = 0;
+    const count = clip.panels.length + clip.strokes.length + clip.lines.length + clip.breakouts.length + clip.stickies.length + (clip.fills?.length ?? 0);
+    this.host.status(`${clip.panels.length ? "コマと中身" : `${count} 個`}をコピーしました。Ctrl+V で、ポインターのあるページに貼り付けます`);
+    return true;
+  }
+
+  get canPaste(): boolean {
+    return this.clip !== null;
+  }
+
+  /**
+   * Paste onto the page under the pointer (or the selection's page, or the
+   * right page of the spread): where it was on its page, a little lower
+   * right each time it goes onto its own page again.
+   */
+  paste(): boolean {
+    const project = this.host.project();
+    if (!project || !this.clip) return false;
+    const under = this.pointer && this.slotAt(this.pointer[0], this.pointer[1], project);
+    const selected = this.selection && this.slots.find((slot) => slot.page.id === this.selection!.pageId);
+    const slot = under || selected || [...this.slots].sort((a, b) => b.x - a.x)[0];
+    if (!slot) return false;
+    const page = slot.page;
+    if (page.id === this.clip.pageId) this.pastes += 1;
+    const shift = page.id === this.clip.pageId ? this.pastes * 5 : 0;
+    this.host.begin();
+    const pasted = pasteClip(project, page, this.clip, [shift, shift]);
+    this.host.commit();
+    const items = [...pasted.strokes.map((id) => ({ kind: "stroke" as const, id })), ...pasted.lines.map((id) => ({ kind: "line" as const, id }))];
+    if (pasted.panels.length) this.select({ kind: "panel", pageId: page.id, id: pasted.panels[0] });
+    else if (items.length > 1) this.select({ kind: "group", pageId: page.id, id: "group", items });
+    else if (items.length) this.select({ kind: items[0].kind, pageId: page.id, id: items[0].id });
+    else if (pasted.breakouts.length) this.select({ kind: "breakout", pageId: page.id, id: pasted.breakouts[0] });
+    else if (pasted.stickies.length) this.select({ kind: "sticky", pageId: page.id, id: pasted.stickies[0] });
+    else if (pasted.fills.length) this.select({ kind: "fill", pageId: page.id, id: pasted.fills[0] });
+    this.host.status(`${slot.index + 1} ページに貼り付けました`);
+    return true;
+  }
+
+  /** Ctrl+A: every rough line and line of dialogue on the page. */
+  selectAll(): boolean {
+    const page = this.focusPage();
+    if (!page) return false;
+    const items = [...page.strokes.map((s) => ({ kind: "stroke" as const, id: s.id })), ...page.lines.map((l) => ({ kind: "line" as const, id: l.id }))];
+    if (!items.length) return false;
+    this.setTool("select");
+    this.select(items.length === 1 ? { kind: items[0].kind, pageId: page.id, id: items[0].id } : { kind: "group", pageId: page.id, id: "group", items });
+    this.host.status(`線 ${page.strokes.length} 本・セリフ ${page.lines.length} 個を選びました。枠の四角で大きさ、丸で向きを変えられます`);
+    return true;
   }
 
   /** The brush chosen for the pen or the eraser, if it is still in the project. */
@@ -699,6 +1228,9 @@ export class PageEditor {
     }
     for (const stroke of [...page.strokes].reverse()) {
       if (strokeHit(stroke, point, tolerance)) return { kind: "stroke", pageId: page.id, id: stroke.id };
+    }
+    for (const fill of [...(page.fills ?? [])].reverse()) {
+      if (insidePolygon(fill.shape, point)) return { kind: "fill", pageId: page.id, id: fill.id };
     }
     for (const breakout of [...page.breakouts].reverse()) {
       if (insidePolygon(breakout.shape, point)) return { kind: "breakout", pageId: page.id, id: breakout.id };
@@ -768,22 +1300,41 @@ export class PageEditor {
       text: "text",
       pen: "crosshair",
       eraser: "none",
+      fill: "crosshair",
       breakout: "crosshair",
       sticky: "copy",
     };
     const eraser = this.eraseMode === "lasso" ? "crosshair" : "none";
-    this.canvas.style.cursor = this.spaceHeld ? "grab" : this.tipEraser ? eraser : this.tool === "eraser" ? eraser : cursors[this.tool];
+    const hover =
+      this.tool === "select" && this.hover
+        ? this.hover.kind === "seam"
+          ? PageEditor.seamCursor(this.hover.seam)
+          : this.hover.kind === "handle"
+            ? PageEditor.handleCursor(this.hover.handle)
+            : "move"
+        : null;
+    this.canvas.style.cursor = this.spaceHeld ? "grab" : this.tipEraser ? eraser : this.tool === "eraser" ? eraser : hover ?? cursors[this.tool];
   }
 
   private pointerDown(event: PointerEvent): void {
     const project = this.host.project();
     if (!project) return;
+    // A click away from text being written only ends the writing.
+    if (this.inline) {
+      this.inline.finish(true);
+      return;
+    }
     try {
       this.canvas.setPointerCapture(event.pointerId);
     } catch {
       // A pointer the browser no longer tracks: carry on without capture.
     }
-    const { offsetX: sx, offsetY: sy } = event;
+    const [sx, sy] = this.at(event);
+    // Shift + Space: turn the view (as in CSP); Space or the middle button: move it.
+    if (this.spaceHeld && event.shiftKey) {
+      this.drag = { kind: "turn", from: this.angleAt(sx, sy), rotation: this.rotation };
+      return;
+    }
     if (event.button === 1 || this.spaceHeld) {
       this.drag = { kind: "pan", x: event.clientX, y: event.clientY };
       return;
@@ -799,6 +1350,29 @@ export class PageEditor {
     const point = this.toPage(slot, sx, sy);
     switch (this.tipEraser ? "eraser" : this.tool) {
       case "select": {
+        // The transform frame of the selected rough lines and dialogue.
+        const handle = this.frameHandleAt(sx, sy);
+        if (handle >= 0) {
+          const items = this.selectedItems();
+          const base = transformBase(slot.page, items);
+          const frame = this.frameGeometry()!;
+          this.host.begin();
+          if (handle === FRAME_HANDLES) {
+            const [x0, y0, x1, y1] = frame.box;
+            const centre: Point = [(x0 + x1) / 2, (y0 + y1) / 2];
+            this.drag = { kind: "rotate", slot: frame.slot, base, centre, start: Math.atan2(point[1] - centre[1], point[0] - centre[0]), moved: false };
+          } else {
+            this.drag = { kind: "scale", slot: frame.slot, handle, base, box: frame.box, moved: false };
+          }
+          return;
+        }
+        // A panel's memo tag: write in it right there.
+        const noted = this.noteAt(slot, sx, sy);
+        if (noted) {
+          this.select({ kind: "panel", pageId: slot.page.id, id: noted.id });
+          this.afterUp = () => this.editInPlace(slot.page.id, "note", noted.id);
+          return;
+        }
         // コマの入れ替え: drag a panel's number (or Alt + drag the panel) onto another panel.
         const numbered = this.badgeAt(slot, sx, sy, project.pageFormat.canvasMm[0]);
         const altPanel = event.altKey ? this.panelAt(slot.page, point) : undefined;
@@ -823,6 +1397,23 @@ export class PageEditor {
           return;
         }
         const target = this.hit(slot, point);
+        // コマの境目: the gutter or an edge moves, the panels on both sides with it.
+        if (!target || target.kind === "panel") {
+          const seam = seamAt(slot.page, point, 6 / slot.scale);
+          if (seam) {
+            this.host.begin();
+            const carried = new Map<string, CarriedContents>();
+            if (this.panelCarries) {
+              for (const id of new Set(seam.edges.map((edge) => edge.panelId))) {
+                const panel = slot.page.panels.find((p) => p.id === id);
+                if (panel) carried.set(id, carryContents(slot.page, panel));
+              }
+            }
+            this.drag = { kind: "seam", slot, seam, base: seamBase(slot.page, seam), start: point, moved: false, carried };
+            this.hover = null;
+            return;
+          }
+        }
         // Inside a 範囲選択: drag the whole group.
         if (this.selection?.kind === "group" && this.selection.pageId === slot.page.id && (!target || this.isSelected(slot.page, target.kind, target.id))) {
           if (this.groupHit(slot.page, point, 4 / slot.scale)) {
@@ -854,27 +1445,34 @@ export class PageEditor {
         return;
       }
       case "text": {
+        // Write straight onto the page: a new line, or the one clicked.
         const hit = this.hit(slot, point);
         if (hit?.kind === "line") {
           this.select(hit);
+          this.afterUp = () => this.editInPlace(slot.page.id, "line", hit.id);
           return;
         }
         this.host.begin();
         const line = addLine(project, slot.page, point);
         this.host.commit();
         this.select({ kind: "line", pageId: slot.page.id, id: line.id });
+        this.afterUp = () => this.editInPlace(slot.page.id, "line", line.id);
         return;
       }
       case "pen": {
         // Keep tilt and speed only for brushes that change with them.
         const motion = usesMotion(this.brush("pen"));
         const first: StrokePoint = motion ? [...point, pressureOf(event), tiltOf(event), 0] : [...point, pressureOf(event)];
-        this.drag = { kind: "pen", slot, points: [first], last: first, motion, time: event.timeStamp, speed: 0 };
+        // Shift: a straight line from where the pen went down.
+        this.drag = { kind: "pen", slot, points: [first], last: first, motion, time: event.timeStamp, speed: 0, straight: event.shiftKey };
         this.captureBase();
         return;
       }
       case "breakout":
         this.drag = { kind: "lasso", slot, points: [point] };
+        return;
+      case "fill":
+        this.drag = { kind: "fill", slot, points: [point] };
         return;
       case "sticky": {
         // On a note: pick it up to move; elsewhere: a new note there.
@@ -919,28 +1517,41 @@ export class PageEditor {
   }
 
   private pointerMove(event: PointerEvent): void {
-    this.pointer = [event.offsetX, event.offsetY];
+    const [ex, ey] = this.at(event);
+    this.pointer = [ex, ey];
     const drag = this.drag;
     if (!drag) {
       this.setTipEraser(event);
-      if (this.erasing()) this.requestDraw();
+      this.scheduleHover(ex, ey);
+      if (this.erasing()) this.requestOverlay();
       return;
     }
     if (drag.kind === "pan") {
-      this.pan[0] += event.clientX - drag.x;
-      this.pan[1] += event.clientY - drag.y;
+      // The pages follow the hand on screen, however the view is turned.
+      const [dx, dy] = this.turn(event.clientX - drag.x, event.clientY - drag.y, -this.rotation);
+      this.pan[0] += dx;
+      this.pan[1] += dy;
       drag.x = event.clientX;
       drag.y = event.clientY;
       this.requestDraw();
       return;
     }
-    const point = this.toPage(drag.slot, event.offsetX, event.offsetY);
+    if (drag.kind === "turn") {
+      // The angle on screen: turning the view moves the local frame along.
+      const [lx, ly] = this.at(event);
+      const [wx, wy] = this.turn(lx - this.centre()[0], ly - this.centre()[1], this.rotation);
+      let rotation = drag.rotation + Math.atan2(wy, wx) - drag.from;
+      if (event.altKey) rotation = Math.round(rotation / (Math.PI / 12)) * (Math.PI / 12);
+      this.setRotation(rotation);
+      return;
+    }
+    const point = this.toPage(drag.slot, ex, ey);
     const project = this.host.project()!;
     switch (drag.kind) {
       case "swap": {
         // The panel under the pointer, on this page or the facing one.
-        const under = this.slotAt(event.offsetX, event.offsetY, project);
-        const target = under && this.panelAt(under.page, this.toPage(under, event.offsetX, event.offsetY));
+        const under = this.slotAt(ex, ey, project);
+        const target = under && this.panelAt(under.page, this.toPage(under, ex, ey));
         drag.to = under && target && !(under.page === drag.slot.page && target.id === drag.panelId) ? { slot: under, panelId: target.id } : null;
         break;
       }
@@ -952,6 +1563,37 @@ export class PageEditor {
         this.follow(drag.slot.page, drag.carried);
         drag.last = point;
         drag.moved = true;
+        break;
+      }
+      case "scale": {
+        const m = this.scaleFor(drag, point, event.shiftKey, event.altKey);
+        transformItems(drag.slot.page, drag.base, m);
+        drag.moved = true;
+        this.host.status(`大きさ ${Math.round(m[0] * 100)}% × ${Math.round(m[3] * 100)}%（Shift で縦横別々、Alt で中心から）`);
+        break;
+      }
+      case "rotate": {
+        let angle = Math.atan2(point[1] - drag.centre[1], point[0] - drag.centre[0]) - drag.start;
+        const step = Math.PI / 12;
+        if (event.shiftKey) angle = Math.round(angle / step) * step;
+        transformItems(drag.slot.page, drag.base, rotation(angle, drag.centre));
+        drag.moved = true;
+        const degrees = ((Math.round((angle * 180) / Math.PI) % 360) + 540) % 360 - 180;
+        this.host.status(`${degrees}° 回しています（Shift で 15° ずつ）`);
+        break;
+      }
+      case "seam": {
+        const { seam } = drag;
+        let distance = (point[0] - drag.start[0]) * seam.normal[0] + (point[1] - drag.start[1]) * seam.normal[1];
+        if (this.snap && !event.altKey) distance = snapSeam(seam, distance, snapLines(project.pageFormat), 8 / drag.slot.scale);
+        const moved = moveSeam(drag.slot.page, drag.base, seam, distance);
+        for (const [id, carried] of drag.carried) {
+          const panel = drag.slot.page.panels.find((p) => p.id === id);
+          if (panel) followPanel(drag.slot.page, panel, carried);
+        }
+        drag.moved = drag.moved || Math.abs(moved) > 0.01;
+        const what = seam.between ? "間白" : "コマの辺";
+        this.host.status(`${what}を ${Math.abs(moved).toFixed(1)} mm 動かしています（Alt で吸い付かない）`);
         break;
       }
       case "vertex": {
@@ -973,6 +1615,7 @@ export class PageEditor {
         break;
       }
       case "lasso":
+      case "fill":
       case "pick":
       case "eraseLasso":
         drag.points.push(point);
@@ -983,11 +1626,18 @@ export class PageEditor {
         if (drag.kind === "cut") drag.free = event.altKey;
         break;
       case "pen": {
+        if (drag.straight) {
+          const [x, y] = straightEnd(drag.points[0], point);
+          const end: StrokePoint = drag.motion ? [x, y, pressureOf(event), tiltOf(event), 0] : [x, y, pressureOf(event)];
+          drag.points = [drag.points[0], end];
+          drag.last = end;
+          break;
+        }
         // 手ブレ補正: each point moves only part of the way towards the pen.
         const brush = this.brush("pen");
         const events = event.getCoalescedEvents?.() ?? [event];
         for (const e of events.length ? events : [event]) {
-          const [x, y] = this.toPage(drag.slot, e.offsetX, e.offsetY);
+          const [x, y] = this.toPage(drag.slot, ...this.at(e));
           const seconds = (e.timeStamp - drag.time) / 1000;
           if (seconds > 0) {
             const speed = Math.hypot(x - drag.last[0], y - drag.last[1]) / seconds / FULL_SPEED_MM;
@@ -1007,8 +1657,8 @@ export class PageEditor {
       }
       case "erase": {
         // The eraser goes on across the gutter onto the facing page.
-        const under = this.slotAt(event.offsetX, event.offsetY, project) ?? drag.slot;
-        this.erase(under, this.toPage(under, event.offsetX, event.offsetY));
+        const under = this.slotAt(ex, ey, project) ?? drag.slot;
+        this.erase(under, this.toPage(under, ex, ey));
         break;
       }
     }
@@ -1019,6 +1669,9 @@ export class PageEditor {
     const drag = this.drag;
     this.drag = null;
     this.base = null;
+    const after = this.afterUp;
+    this.afterUp = null;
+    if (after) setTimeout(after, 0);
     if (!drag) return;
     const project = this.host.project();
     if (!project) return;
@@ -1051,6 +1704,21 @@ export class PageEditor {
         if (drag.moved) this.host.commit();
         else this.host.cancel();
         break;
+      case "fill": {
+        const shape = simplify(
+          drag.points.map(([x, y]) => [x, y, 1] as [number, number, number]),
+          0.4,
+        ).map(([x, y]) => [x, y] as Point);
+        const box = bounds(shape);
+        if (shape.length < 3 || box[2] - box[0] < 1 || box[3] - box[1] < 1) {
+          this.host.status("塗る所を囲むようにドラッグしてください");
+          break;
+        }
+        this.host.begin();
+        addFill(project, drag.slot.page, shape, this.fillTone);
+        this.host.commit();
+        break;
+      }
       case "lasso": {
         const shape = simplify(
           drag.points.map(([x, y]) => [x, y, 1] as [number, number, number]),
@@ -1115,11 +1783,16 @@ export class PageEditor {
       }
       case "pen": {
         this.host.begin();
-        // The smoothed line catches up with where the pen left the page.
-        if (drag.points.length > 1) drag.points.push(drag.last);
         const brushId = this.brush("pen")?.id;
-        // 後補正: the finished line loses its wobble.
-        drag.points = postCorrect(drag.points, this.brush("pen")?.postCorrection ?? 0);
+        if (drag.straight) {
+          // Points along the line, so that pressure and 入り抜き work along it.
+          drag.points = densify(drag.points);
+        } else {
+          // The smoothed line catches up with where the pen left the page.
+          if (drag.points.length > 1) drag.points.push(drag.last);
+          // 後補正: the finished line loses its wobble.
+          drag.points = postCorrect(drag.points, this.brush("pen")?.postCorrection ?? 0);
+        }
         // Begun inside a はみ出し: the line goes over the panel borders.
         const [bx, by] = drag.points[0];
         const over = drag.slot.page.breakouts.some((breakout) => insidePolygon(breakout.shape, [bx, by]));
@@ -1161,7 +1834,33 @@ export class PageEditor {
         this.host.status(`コマ ${from.order} とコマ ${target.order} の中身を入れ替えました（元に戻すは Ctrl+Z）`);
         break;
       }
+      case "scale":
+      case "rotate":
+        if (!drag.moved) {
+          this.host.cancel();
+          break;
+        }
+        assignPanels(drag.slot.page);
+        sortLines(drag.slot.page);
+        this.host.commit();
+        break;
+      case "seam": {
+        if (!drag.moved) {
+          this.host.cancel();
+          // A click on an edge picks the panel there.
+          const panel = this.panelAt(drag.slot.page, drag.start) ?? drag.slot.page.panels.find((p) => p.id === drag.seam.edges[0].panelId);
+          this.select(panel ? { kind: "panel", pageId: drag.slot.page.id, id: panel.id } : null);
+          break;
+        }
+        orderPanels(drag.slot.page, project.binding);
+        assignPanels(drag.slot.page);
+        sortLines(drag.slot.page);
+        this.host.commit();
+        this.host.status(drag.seam.between ? "間白を動かしました（両側のコマが一緒に）" : "コマの辺を動かしました");
+        break;
+      }
       case "pan":
+      case "turn":
         break;
     }
     if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId);
@@ -1191,6 +1890,9 @@ export class PageEditor {
     } else if (s.kind === "sticky") {
       const sticky = page.stickies?.find((n) => n.id === s.id);
       if (sticky) sticky.at = [sticky.at[0] + dx, sticky.at[1] + dy];
+    } else if (s.kind === "fill") {
+      const fill = page.fills?.find((f) => f.id === s.id);
+      if (fill) fill.shape = fill.shape.map(([x, y]) => [x + dx, y + dy]);
     } else if (s.kind === "group") {
       for (const item of s.items ?? []) {
         if (item.kind === "line") {
@@ -1212,6 +1914,204 @@ export class PageEditor {
     const s = this.selection;
     const panel = carried && s?.kind === "panel" ? page.panels.find((p) => p.id === s.id) : undefined;
     if (panel && carried) followPanel(page, panel, carried);
+  }
+
+  /** Look for what is under the pointer once a frame, however often it moves. */
+  private scheduleHover(sx: number, sy: number): void {
+    this.hoverAt = [sx, sy];
+    if (this.hoverFrame) return;
+    this.hoverFrame = requestAnimationFrame(() => {
+      this.hoverFrame = 0;
+      if (this.hoverAt && !this.drag) this.updateHover(...this.hoverAt);
+    });
+  }
+
+  /** What the select tool would grab here: shown by a mark and the cursor. */
+  private updateHover(sx: number, sy: number): void {
+    const project = this.host.project();
+    let hover: Hover | null = null;
+    if (project && this.tool === "select" && !this.spaceHeld && !this.tipEraser) {
+      const slot = this.slotAt(sx, sy, project);
+      const frameHandle = this.frameHandleAt(sx, sy);
+      if (frameHandle >= 0 && slot) hover = { kind: "handle", slot, handle: frameHandle };
+      else if (slot) {
+        const point = this.toPage(slot, sx, sy);
+        const onHandle =
+          this.vertexAt(slot, sx, sy) >= 0 || this.tailAt(slot, sx, sy) >= 0 || !!this.badgeAt(slot, sx, sy, project.pageFormat.canvasMm[0]);
+        const target = onHandle ? null : this.hit(slot, point);
+        if (!onHandle && (!target || target.kind === "panel")) {
+          const seam = seamAt(slot.page, point, 6 / slot.scale);
+          if (seam) hover = { kind: "seam", slot, seam };
+        }
+        if (!hover && target) hover = { kind: "item", slot, target };
+      }
+    }
+    const key = (h: Hover | null) =>
+      !h ? "" : h.kind === "handle" ? `handle:${h.handle}` : h.kind === "seam" ? `seam:${h.slot.page.id}:${h.seam.edges.map((e) => `${e.panelId}.${e.edge}`).join(",")}` : `item:${h.target.pageId}:${h.target.kind}:${h.target.id}`;
+    if (key(hover) === key(this.hover)) return;
+    this.hover = hover;
+    this.updateCursor();
+    this.requestOverlay();
+  }
+
+  /** The cursor for moving a border: across it. */
+  private static seamCursor(seam: Seam): string {
+    const [nx, ny] = seam.normal;
+    if (Math.abs(ny) > 2 * Math.abs(nx)) return "ns-resize";
+    if (Math.abs(nx) > 2 * Math.abs(ny)) return "ew-resize";
+    return nx * ny > 0 ? "nwse-resize" : "nesw-resize";
+  }
+
+  private doubleClick(event: MouseEvent): void {
+    const project = this.host.project();
+    if (!project || this.tool !== "select") return;
+    const [ex, ey] = this.at(event);
+    const slot = this.slotAt(ex, ey, project);
+    if (!slot) return;
+    const point = this.toPage(slot, ex, ey);
+    const target = this.hit(slot, point);
+    // Dialogue: write it right there.
+    if (target?.kind === "line") {
+      this.editInPlace(slot.page.id, "line", target.id);
+      return;
+    }
+    if (target && target.kind !== "panel") return;
+    // Inside a panel: its memo.
+    const panel = this.panelAt(slot.page, point);
+    if (panel) {
+      this.select({ kind: "panel", pageId: slot.page.id, id: panel.id });
+      this.editInPlace(slot.page.id, "note", panel.id);
+      return;
+    }
+    // つなげる: double-click the gutter between two panels.
+    const seam = seamAt(slot.page, point, 6 / slot.scale);
+    if (!seam?.between) return;
+    const ids = [...new Set(seam.edges.map((edge) => edge.panelId))];
+    if (ids.length !== 2) {
+      this.host.status("つなげられるのは、境目の両側が 1 コマずつのときです");
+      return;
+    }
+    const [a, b] = ids.map((id) => slot.page.panels.find((p) => p.id === id)!).sort((x, y) => x.order - y.order);
+    this.host.begin();
+    if (!joinPanels(slot.page, a, b, project.binding)) {
+      this.host.cancel();
+      this.host.status("この 2 つのコマは形がそろっていないか見開きなので、つなげられません");
+      return;
+    }
+    assignPanels(slot.page);
+    sortLines(slot.page);
+    this.host.commit();
+    this.hover = null;
+    this.select({ kind: "panel", pageId: slot.page.id, id: a.id });
+    this.host.status(`コマ ${a.order} と隣のコマをつなげました（元に戻すは Ctrl+Z）`);
+  }
+
+  /** Whether text is being written on the page right now. */
+  get editingInPlace(): boolean {
+    return this.inline !== null;
+  }
+
+  /**
+   * Write a panel's memo or a line of dialogue in a field laid over the page,
+   * where it is. The page follows each key; Ctrl+Enter or a click elsewhere
+   * keeps it (one undo step), Esc puts it back.
+   */
+  editInPlace(pageId: string, kind: "note" | "line", id: string): void {
+    this.inline?.finish(true);
+    const project = this.host.project();
+    const page = project?.pages.find((p) => p.id === pageId);
+    const panel = kind === "note" ? page?.panels.find((p) => p.id === id) : undefined;
+    const line = kind === "line" ? page?.lines.find((l) => l.id === id) : undefined;
+    if (!page || (!panel && !line)) return;
+    if (!this.slots.some((slot) => slot.page.id === pageId)) this.showPage(pageIndex(project!, pageId) + 1);
+    const field = document.createElement("textarea");
+    field.className = `inline-edit ${kind}`;
+    field.spellcheck = false;
+    const original = (panel ? panel.note : line!.text) ?? "";
+    field.value = original;
+    if (panel) field.placeholder = "このコマのメモ（狙い・演出・直したいこと）";
+    const apply = (value: string) => {
+      if (panel) {
+        if (value.trim()) panel.note = value;
+        else delete panel.note;
+      } else if (line) {
+        line.text = value;
+        fitLine(line);
+      }
+    };
+    const place = () => {
+      const slot = this.slots.find((s) => s.page.id === pageId);
+      if (!slot) return;
+      const style = field.style;
+      if (panel) {
+        const { x, y } = this.noteBox(slot, panel);
+        const [x0, , x1] = bounds(panel.shape);
+        const [left, top] = this.onScreen([x, y]);
+        style.left = `${left}px`;
+        style.top = `${top}px`;
+        style.width = `${Math.max(180, Math.min((x1 - x0) * slot.scale - 8, 320))}px`;
+        style.height = `${NOTE_ROW * 4 + 8}px`;
+        style.font = NOTE_FONT;
+        style.writingMode = "horizontal-tb";
+      } else if (line) {
+        const [x0, y0, x1] = line.box;
+        // Never smaller than can be read, even when the page is shown small.
+        const size = Math.max(line.fontSizePt * MM_PER_PT * slot.scale, 12);
+        const pad = 6;
+        style.font = `${line.emphasis ? "bold " : ""}${size}px "Yu Gothic", "Hiragino Sans", "Noto Sans JP", sans-serif`;
+        style.writingMode = line.vertical ? "vertical-rl" : "horizontal-tb";
+        const rows = field.value.replace(/\r\n?/g, "\n").split("\n");
+        const longest = Math.max(1, ...rows.map((row) => [...row].length));
+        // Room for one more character and one more row, so the caret is never squeezed.
+        const across = (rows.length + 1) * size * LINE_PITCH + 2 * pad;
+        const along = (longest + 1) * size + 2 * pad;
+        const [w, h] = line.vertical ? [across, along] : [along, across];
+        // Vertical text starts at the right, as it is read.
+        const [ax, ay] = this.onScreen([line.vertical ? slot.x + x1 * slot.scale + pad : slot.x + x0 * slot.scale - pad, slot.y + y0 * slot.scale - pad]);
+        style.left = `${line.vertical ? ax - w : ax}px`;
+        style.top = `${ay}px`;
+        style.width = `${w}px`;
+        style.height = `${h}px`;
+        style.lineHeight = String(LINE_PITCH);
+      }
+    };
+    this.host.begin();
+    let done = false;
+    const finish = (keep: boolean) => {
+      if (done) return;
+      done = true;
+      if (this.inline?.field === field) this.inline = null;
+      if (!keep) apply(original);
+      field.remove();
+      if (keep && field.value !== original) {
+        this.host.commit();
+        this.host.status(panel ? "コマのメモを書きました" : "セリフを直しました");
+      } else {
+        this.host.cancel();
+        this.host.status("");
+      }
+      this.draw();
+    };
+    field.addEventListener("input", () => {
+      apply(field.value);
+      this.draw();
+    });
+    field.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        finish(false);
+      } else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        finish(true);
+      }
+    });
+    field.addEventListener("blur", () => finish(true));
+    this.inline = { field, place, finish };
+    this.canvas.parentElement!.append(field);
+    place();
+    field.focus();
+    if (line && line.text === "セリフ") field.select();
+    this.host.status(panel ? "コマのメモを書いています（Ctrl+Enter かほかを押すと決定、Esc でやめる）" : "セリフを書いています（改行で行を分ける。Ctrl+Enter かほかを押すと決定、Esc でやめる）");
   }
 
   /** Nudge the selection with the arrow keys (mm). */
@@ -1238,8 +2138,9 @@ export class PageEditor {
     const { width, height } = this.canvas.getBoundingClientRect();
     const cx = width / 2 + this.pan[0];
     const cy = height / 2 + this.pan[1];
-    this.pan[0] += (event.offsetX - cx) * (1 - applied);
-    this.pan[1] += (event.offsetY - cy) * (1 - applied);
+    const [ex, ey] = this.at(event);
+    this.pan[0] += (ex - cx) * (1 - applied);
+    this.pan[1] += (ey - cy) * (1 - applied);
     this.zoom = zoom;
     this.draw();
   }
@@ -1255,3 +2156,24 @@ export function isTyping(event: KeyboardEvent): boolean {
   const target = event.target as HTMLElement | null;
   return !!target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable);
 }
+
+/** Break `text` into rows no wider than `width` px, at most `max` rows (the last ends in …). */
+function wrapText(ctx: CanvasRenderingContext2D, text: string, width: number, max: number): string[] {
+  const rows: string[] = [];
+  for (const paragraph of text.replace(/\r\n?/g, "\n").split("\n")) {
+    let row = "";
+    for (const char of paragraph) {
+      if (row && ctx.measureText(row + char).width > width) {
+        rows.push(row);
+        row = "";
+      }
+      row += char;
+    }
+    rows.push(row);
+  }
+  if (rows.length <= max) return rows;
+  const kept = rows.slice(0, max);
+  kept[max - 1] = `${kept[max - 1].slice(0, -1)}…`;
+  return kept;
+}
+

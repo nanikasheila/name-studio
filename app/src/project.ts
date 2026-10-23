@@ -189,6 +189,26 @@ export interface Page {
   joinNext?: boolean;
   /** 付箋: notes stuck on the page while working (never exported). */
   stickies?: Sticky[];
+  /** 塗り: areas filled by lasso (ベタ and the like), drawn with the panel fills. */
+  fills?: Fill[];
+}
+
+export type FillTone = "black" | "gray" | "white";
+
+export const TONE_LABELS: Record<FillTone, string> = { black: "黒（ベタ）", gray: "グレー", white: "白" };
+
+/** 投げなわ塗り: an outline filled with one tone (black when none is given). */
+export interface Fill {
+  id: string;
+  shape: Point[];
+  tone?: FillTone;
+}
+
+export function addFill(project: Project, page: Page, shape: Point[], tone: FillTone): Fill {
+  const fill: Fill = { id: newId(project, "fill"), shape };
+  if (tone !== "black") fill.tone = tone;
+  page.fills = [...(page.fills ?? []), fill];
+  return fill;
 }
 
 export type StickyColor = "yellow" | "pink" | "blue" | "green";
@@ -1119,6 +1139,10 @@ export function eraseInside(project: Project, page: Page, shape: readonly Point[
     }
   }
   page.strokes = result;
+  // Fills go when most of their outline is inside.
+  const fills = (page.fills ?? []).filter((fill) => fill.shape.filter((p) => insidePolygon(shape, p)).length < fill.shape.length / 2);
+  changed += (page.fills?.length ?? 0) - fills.length;
+  if (page.fills) page.fills = fills;
   return changed;
 }
 
@@ -1234,14 +1258,17 @@ export function panelContents(page: Page, panel: Panel): { strokes: string[]; li
 /** The contents of a panel as they were, to follow the panel as it changes. */
 export interface CarriedContents {
   box: BoxMm;
+  fills?: { id: string; shape: Point[] }[];
   strokes: { id: string; points: StrokePoint[] }[];
   lines: { id: string; box: BoxMm; balloon?: Point[]; tails?: Point[] }[];
 }
 
 export function carryContents(page: Page, panel: Panel): CarriedContents {
   const { strokes, lines } = panelContents(page, panel);
+  const owned = (page.fills ?? []).filter((fill) => ownerAt(page, centroid(fill.shape))?.id === panel.id);
   return {
     box: bounds(panel.shape),
+    ...(owned.length ? { fills: owned.map((fill) => ({ id: fill.id, shape: fill.shape.map((p) => [...p] as Point) })) } : {}),
     strokes: page.strokes.filter((s) => strokes.includes(s.id)).map((s) => ({ id: s.id, points: s.points.map((p) => [...p] as StrokePoint) })),
     lines: page.lines
       .filter((l) => lines.includes(l.id))
@@ -1267,6 +1294,14 @@ export function followPanel(page: Page, panel: Panel, carried: CarriedContents):
   const sy = oy1 > oy0 ? (ny1 - ny0) / (oy1 - oy0) : 1;
   const map = ([x, y]: readonly number[]): Point => [nx0 + (x - ox0) * sx, ny0 + (y - oy0) * sy];
   const uniform = Math.min(sx, sy);
+  for (const { id, shape } of carried.fills ?? []) {
+    const fill = page.fills?.find((f) => f.id === id);
+    if (!fill) continue;
+    const [cx0, cy0, cx1, cy1] = bounds(shape);
+    const centre: Point = [(cx0 + cx1) / 2, (cy0 + cy1) / 2];
+    const [mx, my] = map(centre);
+    fill.shape = shape.map(([x, y]) => [mx + (x - centre[0]) * uniform, my + (y - centre[1]) * uniform]);
+  }
   for (const { id, points } of carried.strokes) {
     const stroke = page.strokes.find((s) => s.id === id);
     if (!stroke) continue;

@@ -68,6 +68,9 @@ describe("editable layers", () => {
     expect(vectorLines(page, "strokes", m)).toHaveLength(1);
     expect(vectorLines(page, "overStrokes", m)).toHaveLength(1);
     expect(partCount(page, "fills")).toBe(2);
+    // 投げなわ塗り go to the same image layer.
+    page.fills = [{ id: "f1", shape: rectShape([40, 40, 50, 50]) }];
+    expect(partCount(page, "fills")).toBe(3);
     addLine(project, page, [50, 50], "白");
     expect(partCount(page, "balloonFills")).toBe(1);
     expect(LAYER_ORDER.indexOf("balloonFills")).toBe(LAYER_ORDER.indexOf("balloons") - 1);

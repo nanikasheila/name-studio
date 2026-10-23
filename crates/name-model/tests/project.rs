@@ -220,7 +220,8 @@ fn keeps_panel_and_balloon_styles() {
         ],
         "strokes": [{"id": "stroke6", "points": [[1, 2, 1], [3, 4, 1]], "widthMm": 0.4, "closed": false, "over": true}],
         "roughs": [],
-        "breakouts": [{"id": "breakout7", "shape": [[60, 90], [80, 90], [70, 130]], "note": "全身"}]
+        "breakouts": [{"id": "breakout7", "shape": [[60, 90], [80, 90], [70, 130]], "note": "全身"}],
+        "fills": [{"id": "fill8", "shape": [[10, 10], [20, 10], [15, 20]]}, {"id": "fill9", "shape": [[30, 30], [40, 30], [35, 40]], "tone": "gray"}]
       }],
       "characters": [], "scenes": [], "emotions": [], "nextId": 10
     }"##;
@@ -238,6 +239,9 @@ fn keeps_panel_and_balloon_styles() {
     assert_eq!(page.lines[1].link_to.as_deref(), Some("line4"));
     assert!(page.strokes[0].over);
     assert_eq!(page.breakouts[0].note, "全身");
+    assert_eq!(page.fills.len(), 2);
+    assert_eq!(page.fills[0].tone, None);
+    assert_eq!(page.fills[1].tone.as_deref(), Some("gray"));
     let json = project.to_json().unwrap();
     assert!(
         json.contains("\"openEdges\"") && json.contains("\"balloonShape\": \"spike\""),

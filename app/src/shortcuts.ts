@@ -11,17 +11,28 @@ export type ActionId =
   | "view.structure"
   | "view.emotion"
   | "view.timeline"
+  | "view.focus"
+  | "view.fit"
+  | "view.rotateLeft"
+  | "view.rotateRight"
   | "tool.select"
   | "tool.cut"
   | "tool.text"
   | "tool.pen"
   | "tool.eraser"
+  | "tool.fill"
   | "tool.breakout"
   | "tool.sticky"
   | "eraser.next"
   | "brush.bigger"
   | "brush.smaller"
   | "delete"
+  | "copy"
+  | "cut"
+  | "paste"
+  | "selectAll"
+  | "flip.horizontal"
+  | "flip.vertical"
   | "deselect"
   | "page.next"
   | "page.previous"
@@ -41,12 +52,19 @@ export const ACTIONS: readonly ActionInfo[] = [
   { id: "undo", label: "元に戻す", group: "編集", keys: ["Ctrl+Z"] },
   { id: "redo", label: "やり直す", group: "編集", keys: ["Ctrl+Y", "Ctrl+Shift+Z"] },
   { id: "delete", label: "選んだものを消す", group: "編集", keys: ["Delete", "Backspace"] },
+  { id: "copy", label: "コピー", group: "編集", keys: ["Ctrl+C"] },
+  { id: "cut", label: "切り取り", group: "編集", keys: ["Ctrl+X"] },
+  { id: "paste", label: "貼り付け（ポインターのあるページへ）", group: "編集", keys: ["Ctrl+V"] },
+  { id: "selectAll", label: "ページの線とセリフを全部選ぶ", group: "編集", keys: ["Ctrl+A"] },
+  { id: "flip.horizontal", label: "選んだ線とセリフを左右反転", group: "編集", keys: [] },
+  { id: "flip.vertical", label: "選んだ線とセリフを上下反転", group: "編集", keys: [] },
   { id: "deselect", label: "選択を外す", group: "編集", keys: ["Escape"] },
   { id: "tool.select", label: "選択", group: "道具", keys: ["V"] },
   { id: "tool.cut", label: "コマ割り", group: "道具", keys: ["K"] },
   { id: "tool.text", label: "セリフ", group: "道具", keys: ["T"] },
   { id: "tool.pen", label: "ペン", group: "道具", keys: ["P"] },
   { id: "tool.eraser", label: "消しゴム（もう一度で消し方を切り替え）", group: "道具", keys: ["E"] },
+  { id: "tool.fill", label: "投げなわ塗り（ベタ・グレー・白）", group: "道具", keys: ["G"] },
   { id: "tool.breakout", label: "はみ出し", group: "道具", keys: ["B"] },
   { id: "tool.sticky", label: "付箋", group: "道具", keys: ["M"] },
   { id: "eraser.next", label: "消し方を切り替える", group: "道具", keys: [] },
@@ -59,6 +77,10 @@ export const ACTIONS: readonly ActionInfo[] = [
   { id: "view.structure", label: "構成", group: "画面", keys: ["F2"] },
   { id: "view.emotion", label: "感情曲線", group: "画面", keys: ["F3"] },
   { id: "view.timeline", label: "時系列", group: "画面", keys: ["F4"] },
+  { id: "view.fit", label: "全体を表示（拡大・移動・回転を戻す）", group: "画面", keys: ["Ctrl+0"] },
+  { id: "view.rotateLeft", label: "画面を左に 15° 回す（Shift + Space + ドラッグで自由に）", group: "画面", keys: ["-"] },
+  { id: "view.rotateRight", label: "画面を右に 15° 回す", group: "画面", keys: ["^"] },
+  { id: "view.focus", label: "左右の欄を隠してページを大きく（もう一度で戻す）", group: "画面", keys: ["Tab"] },
 ];
 
 const MODIFIERS = new Set(["Control", "Shift", "Alt", "Meta", "AltGraph", "OS"]);

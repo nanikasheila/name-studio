@@ -288,3 +288,24 @@ dialog.shortcuts { width: min(620px, calc(100vw - 32px)); }
 .advice { margin: 0 0 12px; padding-left: 1.2em; font-size: 13px; line-height: 1.7; }
 .advice .warn { color: #b4541a; }
 .advice .link { cursor: pointer; text-decoration: underline dotted; }
+
+/* Writing on the page itself: a panel's memo or a line of dialogue. */
+.inline-edit {
+  position: absolute; z-index: 5; margin: 0; padding: 4px 5px; resize: none; overflow: hidden;
+  border: 1.5px solid #2f6fdb; border-radius: 3px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  background: rgba(255, 255, 255, 0.97); color: #1f1d1a; outline: none;
+}
+.inline-edit.note { background: #fff6c2; color: #4a3f12; overflow: auto; }
+
+/* The bar of actions beside the selection. */
+.action-bar {
+  position: absolute; z-index: 4; display: flex; gap: 2px; padding: 3px; align-items: center;
+  background: var(--panel, #fff); border: 1px solid var(--line, #d8d6d0); border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+}
+.action-bar[hidden] { display: none; }
+.action-bar button, .action-bar select { padding: 3px 8px; font-size: 12px; min-height: 0; }
+.action-bar select { width: auto; }
+
+/* Tab: the pages take the whole width. */
+body.focus-mode #editor > .sidebar, body.focus-mode #editor > .inspector { display: none; }
