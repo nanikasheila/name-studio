@@ -50,6 +50,8 @@ export class ExportDialog {
   private editable = true;
   /** The rough written as 下描き layers at half opacity, to ink over. */
   private draftRough = true;
+  /** Panels as a コマ枠フォルダー (copied from a finished page), with a layer in it to ink on. */
+  private frameFolders = false;
   private busy = false;
   /** A CSP page with text and vector layers to copy, when the template has none. */
   private donor = readDonor();
@@ -76,6 +78,9 @@ export class ExportDialog {
     });
     $<HTMLInputElement>("ne-draft").addEventListener("change", (event) => {
       this.draftRough = (event.target as HTMLInputElement).checked;
+    });
+    $<HTMLInputElement>("ne-frames").addEventListener("change", (event) => {
+      this.frameFolders = (event.target as HTMLInputElement).checked;
     });
     $("ne-run").addEventListener("click", () => void this.run());
   }
@@ -154,6 +159,7 @@ export class ExportDialog {
     $("ne-clear-donor").hidden = !this.donor;
     $<HTMLInputElement>("ne-editable").checked = this.editable;
     $<HTMLInputElement>("ne-draft").checked = this.draftRough;
+    $<HTMLInputElement>("ne-frames").checked = this.frameFolders;
     $<HTMLInputElement>("ne-make-work").checked = this.form.makeWork;
     $("ne-work-fields").hidden = !this.form.makeWork;
     $<HTMLInputElement>("ne-work-name").value = this.form.workName;
@@ -245,6 +251,7 @@ export class ExportDialog {
             inputs: this.sources(),
             donors: [this.donor, project.source?.path].filter((path): path is string => !!path),
             draftLayers: this.draftRough ? ROUGH_LAYERS : [],
+            frameFolders: this.frameFolders,
           },
           this.editable,
           progress,

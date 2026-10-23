@@ -20,7 +20,7 @@ use clip_core::plan::Fit;
 use clip_core::raster::decode_png;
 use clip_core::raster::{Filter, resize};
 use clip_core::text::NewText;
-use clip_core::vector::NewVectorLine;
+use clip_core::vector::{NewFrame, NewVectorLine};
 use clip_core::write::manifest;
 use clip_core::write::raster_page::{
     PageLayer, RasterLayer, RasterWorkWriter, TemplateCanvas, WorkOptions, WorkReport,
@@ -462,6 +462,9 @@ struct NameExportRequest {
     /// Layers (by name) written as 下描き layers at half opacity.
     #[serde(default)]
     draft_layers: Vec<String>,
+    /// Look for a コマ枠フォルダー to copy, to write panels as frames.
+    #[serde(default)]
+    frame_folders: bool,
 }
 
 /// The template's canvas and which parts can be written as editable layers.
@@ -472,6 +475,8 @@ struct NameExportStart {
     canvas: TemplateCanvas,
     vector_layers: bool,
     text_layers: bool,
+    /// Whether panels can be written as a コマ枠フォルダー (one was found to copy).
+    frame_folders: bool,
     /// Whether the book's first page (index 0) is a left page.
     first_page_left: Option<bool>,
     /// Where pages go on a 見開き page, or why spreads cannot be written.
@@ -500,12 +505,14 @@ async fn begin_name_export(
         inputs: request.inputs.into_iter().map(PathBuf::from).collect(),
         donor_sources: request.donors.into_iter().map(PathBuf::from).collect(),
         draft_layers: request.draft_layers,
+        frame_folders: request.frame_folders,
     })
     .map_err(|error| error.to_string())?;
     let start = NameExportStart {
         canvas: writer.canvas,
         vector_layers: writer.donors.vector.is_some(),
         text_layers: writer.donors.text.is_some(),
+        frame_folders: writer.donors.frame.is_some(),
         first_page_left: writer.first_page_left,
         spread: writer.spread.as_ref().ok().map(|(_, layout)| *layout),
         spread_problem: writer.spread.as_ref().err().cloned(),
@@ -532,6 +539,14 @@ struct LineMeta {
     width_px: f64,
 }
 
+/// One panel of a コマ枠フォルダー in template px.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FrameMeta {
+    points: Vec<[f64; 2]>,
+    width_px: f64,
+}
+
 /// One layer of a page, bottom first.
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -544,6 +559,15 @@ enum LayerMeta {
     Vector {
         name: String,
         lines: Vec<LineMeta>,
+    },
+    /// A コマ枠フォルダー: panel outlines in template px, `ink` an empty
+    /// raster layer put inside it.
+    #[serde(rename_all = "camelCase")]
+    Frames {
+        name: String,
+        frames: Vec<FrameMeta>,
+        #[serde(default)]
+        ink: Option<String>,
     },
     /// A text in a frame in template px, its size in CSP pt.
     #[serde(rename_all = "camelCase")]
@@ -655,6 +679,17 @@ async fn export_name_page(app: tauri::AppHandle, request: tauri::ipc::Request<'_
                                 width_px: line.width_px,
                             })
                             .collect(),
+                    },
+                    LayerMeta::Frames { name, frames, ink } => PageLayer::Frames {
+                        name,
+                        frames: frames
+                            .into_iter()
+                            .map(|frame| NewFrame {
+                                points: frame.points.into_iter().map(|[x, y]| (x, y)).collect(),
+                                width_px: frame.width_px,
+                            })
+                            .collect(),
+                        ink,
                     },
                     LayerMeta::Text {
                         text,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PATTERNS, applyPattern, fitPattern, patternCount, bleedPanel, facingPage, spreadPanel, spreadTwin, unspreadPanel, borderLines, borderRuns, clipOutside, dashes, inheritOpenEdges, isBled, patternPanels, wavy } from "./koma";
+import { PATTERNS, applyPattern, fitPattern, patternCount, bleedPanel, facingPage, spreadPanel, spreadTwin, unspreadPanel, borderLines, borderRuns, clipOutside, dashes, framePanels, inheritOpenEdges, isBled, patternPanels, wavy } from "./koma";
 import { addLine, addStroke, basicBox, boxCenter, bounds, cutPanels, emptyPage, insidePolygon, newProject, rectShape, type Panel, type Point } from "./project";
 
 describe("裁ち切り", () => {
@@ -238,5 +238,34 @@ describe("型をコマ数に合わせる", () => {
     const last = [...page.panels].sort((a, b) => a.order - b.order)[4];
     expect(line.panel).toBe(last.id);
     expect(insidePolygon(last.shape, boxCenter(line.box))).toBe(true);
+  });
+});
+
+describe("コマ枠フォルダーにするコマ", () => {
+  it("takes plain panels, moves 裁ち切り edges past the canvas, and leaves the rest as lines", () => {
+    const project = newProject("t", 1);
+    const format = project.pageFormat;
+    const page = project.pages[0];
+    const [x0, y0, x1, y1] = basicBox(format);
+    const [w] = format.canvasMm;
+    const top: Panel = { id: "top", shape: rectShape([x0, y0, x1, y0 + 60]), order: 1 };
+    bleedPanel(top, "top", format, true);
+    bleedPanel(top, "right", format, true);
+    const plain: Panel = { id: "plain", shape: rectShape([x0, y0 + 65, x1, y0 + 120]), order: 2, border: "thick" };
+    const dashed: Panel = { id: "dashed", shape: rectShape([x0, y0 + 125, x1, y0 + 180]), order: 3, border: "dashed" };
+    const inset: Panel = { id: "inset", shape: rectShape([x0 + 5, y0 + 70, x0 + 30, y0 + 90]), order: 4, z: 1, fill: "white" };
+    const broken: Panel = { id: "broken", shape: rectShape([x0, y0 + 185, x1, y1]), order: 5 };
+    page.panels = [top, plain, dashed, inset, broken];
+    page.breakouts = [{ id: "b1", shape: rectShape([x0 + 20, y1 - 10, x0 + 40, y1 + 5]) }];
+    const framed = framePanels(page, format);
+    expect(framed.map(({ panel }) => panel.id)).toEqual(["top", "plain"]);
+    const [outline] = framed.map(({ outline }) => outline);
+    // Off the page at the top and the right, so CSP draws no border there.
+    expect(Math.min(...outline.map(([, y]) => y))).toBeLessThan(0);
+    expect(Math.max(...outline.map(([x]) => x))).toBeGreaterThan(w);
+    expect(Math.max(...outline.map(([, y]) => y))).toBeCloseTo(y0 + 60);
+    // The inset sits on "plain", but inside it: plain's border is not cut.
+    // On a spread page whose gutter is on the right, a panel bled there stays a line.
+    expect(framePanels(page, format, "right").map(({ panel }) => panel.id)).toEqual(["plain"]);
   });
 });

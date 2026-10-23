@@ -3,7 +3,7 @@
 //! ```text
 //! name-studio-app --export-csp <name.namestudio> --template <page.clip> --out <folder>
 //!     [--work-template <work.cmc> --work-name <name>] [--story-index <n>] [--donor <sample.clip>]...
-//!     [--report <file.json>]
+//!     [--no-draft-rough] [--frame-folders] [--report <file.json>]
 //! ```
 //!
 //! The window opens, writes the pages and the work as the export dialog would
@@ -28,6 +28,8 @@ pub struct BatchExport {
     pub donors: Vec<String>,
     /// The rough as 下描き layers at half opacity (`--no-draft-rough` turns it off).
     pub draft_rough: bool,
+    /// Panels as a コマ枠フォルダー copied from a donor (`--frame-folders`).
+    pub frame_folders: bool,
     pub report: String,
 }
 
@@ -43,6 +45,7 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
     let mut report = None;
     let mut donors = Vec::new();
     let mut draft_rough = true;
+    let mut frame_folders = false;
     while let Some(arg) = args.next() {
         let mut value = || args.next().ok_or(format!("{arg} の後に値がありません"));
         match arg.as_str() {
@@ -61,6 +64,7 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
             "--report" => report = Some(value()?),
             "--donor" => donors.push(value()?),
             "--no-draft-rough" => draft_rough = false,
+            "--frame-folders" => frame_folders = true,
             // Anything else (such as what the system adds) is left alone.
             _ => {}
         }
@@ -85,6 +89,7 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
         story_index,
         donors,
         draft_rough,
+        frame_folders,
         report,
     }))
 }
@@ -130,7 +135,7 @@ mod tests {
         assert_eq!(batch.donors, vec!["sample.clip".to_owned()]);
         assert_eq!(batch.work_name.as_deref(), Some("第1話"));
         assert_eq!(batch.story_index, Some(1));
-        assert!(batch.draft_rough);
+        assert!(batch.draft_rough && !batch.frame_folders);
         assert_eq!(
             batch.report,
             Path::new("out").join("name-studio-export.json").display().to_string()
@@ -138,7 +143,7 @@ mod tests {
     }
 
     #[test]
-    fn leaves_the_rough_as_it_is_when_asked() {
+    fn reads_the_layer_options() {
         let batch = from_args(args(&[
             "--export-csp",
             "a",
@@ -147,10 +152,11 @@ mod tests {
             "--out",
             "o",
             "--no-draft-rough",
+            "--frame-folders",
         ]))
         .unwrap()
         .unwrap();
-        assert!(!batch.draft_rough);
+        assert!(!batch.draft_rough && batch.frame_folders);
     }
 
     #[test]

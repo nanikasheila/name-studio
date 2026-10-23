@@ -16,6 +16,8 @@ export interface BatchExport {
   donors?: string[];
   /** The rough as 下描き layers (on unless --no-draft-rough). */
   draftRough?: boolean;
+  /** Panels as a コマ枠フォルダー (--frame-folders). */
+  frameFolders?: boolean;
   report: string;
 }
 
@@ -56,6 +58,7 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
         inputs: [task.project, project.source?.path].filter((path): path is string => !!path),
         donors: [...(task.donors ?? []), project.source?.path].filter((path): path is string => !!path),
         draftLayers: task.draftRough === false ? [] : ROUGH_LAYERS,
+        frameFolders: task.frameFolders === true,
       },
       true,
       status,

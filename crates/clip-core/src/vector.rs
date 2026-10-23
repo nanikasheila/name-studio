@@ -324,3 +324,130 @@ pub fn build_vector_data(lines: &[NewVectorLine], brush_style: u32) -> Vec<u8> {
     payload.extend_from_slice(&body);
     payload
 }
+
+/// The layout of one コマ枠フォルダー border object, taken from a CSP-made
+/// frame folder: its header and first point, whose undecoded fields new
+/// borders keep (header 96 bytes and points 88 bytes in CSP 5).
+#[derive(Debug, Clone, PartialEq)]
+pub struct FrameTemplate {
+    header: Vec<u8>,
+    point: Vec<u8>,
+}
+
+/// Border corners keep the miter length (`f32`) and the outward unit
+/// bisector (`f32` × 2) after the point's common fields.
+const FRAME_POINT_MITER: usize = 64;
+const FRAME_HEADER_MIN: usize = 96;
+const FRAME_POINT_MIN: usize = 80;
+
+impl FrameTemplate {
+    /// The first border of a frame folder's `VectorData`, if it is in the
+    /// known layout.
+    pub fn of(payload: &[u8]) -> Result<Option<Self>> {
+        let Some(span) = spans(payload)?.into_iter().next() else {
+            return Ok(None);
+        };
+        if span.header_size < FRAME_HEADER_MIN || span.point_size < FRAME_POINT_MIN || span.point_count == 0 {
+            return Ok(None);
+        }
+        Ok(Some(FrameTemplate {
+            header: payload[span.start..span.start + span.header_size].to_vec(),
+            point: payload[span.point_offset(0)..span.point_offset(0) + span.point_size].to_vec(),
+        }))
+    }
+
+    /// Brush style id the borders are drawn with.
+    pub fn brush_style(&self) -> u32 {
+        u32::from_be_bytes(
+            self.header[HEADER_BRUSH_STYLE..HEADER_BRUSH_STYLE + 4]
+                .try_into()
+                .unwrap_or_default(),
+        )
+    }
+}
+
+/// One panel of a コマ枠フォルダー: its outline (layer-local pixels) and the
+/// border's full width.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NewFrame {
+    pub points: Vec<(f64, f64)>,
+    pub width_px: f64,
+}
+
+/// Outward unit bisector and miter length of each corner of `points`.
+fn frame_corners(points: &[(f64, f64)], radius: f64) -> Vec<((f64, f64), f64)> {
+    let n = points.len();
+    let unit = |(x, y): (f64, f64)| {
+        let length = x.hypot(y);
+        if length > 1e-9 {
+            (x / length, y / length)
+        } else {
+            (0.0, 0.0)
+        }
+    };
+    // Signed area: which side of each edge is inside.
+    let area: f64 = (0..n)
+        .map(|i| {
+            let (a, b) = (points[i], points[(i + 1) % n]);
+            a.0 * b.1 - b.0 * a.1
+        })
+        .sum();
+    let side = if area >= 0.0 { 1.0 } else { -1.0 };
+    (0..n)
+        .map(|i| {
+            let (a, b, c) = (points[(i + n - 1) % n], points[i], points[(i + 1) % n]);
+            let incoming = unit((b.0 - a.0, b.1 - a.1));
+            let outgoing = unit((c.0 - b.0, c.1 - b.1));
+            // Outward normals of the two edges (y points down, as in CSP).
+            let normal = |(x, y): (f64, f64)| (y * side, -x * side);
+            let (n1, n2) = (normal(incoming), normal(outgoing));
+            let bisector = unit((n1.0 + n2.0, n1.1 + n2.1));
+            let bisector = if bisector == (0.0, 0.0) { n2 } else { bisector };
+            // The corner's half angle: miter = r / cos(half the turn).
+            let cos = (bisector.0 * n2.0 + bisector.1 * n2.1).max(0.1);
+            (bisector, radius / cos)
+        })
+        .collect()
+}
+
+/// A frame folder's `VectorData` holding `frames` as closed borders laid out
+/// like `template`, drawn with brush style `brush_style`. Frames with fewer
+/// than three points are skipped.
+pub fn build_frame_data(frames: &[NewFrame], template: &FrameTemplate, brush_style: u32) -> Vec<u8> {
+    let mut body = Vec::new();
+    for frame in frames.iter().filter(|frame| frame.points.len() >= 3) {
+        let radius = (frame.width_px / 2.0).max(0.5);
+        let reach = radius + 2.0;
+        let points = &frame.points;
+        let mut header = template.header.clone();
+        header[HEADER_POINT_COUNT..HEADER_POINT_COUNT + 4].copy_from_slice(&(points.len() as u32).to_be_bytes());
+        let bounds = points
+            .iter()
+            .fold(segment_box(points[0], points[0], reach), |acc, &point| {
+                let one = segment_box(point, point, reach);
+                (acc.0.min(one.0), acc.1.min(one.1), acc.2.max(one.2), acc.3.max(one.3))
+            });
+        write_bbox(&mut header, HEADER_BBOX, bounds);
+        header[HEADER_BRUSH_STYLE..HEADER_BRUSH_STYLE + 4].copy_from_slice(&brush_style.to_be_bytes());
+        let size_offset = header.len() - BRUSH_SIZE_FROM_END;
+        header[size_offset..size_offset + 8].copy_from_slice(&radius.to_be_bytes());
+        body.extend_from_slice(&header);
+        for (index, (&(x, y), (bisector, miter))) in points.iter().zip(frame_corners(points, radius)).enumerate() {
+            let next = points[(index + 1) % points.len()];
+            let mut point = template.point.clone();
+            point[0..8].copy_from_slice(&x.to_be_bytes());
+            point[8..16].copy_from_slice(&y.to_be_bytes());
+            write_bbox(&mut point, POINT_BBOX, segment_box((x, y), next, reach));
+            for (offset, value) in [(0, miter), (4, bisector.0), (8, bisector.1)] {
+                let at = FRAME_POINT_MITER + offset;
+                point[at..at + 4].copy_from_slice(&(value as f32).to_be_bytes());
+            }
+            body.extend_from_slice(&point);
+        }
+    }
+    let mut payload = Vec::with_capacity(body.len() + PAYLOAD_HEAD_SIZE);
+    payload.extend_from_slice(&0u32.to_be_bytes());
+    payload.extend_from_slice(&(body.len() as u32).to_be_bytes());
+    payload.extend_from_slice(&body);
+    payload
+}

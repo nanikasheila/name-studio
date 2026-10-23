@@ -234,6 +234,32 @@ impl<'a> RowCopier<'a> {
     }
 }
 
+/// Values after the size and block grid in an offscreen's `Parameter`
+/// section, for a layer mask (one 8-bit plane), as CSP writes them.
+const MASK_PARAMETERS: [u32; 12] = [1, 1, 0, 1, 0, 0, 0, 1, 256, 0, 256, 256];
+
+/// A colour offscreen's `Attribute` made a mask's: same size, one plane.
+fn mask_attribute(attribute: &[u8]) -> Result<Vec<u8>> {
+    OffscreenParameters::parse(attribute)?;
+    let name: Vec<u8> = "Parameter".encode_utf16().flat_map(u16::to_be_bytes).collect();
+    let start = attribute
+        .windows(name.len())
+        .position(|window| window == name.as_slice())
+        .ok_or_else(|| CspError::format("Offscreen attribute has no Parameter section"))?
+        + name.len()
+        // width, height, blocks across and down
+        + 16;
+    let end = start + 4 * MASK_PARAMETERS.len();
+    if end > attribute.len() {
+        return Err(CspError::format("Offscreen Parameter section is too short"));
+    }
+    let mut result = attribute.to_vec();
+    for (index, value) in MASK_PARAMETERS.iter().enumerate() {
+        result[start + 4 * index..start + 4 * index + 4].copy_from_slice(&value.to_be_bytes());
+    }
+    Ok(result)
+}
+
 /// A .clip template opened for editing (the template file is not changed).
 pub struct ClipEditor {
     pub db: Connection,
@@ -470,6 +496,36 @@ impl ClipEditor {
             self.externals.insert(id, payload);
         }
         Ok((mipmap, thumbnail))
+    }
+
+    /// Give a copied frame folder its mask and border images: offscreens the
+    /// size of the page with no pixels stored, which CSP draws from the
+    /// frames (CSP saves a frame folder's that way). The mask has one plane.
+    pub fn add_frame_offscreens(&mut self, folder_id: i64) -> Result<()> {
+        let raster = self.first_raster_layer()?;
+        let (mask, mask_thumbnail) = self.clone_render_offscreens(folder_id, raster)?;
+        let (line, _) = self.clone_render_offscreens(folder_id, raster)?;
+        for (mipmap, is_mask) in [(mask, true), (line, false)] {
+            for (offscreen_id, attribute, _) in self.mipmap_levels(mipmap)? {
+                let attribute = if is_mask {
+                    mask_attribute(&attribute)?
+                } else {
+                    attribute
+                };
+                self.db.execute(
+                    "UPDATE Offscreen SET Attribute = ?1, BlockData = ?2 WHERE MainId = ?3",
+                    (attribute, new_external_id().as_bytes(), offscreen_id),
+                )?;
+            }
+        }
+        self.update_layer(
+            folder_id,
+            &[
+                ("LayerLayerMaskMipmap", Value::Integer(mask)),
+                ("LayerLayerMaskThumbnail", Value::Integer(mask_thumbnail)),
+                ("ComicFrameLineMipmap", Value::Integer(line)),
+            ],
+        )
     }
 
     /// Store `image` placed at `position` (canvas px) as the layer's pixels,

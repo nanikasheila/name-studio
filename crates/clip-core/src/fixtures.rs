@@ -98,6 +98,15 @@ impl FixtureLayer {
         }
     }
 
+    /// A コマ枠フォルダー with these frames.
+    pub fn frame_folder(main_id: i64, name: &str, frames: Vec<FixtureVector>, children: Vec<FixtureLayer>) -> Self {
+        FixtureLayer {
+            frame_folder: true,
+            vectors: frames,
+            ..Self::folder(main_id, name, children)
+        }
+    }
+
     pub fn folder(main_id: i64, name: &str, children: Vec<FixtureLayer>) -> Self {
         FixtureLayer {
             folder: true,
@@ -155,6 +164,44 @@ pub fn vector_payload(objects: &[FixtureVector]) -> Vec<u8> {
             for value in [*x as i32 - 2, *y as i32 - 2, *x as i32 + 2, *y as i32 + 2] {
                 point.extend(value.to_be_bytes());
             }
+            point.resize(88, 0);
+            body.extend(point);
+        }
+    }
+    let mut payload = Vec::new();
+    payload.extend(0u32.to_be_bytes());
+    payload.extend((body.len() as u32).to_be_bytes());
+    payload.extend(body);
+    payload
+}
+
+/// A frame folder's frames in CSP 5's border layout (96-byte header with the
+/// brush style at 76, 88-byte points with each corner's miter and bisector).
+pub fn frame_payload(frames: &[FixtureVector]) -> Vec<u8> {
+    let mut body = Vec::new();
+    for (_, points) in frames {
+        let mut header = Vec::new();
+        for value in [96, 72, 88, 88, points.len() as u32, 0x1118] {
+            header.extend(value.to_be_bytes());
+        }
+        for value in [-10i32, -10, 10, 10] {
+            header.extend(value.to_be_bytes());
+        }
+        header.resize(52, 0);
+        header.extend([0xff; 12]);
+        header.extend(1.0f64.to_be_bytes());
+        for value in [0x410u32, 33, 5] {
+            header.extend(value.to_be_bytes());
+        }
+        header.extend(6.5f64.to_be_bytes());
+        header.extend(0x7cc3_0ecbu32.to_be_bytes());
+        body.extend(header);
+        for (x, y) in points {
+            let mut point = Vec::new();
+            point.extend(x.to_be_bytes());
+            point.extend(y.to_be_bytes());
+            point.resize(32, 0);
+            point.extend(3u32.to_be_bytes());
             point.resize(88, 0);
             body.extend(point);
         }
@@ -529,7 +576,12 @@ fn build(path: &Path, canvas: FixtureCanvas, layers: Vec<FixtureLayer>, editable
                     params![layer.main_id, id.as_bytes()],
                 )
                 .expect("vectors");
-            externals.push((id, vector_payload(&layer.vectors)));
+            let payload = if layer.frame_folder {
+                frame_payload(&layer.vectors)
+            } else {
+                vector_payload(&layer.vectors)
+            };
+            externals.push((id, payload));
         }
         let array = (!layer.text_attribute_array.is_empty()).then(|| attribute_array(&layer.text_attribute_array));
         database

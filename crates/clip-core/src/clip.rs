@@ -358,9 +358,10 @@ impl ClipDocument {
             .collect())
     }
 
-    /// Raw `VectorData` payloads of a vector layer or a text layer's balloons.
+    /// Raw `VectorData` payloads of a vector layer, a text layer's balloons or
+    /// a frame folder's frames.
     pub fn vector_payloads(&self, layer: &ClipLayer) -> Result<Vec<&[u8]>> {
-        if !matches!(layer.kind, LayerKind::Vector | LayerKind::Text)
+        if !matches!(layer.kind, LayerKind::Vector | LayerKind::Text | LayerKind::FrameFolder)
             || !table_exists(&self.database, "VectorObjectList")?
         {
             return Ok(Vec::new());
