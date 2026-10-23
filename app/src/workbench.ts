@@ -7,6 +7,7 @@ import { addBrushes, loadLibrary } from "./brush";
 import { BrushDialog } from "./brushdialog";
 import { dragSort } from "./dragsort";
 import { AltDialog } from "./altdialog";
+import { ScriptDialog } from "./scriptdialog";
 import { alternativesOf, joinAlternative, makeAlternative, useAlternative } from "./alternatives";
 import {
   ERASE_MODE_LABELS,
@@ -125,6 +126,7 @@ export class Workbench {
   readonly overview: Overview;
   private readonly exportDialog: ExportDialog;
   private readonly altDialog: AltDialog;
+  private readonly scriptDialog: ScriptDialog;
   private readonly brushDialog: BrushDialog;
   private readonly versionDialog: VersionDialog;
   private readonly autosaver = new Autosaver(
@@ -154,6 +156,18 @@ export class Workbench {
       },
       movePages: (first, last, target) => this.movePages(first, last, target),
       makeOption: (first, last) => this.makeOption(first, last),
+    });
+    this.scriptDialog = new ScriptDialog({
+      project: () => this.state.project,
+      edit: (change) => this.edit(change),
+      done: (report, firstPage) => {
+        if (this.view !== "edit") this.setView("edit");
+        this.editor.selection = null;
+        this.editor.showPage(firstPage);
+        this.renderAll();
+        const who = report.characters.length ? `、登場人物 ${report.characters.join("・")} を足しました` : "";
+        this.setStatus(`台本を ${report.pages} ページに入れました（セリフ ${report.lines}、作ったコマ ${report.panels}${who}）。元に戻すは Ctrl+Z`);
+      },
     });
     this.altDialog = new AltDialog({
       project: () => this.state.project,
@@ -559,7 +573,9 @@ export class Workbench {
       }
     });
     if (!children.length) children.push(element("p", { className: "hint", textContent: "ページがありません" }));
-    $("side-script").replaceChildren(...children);
+    const take = element("button", { textContent: "Markdown の台本を取り込む…" });
+    take.addEventListener("click", () => this.scriptDialog.open());
+    $("side-script").replaceChildren(element("div", { className: "side-actions top" }, take), ...children);
   }
 
   private renderCast(project: Project): void {

@@ -252,3 +252,11 @@ dialog.alternatives { width: min(1100px, calc(100vw - 32px)); }
 .alt-chips button.in-use { background: var(--accent); color: #fff; border-color: var(--accent); }
 .scenes .row-buttons { white-space: nowrap; }
 .page-item .option-tag { font-size: 11px; color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 0 3px; white-space: nowrap; }
+
+/* 台本の取り込み */
+dialog.script-import { width: min(720px, calc(100vw - 32px)); }
+.script-import textarea { width: 100%; box-sizing: border-box; font: 13px/1.5 ui-monospace, monospace; margin-top: 8px; }
+.script-import label.check { display: flex; align-items: center; gap: 6px; margin: 8px 0; }
+.side-actions.top { padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.script-line.thought .who::after { content: "（"; }
+.script-line.thought .text::after { content: "）"; }
