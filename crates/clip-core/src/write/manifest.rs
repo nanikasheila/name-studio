@@ -2,8 +2,11 @@
 //! folder can tell pages CSP has changed since (ペン入れ) from its own.
 //!
 //! The list is `.name-studio-export.json` in the folder: each written file's
-//! name, size and modification time.
+//! name, size and modification time, and the dialogue it was written with
+//! (so updating the dialogue later can tell its own texts from ones added in
+//! CSP).
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -24,6 +27,36 @@ pub struct ManifestFile {
     pub name: String,
     pub size: u64,
     pub modified_ms: u64,
+    /// What was written into the page (none for the work, or from older versions).
+    #[serde(flatten)]
+    pub record: PageRecord,
+}
+
+/// What an export wrote into a page, to tell later what changed in CSP.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PageRecord {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub texts: Option<Vec<String>>,
+    /// Each vector layer's [`crate::vector::shape_signature`], by layer name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub vectors: BTreeMap<String, String>,
+    /// [`image_signature`] of the 下描き image layers (the memos), by name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub rasters: BTreeMap<String, String>,
+}
+
+/// A short fingerprint of an image's pixels, to tell whether it changed.
+pub fn image_signature(image: &crate::RgbaImage) -> String {
+    // FNV-1a over 8-byte words: the same on every build, and quick on a page.
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for word in image.pixels.chunks(8) {
+        let mut bytes = [0u8; 8];
+        bytes[..word.len()].copy_from_slice(word);
+        hash ^= u64::from_le_bytes(bytes);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    format!("{}x{}:{hash:016x}", image.width, image.height)
 }
 
 fn stamp(path: &Path) -> Option<(u64, u64)> {
@@ -39,26 +72,69 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-/// Record the files just written into `dir` (files elsewhere are left out).
-pub fn write_manifest(dir: &Path, files: &[PathBuf]) -> std::io::Result<()> {
+/// Record the files just written into `dir` (files elsewhere are left out),
+/// each with what was written into it when known.
+pub fn write_manifest(dir: &Path, files: &[(PathBuf, PageRecord)]) -> std::io::Result<()> {
     let files = files
         .iter()
-        .filter(|path| path.parent() == Some(dir))
-        .filter_map(|path| {
+        .filter(|(path, _)| path.parent() == Some(dir))
+        .filter_map(|(path, record)| {
             let (size, modified_ms) = stamp(path)?;
             Some(ManifestFile {
                 name: path.file_name()?.to_string_lossy().into_owned(),
                 size,
                 modified_ms,
+                record: record.clone(),
             })
         })
         .collect();
-    let manifest = Manifest {
-        written_ms: now_ms(),
-        files,
-    };
-    let text = serde_json::to_string_pretty(&manifest).map_err(std::io::Error::other)?;
+    save(
+        dir,
+        &Manifest {
+            written_ms: now_ms(),
+            files,
+        },
+    )
+}
+
+fn save(dir: &Path, manifest: &Manifest) -> std::io::Result<()> {
+    let text = serde_json::to_string_pretty(manifest).map_err(std::io::Error::other)?;
     std::fs::write(dir.join(MANIFEST_NAME), text)
+}
+
+fn load(dir: &Path) -> Option<Manifest> {
+    std::fs::read_to_string(dir.join(MANIFEST_NAME))
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+}
+
+/// What the last export (or update) wrote into `page`, when recorded.
+pub fn written(page: &Path) -> Option<PageRecord> {
+    let name = page.file_name()?.to_string_lossy();
+    Some(
+        load(page.parent()?)?
+            .files
+            .into_iter()
+            .find(|file| file.name == name)?
+            .record,
+    )
+}
+
+/// Record that `page` now holds `record` from this tool, leaving its size and
+/// time as they were: the page still counts as changed in CSP.
+pub fn record_page(page: &Path, record: PageRecord) -> std::io::Result<()> {
+    let (Some(dir), Some(name)) = (page.parent(), page.file_name()) else {
+        return Ok(());
+    };
+    let Some(mut manifest) = load(dir) else {
+        return Ok(());
+    };
+    let name = name.to_string_lossy();
+    if let Some(file) = manifest.files.iter_mut().find(|file| file.name == name) {
+        file.record = record;
+        save(dir, &manifest)?;
+    }
+    Ok(())
 }
 
 /// CSP files already in a folder an export would write into.
@@ -81,9 +157,7 @@ pub fn check_overwrite(dir: &Path) -> OverwriteCheck {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return check;
     };
-    let manifest: Option<Manifest> = std::fs::read_to_string(dir.join(MANIFEST_NAME))
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok());
+    let manifest = load(dir);
     check.last_export_ms = manifest.as_ref().map(|m| m.written_ms);
     let mut names: Vec<(String, PathBuf)> = entries
         .filter_map(|entry| entry.ok())
@@ -127,7 +201,17 @@ mod tests {
         for page in &pages {
             std::fs::write(page, b"written").unwrap();
         }
-        write_manifest(&dir, &pages).unwrap();
+        let record = |text: &str| PageRecord {
+            texts: Some(vec![text.to_owned()]),
+            vectors: BTreeMap::from([("フキダシ".to_owned(), "1:0".to_owned())]),
+            ..Default::default()
+        };
+        let written_pages: Vec<(PathBuf, PageRecord)> =
+            pages.iter().map(|page| (page.clone(), record("セリフ"))).collect();
+        write_manifest(&dir, &written_pages).unwrap();
+        assert_eq!(written(&pages[0]), Some(record("セリフ")));
+        record_page(&pages[0], record("直したセリフ")).unwrap();
+        assert_eq!(written(&pages[0]), Some(record("直したセリフ")));
         let check = check_overwrite(&dir);
         assert_eq!(check.existing.len(), 3);
         assert!(check.changed.is_empty() && check.unknown.is_empty());

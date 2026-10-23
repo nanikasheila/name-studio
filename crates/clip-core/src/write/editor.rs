@@ -15,7 +15,7 @@ use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension, params_from_iter};
 
 use super::container::{FILE_ID_LENGTH, assemble_container, head_file_id};
-use super::offscreen::encode_offscreen_image;
+use super::offscreen::{empty_offscreen, encode_offscreen_image};
 use super::schema::{
     ColumnInfo, OWNER_CANVAS, OWNER_LAYER, allocate_id, column_infos, column_names, external_columns, table_names,
     text_of,
@@ -528,6 +528,28 @@ impl ClipEditor {
         )
     }
 
+    /// Empty the layer's stored pixels at every zoom level. A new layer's
+    /// render offscreens are copies of a raster layer's, which in a page
+    /// drawn on in CSP holds a drawing.
+    pub fn clear_layer_image(&mut self, layer_id: i64) -> Result<()> {
+        let row = self.layer_row(layer_id)?;
+        for (offscreen_id, attribute, external) in self.mipmap_levels(int_value(value_of(&row, "LayerRenderMipmap")))? {
+            let external = if external.is_empty() {
+                let id = new_external_id();
+                self.db.execute(
+                    "UPDATE Offscreen SET BlockData = ?1 WHERE MainId = ?2",
+                    (id.as_bytes(), offscreen_id),
+                )?;
+                id
+            } else {
+                external
+            };
+            let payload = empty_offscreen(&OffscreenParameters::parse(&attribute)?)?;
+            self.externals.insert(external, payload);
+        }
+        Ok(())
+    }
+
     /// Store `image` placed at `position` (canvas px) as the layer's pixels,
     /// at every zoom level of its mipmap.
     pub fn set_layer_image(&mut self, layer_id: i64, image: &RgbaImage, position: (i64, i64)) -> Result<()> {
@@ -603,11 +625,18 @@ impl ClipEditor {
     /// Write the edited file through a temporary file; unreferenced external
     /// chunks are dropped.
     pub fn save(&self, path: impl AsRef<Path>) -> Result<()> {
+        self.save_with(path, false)
+    }
+
+    /// [`Self::save`], keeping every external chunk with `keep_all`: for a
+    /// file CSP saved, whose chunks may be referenced in ways this tool does
+    /// not know.
+    pub fn save_with(&self, path: impl AsRef<Path>, keep_all: bool) -> Result<()> {
         let referenced = self.referenced_externals()?;
         let externals: Vec<(&str, &[u8])> = self
             .externals
             .iter()
-            .filter(|(id, _)| referenced.contains(*id))
+            .filter(|(id, _)| keep_all || referenced.contains(*id))
             .collect();
         let data = assemble_container(&self.db, &externals, &self.file_id)?;
         let path = path.as_ref();

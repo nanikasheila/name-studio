@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { scriptText } from "./nameexport";
-import { addCharacter, addLine, addPanel, addScene, basicBox, moveLine, newProject, rectShape } from "./project";
+import { faces } from "./arrange";
+import { balloonExtent } from "./balloon";
+import type { BoxMm, Point } from "./project";
+import { addCharacter, addLine, addPanel, addScene, addStroke, basicBox, boxCenter, insidePolygon, moveLine, newProject, rectShape } from "./project";
 import { applyScript, findPattern, likeness, panelBoxes, parseScript, readLine } from "./scriptimport";
 import { applyPlot, parsePlot } from "./plotimport";
 
@@ -199,6 +202,32 @@ describe("台本を直して取り込み直す", () => {
     expect(page.memo).toBe("夜の屋上。");
     const again = applyScript(project, parseScript(revised), { startPage: 0, makePanels: true, update: true });
     expect([again.changed, again.added, again.removed, again.kept]).toEqual([0, 0, 0, 8]);
+    expect(again.notes ?? 0).toBe(0);
+    // A changed panel memo is counted (and goes to the memos layer in CSP).
+    const directed = applyScript(project, parseScript(revised.replace("#### コマ1 引きの絵", "#### コマ1 俯瞰の引きの絵")), { startPage: 0, makePanels: true, update: true });
+    expect(directed.notes).toBe(1);
+    expect(page.panels.find((panel) => panel.order === 1)!.note).toBe("俯瞰の引きの絵");
+  });
+
+  it("keeps a line it adds off the faces in the rough and the panel's other balloons", () => {
+    const project = newProject("新しいネーム", 3);
+    applyScript(project, parseScript(MARKDOWN), { startPage: 0, makePanels: true });
+    const page = project.pages[1];
+    const [who] = page.lines;
+    const panel = page.panels.find((p) => p.id === who.panel)!;
+    // A figure just left of 「誰？」, its head where the next line would go.
+    const [x0, y0] = balloonExtent(who);
+    const [hx, hy] = [x0 - 8, y0 + 6];
+    const head: Point[] = Array.from({ length: 12 }, (_, i) => [hx + 4 * Math.cos((i / 12) * 2 * Math.PI), hy + 4 * Math.sin((i / 12) * 2 * Math.PI)]);
+    for (const stroke of [head, [[hx, hy + 4], [hx, hy + 40]] as Point[]]) addStroke(project, page, stroke.map(([x, y]) => [x, y, 0.5]), 0.5);
+    const face = faces(page, panel);
+    expect(face).toHaveLength(1);
+    applyScript(project, parseScript(MARKDOWN.replace("[1] 「誰？」", "[1] 「誰？」\n「わたしだよ」")), { startPage: 0, makePanels: true, update: true });
+    const added = page.lines.find((line) => line.text === "わたしだよ")!;
+    const overlaps = (a: BoxMm, b: BoxMm) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+    expect(overlaps(balloonExtent(added), face[0])).toBe(false);
+    expect(overlaps(balloonExtent(added), balloonExtent(who))).toBe(false);
+    expect(insidePolygon(panel.shape, boxCenter(added.box))).toBe(true);
   });
 
   it("takes back the script the app writes without changing anything", () => {

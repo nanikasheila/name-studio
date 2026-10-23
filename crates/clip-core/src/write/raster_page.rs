@@ -18,6 +18,7 @@ use serde::Serialize;
 
 use super::cmc::{work_canvas_values, write_cmc};
 use super::editor::ClipEditor;
+use super::manifest::{PageRecord, image_signature};
 use super::page::{apply_page_settings, merge_page_schema, replace_preview, share_rows};
 use super::split::page_file_name;
 use super::spread::{SpreadLayout, make_spread_template};
@@ -27,7 +28,9 @@ use crate::clip::{ClipDocument, LayerKind};
 use crate::error::{CspError, Result};
 use crate::raster::{Filter, resize};
 use crate::text::{NewText, retarget_add_attributes, retarget_text_attributes};
-use crate::vector::{FrameTemplate, NewFrame, NewVectorLine, brush_style_of, build_frame_data, build_vector_data};
+use crate::vector::{
+    FrameTemplate, NewFrame, NewVectorLine, brush_style_of, build_frame_data, build_vector_data, shape_signature,
+};
 
 /// One raster layer of a page; the image covers the whole page canvas.
 pub struct RasterLayer {
@@ -60,13 +63,13 @@ const TEXT_BLOCK_ARRAYS: [&str; 2] = ["TextLayerStringArray", "TextLayerAttribut
 
 /// CSP-made layers that new vector and text layers are copied from.
 pub struct PartDonors {
-    source: ClipDocument,
+    pub(crate) source: ClipDocument,
     /// Whether `source` is the template itself (no schema to merge).
-    is_template: bool,
-    vector: Option<(i64, u32)>,
-    text: Option<i64>,
+    pub(crate) is_template: bool,
+    pub(crate) vector: Option<(i64, u32)>,
+    pub(crate) text: Option<i64>,
     /// A frame folder and the layout of its borders.
-    frame: Option<(i64, FrameTemplate)>,
+    pub(crate) frame: Option<(i64, FrameTemplate)>,
 }
 
 impl PartDonors {
@@ -243,8 +246,9 @@ fn same_file(a: &Path, b: &Path) -> bool {
 }
 
 /// Columns reset on a copied donor so the new layer looks like a fresh one.
-const FRESH_LAYER: [(&str, i64); 5] = [
+const FRESH_LAYER: [(&str, i64); 6] = [
     ("LayerOpacity", 256),
+    ("DraftLayer", 0),
     ("LayerVisibility", 1),
     ("LayerComposite", 0),
     ("LayerClip", 0),
@@ -274,7 +278,7 @@ fn layer_name(layer: &PageLayer) -> &str {
 }
 
 /// Make a layer a 下描き layer (CSP: レイヤー > 下描きレイヤーに設定) at half opacity.
-fn make_draft(editor: &ClipEditor, id: i64) -> Result<()> {
+pub(crate) fn make_draft(editor: &ClipEditor, id: i64) -> Result<()> {
     let has_draft = editor.db.prepare("SELECT DraftLayer FROM Layer LIMIT 0").is_ok();
     if has_draft {
         editor
@@ -290,7 +294,7 @@ fn make_draft(editor: &ClipEditor, id: i64) -> Result<()> {
 
 /// Make `editor` able to hold the donor's layers (its tables, columns and
 /// brush styles), once per donor document.
-fn prepare_for(editor: &ClipEditor, donor: &PartDonors) -> Result<()> {
+pub(crate) fn prepare_for(editor: &ClipEditor, donor: &PartDonors) -> Result<()> {
     if !donor.is_template {
         merge_page_schema(&editor.db, donor.source.database())?;
         share_rows(&editor.db, donor.source.database())?;
@@ -313,7 +317,12 @@ fn brush_style_in(editor: &ClipEditor, donor_style: u32) -> Result<u32> {
     Ok(has("SELECT MIN(MainId) FROM BrushStyle WHERE ?1 = ?1")?.map_or(donor_style, |id| id as u32))
 }
 
-fn add_vector_layer(editor: &mut ClipEditor, donor: &PartDonors, name: &str, lines: &[NewVectorLine]) -> Result<i64> {
+pub(crate) fn add_vector_layer(
+    editor: &mut ClipEditor,
+    donor: &PartDonors,
+    name: &str,
+    lines: &[NewVectorLine],
+) -> Result<i64> {
     let (layer_id, donor_style) = donor
         .vector
         .ok_or_else(|| CspError::format("No vector layer to copy"))?;
@@ -381,7 +390,7 @@ fn text_layer_name(text: &NewText) -> String {
     first.chars().take(32).collect()
 }
 
-fn add_text_layer(editor: &mut ClipEditor, donor: &PartDonors, text: &NewText) -> Result<i64> {
+pub(crate) fn add_text_layer(editor: &mut ClipEditor, donor: &PartDonors, text: &NewText) -> Result<i64> {
     let layer_id = donor.text.ok_or_else(|| CspError::format("No text layer to copy"))?;
     let name = text_layer_name(text);
     let mut row_hook = |values: &mut Values| -> Result<()> {
@@ -553,6 +562,33 @@ pub fn write_name_page(
     Ok(ids)
 }
 
+/// What `layers` put into a page: its texts, the shapes of its vector
+/// layers and the pixels of the image layers named in `images`.
+pub fn page_record(layers: &[PageLayer], images: &[String]) -> PageRecord {
+    let mut record = PageRecord {
+        texts: Some(Vec::new()),
+        ..Default::default()
+    };
+    for layer in layers {
+        match layer {
+            PageLayer::Text(text) => record.texts.get_or_insert_with(Vec::new).push(text.text.clone()),
+            PageLayer::Vector { name, lines } => {
+                let points: Vec<Vec<(f64, f64)>> = lines.iter().map(NewVectorLine::xy).collect();
+                record
+                    .vectors
+                    .insert(name.clone(), shape_signature(points.iter().map(Vec::as_slice)));
+            }
+            PageLayer::Raster(raster) if images.contains(&raster.name) => {
+                record
+                    .rasters
+                    .insert(raster.name.clone(), image_signature(&raster.image));
+            }
+            _ => {}
+        }
+    }
+    record
+}
+
 /// Where and how a set of pages (and their work) is written.
 pub struct WorkOptions {
     pub template: PathBuf,
@@ -577,6 +613,9 @@ pub struct WorkOptions {
 pub struct WorkReport {
     pub pages: Vec<PathBuf>,
     pub work: Option<PathBuf>,
+    /// What was written into each page, in `pages` order.
+    #[serde(skip)]
+    pub records: Vec<PageRecord>,
 }
 
 /// Writes pages one at a time (each page's images can be large), then the work.
@@ -585,6 +624,7 @@ pub struct RasterWorkWriter {
     canvas_values: Values,
     overrides: Values,
     pages: Vec<PathBuf>,
+    records: Vec<PageRecord>,
     /// Position in the book of the next page (a spread takes two).
     next_index: i64,
     pub canvas: TemplateCanvas,
@@ -671,6 +711,7 @@ impl RasterWorkWriter {
             canvas_values,
             overrides,
             pages: Vec::new(),
+            records: Vec::new(),
             next_index: 0,
             canvas,
             donors,
@@ -727,7 +768,23 @@ impl RasterWorkWriter {
         )?;
         self.next_index += if spread { 2 } else { 1 };
         self.pages.push(output.clone());
+        self.records.push(page_record(layers, &self.options.draft_layers));
         Ok(output)
+    }
+
+    pub fn out_dir(&self) -> &Path {
+        &self.options.out_dir
+    }
+
+    /// Where the next page (or 見開き page) was written by the export this
+    /// writer repeats, moving on past it as [`Self::write_page`] does.
+    pub fn next_page_path(&mut self, spread: bool) -> PathBuf {
+        let path = self
+            .options
+            .out_dir
+            .join(page_file_name(&self.options.name_pattern, self.next_index + 1));
+        self.next_index += if spread { 2 } else { 1 };
+        path
     }
 
     pub fn finish(mut self) -> Result<WorkReport> {
@@ -748,6 +805,7 @@ impl RasterWorkWriter {
         Ok(WorkReport {
             pages: std::mem::take(&mut self.pages),
             work,
+            records: std::mem::take(&mut self.records),
         })
     }
 }

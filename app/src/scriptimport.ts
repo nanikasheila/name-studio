@@ -17,7 +17,7 @@
 //   「…！！」                       a shout (トゲ) unless a tag says otherwise
 //   型：導入 / 型: opening           the page's コマ割りの型 (fitted to its panels)
 // List markers (- * + 1.), quotes (>) and **bold** are ignored.
-import { layOut, placingBox, wrapToFit } from "./arrange";
+import { faces, layOut, moveClear, placingBox, wrapToFit } from "./arrange";
 import { balloonExtent } from "./balloon";
 import { PATTERNS, patternPanels } from "./koma";
 import {
@@ -303,6 +303,8 @@ export interface ScriptImportReport {
   changed: number;
   added: number;
   removed: number;
+  /** With `update`: panel memos (演出のメモ) changed by the script. */
+  notes?: number;
 }
 
 /** Panels for `count` script panels over the basic frame: tiers, two side by side past four. */
@@ -452,7 +454,11 @@ function updatePage(project: Project, page: Page, used: ScriptPanel[], speakers:
   const wanted = new Map<Panel | undefined, ScriptLine[]>();
   used.forEach((scriptPanel, k) => {
     const panel = panels[Math.min(k, panels.length - 1)];
-    if (panel && scriptPanel.notes.length) panel.note = scriptPanel.notes.join("\n");
+    if (panel && scriptPanel.notes.length) {
+      const note = scriptPanel.notes.join("\n");
+      if (panel.note !== note) report.notes = (report.notes ?? 0) + 1;
+      panel.note = note;
+    }
     wanted.set(panel, [...(wanted.get(panel) ?? []), ...scriptPanel.lines]);
   });
   const speakerOf = (said: ScriptLine) => (said.speaker ? speakers.get(said.speaker) : undefined);
@@ -511,7 +517,12 @@ function updatePage(project: Project, page: Page, used: ScriptPanel[], speakers:
       const [right, top] = previous ? [balloonExtent(previous)[0] - 2, balloonExtent(previous)[1]] : [box[2] - 3, box[1] + 3];
       const [x0, y0, x1] = balloonExtent(line);
       moveLine(line, Math.max(box[0] + 3 - x0, right - x1), top - y0);
-      if (panel) line.panel = panel.id;
+      if (panel) {
+        // Off the faces in the rough and the panel's other balloons, as little as it takes.
+        const others = page.lines.filter((other) => other !== line && other.panel === panel.id && !gone.has(other)).map(balloonExtent);
+        moveClear(line, box, [...faces(page, panel), ...others]);
+        line.panel = panel.id;
+      }
       previous = line;
       report.added++;
     });

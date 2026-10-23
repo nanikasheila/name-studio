@@ -89,10 +89,31 @@ export function layOut(lines: readonly Line[], box: BoxMm, shape?: readonly Poin
       rowHeight = 0;
     }
     let y = Math.max(box[1], Math.min(top, box[3] - MARGIN - h));
-    if (avoid.length) [right, y] = clearOf(avoid, box, right, y, w, h);
-    moveLine(line, right - w - lx0, y - ly0);
-    right -= w + GAP;
-    rowHeight = Math.max(rowHeight, y + h - top);
+    let [ex0, ey0, width, tall] = [lx0, ly0, w, h];
+    if (avoid.length) {
+      let place = clearOf(avoid, box, right, y, w, h);
+      // Still over a face: broken another way (taller and narrower, or the
+      // other way round) it may fit beside or above it.
+      if (place.covered >= 1 && wrap) {
+        let text = line.text;
+        for (const other of rewraps(line, height)) {
+          line.text = other;
+          fitLine(line);
+          const [cx0, cy0, cx1, cy1] = balloonExtent(line);
+          const top = Math.max(box[1], Math.min(y, box[3] - MARGIN - (cy1 - cy0)));
+          const tried = clearOf(avoid, box, right, top, cx1 - cx0, cy1 - cy0);
+          if (tried.cost < place.cost - 1) [place, text] = [tried, other];
+        }
+        line.text = text;
+        fitLine(line);
+        const extent = balloonExtent(line);
+        [ex0, ey0, width, tall] = [extent[0], extent[1], extent[2] - extent[0], extent[3] - extent[1]];
+      }
+      [right, y] = [place.right, place.top];
+    }
+    moveLine(line, right - width - ex0, y - ey0);
+    right -= width + GAP;
+    rowHeight = Math.max(rowHeight, y + tall - top);
     if (shape) pullInside(line, shape);
   }
 }
@@ -102,22 +123,54 @@ export function layOut(lines: readonly Line[], box: BoxMm, shape?: readonly Poin
  * moved left past a face or down below it, as little as it takes, or where it
  * covers the least of them when there is no room to keep clear.
  */
-function clearOf(avoid: readonly BoxMm[], box: BoxMm, right: number, y: number, w: number, h: number): [number, number] {
+function clearOf(avoid: readonly BoxMm[], box: BoxMm, right: number, y: number, w: number, h: number): { right: number; top: number; covered: number; cost: number } {
   const covered = (r: number, top: number) =>
     avoid.reduce((sum, [x0, y0, x1, y1]) => sum + Math.max(0, Math.min(r, x1) - Math.max(r - w, x0)) * Math.max(0, Math.min(top + h, y1) - Math.max(top, y0)), 0);
   const [minRight, maxY] = [Math.min(right, box[0] + MARGIN + w), Math.max(y, box[3] - MARGIN - h)];
   const rights = [right, ...avoid.map((b) => Math.max(minRight, Math.min(right, b[0] - GAP)))];
   const tops = [y, ...avoid.map((b) => Math.min(maxY, Math.max(y, b[3] + GAP)))];
-  let best: [number, number] = [right, y];
-  let cost = covered(right, y) * 10;
-  if (!cost) return best;
+  let best = { right, top: y, covered: covered(right, y), cost: covered(right, y) * COVER_COST };
+  if (!best.cost) return best;
   for (const r of rights) {
     for (const top of tops) {
-      const c = covered(r, top) * 10 + (right - r) + (top - y);
-      if (c < cost) [best, cost] = [[r, top], c];
+      const area = covered(r, top);
+      const cost = area * COVER_COST + (right - r) + (top - y);
+      if (cost < best.cost) best = { right: r, top, covered: area, cost };
     }
   }
   return best;
+}
+
+/** What one mm² over a face costs against one mm moved. */
+const COVER_COST = 10;
+
+/**
+ * Other ways to break a line the app broke itself (a line broken by hand is
+ * kept as it is), that fit `height`.
+ */
+function rewraps(line: Line, height: number): string[] {
+  if (line.kind === "sfx") return [];
+  const joined = line.text.replace(/\n/g, "");
+  const own = [...WIDTHS, 9, 10, 12].map((width) => wrapDialogue(joined, width));
+  if (line.text.includes("\n") && !own.includes(line.text)) return [];
+  const original = line.text;
+  const fits = [...new Set(own)].filter((text) => {
+    if (text === original) return false;
+    line.text = text;
+    fitLine(line);
+    const [, y0, , y1] = balloonExtent(line);
+    return y1 - y0 <= height;
+  });
+  line.text = original;
+  fitLine(line);
+  return fits;
+}
+
+/** Move `line` as little as it takes off `avoid` (faces, other balloons), inside `box`. */
+export function moveClear(line: Line, box: BoxMm, avoid: readonly BoxMm[]): void {
+  const [x0, y0, x1, y1] = balloonExtent(line);
+  const { right, top } = clearOf(avoid, box, x1, y0, x1 - x0, y1 - y0);
+  moveLine(line, right - x1, top - y0);
 }
 
 /** The faces in a panel's rough: the top of each figure, where a balloon should not go. */

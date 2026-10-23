@@ -451,3 +451,32 @@ pub fn build_frame_data(frames: &[NewFrame], template: &FrameTemplate, brush_sty
     payload.extend_from_slice(&body);
     payload
 }
+
+/// A short fingerprint of lines' shapes (points to the pixel, in order), to
+/// tell whether a vector layer still holds what was written into it.
+pub fn shape_signature<'a>(lines: impl IntoIterator<Item = &'a [(f64, f64)]>) -> String {
+    // FNV-1a: the same on every build, unlike the standard hasher.
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut feed = |value: i64| {
+        for byte in value.to_le_bytes() {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x0100_0000_01b3);
+        }
+    };
+    let mut count = 0;
+    for points in lines {
+        count += 1;
+        feed(points.len() as i64);
+        for (x, y) in points {
+            feed(x.round() as i64);
+            feed(y.round() as i64);
+        }
+    }
+    format!("{count}:{hash:016x}")
+}
+
+impl NewVectorLine {
+    pub fn xy(&self) -> Vec<(f64, f64)> {
+        self.points.iter().map(|&(x, y, _)| (x, y)).collect()
+    }
+}

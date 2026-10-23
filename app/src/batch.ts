@@ -2,7 +2,7 @@
 // the window opens, writes the pages and the work, leaves a JSON report and closes.
 
 import { invoke } from "@tauri-apps/api/core";
-import { checkSummary, exportToCsp, imagesNote, missingEditable, ROUGH_LAYERS } from "./nameexport";
+import { checkSummary, dialogueUpdateSummary, exportToCsp, imagesNote, missingEditable, ROUGH_LAYERS, updateCspDialogue } from "./nameexport";
 import { normalize, type Project } from "./project";
 
 export interface BatchExport {
@@ -20,6 +20,8 @@ export interface BatchExport {
   frameFolders?: boolean;
   /** The name's memos as a 下描き layer (on unless --no-notes). */
   notes?: boolean;
+  /** Bring the dialogue into the pages there instead (--update-dialogue). */
+  updateDialogue?: boolean;
   report: string;
 }
 
@@ -49,30 +51,50 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
     const overwrite = await invoke("check_export_target", { outDir: task.outDir }).catch(() => null);
     // As when the window opens a file: empty lists are left out of the saved JSON.
     const project = normalize(await invoke<Project>("load_project", { path: task.project }));
-    const report = await exportToCsp(
-      project,
-      {
-        template: task.template,
-        outDir: task.outDir,
-        workTemplate: task.workTemplate,
-        workName: task.workName,
-        storyIndex: task.storyIndex,
-        inputs: [task.project, project.source?.path].filter((path): path is string => !!path),
-        donors: [...(task.donors ?? []), project.source?.path].filter((path): path is string => !!path),
-        draftLayers: task.draftRough === false ? [] : ROUGH_LAYERS,
-        frameFolders: task.frameFolders === true,
-        notes: task.notes !== false,
-      },
-      true,
-      status,
-    );
-    if (!report) throw new Error("書き出しが止まりました");
-    const check = checkSummary(report);
-    ok = check.ok;
-    // Read back as written, but not editable in CSP: said first, so it is not missed.
-    const missing = missingEditable(report);
-    const summary = missing.length ? [`注意: ${imagesNote(missing)}`, ...check.lines] : check.lines;
-    result = { ok, seconds: (Date.now() - started) / 1000, summary, overwrite, ...report };
+    if (task.updateDialogue) {
+      const summary = await updateCspDialogue(
+        project,
+        {
+          template: task.template,
+          outDir: task.outDir,
+          workTemplate: null,
+          workName: null,
+          storyIndex: null,
+          inputs: [task.project, project.source?.path].filter((path): path is string => !!path),
+          donors: [...(task.donors ?? []), project.source?.path].filter((path): path is string => !!path),
+          notes: task.notes !== false,
+        },
+        status,
+      );
+      const check = dialogueUpdateSummary(summary);
+      ok = check.ok;
+      result = { ok, seconds: (Date.now() - started) / 1000, summary: check.lines, ...summary };
+    } else {
+      const report = await exportToCsp(
+        project,
+        {
+          template: task.template,
+          outDir: task.outDir,
+          workTemplate: task.workTemplate,
+          workName: task.workName,
+          storyIndex: task.storyIndex,
+          inputs: [task.project, project.source?.path].filter((path): path is string => !!path),
+          donors: [...(task.donors ?? []), project.source?.path].filter((path): path is string => !!path),
+          draftLayers: task.draftRough === false ? [] : ROUGH_LAYERS,
+          frameFolders: task.frameFolders === true,
+          notes: task.notes !== false,
+        },
+        true,
+        status,
+      );
+      if (!report) throw new Error("書き出しが止まりました");
+      const check = checkSummary(report);
+      ok = check.ok;
+      // Read back as written, but not editable in CSP: said first, so it is not missed.
+      const missing = missingEditable(report);
+      const summary = missing.length ? [`注意: ${imagesNote(missing)}`, ...check.lines] : check.lines;
+      result = { ok, seconds: (Date.now() - started) / 1000, summary, overwrite, ...report };
+    }
   } catch (error) {
     result = { ok, error: String(error) };
   }

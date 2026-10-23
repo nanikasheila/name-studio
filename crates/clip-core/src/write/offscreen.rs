@@ -159,3 +159,9 @@ pub fn encode_offscreen_image(image: &RgbaImage, parameters: &OffscreenParameter
     let blocks = image_to_blocks(image, parameters)?;
     encode_block_records(&blocks, BLOCK_PLANE_BYTES * parameters.total_planes as usize)
 }
+
+/// The external payload of an offscreen of `parameters` with no pixels.
+pub fn empty_offscreen(parameters: &OffscreenParameters) -> Result<Vec<u8>> {
+    let blocks = vec![None; (parameters.blocks_x * parameters.blocks_y) as usize];
+    encode_block_records(&blocks, BLOCK_PLANE_BYTES * parameters.total_planes as usize)
+}
