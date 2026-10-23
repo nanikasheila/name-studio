@@ -120,6 +120,19 @@ describe("プロットの付箋: 第4話の試作から", () => {
     expect(likelyPage(pages, "全体の雰囲気は明るめにする。")).toBeUndefined();
   });
 
+  it("puts the notes on the outer side of the page, away from the gutter", () => {
+    const project = newProject("新しいネーム", 3);
+    const notes = [1, 2, 3].map((page) => ({ section: "論点", text: `${page} ページの論点`, page }));
+    applyPlot(project, { pages: [], scenes: [], notes });
+    const [width] = project.pageFormat.canvasMm;
+    const side = (index: number) => (stickyBox(project.pages[index].stickies![0])[0] < width / 2 ? "left" : "right");
+    // Page 1 alone on the left, then 2 (right) and 3 (left) face each other.
+    expect([0, 1, 2].map(side)).toEqual(["left", "right", "left"]);
+    const other = newProject("新しいネーム", 3);
+    applyPlot(other, { pages: [], scenes: [], notes }, false);
+    expect(stickyBox(other.pages[0].stickies![0])[0]).toBeGreaterThan(width / 2);
+  });
+
   it("stacks many notes on a page without one covering another", () => {
     const project = newProject("新しいネーム", 1);
     const long = "残っている論点の説明。".repeat(12);

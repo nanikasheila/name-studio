@@ -213,6 +213,7 @@ export class Workbench {
     });
     this.scriptDialog = new ScriptDialog({
       project: () => this.state.project,
+      firstAlone: () => this.editor.firstAlone,
       edit: (change) => this.edit(change),
       done: (report, firstPage) => {
         if (this.view !== "edit") this.setView("edit");
