@@ -4,7 +4,7 @@
 // mm → screen mapping.
 import { FULL_SPEED_MM, followFactor, postCorrect, tiltOf as penTilt, usesMotion } from "./brush";
 import { adjustPressure, penPreferences } from "./pen";
-import { defaultTailStyle, insideBalloon, resolvedShape, tailGeometry } from "./balloon";
+import { balloonExtent, defaultTailStyle, insideBalloon, resolvedShape, tailGeometry } from "./balloon";
 import { spreads } from "./pages";
 import { addBreakout, moveBreakout, stacked } from "./koma";
 import { joinPanels, moveSeam, seamAt, seamBase, seamLines, snapSeam, type Seam } from "./komaedit";
@@ -64,6 +64,7 @@ import {
   followPanel,
   type CarriedContents,
   strokeHit,
+  keepStickyOnPage,
   trimBox,
   type BoxMm,
   type Brush,
@@ -139,7 +140,7 @@ type Drag =
   /** Two fingers: `v` is the view point under their middle (independent of zoom), kept under it. */
   | { kind: "pinch"; ids: [number, number]; dist: number; angle: number; zoom: number; rotation: number; v: Point }
   | { kind: "turn"; from: number; rotation: number }
-  | { kind: "move"; slot: Slot; last: Point; moved: boolean; carried?: CarriedContents; items?: ItemRef[] }
+  | { kind: "move"; slot: Slot; last: Point; moved: boolean; carried?: CarriedContents; items?: ItemRef[]; cycle?: string }
   | { kind: "vertex"; slot: Slot; panelId: string; vertex: number; moved: boolean; carried?: CarriedContents }
   | { kind: "cut"; slot: Slot; a: Point; b: Point; free: boolean }
   | { kind: "frame"; slot: Slot; a: Point; b: Point }
@@ -209,6 +210,10 @@ export class PageEditor {
   tool: Tool = "select";
   selection: Selection | null = null;
   spreadIndex = 0;
+  /** The page of the spread last clicked or picked in the page list: what the page settings are for. */
+  private focusedPageId: string | null = null;
+  /** Picking the next of overlapping balloons, held back while a double-click may follow. */
+  private cycleTimer = 0;
   firstAlone = true;
   /** コマに中身が付いてくる: moving or reshaping a panel takes its contents along. */
   panelCarries = readFlag(PANEL_CARRIES_KEY, true);
@@ -329,6 +334,7 @@ export class PageEditor {
   }
 
   showPage(pageNumber: number): void {
+    this.focusedPageId = this.host.project()?.pages[pageNumber - 1]?.id ?? null;
     const index = this.spreadList().findIndex((pair) => pair.includes(pageNumber));
     if (index >= 0 && index !== this.spreadIndex) {
       this.spreadIndex = index;
@@ -490,7 +496,7 @@ export class PageEditor {
     this.bar.style.top = `${Math.max(y, 6)}px`;
   }
 
-  /** The page the selection is on, or the right page of the spread. */
+  /** The page the selection is on, else the page of the spread last clicked or picked, else its first page. */
   focusPage(): Page | null {
     const project = this.host.project();
     if (!project) return null;
@@ -498,8 +504,8 @@ export class PageEditor {
       const page = project.pages.find((p) => p.id === this.selection!.pageId);
       if (page) return page;
     }
-    const [first] = this.currentPages();
-    return first ? project.pages[first - 1] : null;
+    const shown = this.currentPages().map((number) => project.pages[number - 1]).filter(Boolean);
+    return shown.find((page) => page.id === this.focusedPageId) ?? shown[0] ?? null;
   }
 
   // --- layout ---------------------------------------------------------------
@@ -821,25 +827,45 @@ export class PageEditor {
     ctx.font = "13px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "alphabetic";
-    const memo = page.memo ? `  ${page.memo.split("\n")[0]}` : "";
+    // The page number and its memo, wrapped to the page's width so the two pages of a spread do not run into each other.
     const [trimX0, , trimX1] = trimBox(project.pageFormat);
-    ctx.fillText(`${slot.index + 1}${memo}`, sx((trimX0 + trimX1) / 2), sy(pageH) + 18);
+    const rows = wrapText(ctx, `${slot.index + 1}${page.memo ? `  ${page.memo.replace(/\s*\n\s*/g, " ")}` : ""}`, Math.max(80, (trimX1 - trimX0) * scale - 8), 2);
+    rows.forEach((row, i) => ctx.fillText(row, sx((trimX0 + trimX1) / 2), sy(pageH) + 18 + i * 16));
   }
 
   /** Where a panel's memo sits on screen: inside its top-left corner, as wide as the panel allows. */
   private noteBox(slot: Slot, panel: Panel): { x: number; y: number; w: number; h: number; rows: string[] } {
-    const [x0, y0, x1] = bounds(panel.shape);
-    const left = Math.max(x0, slot.shown[0]);
-    const right = Math.min(x1, slot.shown[1]);
-    const x = slot.x + left * slot.scale + 4;
-    const y = slot.y + Math.max(y0, 0) * slot.scale + 4;
+    // On the paper: a 裁ち切り panel's tag sits inside the trim, not out in the bleed.
+    const format = this.host.project()?.pageFormat;
+    const [tx0, ty0, tx1, ty1] = format ? trimBox(format) : [-Infinity, 0, Infinity, Infinity];
+    const [x0, y0, x1, y1] = bounds(panel.shape);
+    const left = Math.max(x0, slot.shown[0], tx0);
+    const right = Math.min(x1, slot.shown[1], tx1);
+    const top = Math.max(y0, 0, ty0);
+    const bottom = Math.min(y1, ty1);
     // Leave room for the panel's number at the top right.
     const room = Math.max(60, Math.min((right - left) * slot.scale - 8 - 2 * Math.max(4 * slot.scale, 7) - 6, 280));
     const ctx = this.ctx;
     ctx.font = NOTE_FONT;
     const rows = panel.note ? wrapText(ctx, panel.note, room - 10, 4) : [];
     const w = rows.length ? Math.min(room, Math.max(...rows.map((row) => ctx.measureText(row).width)) + 10) : 52;
-    return { x, y, w, h: Math.max(rows.length, 1) * NOTE_ROW + 4, rows };
+    const h = Math.max(rows.length, 1) * NOTE_ROW + 4;
+    // The top left corner, or another one when dialogue is there (balloons start at the top right).
+    const [sl, sr, st, sb] = [slot.x + left * slot.scale + 4, slot.x + right * slot.scale - 4 - w, slot.y + top * slot.scale + 4, slot.y + bottom * slot.scale - 4 - h];
+    const corners: [number, number][] = [
+      [sl, st],
+      [sl, sb],
+      [sr, sb],
+    ];
+    const balloons = slot.page.lines
+      .filter((line) => line.panel === panel.id)
+      .map((line) => {
+        const [bx0, by0, bx1, by1] = balloonExtent(line);
+        return [slot.x + bx0 * slot.scale, slot.y + by0 * slot.scale, slot.x + bx1 * slot.scale, slot.y + by1 * slot.scale];
+      });
+    const clear = ([x, y]: [number, number]) => balloons.every(([bx0, by0, bx1, by1]) => x + w < bx0 || x > bx1 || y + h < by0 || y > by1);
+    const [x, y] = corners.find(clear) ?? corners[0];
+    return { x, y, w, h, rows };
   }
 
   /** A panel's memo, on a pale tag in its corner (screen only). */
@@ -1399,14 +1425,11 @@ export class PageEditor {
     for (const sticky of [...(page.stickies ?? [])].reverse()) {
       if (insideBox(stickyBox(sticky), point)) return { kind: "sticky", pageId: page.id, id: sticky.id };
     }
-    for (const line of [...page.lines].reverse()) {
-      const [x0, y0, x1, y1] = line.box;
-      const pad = 1.5;
-      const inBalloon = line.balloon && insidePolygon(line.balloon, point);
-      if (inBalloon || insideBox([x0 - pad, y0 - pad, x1 + pad, y1 + pad], point)) {
-        return { kind: "line", pageId: page.id, id: line.id };
-      }
-    }
+    // Overlapping balloons: the selected one stays the one picked (a double-click writes in it).
+    const under = this.linesAt(slot, point);
+    const selected = this.selection?.kind === "line" && this.selection.pageId === page.id ? this.selection.id : null;
+    const line = under.find((id) => id === selected) ?? under[0];
+    if (line) return { kind: "line", pageId: page.id, id: line };
     for (const stroke of [...page.strokes].reverse()) {
       if (strokeHit(stroke, point, tolerance)) return { kind: "stroke", pageId: page.id, id: stroke.id };
     }
@@ -1424,6 +1447,18 @@ export class PageEditor {
     return null;
   }
 
+  /** Lines whose balloon or text is under `point`, top first. */
+  private linesAt(slot: Slot, point: Point): string[] {
+    const page = this.visiblePage(slot.page);
+    return [...page.lines]
+      .reverse()
+      .filter((line) => {
+        const [x0, y0, x1, y1] = line.box;
+        return (line.balloon && insidePolygon(line.balloon, point)) || insideBox([x0 - 1.5, y0 - 1.5, x1 + 1.5, y1 + 1.5], point);
+      })
+      .map((line) => line.id);
+  }
+
   private vertexAt(slot: Slot, sx: number, sy: number): number {
     const s = this.selection;
     if (!s || s.kind !== "panel" || s.pageId !== slot.page.id || this.transforming) return -1;
@@ -1438,9 +1473,12 @@ export class PageEditor {
   private badge(slot: Slot, panel: Panel, pageW: number): { x: number; y: number; radius: number } {
     const [, y0, x1] = bounds(panel.shape);
     const radius = Math.max(4 * slot.scale, 7);
+    // On the paper: a 裁ち切り panel's number sits at the trim, not out in the bleed.
+    const format = this.host.project()?.pageFormat;
+    const [, ty0, tx1] = format ? trimBox(format) : [0, 0, pageW];
     return {
-      x: Math.min(slot.x + x1 * slot.scale, slot.x + pageW * slot.scale) - radius - 3,
-      y: Math.max(slot.y + y0 * slot.scale, slot.y) + radius + 3,
+      x: Math.min(slot.x + x1 * slot.scale, slot.x + Math.min(pageW, tx1) * slot.scale) - radius - 3,
+      y: Math.max(slot.y + y0 * slot.scale, slot.y + Math.max(0, ty0) * slot.scale) + radius + 3,
       radius,
     };
   }
@@ -1701,6 +1739,11 @@ export class PageEditor {
       this.select(null);
       return;
     }
+    if (this.focusedPageId !== slot.page.id) {
+      // The page settings follow the page worked on (the left page of a spread too).
+      this.focusedPageId = slot.page.id;
+      this.host.selectionChanged(this.selection);
+    }
     const point = this.toPage(slot, sx, sy);
     switch (this.tipEraser ? "eraser" : this.tool) {
       case "select": {
@@ -1814,12 +1857,16 @@ export class PageEditor {
           this.drag = { kind: "pick", slot, points: [point] };
           return;
         }
+        // A click on the selected balloon where others lie under it picks the next one down.
+        const again = target.kind === "line" && this.isSelected(slot.page, "line", target.id);
+        const under = again ? this.linesAt(slot, point) : [];
+        const cycle = under.length > 1 ? under[(under.indexOf(target.id) + 1) % under.length] : undefined;
         this.select(target);
         this.host.begin();
         // A panel takes its dialogue and rough lines along.
         const panel = target.kind === "panel" ? slot.page.panels.find((p) => p.id === target.id) : undefined;
         const carried = panel && this.panelCarries ? carryContents(slot.page, panel) : undefined;
-        this.drag = { kind: "move", slot, last: point, moved: false, carried };
+        this.drag = { kind: "move", slot, last: point, moved: false, carried, ...(cycle ? { cycle } : {}) };
         return;
       }
       case "cut": {
@@ -2223,6 +2270,15 @@ export class PageEditor {
       case "vertex":
         if (!drag.moved) {
           this.host.cancel();
+          if (drag.kind === "move" && drag.cycle) {
+            // Not at once: the second click of a double-click writes in the selected one.
+            const pageId = drag.slot.page.id;
+            const id = drag.cycle;
+            this.cycleTimer = window.setTimeout(() => {
+              this.select({ kind: "line", pageId, id });
+              this.host.status("重なったセリフの下のものを選びました（同じ所をもう一度押すと次へ）");
+            }, 320);
+          }
           break;
         }
         if (drag.kind === "vertex" || this.selection?.kind === "panel" || this.selection?.items?.some((item) => item.kind === "panel")) {
@@ -2376,7 +2432,11 @@ export class PageEditor {
       if (breakout) moveBreakout(breakout, dx, dy);
     } else if (s.kind === "sticky") {
       const sticky = page.stickies?.find((n) => n.id === s.id);
-      if (sticky) sticky.at = [sticky.at[0] + dx, sticky.at[1] + dy];
+      if (sticky) {
+        sticky.at = [sticky.at[0] + dx, sticky.at[1] + dy];
+        const project = this.host.project();
+        if (project) keepStickyOnPage(project, sticky);
+      }
     } else if (s.kind === "fill") {
       const fill = page.fills?.find((f) => f.id === s.id);
       if (fill) fill.shape = fill.shape.map(([x, y]) => [x + dx, y + dy]);
@@ -2443,6 +2503,7 @@ export class PageEditor {
   }
 
   private doubleClick(event: MouseEvent): void {
+    window.clearTimeout(this.cycleTimer);
     const project = this.host.project();
     if (!project || this.tool !== "select") return;
     const [ex, ey] = this.at(event);

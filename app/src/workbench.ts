@@ -225,6 +225,14 @@ export class Workbench {
       projectPath: () => this.state.path,
       rough: (rough) => this.loadRough(rough),
       status: (message) => this.setStatus(message),
+      goTo: (pageId, lineId) => {
+        const index = this.state.project?.pages.findIndex((p) => p.id === pageId) ?? -1;
+        if (index < 0) return;
+        if (this.view !== "edit") this.setView("edit");
+        this.editor.showPage(index + 1);
+        this.editor.select({ kind: "line", pageId, id: lineId });
+        this.renderAll();
+      },
     });
     this.brushDialog = new BrushDialog({
       project: () => this.state.project,
@@ -1253,7 +1261,8 @@ export class Workbench {
     const patternNote = element("p", { className: "hint", textContent: PATTERNS[0].note });
     pattern.addEventListener("change", () => (patternNote.textContent = PATTERNS.find((item) => item.id === pattern.value)?.note ?? ""));
     const applyButton = button("このページに当てる", async () => {
-      if (page.panels.length && !(await ask("今のコマを置き換えますか？（元に戻すで戻せます）", { title: "Name Studio", kind: "warning" }))) return;
+      const question = "今のコマを置き換えますか？中のセリフ・ラフ線・コマのメモは、コマの順に新しいコマへ移します（元に戻すで戻せます）";
+      if (page.panels.length && !(await ask(question, { title: "Name Studio", kind: "warning" }))) return;
       this.edit((p) => {
         applyPattern(p, page, pattern.value);
         sortLines(page);

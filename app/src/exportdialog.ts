@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import { buildRequest, folderOf, overwriteWarning, type ExportForm, type OverwriteCheck } from "./export";
 import { checkSummary, exportPdf, exportToCsp, imagesNote, missingEditable, scriptText } from "./nameexport";
+import { ISSUE_LABELS, checkName, issueSummary } from "./namecheck";
 import type { Project, RoughImage } from "./project";
 
 export interface ExportDialogHost {
@@ -11,6 +12,8 @@ export interface ExportDialogHost {
   projectPath(): string | null;
   rough(rough: RoughImage): Promise<CanvasImageSource | null>;
   status(message: string): void;
+  /** Show a line of dialogue on its page, selected. */
+  goTo(pageId: string, lineId: string): void;
 }
 
 type Kind = "csp" | "pdf" | "text";
@@ -75,7 +78,32 @@ export class ExportDialog {
     if (!this.form.storyIndex && project.storyIndex !== undefined) this.form.storyIndex = String(project.storyIndex);
     this.show();
     this.message("");
+    this.renderCheck(project);
     $<HTMLDialogElement>("name-export-dialog").showModal();
+  }
+
+  /** 書き出す前の確認: what will need fixing by hand afterwards, each one a click away. */
+  private renderCheck(project: Project): void {
+    const issues = checkName(project);
+    const details = $<HTMLDetailsElement>("ne-check");
+    details.classList.toggle("clean", !issues.length);
+    $("ne-check-summary").textContent = issues.length
+      ? `書き出す前の確認: ${issueSummary(issues)}（押すとそのセリフへ）`
+      : "書き出す前の確認: フキダシの重なり・コマの外・仕上がりの外・しっぽなしはありません";
+    const list = $("ne-check-list");
+    list.replaceChildren(
+      ...issues.slice(0, 60).map((issue) => {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.textContent = `${issue.page} ページ  ${ISSUE_LABELS[issue.kind]}  「${issue.text}」`;
+        item.addEventListener("click", () => {
+          $<HTMLDialogElement>("name-export-dialog").close();
+          this.host.goTo(issue.pageId, issue.lineId);
+        });
+        return item;
+      }),
+    );
+    if (issues.length > 60) list.append(Object.assign(document.createElement("p"), { className: "hint", textContent: `ほか ${issues.length - 60} 件` }));
   }
 
   private sources(): string[] {

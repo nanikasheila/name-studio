@@ -1,6 +1,7 @@
 // コマ割りの語彙: panel borders and open edges (裁ち切り), insets (はめ込み),
 // tilted panels, breakouts (はみ出し), background effects, and page layout
 // patterns taken from the manuscripts. Everything here works in page mm.
+import { arrangePanel } from "./arrange";
 import { seeded } from "./balloon";
 import { spreads } from "./pages";
 import {
@@ -8,11 +9,14 @@ import {
   assignPanels,
   basicBox,
   bounds,
+  carryContents,
   centroid,
+  followPanel,
   newId,
   orderPanels,
   pageIndex,
   rectShape,
+  sortLines,
   type Breakout,
   type Page,
   type PageFormat,
@@ -577,10 +581,28 @@ export function patternPanels(project: Project, patternId: string, gutters = DEF
 }
 
 /** Replace the page's panels with a pattern. */
+/**
+ * Replace the page's panels with a pattern's. What was in the panels goes
+ * along in panel order (the first panel's into the new first panel, and so
+ * on; past the last new panel, into the last), with the panels' memos.
+ */
 export function applyPattern(project: Project, page: Page, patternId: string): void {
+  const before = [...page.panels].sort((a, b) => a.order - b.order).map((panel) => ({ note: panel.note, carried: carryContents(page, panel) }));
   page.panels = patternPanels(project, patternId);
   orderPanels(page, project.binding);
+  const after = [...page.panels].sort((a, b) => a.order - b.order);
+  const shared = new Map<Panel, number>();
+  before.forEach(({ note, carried }, k) => {
+    const panel = after[Math.min(k, after.length - 1)];
+    if (!panel) return;
+    followPanel(page, panel, carried);
+    if (note) panel.note = [panel.note, note].filter(Boolean).join("\n");
+    shared.set(panel, (shared.get(panel) ?? 0) + 1);
+  });
   assignPanels(page);
+  // Several panels' dialogue in one: laid out again so it does not pile up.
+  for (const [panel, count] of shared) if (count > 1) arrangePanel(project, page, panel);
+  sortLines(page);
 }
 
 // --- what is drawn of the borders -----------------------------------------------

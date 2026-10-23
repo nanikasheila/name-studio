@@ -253,8 +253,18 @@ export function stickyBox(sticky: Sticky): BoxMm {
 
 export function addSticky(project: Project, page: Page, at: Point, text = ""): Sticky {
   const sticky: Sticky = { id: newId(project, "sticky"), text, at };
+  keepStickyOnPage(project, sticky);
   (page.stickies ??= []).push(sticky);
   return sticky;
+}
+
+/** Keep a 付箋 on its own page, so it does not cover the facing page of a spread. */
+export function keepStickyOnPage(project: Project, sticky: Sticky): void {
+  const [width, height] = project.pageFormat.canvasMm;
+  const [x0, y0, x1, y1] = stickyBox(sticky);
+  const x = Math.min(Math.max(x0, 0), Math.max(0, width - (x1 - x0)));
+  const y = Math.min(Math.max(y0, 0), Math.max(0, height - (y1 - y0)));
+  sticky.at = [x, y];
 }
 
 export function removeSticky(page: Page, id: string): void {

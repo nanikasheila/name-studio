@@ -96,6 +96,12 @@ dialog.export::backdrop { background: rgb(0 0 0 / 0.35); }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); direction: rtl; text-align: left;
 }
 .export .message { min-height: 1.5em; white-space: pre-line; }
+.name-check { margin: 10px 0; padding: 6px 10px; border: 1px solid #e3c16f; border-radius: 6px; background: #fff8e1; font-size: 12px; }
+.name-check.clean { border-color: var(--line); background: transparent; color: var(--muted); }
+.name-check summary { cursor: pointer; }
+.name-check-list { display: flex; flex-direction: column; gap: 2px; max-height: 160px; overflow: auto; margin-top: 6px; }
+.name-check-list button { text-align: left; border: none; background: none; padding: 2px 4px; font-size: 12px; }
+.name-check-list button:hover { background: rgb(0 0 0 / 0.05); }
 .export .message.error { color: #c0392b; }
 .export .actions { display: flex; justify-content: flex-end; gap: 8px; }
 #work-fields[hidden] { display: none; }
