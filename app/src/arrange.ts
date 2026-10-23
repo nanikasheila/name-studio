@@ -1,6 +1,8 @@
 // セリフの並べ直し: the dialogue of a panel laid out again in reading order,
 // right to left from the top right, wrapping down; long lines broken into
-// short ones first, as narrow as it takes to fit the panel's height.
+// short ones first, as narrow as it takes to fit the panel's height, and
+// clear of the faces drawn in the rough.
+import { figures } from "./autotail";
 import { balloonExtent } from "./balloon";
 import {
   assignPanels,
@@ -71,7 +73,7 @@ export function wrapToFit(line: Line, height: number): void {
  * With `shape`, a line whose centre would fall outside it is pulled in, so
  * that it stays in its panel.
  */
-export function layOut(lines: readonly Line[], box: BoxMm, shape?: readonly Point[], wrap = true): void {
+export function layOut(lines: readonly Line[], box: BoxMm, shape?: readonly Point[], wrap = true, avoid: readonly BoxMm[] = []): void {
   const height = box[3] - box[1] - 2 * MARGIN;
   let right = box[2] - MARGIN;
   let top = box[1] + MARGIN;
@@ -86,12 +88,45 @@ export function layOut(lines: readonly Line[], box: BoxMm, shape?: readonly Poin
       top += rowHeight + GAP;
       rowHeight = 0;
     }
-    const y = Math.max(box[1], Math.min(top, box[3] - MARGIN - h));
+    let y = Math.max(box[1], Math.min(top, box[3] - MARGIN - h));
+    if (avoid.length) [right, y] = clearOf(avoid, box, right, y, w, h);
     moveLine(line, right - w - lx0, y - ly0);
     right -= w + GAP;
-    rowHeight = Math.max(rowHeight, h);
+    rowHeight = Math.max(rowHeight, y + h - top);
     if (shape) pullInside(line, shape);
   }
+}
+
+/**
+ * Where a w×h balloon whose top right is (right, y) best keeps off the faces:
+ * moved left past a face or down below it, as little as it takes, or where it
+ * covers the least of them when there is no room to keep clear.
+ */
+function clearOf(avoid: readonly BoxMm[], box: BoxMm, right: number, y: number, w: number, h: number): [number, number] {
+  const covered = (r: number, top: number) =>
+    avoid.reduce((sum, [x0, y0, x1, y1]) => sum + Math.max(0, Math.min(r, x1) - Math.max(r - w, x0)) * Math.max(0, Math.min(top + h, y1) - Math.max(top, y0)), 0);
+  const [minRight, maxY] = [Math.min(right, box[0] + MARGIN + w), Math.max(y, box[3] - MARGIN - h)];
+  const rights = [right, ...avoid.map((b) => Math.max(minRight, Math.min(right, b[0] - GAP)))];
+  const tops = [y, ...avoid.map((b) => Math.min(maxY, Math.max(y, b[3] + GAP)))];
+  let best: [number, number] = [right, y];
+  let cost = covered(right, y) * 10;
+  if (!cost) return best;
+  for (const r of rights) {
+    for (const top of tops) {
+      const c = covered(r, top) * 10 + (right - r) + (top - y);
+      if (c < cost) [best, cost] = [[r, top], c];
+    }
+  }
+  return best;
+}
+
+/** The faces in a panel's rough: the top of each figure, where a balloon should not go. */
+export function faces(page: Page, panel: Panel): BoxMm[] {
+  return figures(page, panel).map(([x0, y0, x1, y1]) => {
+    const size = Math.min(12, (y1 - y0) * 0.15) + 2;
+    const cx = (x0 + x1) / 2;
+    return [Math.max(x0, cx - size), y0, Math.min(x1, cx + size), y0 + 2 * size] as BoxMm;
+  });
 }
 
 /** Move `line` towards the middle of `shape` until its centre is inside it. */
@@ -137,7 +172,7 @@ export function arrangePanel(project: Project, page: Page, panel: Panel): number
   sortLines(page);
   const lines = page.lines.filter((line) => line.panel === panel.id);
   if (!lines.length) return 0;
-  layOut(lines, placingBox(project, panel), panel.shape);
+  layOut(lines, placingBox(project, panel), panel.shape, true, faces(page, panel));
   assignPanels(page);
   sortLines(page);
   return lines.length;

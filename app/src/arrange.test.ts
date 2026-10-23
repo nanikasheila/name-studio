@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { arrangePage, arrangePanel, fitSpills, placingBox, spills } from "./arrange";
 import { balloonExtent } from "./balloon";
-import { addLine, addPanel, basicBox, boxCenter, fitLine, insidePolygon, newProject, rectShape, setDefaultShape, setLineKind, trimBox } from "./project";
+import type { BoxMm, Point } from "./project";
+import { addLine, addPanel, addStroke, basicBox, boxCenter, fitLine, insidePolygon, newProject, rectShape, setDefaultShape, setLineKind, trimBox } from "./project";
 
 describe("セリフの並べ直し", () => {
   it("lays a panel's dialogue out right to left in reading order, broken into short lines, inside the panel", () => {
@@ -30,6 +31,26 @@ describe("セリフの並べ直し", () => {
     arrangePage(project, page);
     expect(line.box[1]).toBeGreaterThanOrEqual(frame[1]);
     expect(line.box[2]).toBeLessThanOrEqual(frame[2]);
+  });
+});
+
+describe("ラフの顔を避ける", () => {
+  const overlaps = (a: BoxMm, b: BoxMm) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+  it("puts the balloon beside a face drawn at the top right, not over it", () => {
+    const project = newProject("t", 1);
+    const page = project.pages[0];
+    const [fx, fy] = basicBox(project.pageFormat);
+    const panel = addPanel(project, page, rectShape([fx + 10, fy + 10, fx + 130, fy + 90]));
+    // A stick figure on the right, its head near the top of the panel.
+    const [hx, hy] = [fx + 120, fy + 20];
+    const head: Point[] = Array.from({ length: 12 }, (_, i) => [hx + 4 * Math.cos((i / 12) * 2 * Math.PI), hy + 4 * Math.sin((i / 12) * 2 * Math.PI)]);
+    for (const stroke of [head, [[hx, hy + 4], [hx, hy + 35]] as Point[]]) addStroke(project, page, stroke.map(([x, y]) => [x, y, 0.5]), 0.5);
+    const line = addLine(project, page, [fx + 60, fy + 60], "えっ");
+    arrangePanel(project, page, panel);
+    expect(overlaps(balloonExtent(line), [hx - 4, hy - 4, hx + 4, hy + 4])).toBe(false);
+    expect(insidePolygon(panel.shape, boxCenter(line.box))).toBe(true);
+    // Still up at the top, beside the face.
+    expect(line.box[1]).toBeLessThan(hy);
   });
 });
 
