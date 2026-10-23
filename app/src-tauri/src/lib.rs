@@ -7,6 +7,7 @@
 //! them. The name data is edited in the front end and checked here when it
 //! is saved.
 
+pub mod batch;
 pub mod sheet;
 
 use std::path::{Path, PathBuf};
@@ -32,11 +33,22 @@ use serde::{Deserialize, Serialize};
 use tauri::Manager;
 use tauri::ipc::Response;
 
-#[derive(Default)]
 struct AppState {
     document: Mutex<Option<ClipDocument>>,
     /// Pages of the name data being written for CSP, one call per page.
     name_export: Mutex<Option<RasterWorkWriter>>,
+    /// A command-line export to run instead of the usual start (see [`batch`]).
+    batch: Result<Option<batch::BatchExport>, String>,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            document: Mutex::default(),
+            name_export: Mutex::default(),
+            batch: batch::from_args(std::env::args()),
+        }
+    }
 }
 
 fn with_layer<T>(
@@ -778,6 +790,18 @@ fn is_release_build() -> bool {
     option_env!("NAME_STUDIO_RELEASE").is_some()
 }
 
+/// The command-line export to run, if the app was started for one.
+#[tauri::command]
+fn batch_export_task(state: tauri::State<'_, AppState>) -> Result<Option<batch::BatchExport>, String> {
+    state.batch.clone()
+}
+
+/// End a command-line export: close the app with this exit code.
+#[tauri::command]
+fn end_batch_export(app: tauri::AppHandle, code: i32) {
+    app.exit(code);
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -808,7 +832,9 @@ pub fn run() {
             write_text_file,
             csp_tool_locations,
             is_release_build,
-            read_csp_sub_tools
+            read_csp_sub_tools,
+            batch_export_task,
+            end_batch_export
         ])
         .run(tauri::generate_context!())
         .expect("error while running Name Studio");

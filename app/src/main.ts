@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask, open } from "@tauri-apps/plugin-dialog";
 import { formatTime } from "./autosave";
+import { batchExportTask, runBatchExport } from "./batch";
 import { appVersion, checkForUpdate } from "./updater";
 import { buildRequest, folderOf, summarize, type ExportForm, type ExportReport, type Fit } from "./export";
 import { dialogueByPage, effectiveVisibility, initiallyHidden, spreads } from "./pages";
@@ -610,6 +611,12 @@ async function offerRecovery(): Promise<void> {
 async function start(): Promise<void> {
   const version = await appVersion();
   if (version) $("app-version").textContent = `v${version}`;
+  // Started from the command line to write a name out: no update or recovery questions.
+  const batch = await batchExportTask();
+  if (batch) {
+    await runBatchExport(batch, setStatus);
+    return;
+  }
   await checkForUpdate({
     status: setStatus,
     busy: () => workbench.project !== null,

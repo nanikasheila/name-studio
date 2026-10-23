@@ -43,7 +43,7 @@ Rust 版は Python 版の移植で、Python 版を正解として同じ結果に
 
 ## 使い方
 
-Windows のインストーラーは GitHub Actions の「Build Windows app」が作ります（Artifacts から取得）。
+Windows のインストーラーは GitHub Actions の「Release Windows app」が main ごとにリリースとして公開します（入れたアプリは自動で更新されます）。
 署名していないため、初回は SmartScreen の警告が出ます。
 
 開発する場合:
@@ -64,6 +64,14 @@ cargo build --release -p name-cli
 ```
 
 `inspect` の出力は Python 版の `csp-name-splitter inspect` と同じ JSON です。
+
+アプリ自体も、画面を操作せずにネームを CSP へ書き出せます（書き出し画面と同じ処理。
+終わると結果の JSON を書いて閉じ、読み直しで問題がなければ終了コード 0）:
+
+```bash
+name-studio-app --export-csp ネーム.namestudio --template page.clip --out 書き出し先 \
+  [--work-template 作品.cmc --work-name 第1話] [--story-index 1] [--report 結果.json]
+```
 
 ## テスト
 
