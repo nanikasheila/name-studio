@@ -9,6 +9,8 @@ import { dragSort } from "./dragsort";
 import { AltDialog } from "./altdialog";
 import { ScriptDialog } from "./scriptdialog";
 import { ShortcutDialog } from "./shortcutdialog";
+import { PenDialog } from "./pendialog";
+import { penPreferences } from "./pen";
 import { comboOf, Shortcuts, type ActionId } from "./shortcuts";
 import { alternativesOf, joinAlternative, makeAlternative, useAlternative } from "./alternatives";
 import {
@@ -139,6 +141,7 @@ export class Workbench {
   private readonly scriptDialog: ScriptDialog;
   readonly shortcuts = new Shortcuts();
   private readonly shortcutDialog = new ShortcutDialog(this.shortcuts);
+  private readonly penDialog = new PenDialog(penPreferences);
   private readonly brushDialog: BrushDialog;
   private readonly versionDialog: VersionDialog;
   private readonly autosaver = new Autosaver(
@@ -157,6 +160,7 @@ export class Workbench {
       rough: (rough) => this.rough(rough),
       status: (message) => this.setStatus(message),
       actions: (selection) => this.actions(selection),
+      run: (action) => this.run(action),
     });
     this.overview = new Overview($("overview"), {
       project: () => this.state.project,
@@ -1392,6 +1396,7 @@ export class Workbench {
     $("name-export").addEventListener("click", () => this.exportDialog.open());
     $("versions").addEventListener("click", () => this.openVersions());
     $("shortcuts").addEventListener("click", () => this.shortcutDialog.open());
+    $("pen-settings").addEventListener("click", () => this.penDialog.open());
     $("redo").addEventListener("click", () => this.redo());
     $("editor-next").addEventListener("click", () => this.flip(1));
     $("editor-prev").addEventListener("click", () => this.flip(-1));

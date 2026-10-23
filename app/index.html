@@ -13,6 +13,7 @@
       <button id="save" class="editor-only" title="保存（Ctrl+S）。編集中は自動でも保存します" hidden>保存</button>
       <button id="versions" class="editor-only" title="版の履歴: 前の状態に戻す、自動保存の設定" hidden>履歴…</button>
       <button id="shortcuts" class="editor-only" title="ショートカットキーの割り当て" hidden>キー…</button>
+      <button id="pen-settings" class="editor-only" title="ペンタブレットの設定: 筆圧、傾き、消しゴム側、サイドボタン、タッチ操作、カーソル" hidden>ペン…</button>
       <span id="file-name" class="file-name">ファイルが開かれていません</span>
       <button id="update" class="primary" hidden>更新</button>
       <span id="app-version" class="app-version"></span>
@@ -284,6 +285,50 @@
         <p id="sc-message" class="message" role="status"></p>
         <div class="actions">
           <button type="button" id="sc-reset">初期設定に戻す</button>
+          <button value="cancel" formnovalidate>閉じる</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="pen-dialog" class="export pen-settings">
+      <form method="dialog">
+        <h2>ペンとタブレット</h2>
+        <p class="hint">設定はこの PC に残ります。ペンタブの細かな設定（ボタンの割り当てなど）は、タブレットのドライバーでも変えられます。</p>
+        <div class="pen-grid">
+          <section>
+            <h3>筆圧カーブ</h3>
+            <canvas id="pen-curve" class="pen-curve" width="220" height="220" title="点をドラッグで動かす。線の上を押すと点を足し、点をダブルクリックで消す"></canvas>
+            <div class="pen-presets">
+              <button type="button" data-curve="soft" title="軽い力で太く・濃く">やわらかめ</button>
+              <button type="button" data-curve="linear" title="ペンの筆圧そのまま">標準</button>
+              <button type="button" data-curve="hard" title="強く押したときだけ太く・濃く">かため</button>
+            </div>
+            <small>横がペンの筆圧、縦が線に使う筆圧です。</small>
+          </section>
+          <section>
+            <h3>試し描き</h3>
+            <canvas id="pen-pad" class="pen-pad" width="300" height="220"></canvas>
+            <div class="pen-meter"><span>筆圧</span><span class="bar"><span id="pen-meter-raw"></span></span><span class="bar used"><span id="pen-meter-used"></span></span><span id="pen-meter-text">-</span></div>
+            <div class="pen-presets">
+              <button type="button" id="pen-calibrate" title="ふだんの力で何本か線を引くと、その力に合わせたカーブにします（CSP の「筆圧検知レベルの調節」）">描いて調節</button>
+              <button type="button" id="pen-pad-clear">消す</button>
+            </div>
+            <small id="pen-calibrate-hint">「描いて調節」を押して、ふだんの力で線を何本か引いてください。</small>
+          </section>
+        </div>
+        <div class="pen-options">
+          <label class="check"><input type="checkbox" id="pen-tilt" /> 傾きを使う（傾きで変わるブラシ）</label>
+          <label class="check"><input type="checkbox" id="pen-eraser-end" /> ペンの後ろ（消しゴム側）で消す</label>
+          <label>サイドボタン <select id="pen-side"></select></label>
+          <label>カーソル <select id="pen-cursor"></select></label>
+          <h3>タッチ（指）</h3>
+          <label>1 本指 <select id="pen-touch"></select></label>
+          <label class="check"><input type="checkbox" id="pen-pinch" /> 2 本指で拡大縮小・移動</label>
+          <label class="check"><input type="checkbox" id="pen-pinch-rotate" /> 2 本指で回転も</label>
+          <label class="check"><input type="checkbox" id="pen-taps" /> 2 本指タップで元に戻す、3 本指タップでやり直す</label>
+          <label class="check"><input type="checkbox" id="pen-palm" /> ペンを近づけている間は指を無視（手のひら）</label>
+        </div>
+        <div class="actions">
+          <button type="button" id="pen-reset">初期設定に戻す</button>
           <button value="cancel" formnovalidate>閉じる</button>
         </div>
       </form>

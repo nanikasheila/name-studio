@@ -2,7 +2,8 @@
 // into edits (select and move, cut panels, place lines, draw and erase).
 // Coordinates on a page are millimetres; each page of the spread has its own
 // mm → screen mapping.
-import { FULL_SPEED_MM, followFactor, postCorrect, tiltOf, usesMotion } from "./brush";
+import { FULL_SPEED_MM, followFactor, postCorrect, tiltOf as penTilt, usesMotion } from "./brush";
+import { adjustPressure, penPreferences } from "./pen";
 import { spreads } from "./pages";
 import { addBreakout, moveBreakout, stacked } from "./koma";
 import { joinPanels, moveSeam, seamAt, seamBase, seamLines, snapSeam, type Seam } from "./komaedit";
@@ -114,6 +115,8 @@ export interface EditorHost {
   status(message: string): void;
   /** Buttons for the bar shown by the selection (most used actions, at hand). */
   actions(selection: Selection): HTMLElement[];
+  /** Undo or redo (two- and three-finger taps, the pen's side button). */
+  run(action: "undo" | "redo"): void;
 }
 
 interface Slot {
@@ -129,6 +132,8 @@ interface Slot {
 
 type Drag =
   | { kind: "pan"; x: number; y: number }
+  /** Two fingers: `v` is the view point under their middle (independent of zoom), kept under it. */
+  | { kind: "pinch"; ids: [number, number]; dist: number; angle: number; zoom: number; rotation: number; v: Point }
   | { kind: "turn"; from: number; rotation: number }
   | { kind: "move"; slot: Slot; last: Point; moved: boolean; carried?: CarriedContents }
   | { kind: "vertex"; slot: Slot; panelId: string; vertex: number; moved: boolean; carried?: CarriedContents }
@@ -232,6 +237,16 @@ export class PageEditor {
   private pastes = 0;
   /** The small bar of actions beside the selection. */
   private readonly bar: HTMLDivElement;
+  /** The pointer the drag belongs to: other pens and fingers do not disturb it. */
+  private dragPointer: number | null = null;
+  private dragPointerType = "";
+  /** When the pen was last near the screen (for ignoring the hand resting on it). */
+  private penSeen = -Infinity;
+  /** Fingers on the page (screen px), and where each came down. */
+  private readonly touches = new Map<number, Point>();
+  private readonly touchStarts = new Map<number, Point>();
+  /** The fingers since the first came down: for taps (two: undo, three: redo). */
+  private gesture: { start: number; most: number; moved: boolean } | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement, private readonly host: EditorHost) {
     // Low latency: the pen line reaches the screen without waiting for the compositor.
@@ -239,6 +254,10 @@ export class PageEditor {
     // A pen held still or its barrel button must not open the context menu.
     canvas.addEventListener("contextmenu", (event) => event.preventDefault());
     onTipLoaded(() => this.draw());
+    penPreferences.onChange(() => {
+      this.updateCursor();
+      this.requestOverlay();
+    });
     this.bar = document.createElement("div");
     this.bar.className = "action-bar";
     this.bar.hidden = true;
@@ -570,6 +589,8 @@ export class PageEditor {
       cancelAnimationFrame(this.overlayFrame);
       this.overlayFrame = 0;
     }
+    // A hidden editor (a file loading before the editor shows) has no pixels to draw.
+    if (!this.canvas.width || !this.canvas.height) return;
     const ctx = this.ctx;
     if (this.drag?.kind === "pen" && this.base) {
       // While a line is drawn nothing else changes: the pages as they were, then the line.
@@ -980,6 +1001,28 @@ export class PageEditor {
       drawStroke(ctx, stroke, { scale: slot.scale, x: slot.x, y: slot.y }, "#3a3834", 0.7, brush);
     }
     this.drawFrame();
+    if (this.tool === "pen" && !this.erasing() && !this.spaceHeld && this.pointer && penPreferences.settings.cursor === "brush") {
+      // The pen's size where it will draw (a cross in it when it is small).
+      const [px, py] = this.pointer;
+      const radius = Math.max(((this.penWidthMm / 2) * (this.slots[0]?.scale ?? 1)), 2);
+      ctx.save();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+      ctx.beginPath();
+      ctx.arc(px, py, radius + 1, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(30, 30, 30, 0.85)";
+      ctx.beginPath();
+      ctx.arc(px, py, radius, 0, Math.PI * 2);
+      if (radius < 5) {
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          ctx.moveTo(px + dx * (radius + 2), py + dy * (radius + 2));
+          ctx.lineTo(px + dx * (radius + 6), py + dy * (radius + 6));
+        }
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
     if (this.erasing() && this.eraseMode !== "lasso" && this.pointer) {
       ctx.strokeStyle = ACCENT;
       ctx.lineWidth = 1;
@@ -1202,7 +1245,11 @@ export class PageEditor {
 
   /** Follow the pen's eraser end (button 5, buttons bit 32) as it comes and goes. */
   private setTipEraser(event: PointerEvent): void {
-    const tip = event.pointerType === "pen" && (event.button === 5 || (event.buttons & 32) !== 0);
+    const pen = penPreferences.settings;
+    const end = pen.eraserEnd && (event.button === 5 || (event.buttons & 32) !== 0);
+    // The side button held as the pen touches: the eraser too, when set so.
+    const side = pen.sideButton === "eraser" && (event.button === 2 || (event.buttons & 2) !== 0);
+    const tip = event.pointerType === "pen" && (end || side);
     if (tip !== this.tipEraser) {
       this.tipEraser = tip;
       this.updateCursor();
@@ -1313,10 +1360,115 @@ export class PageEditor {
             ? PageEditor.handleCursor(this.hover.handle)
             : "move"
         : null;
+    const look = penPreferences.settings.cursor;
+    cursors.pen = look === "brush" ? "none" : look === "dot" ? DOT_CURSOR : "crosshair";
     this.canvas.style.cursor = this.spaceHeld ? "grab" : this.tipEraser ? eraser : this.tool === "eraser" ? eraser : hover ?? cursors[this.tool];
   }
 
   private pointerDown(event: PointerEvent): void {
+    if (event.pointerType === "pen") {
+      this.penSeen = event.timeStamp;
+      // The pen wins over a finger moving the view.
+      if (this.drag && this.dragPointerType === "touch") this.abandonDrag();
+    }
+    if (event.pointerType === "touch" && this.touchDown(event)) return;
+    // One drag at a time: another pen or mouse press waits for it to end.
+    if (this.drag && this.dragPointer !== null && event.pointerId !== this.dragPointer) return;
+    this.press(event);
+    if (this.drag && this.drag.kind !== "pinch") {
+      this.dragPointer = event.pointerId;
+      this.dragPointerType = event.pointerType;
+    }
+  }
+
+  // --- fingers ----------------------------------------------------------------------
+
+  /** A finger comes down: true when it is taken here (moving the view), false to draw with it. */
+  private touchDown(event: PointerEvent): boolean {
+    const pen = penPreferences.settings;
+    // 手のひら: the hand resting on the screen while the pen draws.
+    if (pen.palmRejection && (event.timeStamp - this.penSeen < 500 || this.dragPointerType === "pen")) return true;
+    const at: Point = [event.offsetX, event.offsetY];
+    this.touches.set(event.pointerId, at);
+    this.touchStarts.set(event.pointerId, at);
+    try {
+      this.canvas.setPointerCapture(event.pointerId);
+    } catch {
+      // Not tracked any more: the finger just does nothing.
+    }
+    if (!this.gesture) this.gesture = { start: event.timeStamp, most: 0, moved: false };
+    this.gesture.most = Math.max(this.gesture.most, this.touches.size);
+    if (this.touches.size === 1) {
+      if (pen.touch === "draw") return false;
+      if (pen.touch === "pan") {
+        this.drag = { kind: "pan", x: event.clientX, y: event.clientY };
+        this.dragPointer = event.pointerId;
+        this.dragPointerType = "touch";
+      }
+      return true;
+    }
+    // A second finger: what the first began gives way to the pinch.
+    this.abandonDrag();
+    if (this.touches.size === 2 && pen.pinch) this.startPinch();
+    return true;
+  }
+
+  private startPinch(): void {
+    const [[a, pa], [b, pb]] = [...this.touches.entries()];
+    const mid: Point = [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2];
+    const [cx, cy] = this.centre();
+    const [ux, uy] = this.turn(mid[0] - cx, mid[1] - cy, -this.rotation);
+    this.drag = {
+      kind: "pinch",
+      ids: [a, b],
+      dist: Math.max(Math.hypot(pb[0] - pa[0], pb[1] - pa[1]), 1),
+      angle: Math.atan2(pb[1] - pa[1], pb[0] - pa[0]),
+      zoom: this.zoom,
+      rotation: this.rotation,
+      v: [(ux - this.pan[0]) / this.zoom, (uy - this.pan[1]) / this.zoom],
+    };
+    this.dragPointer = null;
+    this.dragPointerType = "touch";
+  }
+
+  /** Zoom, turn and move the view with the two fingers: what was under them stays under them. */
+  private pinchMove(drag: Extract<Drag, { kind: "pinch" }>): void {
+    const pa = this.touches.get(drag.ids[0]);
+    const pb = this.touches.get(drag.ids[1]);
+    if (!pa || !pb) return;
+    const mid: Point = [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2];
+    const zoom = Math.min(Math.max((drag.zoom * Math.hypot(pb[0] - pa[0], pb[1] - pa[1])) / drag.dist, 0.3), 12);
+    if (penPreferences.settings.pinchRotate) {
+      let rotation = drag.rotation + Math.atan2(pb[1] - pa[1], pb[0] - pa[0]) - drag.angle;
+      const full = Math.PI * 2;
+      rotation = ((((rotation + Math.PI) % full) + full) % full) - Math.PI;
+      // Upright again when close to it.
+      if (Math.abs(rotation) < (3 * Math.PI) / 180) rotation = 0;
+      if (rotation !== this.rotation) {
+        this.rotation = rotation;
+        this.applyViewTransform();
+      }
+    }
+    const [cx, cy] = this.centre();
+    const [ux, uy] = this.turn(mid[0] - cx, mid[1] - cy, -this.rotation);
+    this.zoom = zoom;
+    this.pan = [ux - drag.v[0] * zoom, uy - drag.v[1] * zoom];
+    this.requestDraw();
+  }
+
+  /** Give up the drag in progress: a line not yet drawn goes; a change already made stays. */
+  private abandonDrag(): void {
+    const drag = this.drag;
+    if (!drag) return;
+    this.drag = null;
+    this.base = null;
+    if (["move", "vertex", "seam", "scale", "rotate", "tail", "erase"].includes(drag.kind)) this.completeDrag(drag);
+    this.dragPointer = null;
+    this.dragPointerType = "";
+    this.draw();
+  }
+
+  private press(event: PointerEvent): void {
     const project = this.host.project();
     if (!project) return;
     // A click away from text being written only ends the writing.
@@ -1338,6 +1490,18 @@ export class PageEditor {
     if (event.button === 1 || this.spaceHeld) {
       this.drag = { kind: "pan", x: event.clientX, y: event.clientY };
       return;
+    }
+    // The pen's side button (as the right button) does what the tablet settings say.
+    if (event.pointerType === "pen" && event.button === 2) {
+      const side = penPreferences.settings.sideButton;
+      if (side === "pan") {
+        this.drag = { kind: "pan", x: event.clientX, y: event.clientY };
+        return;
+      }
+      if (side === "undo") {
+        this.host.run("undo");
+        return;
+      }
     }
     // A pen's eraser end reports button 5 (buttons bit 32): erase with any tool.
     this.setTipEraser(event);
@@ -1517,13 +1681,27 @@ export class PageEditor {
   }
 
   private pointerMove(event: PointerEvent): void {
+    if (event.pointerType === "pen") this.penSeen = event.timeStamp;
+    if (event.pointerType === "touch") {
+      // Fingers not taken (the hand under the pen) do nothing.
+      if (!this.touches.has(event.pointerId)) return;
+      const at: Point = [event.offsetX, event.offsetY];
+      this.touches.set(event.pointerId, at);
+      const start = this.touchStarts.get(event.pointerId);
+      if (this.gesture && start && Math.hypot(at[0] - start[0], at[1] - start[1]) > 10) this.gesture.moved = true;
+      if (this.drag?.kind === "pinch") {
+        this.pinchMove(this.drag);
+        return;
+      }
+    }
+    if (this.drag && this.dragPointer !== null && event.pointerId !== this.dragPointer) return;
     const [ex, ey] = this.at(event);
     this.pointer = [ex, ey];
     const drag = this.drag;
     if (!drag) {
       this.setTipEraser(event);
       this.scheduleHover(ex, ey);
-      if (this.erasing()) this.requestOverlay();
+      if (this.erasing() || this.tool === "pen") this.requestOverlay();
       return;
     }
     if (drag.kind === "pan") {
@@ -1545,6 +1723,7 @@ export class PageEditor {
       this.setRotation(rotation);
       return;
     }
+    if (drag.kind === "pinch") return;
     const point = this.toPage(drag.slot, ex, ey);
     const project = this.host.project()!;
     switch (drag.kind) {
@@ -1666,6 +1845,30 @@ export class PageEditor {
   }
 
   private pointerUp(event: PointerEvent): void {
+    if (event.pointerType === "touch") {
+      const tracked = this.touches.delete(event.pointerId);
+      this.touchStarts.delete(event.pointerId);
+      if (!tracked) return;
+      const gesture = this.gesture;
+      if (!this.touches.size && gesture) {
+        this.gesture = null;
+        // A quick tap with two fingers undoes, with three redoes (as in CSP).
+        if (penPreferences.settings.touchTaps && gesture.most >= 2 && !gesture.moved && event.timeStamp - gesture.start < 400) {
+          this.host.run(gesture.most === 2 ? "undo" : "redo");
+        }
+      }
+      if (this.drag?.kind === "pinch") {
+        if (this.touches.size < 2) {
+          this.drag = null;
+          this.dragPointerType = "";
+          this.draw();
+        }
+        return;
+      }
+    }
+    if (this.drag && this.dragPointer !== null && event.pointerId !== this.dragPointer) return;
+    this.dragPointer = null;
+    this.dragPointerType = "";
     const drag = this.drag;
     this.drag = null;
     this.base = null;
@@ -1673,6 +1876,13 @@ export class PageEditor {
     this.afterUp = null;
     if (after) setTimeout(after, 0);
     if (!drag) return;
+    this.completeDrag(drag);
+    if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId);
+    this.draw();
+  }
+
+  /** Finish what a drag did: keep the change for undo, make what was drawn. */
+  private completeDrag(drag: Drag): void {
     const project = this.host.project();
     if (!project) return;
     switch (drag.kind) {
@@ -1861,10 +2071,9 @@ export class PageEditor {
       }
       case "pan":
       case "turn":
+      case "pinch":
         break;
     }
-    if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId);
-    this.draw();
   }
 
   private erase(slot: Slot, point: Point): void {
@@ -2149,8 +2358,16 @@ export class PageEditor {
 function pressureOf(event: PointerEvent): number {
   // Mice report 0.5 while a button is down; treat that as full pressure.
   if (event.pointerType !== "pen") return 1;
-  return Math.max(0.05, Math.min(1, event.pressure || 0.5));
+  // The 筆圧カーブ of the tablet settings, then the brush's own.
+  return Math.max(0.05, adjustPressure(penPreferences.settings.pressureCurve, event.pressure || 0.5));
 }
+
+function tiltOf(event: PointerEvent): number {
+  return penPreferences.settings.tilt ? penTilt(event) : 0;
+}
+
+/** A small dot for drawing (the tablet settings' 点 cursor). */
+const DOT_CURSOR = `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="9" height="9"><circle cx="4.5" cy="4.5" r="2" fill="#222" stroke="#fff" stroke-width="1"/></svg>')}") 4 4, crosshair`;
 
 export function isTyping(event: KeyboardEvent): boolean {
   const target = event.target as HTMLElement | null;
