@@ -154,7 +154,9 @@ impl Dynamics {
         };
         let pressure_curve = graph(graph_length(8))?;
         let tilt_curve = graph(graph_length(9))?;
-        // Without a speed graph CSP thins the line as the pen speeds up.
+        // Without a speed graph (headers before 48 bytes) CSP thins the line
+        // as the pen speeds up: the graph CSP itself saves for its own
+        // brushes (水彩丸筆, にじみ墨...) is this straight line down.
         let velocity_curve = match graph_length(11) {
             0 => vec![[0.0, 1.0], [1.0, 0.0]],
             length => graph(length).unwrap_or_default(),
