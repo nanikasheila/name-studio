@@ -2,7 +2,7 @@
 // into edits (select and move, cut panels, place lines, draw and erase).
 // Coordinates on a page are millimetres; each page of the spread has its own
 // mm → screen mapping.
-import { FULL_SPEED_MM, followFactor, tiltOf, usesMotion } from "./brush";
+import { FULL_SPEED_MM, followFactor, postCorrect, tiltOf, usesMotion } from "./brush";
 import { spreads } from "./pages";
 import { addBreakout, moveBreakout, stacked } from "./koma";
 import { INK, drawBalloons, drawLineText, drawPanelBorders, drawPanelFills, drawStroke, drawStrokes, onTipLoaded, tracePath } from "./pagedraw";
@@ -31,6 +31,9 @@ import {
   sortLines,
   splitAtX,
   wantsSpread,
+  carryContents,
+  followPanel,
+  type CarriedContents,
   strokeHit,
   trimBox,
   type Brush,
@@ -92,8 +95,8 @@ interface Slot {
 
 type Drag =
   | { kind: "pan"; x: number; y: number }
-  | { kind: "move"; slot: Slot; last: Point; moved: boolean }
-  | { kind: "vertex"; slot: Slot; panelId: string; vertex: number; moved: boolean }
+  | { kind: "move"; slot: Slot; last: Point; moved: boolean; carried?: CarriedContents }
+  | { kind: "vertex"; slot: Slot; panelId: string; vertex: number; moved: boolean; carried?: CarriedContents }
   | { kind: "cut"; slot: Slot; a: Point; b: Point; free: boolean }
   | { kind: "frame"; slot: Slot; a: Point; b: Point }
   | { kind: "pen"; slot: Slot; points: StrokePoint[]; last: StrokePoint; motion: boolean; time: number; speed: number }
@@ -107,11 +110,32 @@ const ACCENT = "#2f6fdb";
 const MARGIN = 28;
 const HANDLE = 5;
 
+export const PANEL_CARRIES_KEY = "namestudio.panelCarries";
+
+export function readFlag(key: string, fallback: boolean): boolean {
+  try {
+    const value = localStorage.getItem(key);
+    return value === null ? fallback : value === "1";
+  } catch {
+    return fallback;
+  }
+}
+
+export function writeFlag(key: string, value: boolean): void {
+  try {
+    localStorage.setItem(key, value ? "1" : "0");
+  } catch {
+    // Not kept for the next start; the setting still holds now.
+  }
+}
+
 export class PageEditor {
   tool: Tool = "select";
   selection: Selection | null = null;
   spreadIndex = 0;
   firstAlone = true;
+  /** コマに中身が付いてくる: moving or reshaping a panel takes its contents along. */
+  panelCarries = readFlag(PANEL_CARRIES_KEY, true);
   penWidthMm = 0.4;
   /** Brushes in use (ids in the project); null is the plain pen / eraser. */
   penBrush: string | null = null;
@@ -545,7 +569,9 @@ export class PageEditor {
     if (drag?.kind === "pen") {
       const { slot, points } = drag;
       const brush = this.brush("pen");
-      const stroke = { id: "", points, widthMm: this.penWidthMm, closed: false, brush: brush?.id };
+      // 抜き (the taper at the end) comes when the pen lifts, as in CSP.
+      const cut: [boolean, boolean] = [false, true];
+      const stroke = { id: "", points, widthMm: this.penWidthMm, closed: false, brush: brush?.id, cut };
       drawStroke(ctx, stroke, { scale: slot.scale, x: slot.x, y: slot.y }, "#3a3834", 0.7, brush);
     }
     if (this.erasing() && this.eraseMode !== "lasso" && this.pointer) {
@@ -697,7 +723,9 @@ export class PageEditor {
         const vertex = this.vertexAt(slot, sx, sy);
         if (vertex >= 0) {
           this.host.begin();
-          this.drag = { kind: "vertex", slot, panelId: this.selection!.id, vertex, moved: false };
+          const panel = slot.page.panels.find((p) => p.id === this.selection!.id);
+          const carried = panel && this.panelCarries ? carryContents(slot.page, panel) : undefined;
+          this.drag = { kind: "vertex", slot, panelId: this.selection!.id, vertex, moved: false, carried };
           return;
         }
         const target = this.hit(slot, point);
@@ -717,7 +745,10 @@ export class PageEditor {
         }
         this.select(target);
         this.host.begin();
-        this.drag = { kind: "move", slot, last: point, moved: false };
+        // A panel takes its dialogue and rough lines along.
+        const panel = target.kind === "panel" ? slot.page.panels.find((p) => p.id === target.id) : undefined;
+        const carried = panel && this.panelCarries ? carryContents(slot.page, panel) : undefined;
+        this.drag = { kind: "move", slot, last: point, moved: false, carried };
         return;
       }
       case "cut": {
@@ -801,6 +832,7 @@ export class PageEditor {
         const dy = point[1] - drag.last[1];
         if (dx === 0 && dy === 0) return;
         this.moveSelection(drag.slot.page, dx, dy);
+        this.follow(drag.slot.page, drag.carried);
         drag.last = point;
         drag.moved = true;
         break;
@@ -811,6 +843,7 @@ export class PageEditor {
         const tolerance = 8 / drag.slot.scale;
         const snapped = this.snap && !event.altKey ? snapPoint(point, snapLines(project.pageFormat), tolerance) : point;
         panel.shape[drag.vertex] = snapped;
+        this.follow(drag.slot.page, drag.carried);
         drag.moved = true;
         break;
       }
@@ -834,21 +867,21 @@ export class PageEditor {
         break;
       case "pen": {
         // 手ブレ補正: each point moves only part of the way towards the pen.
-        const follow = followFactor(this.brush("pen")?.stabilization ?? 0);
+        const brush = this.brush("pen");
         const events = event.getCoalescedEvents?.() ?? [event];
         for (const e of events.length ? events : [event]) {
           const [x, y] = this.toPage(drag.slot, e.offsetX, e.offsetY);
-          let raw: StrokePoint = [x, y, pressureOf(e)];
-          if (drag.motion) {
-            const seconds = (e.timeStamp - drag.time) / 1000;
-            if (seconds > 0) {
-              const speed = Math.hypot(x - drag.last[0], y - drag.last[1]) / seconds / FULL_SPEED_MM;
-              // Smoothed: single samples jump about.
-              drag.speed += (Math.min(speed, 1) - drag.speed) * 0.3;
-              drag.time = e.timeStamp;
-            }
-            raw = [x, y, pressureOf(e), tiltOf(e), drag.speed];
+          const seconds = (e.timeStamp - drag.time) / 1000;
+          if (seconds > 0) {
+            const speed = Math.hypot(x - drag.last[0], y - drag.last[1]) / seconds / FULL_SPEED_MM;
+            // Smoothed: single samples jump about.
+            drag.speed += (Math.min(speed, 1) - drag.speed) * 0.3;
+            drag.time = e.timeStamp;
           }
+          const raw: StrokePoint = drag.motion
+            ? [x, y, pressureOf(e), tiltOf(e), drag.speed]
+            : [x, y, pressureOf(e)];
+          const follow = followFactor(brush?.stabilization ?? 0, drag.speed, brush?.stabilizationBySpeed);
           const previous = drag.points[drag.points.length - 1];
           drag.points.push(previous.map((value, i) => value + (raw[i] - value) * follow) as StrokePoint);
           drag.last = raw;
@@ -968,6 +1001,8 @@ export class PageEditor {
         // The smoothed line catches up with where the pen left the page.
         if (drag.points.length > 1) drag.points.push(drag.last);
         const brushId = this.brush("pen")?.id;
+        // 後補正: the finished line loses its wobble.
+        drag.points = postCorrect(drag.points, this.brush("pen")?.postCorrection ?? 0);
         // Begun inside a はみ出し: the line goes over the panel borders.
         const [bx, by] = drag.points[0];
         const over = drag.slot.page.breakouts.some((breakout) => insidePolygon(breakout.shape, [bx, by]));
@@ -1038,6 +1073,13 @@ export class PageEditor {
       const stroke = page.strokes.find((p) => p.id === s.id);
       if (stroke) moveStroke(stroke, dx, dy);
     }
+  }
+
+  /** Contents carried by the selected panel follow it. */
+  private follow(page: Page, carried: CarriedContents | undefined): void {
+    const s = this.selection;
+    const panel = carried && s?.kind === "panel" ? page.panels.find((p) => p.id === s.id) : undefined;
+    if (panel && carried) followPanel(page, panel, carried);
   }
 
   /** Nudge the selection with the arrow keys (mm). */

@@ -489,6 +489,12 @@ pub struct Brush {
     /// 手ブレ補正, 0..100.
     #[serde(default)]
     pub stabilization: f64,
+    /// 速度による手ブレ補正.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub stabilization_by_speed: bool,
+    /// 後補正: smoothing applied once a line is drawn, 0..100 (0: off).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub post_correction: f64,
     /// 入り・抜き lengths.
     #[serde(default)]
     pub taper_in_mm: f64,

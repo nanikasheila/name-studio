@@ -5,7 +5,16 @@ import { ask, save } from "@tauri-apps/plugin-dialog";
 import { Autosaver, autosaveToFile, formatTime } from "./autosave";
 import { addBrushes, loadLibrary } from "./brush";
 import { BrushDialog } from "./brushdialog";
-import { ERASE_MODE_LABELS, PageEditor, isTyping, type EditorEraseMode, type Selection, type Tool } from "./editor";
+import {
+  ERASE_MODE_LABELS,
+  PANEL_CARRIES_KEY,
+  PageEditor,
+  isTyping,
+  writeFlag,
+  type EditorEraseMode,
+  type Selection,
+  type Tool,
+} from "./editor";
 import { SHAPE_LABELS, TAIL_LABELS, defaultTailStyle, resolvedShape } from "./balloon";
 import { ExportDialog } from "./exportdialog";
 import { History } from "./history";
@@ -798,6 +807,11 @@ export class Workbench {
       ? button("見開きをやめる", (p) => unspreadPanel(p, page, panel, firstAlone), "向かいのページの半分を消して、このページだけのコマに戻す")
       : button("見開きにする", (p) => spreadPanel(p, page, panel, firstAlone), "のどをまたいで向かいのページまで伸ばす");
     spread.disabled = !panel.spread && !facingPage(project, page, firstAlone);
+    const carries = element("input", { type: "checkbox", checked: this.editor.panelCarries });
+    carries.addEventListener("change", () => {
+      this.editor.panelCarries = carries.checked;
+      writeFlag(PANEL_CARRIES_KEY, carries.checked);
+    });
     const note = element("input", { type: "text", value: panel.note ?? "", placeholder: "例: 俯瞰で教室全体 / 間" });
     this.liveText(note, (value) => {
       if (value) panel.note = value;
@@ -812,6 +826,7 @@ export class Workbench {
       element("div", { className: "row" }, ...bleeds),
       spread,
       element("h3", { textContent: "形と重なり" }),
+      element("label", { className: "inline" }, carries, "動かす・形を変えるとき、中のセリフとラフ線も一緒に"),
       element("div", { className: "row" }, tiltLeft, tiltRight, raise, lower),
       inset,
       element("p", {

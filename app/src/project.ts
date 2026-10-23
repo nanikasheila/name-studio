@@ -155,6 +155,10 @@ export interface Brush {
   hardness: number;
   /** 手ブレ補正, 0..100. */
   stabilization: number;
+  /** 速度による手ブレ補正: steadier the faster the pen moves. */
+  stabilizationBySpeed?: boolean;
+  /** 後補正: smoothing applied once a line is drawn, 0..100. */
+  postCorrection?: number;
   taperInMm: number;
   taperOutMm: number;
   /** Tip height in % of its width, and its angle in degrees. */
@@ -1081,4 +1085,85 @@ export function wantsSpread(project: Project, index: number): boolean {
   // A panel across the gutter can only be one panel on a spread page.
   const shared = new Set(next.panels.map((panel) => panel.spread).filter(Boolean));
   return page.panels.some((panel) => panel.spread && shared.has(panel.spread));
+}
+
+// --- コマに中身が付いてくる -------------------------------------------------------
+
+/** The panel that owns a point: the topmost one there (insets over their panel). */
+function ownerAt(page: Page, point: Point): Panel | undefined {
+  let owner: Panel | undefined;
+  for (const panel of page.panels) {
+    if (!insidePolygon(panel.shape, point)) continue;
+    if (!owner || (panel.z ?? 0) > (owner.z ?? 0)) owner = panel;
+  }
+  return owner;
+}
+
+/** What a panel carries along: dialogue whose box centre and rough lines most of whose points are in it. */
+export function panelContents(page: Page, panel: Panel): { strokes: string[]; lines: string[] } {
+  const owns = (point: Point) => ownerAt(page, point)?.id === panel.id;
+  const strokes = page.strokes
+    .filter((stroke) => {
+      const inside = stroke.points.filter(([x, y]) => owns([x, y])).length;
+      return inside > 0 && inside >= stroke.points.length / 2;
+    })
+    .map((stroke) => stroke.id);
+  const lines = page.lines.filter((line) => owns(boxCenter(line.box))).map((line) => line.id);
+  return { strokes, lines };
+}
+
+/** The contents of a panel as they were, to follow the panel as it changes. */
+export interface CarriedContents {
+  box: BoxMm;
+  strokes: { id: string; points: StrokePoint[] }[];
+  lines: { id: string; box: BoxMm; balloon?: Point[]; tails?: Point[] }[];
+}
+
+export function carryContents(page: Page, panel: Panel): CarriedContents {
+  const { strokes, lines } = panelContents(page, panel);
+  return {
+    box: bounds(panel.shape),
+    strokes: page.strokes.filter((s) => strokes.includes(s.id)).map((s) => ({ id: s.id, points: s.points.map((p) => [...p] as StrokePoint) })),
+    lines: page.lines
+      .filter((l) => lines.includes(l.id))
+      .map((l) => ({
+        id: l.id,
+        box: [...l.box] as BoxMm,
+        ...(l.balloon ? { balloon: l.balloon.map((p) => [...p] as Point) } : {}),
+        ...(l.tails ? { tails: l.tails.map((t) => [...t.tip] as Point) } : {}),
+      })),
+  };
+}
+
+/**
+ * Put the carried contents where the panel now is: positions follow the
+ * panel's box (moved, and stretched when a corner is dragged). Rough lines
+ * keep their proportions, scaled by the smaller stretch; dialogue keeps its
+ * size and moves with its centre.
+ */
+export function followPanel(page: Page, panel: Panel, carried: CarriedContents): void {
+  const [ox0, oy0, ox1, oy1] = carried.box;
+  const [nx0, ny0, nx1, ny1] = bounds(panel.shape);
+  const sx = ox1 > ox0 ? (nx1 - nx0) / (ox1 - ox0) : 1;
+  const sy = oy1 > oy0 ? (ny1 - ny0) / (oy1 - oy0) : 1;
+  const map = ([x, y]: readonly number[]): Point => [nx0 + (x - ox0) * sx, ny0 + (y - oy0) * sy];
+  const uniform = Math.min(sx, sy);
+  for (const { id, points } of carried.strokes) {
+    const stroke = page.strokes.find((s) => s.id === id);
+    if (!stroke) continue;
+    const [cx0, cy0, cx1, cy1] = bounds(points.map(([x, y]) => [x, y] as Point));
+    const centre: Point = [(cx0 + cx1) / 2, (cy0 + cy1) / 2];
+    const [mx, my] = map(centre);
+    stroke.points = points.map(([x, y, ...rest]) => [mx + (x - centre[0]) * uniform, my + (y - centre[1]) * uniform, ...rest] as StrokePoint);
+  }
+  for (const { id, box, balloon, tails } of carried.lines) {
+    const line = page.lines.find((l) => l.id === id);
+    if (!line) continue;
+    const [mx, my] = map(boxCenter(box));
+    const [cx, cy] = boxCenter(box);
+    const [dx, dy] = [mx - cx, my - cy];
+    line.box = [box[0] + dx, box[1] + dy, box[2] + dx, box[3] + dy];
+    if (balloon) line.balloon = balloon.map(([x, y]) => [x + dx, y + dy]);
+    if (tails && line.tails) line.tails.forEach((tail, i) => tails[i] && (tail.tip = map(tails[i])));
+  }
 }

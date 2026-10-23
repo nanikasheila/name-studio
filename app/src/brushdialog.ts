@@ -162,6 +162,8 @@ export class BrushDialog {
       inputs?.tilt ? "傾き" : "",
       inputs?.velocity ? "速度" : "",
       inputs?.random ? "ランダム" : "",
+      tool.stabilization ? `手ブレ補正 ${tool.stabilization}${tool.stabilizationBySpeed ? "（速度）" : ""}` : "",
+      tool.postCorrection ? `後補正 ${tool.postCorrection}` : "",
     ].filter(Boolean);
     meta.textContent = [`${size >= 1 ? size.toFixed(1) : size.toFixed(2)} mm`, ...changes].join("・");
     row.append(check, picture, name, badge, meta);

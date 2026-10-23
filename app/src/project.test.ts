@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import { History } from "./history";
 import {
   addCharacter,
+  boxCenter,
+  carryContents,
+  followPanel,
+  movePanel,
+  panelContents,
   addLine,
   addPanel,
   addScene,
@@ -240,5 +245,42 @@ describe("見開きのノド", () => {
     expect(splitAtX([[1, 1], [2, 2]] as never, 10)).toHaveLength(1);
     const back = splitAtX([[5, 0], [15, 0], [5, 0]] as never, 10);
     expect(back.map((run) => run.beyond)).toEqual([false, true, false]);
+  });
+});
+
+describe("コマに中身が付いてくる", () => {
+  const setup = () => {
+    const project = newProject("t", 1);
+    const page = project.pages[0];
+    const panel = addPanel(project, page, rectShape([10, 10, 110, 110]));
+    const other = addPanel(project, page, rectShape([120, 10, 170, 110]));
+    const inside = addStroke(project, page, [[40, 40, 0.5], [60, 40, 0.5]], 0.5)!;
+    const outside = addStroke(project, page, [[130, 40, 0.5], [150, 40, 0.5]], 0.5)!;
+    const line = addLine(project, page, [50, 60], "セリフ");
+    return { project, page, panel, other, inside, outside, line };
+  };
+
+  it("carries what is inside the panel, not what is in another", () => {
+    const { page, panel, inside, outside, line } = setup();
+    const contents = panelContents(page, panel);
+    expect(contents.strokes).toEqual([inside.id]);
+    expect(contents.lines).toEqual([line.id]);
+    expect(contents.strokes).not.toContain(outside.id);
+  });
+
+  it("moves the contents with the panel and stretches positions with its corner", () => {
+    const { page, panel, inside, outside, line } = setup();
+    const carried = carryContents(page, panel);
+    const lineCentre = boxCenter(line.box);
+    movePanel(panel, 5, 7);
+    followPanel(page, panel, carried);
+    expect(inside.points[0].slice(0, 2)).toEqual([45, 47]);
+    expect(outside.points[0].slice(0, 2)).toEqual([130, 40]);
+    expect(boxCenter(line.box)).toEqual([lineCentre[0] + 5, lineCentre[1] + 7]);
+    // Twice as wide: the stroke's centre goes twice as far from the left edge; its shape keeps its size.
+    const before = carryContents(page, panel);
+    panel.shape = rectShape([15, 17, 215, 117]);
+    followPanel(page, panel, before);
+    expect(inside.points.map((p) => Math.round(p[0]))).toEqual([85, 105]);
   });
 });

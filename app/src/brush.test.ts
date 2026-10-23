@@ -5,6 +5,7 @@ import {
   curveAt,
   followFactor,
   opacityFactors,
+  postCorrect,
   pressureFactor,
   widthFactors,
   type CspSubTool,
@@ -287,5 +288,25 @@ describe("ends left by an eraser", () => {
     expect(leftFactors[0]).toBeCloseTo(0.02);
     expect(leftFactors[leftFactors.length - 1]).toBe(1);
     expect(widthFactors(right, pen)[0]).toBe(1);
+  });
+});
+
+describe("補正", () => {
+  it("速度による手ブレ補正 holds a fast pen back less", () => {
+    expect(followFactor(20)).toBeCloseTo(1 / 6);
+    expect(followFactor(20, 1, false)).toBeCloseTo(1 / 6);
+    expect(followFactor(20, 0, true)).toBeCloseTo(1 / 6);
+    expect(followFactor(20, 1, true)).toBeCloseTo(1 / 2.25);
+  });
+
+  it("後補正 smooths the wobble and keeps the ends", () => {
+    const zigzag: [number, number, number][] = [0, 1, 2, 3, 4, 5, 6].map((x) => [x, x % 2 ? 1 : -1, 0.5]);
+    const smoothed = postCorrect(zigzag, 20);
+    expect(smoothed[0]).toEqual(zigzag[0]);
+    expect(smoothed[6]).toEqual(zigzag[6]);
+    const wobble = (points: number[][]) => Math.max(...points.slice(1, -1).map((p) => Math.abs(p[1])));
+    expect(wobble(smoothed)).toBeLessThan(0.5);
+    expect(smoothed[3][2]).toBe(0.5);
+    expect(postCorrect(zigzag, 0)).toBe(zigzag);
   });
 });
