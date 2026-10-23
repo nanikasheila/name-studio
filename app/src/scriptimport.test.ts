@@ -111,4 +111,10 @@ describe("台本の取り込み", () => {
     // First row: two panels, the first one on the right.
     expect(five[0][0]).toBeGreaterThan(five[1][0]);
   });
+
+  it("reads a line of dialogue before the first page heading", () => {
+    const doc = parseScript("更新：10月14日\n### 1ページ\nミカ「星だ」\n");
+    expect(doc.pages[0].panels[0].lines).toEqual([{ speaker: "更新", kind: "speech", text: "10月14日" }]);
+    expect(doc.pages[1].panels[0].lines[0].text).toBe("星だ");
+  });
 });

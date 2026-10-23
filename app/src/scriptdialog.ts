@@ -1,5 +1,6 @@
-// The dialog for taking in a Markdown script (R7): paste or open a file,
-// see what will be read, choose where it goes, then deal it out.
+// The dialog for taking in a Markdown script (R7) or plot: paste or open a
+// file, see what will be read, choose where it goes, then deal it out.
+import { applyPlot, looksLikePlot, parsePlot, type PlotDoc, type PlotImportReport } from "./plotimport";
 import { applyScript, parseScript, type ScriptDoc, type ScriptImportReport } from "./scriptimport";
 import type { Project } from "./project";
 
@@ -9,6 +10,8 @@ export interface ScriptDialogHost {
   edit(change: (project: Project) => void): void;
   /** The script went onto the name: show its first page. */
   done(report: ScriptImportReport, firstPage: number): void;
+  /** The plot went onto the name. */
+  plotDone(report: PlotImportReport): void;
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -25,6 +28,7 @@ export async function readTextFile(file: Blob): Promise<string> {
 
 export class ScriptDialog {
   private doc: ScriptDoc | null = null;
+  private plot: PlotDoc | null = null;
 
   constructor(private readonly host: ScriptDialogHost) {
     $("sd-text").addEventListener("input", () => this.preview());
@@ -36,6 +40,8 @@ export class ScriptDialog {
       this.preview();
     });
     $("sd-start").addEventListener("input", () => this.preview());
+    $("sd-mode").addEventListener("change", () => this.preview());
+    $("sd-notes").addEventListener("change", () => this.preview());
     $("sd-run").addEventListener("click", () => this.run());
   }
 
@@ -55,6 +61,31 @@ export class ScriptDialog {
     this.doc = text.trim() ? parseScript(text) : null;
     const run = $<HTMLButtonElement>("sd-run");
     const summary = $("sd-summary");
+    const dialogue = this.doc?.pages.reduce((sum, page) => sum + page.panels.reduce((n, p) => n + p.lines.length, 0), 0) ?? 0;
+    const mode = $<HTMLSelectElement>("sd-mode").value;
+    const asPlot = !!this.doc && (mode === "plot" || (mode === "auto" && looksLikePlot(text, dialogue)));
+    this.plot = asPlot ? parsePlot(text) : null;
+    $("sd-plot-hint").hidden = !asPlot;
+    $("sd-script-hint").hidden = asPlot;
+    $("sd-start-row").hidden = asPlot;
+    $("sd-panels-row").hidden = asPlot;
+    $("sd-notes-row").hidden = !asPlot;
+    if (this.plot && project) {
+      const plot = this.plot;
+      const notes = $<HTMLInputElement>("sd-notes").checked ? plot.notes.length : 0;
+      const needed = Math.max(0, ...plot.pages.map((p) => p.last), ...plot.scenes.map((s) => s.last));
+      const added = Math.max(0, needed - project.pages.length);
+      summary.textContent = [
+        `プロットとして読みます${plot.title ? `（${plot.title}）` : ""}: ページのメモ ${plot.pages.length}・シーン ${plot.scenes.length}・付箋 ${notes}${plot.total ? `・合計 ${plot.total} ページ` : ""}`,
+        added ? `ページを ${added} 枚足します。` : "",
+        plot.scenes.length ? `シーン: ${plot.scenes.map((s) => `${s.title}（${s.first === s.last ? s.first : `${s.first}〜${s.last}`}）`).join("、")}` : "",
+        project.scenes.length && plot.scenes.length ? "重なる今のシーンは置き換えます。" : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+      run.disabled = !plot.pages.length && !plot.scenes.length && !notes;
+      return;
+    }
     if (!this.doc || !project) {
       summary.textContent = "Markdown の台本を貼り付けるか、ファイルを開いてください。";
       run.disabled = true;
@@ -87,6 +118,15 @@ export class ScriptDialog {
 
   private run(): void {
     const project = this.host.project();
+    const plot = this.plot;
+    if (project && plot) {
+      const doc = $<HTMLInputElement>("sd-notes").checked ? plot : { ...plot, notes: [] };
+      let report: PlotImportReport | null = null;
+      this.host.edit((p) => (report = applyPlot(p, doc)));
+      $<HTMLDialogElement>("script-dialog").close();
+      if (report) this.host.plotDone(report);
+      return;
+    }
     const doc = this.doc;
     if (!project || !doc) return;
     const start = this.start(project);

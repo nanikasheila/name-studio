@@ -198,6 +198,7 @@ export class Workbench {
       movePages: (first, last, target) => this.movePages(first, last, target),
       makeOption: (first, last) => this.makeOption(first, last),
       status: (message) => this.setStatus(message),
+      importText: () => this.scriptDialog.open(),
     });
     this.scriptDialog = new ScriptDialog({
       project: () => this.state.project,
@@ -209,6 +210,12 @@ export class Workbench {
         this.renderAll();
         const who = report.characters.length ? `、登場人物 ${report.characters.join("・")} を足しました` : "";
         this.setStatus(`台本を ${report.pages} ページに入れました（セリフ ${report.lines}、作ったコマ ${report.panels}${who}）。元に戻すは Ctrl+Z`);
+      },
+      plotDone: (report) => {
+        // The plot is about the whole: show it on the board.
+        this.setView("board");
+        const added = report.addedPages ? `、ページを ${report.addedPages} 枚足しました` : "";
+        this.setStatus(`プロットを取り込みました: ページのメモ ${report.memos}・シーン ${report.scenes}・付箋 ${report.stickies}${added}。元に戻すは Ctrl+Z`);
       },
     });
     this.altDialog = new AltDialog({
@@ -680,7 +687,7 @@ export class Workbench {
       }
     });
     if (!children.length) children.push(element("p", { className: "hint", textContent: "ページがありません" }));
-    const take = element("button", { textContent: "Markdown の台本を取り込む…" });
+    const take = element("button", { textContent: "台本・プロットを取り込む…", title: "Markdown の台本（コマとセリフ）か、プロット（ページごとの文）を取り込む" });
     take.addEventListener("click", () => this.scriptDialog.open());
     $("side-script").replaceChildren(element("div", { className: "side-actions top" }, take), ...children);
   }

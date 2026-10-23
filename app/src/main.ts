@@ -10,7 +10,8 @@ import { appVersion, checkForUpdate } from "./updater";
 import { buildRequest, folderOf, summarize, type ExportForm, type ExportReport, type Fit } from "./export";
 import { dialogueByPage, effectiveVisibility, initiallyHidden, spreads } from "./pages";
 import { drawSheet, type PlacedImage, type Transform } from "./render";
-import { newProject, type Project } from "./project";
+import { newProject, STRUCTURES, type Project } from "./project";
+import { adoptShape, libraryShapes } from "./shapes";
 import type { LayerView, PageCell, SheetView } from "./types";
 import { PROJECT_EXTENSION, Workbench } from "./workbench";
 
@@ -559,8 +560,28 @@ function showWorkspace(next: "viewer" | "editor"): void {
 
 $("new-project").addEventListener("click", async () => {
   if (!(await workbench.confirmDiscard())) return;
-  showWorkspace("editor");
-  workbench.show(newProject("新しいネーム", 16), null, "16 ページの白紙のネームを作りました。左の「ページ」で作品名を付けられます");
+  const dialog = $<HTMLDialogElement>("new-dialog");
+  const shape = $<HTMLSelectElement>("nn-shape");
+  shape.replaceChildren(new Option("なし（あとで選べる）", ""));
+  for (const s of [...Object.values(STRUCTURES), ...libraryShapes()]) shape.append(new Option(s.label, s.id));
+  dialog.returnValue = "";
+  dialog.showModal();
+  dialog.addEventListener(
+    "close",
+    () => {
+      if (dialog.returnValue !== "ok") return;
+      const pages = Math.max(1, Math.min(400, Number.parseInt($<HTMLInputElement>("nn-pages").value, 10) || 16));
+      const title = $<HTMLInputElement>("nn-title").value.trim() || "新しいネーム";
+      const project = newProject(title, pages);
+      if ($<HTMLInputElement>("nn-target").checked) project.plan = { targetPages: pages };
+      const kept = libraryShapes().find((s) => s.id === shape.value);
+      if (kept) adoptShape(project, kept);
+      else if (shape.value) project.plan = { ...(project.plan ?? {}), structure: shape.value };
+      showWorkspace("editor");
+      workbench.show(project, null, `${pages} ページの白紙のネーム「${title}」を作りました`);
+    },
+    { once: true },
+  );
 });
 
 $("import-project").addEventListener("click", async () => {
