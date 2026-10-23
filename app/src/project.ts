@@ -43,6 +43,8 @@ export type TailStyle = "wedge" | "bubbles" | "line" | "zigzag";
 export interface Tail {
   tip: Point;
   style?: TailStyle;
+  /** 曲がり: how far (mm) the middle of the tail is pushed to its left (negative: right). */
+  bend?: number;
 }
 
 export interface PageFormat {

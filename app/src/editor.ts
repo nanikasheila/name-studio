@@ -4,6 +4,7 @@
 // mm → screen mapping.
 import { FULL_SPEED_MM, followFactor, postCorrect, tiltOf as penTilt, usesMotion } from "./brush";
 import { adjustPressure, penPreferences } from "./pen";
+import { defaultTailStyle, insideBalloon, resolvedShape, tailGeometry } from "./balloon";
 import { spreads } from "./pages";
 import { addBreakout, moveBreakout, stacked } from "./koma";
 import { joinPanels, moveSeam, seamAt, seamBase, seamLines, snapSeam, type Seam } from "./komaedit";
@@ -140,7 +141,8 @@ type Drag =
   | { kind: "cut"; slot: Slot; a: Point; b: Point; free: boolean }
   | { kind: "frame"; slot: Slot; a: Point; b: Point }
   | { kind: "pen"; slot: Slot; points: StrokePoint[]; last: StrokePoint; motion: boolean; time: number; speed: number; straight: boolean }
-  | { kind: "tail"; slot: Slot; lineId: string; index: number; moved: boolean }
+  /** しっぽ: its tip, its whole length (body), or its middle (bend); `created` when pulled out of the balloon. */
+  | { kind: "tail"; slot: Slot; lineId: string; index: number; moved: boolean; part: TailPart; start: Point; tip: Point; created?: boolean }
   | { kind: "lasso"; slot: Slot; points: Point[] }
   | { kind: "fill"; slot: Slot; points: Point[] }
   | { kind: "pick"; slot: Slot; points: Point[] }
@@ -157,8 +159,18 @@ type Drag =
 const FRAME_HANDLES = 8;
 const ROTATE_GAP = 22;
 
+type TailPart = "tip" | "body" | "bend";
+
+/** A tail of a line under the pointer. */
+interface TailHit {
+  lineId: string;
+  index: number;
+  part: TailPart;
+}
+
 /** What the pointer is over with the select tool, shown before anything is pressed. */
 type Hover =
+  | { kind: "tail"; slot: Slot; hit: TailHit }
   | { kind: "seam"; slot: Slot; seam: Seam }
   | { kind: "item"; slot: Slot; target: Selection }
   | { kind: "handle"; slot: Slot; handle: number };
@@ -884,16 +896,8 @@ export class PageEditor {
       ctx.setLineDash([3, 3]);
       ctx.strokeRect(sx(x0) - 3, sy(y0) - 3, (x1 - x0) * scale + 6, (y1 - y0) * scale + 6);
       ctx.setLineDash([]);
-      // しっぽの先: drag to point at the speaker.
-      for (const tail of line.tails ?? []) {
-        ctx.fillStyle = "#ffffff";
-        ctx.strokeStyle = ACCENT;
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.arc(sx(tail.tip[0]), sy(tail.tip[1]), HANDLE, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      }
+      // しっぽの先 (drag to point at the speaker) and its middle (drag to bend it).
+      this.drawTailHandles(slot, line, true);
     }
   }
 
@@ -947,9 +951,15 @@ export class PageEditor {
         if (line) {
           const [x0, y0, x1, y1] = line.box;
           ctx.strokeRect(slot.x + x0 * slot.scale - 3, slot.y + y0 * slot.scale - 3, (x1 - x0) * slot.scale + 6, (y1 - y0) * slot.scale + 6);
+          if (!this.isSelected(slot.page, "line", line.id)) this.drawTailHandles(slot, line, false);
         }
       }
       ctx.restore();
+    }
+    if (!drag && this.hover?.kind === "tail" && hoverSlot) {
+      const { lineId } = this.hover.hit;
+      const line = hoverSlot.page.lines.find((l) => l.id === lineId);
+      if (line && !this.isSelected(hoverSlot.page, "line", line.id)) this.drawTailHandles(hoverSlot, line, true);
     }
     if (drag && (drag.kind === "cut" || drag.kind === "frame")) {
       const { slot } = drag;
@@ -1404,13 +1414,67 @@ export class PageEditor {
     return [...stacked(page.panels)].reverse().find((panel) => insidePolygon(panel.shape, point));
   }
 
-  /** The tail tip of the selected line under the pointer, or -1. */
-  private tailAt(slot: Slot, sx: number, sy: number): number {
+  /**
+   * The tail under the pointer: its tip, its middle (to bend it, on the
+   * selected or hovered line) or anywhere along it. Any line's tails can be
+   * taken, without picking the line first.
+   */
+  private tailAt(slot: Slot, sx: number, sy: number): TailHit | null {
     const s = this.selection;
-    if (!s || s.kind !== "line" || s.pageId !== slot.page.id) return -1;
-    const line = slot.page.lines.find((l) => l.id === s.id);
-    if (!line?.tails) return -1;
-    return line.tails.findIndex(({ tip: [x, y] }) => Math.hypot(slot.x + x * slot.scale - sx, slot.y + y * slot.scale - sy) <= HANDLE + 3);
+    const near = (p: Point, extra = 3) => Math.hypot(slot.x + p[0] * slot.scale - sx, slot.y + p[1] * slot.scale - sy) <= HANDLE + extra;
+    const point = this.toPage(slot, sx, sy);
+    const shown = new Set<string>();
+    if (s?.kind === "line" && s.pageId === slot.page.id) shown.add(s.id);
+    if (this.hover?.kind === "item" && this.hover.target.kind === "line") shown.add(this.hover.target.id);
+    if (this.hover?.kind === "tail") shown.add(this.hover.hit.lineId);
+    // The selected line's tails first, then the others from the top.
+    const lines = [...slot.page.lines].reverse().sort((a, b) => Number(shown.has(b.id)) - Number(shown.has(a.id)));
+    for (const line of lines) {
+      for (const [index, tail] of (line.tails ?? []).entries()) {
+        if (near(tail.tip)) return { lineId: line.id, index, part: "tip" };
+        const geometry = tailGeometry(line, tail);
+        if (!geometry) continue;
+        if (shown.has(line.id) && near(geometry.middle, 2)) return { lineId: line.id, index, part: "bend" };
+        // Along the tail (outside the balloon): root to middle to tip.
+        const reach = Math.max(6 / slot.scale, 1.2);
+        const close = (a: Point, b: Point) => distanceToSegment(point, a, b) <= reach;
+        if ((close(geometry.root, geometry.middle) || close(geometry.middle, tail.tip)) && !insideBalloon(line, point)) {
+          return { lineId: line.id, index, part: "body" };
+        }
+      }
+    }
+    return null;
+  }
+
+  /** The tails of a line with their handles: tips (round) and middles (to bend). */
+  private drawTailHandles(slot: Slot, line: Line, strong: boolean): void {
+    const ctx = this.ctx;
+    const at = ([x, y]: Point): Point => [slot.x + x * slot.scale, slot.y + y * slot.scale];
+    ctx.save();
+    ctx.strokeStyle = strong ? ACCENT : "rgba(47, 111, 219, 0.7)";
+    ctx.lineWidth = 1.5;
+    for (const tail of line.tails ?? []) {
+      const geometry = tailGeometry(line, tail);
+      if (geometry) {
+        const [mx, my] = at(geometry.middle);
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.moveTo(mx, my - HANDLE + 1);
+        ctx.lineTo(mx + HANDLE - 1, my);
+        ctx.lineTo(mx, my + HANDLE - 1);
+        ctx.lineTo(mx - HANDLE + 1, my);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+      const [tx, ty] = at(tail.tip);
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(tx, ty, HANDLE, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   // --- input ------------------------------------------------------------------------
@@ -1438,7 +1502,9 @@ export class PageEditor {
           ? PageEditor.seamCursor(this.hover.seam)
           : this.hover.kind === "handle"
             ? PageEditor.handleCursor(this.hover.handle)
-            : "move"
+            : this.hover.kind === "tail" && this.hover.hit.part === "bend"
+              ? "grab"
+              : "move"
         : null;
     const look = penPreferences.settings.cursor;
     cursors.pen = look === "brush" ? "none" : look === "dot" ? DOT_CURSOR : "crosshair";
@@ -1622,6 +1688,18 @@ export class PageEditor {
           this.afterUp = () => this.editInPlace(slot.page.id, "note", noted.id);
           return;
         }
+        // Alt + drag from a balloon: pull out a new tail.
+        if (event.altKey) {
+          const hitLine = this.hit(slot, point);
+          const line = hitLine?.kind === "line" ? slot.page.lines.find((l) => l.id === hitLine.id) : undefined;
+          if (line && resolvedShape(line) !== "none") {
+            this.host.begin();
+            line.tails = [...(line.tails ?? []), { tip: point, style: defaultTailStyle(line) }];
+            this.select({ kind: "line", pageId: slot.page.id, id: line.id });
+            this.drag = { kind: "tail", slot, lineId: line.id, index: line.tails.length - 1, moved: false, part: "tip", start: point, tip: point, created: true };
+            return;
+          }
+        }
         // コマの入れ替え: drag a panel's number (or Alt + drag the panel) onto another panel.
         const numbered = this.badgeAt(slot, sx, sy, project.pageFormat.canvasMm[0]);
         const altPanel = event.altKey ? this.panelAt(slot.page, point) : undefined;
@@ -1632,9 +1710,12 @@ export class PageEditor {
           return;
         }
         const tail = this.tailAt(slot, sx, sy);
-        if (tail >= 0) {
+        if (tail) {
+          const line = slot.page.lines.find((l) => l.id === tail.lineId)!;
           this.host.begin();
-          this.drag = { kind: "tail", slot, lineId: this.selection!.id, index: tail, moved: false };
+          this.select({ kind: "line", pageId: slot.page.id, id: line.id });
+          const tip = line.tails![tail.index].tip;
+          this.drag = { kind: "tail", slot, lineId: line.id, index: tail.index, moved: false, part: tail.part, start: point, tip: [...tip] as Point };
           return;
         }
         const vertex = this.vertexAt(slot, sx, sy);
@@ -1880,8 +1961,21 @@ export class PageEditor {
       case "tail": {
         const line = drag.slot.page.lines.find((l) => l.id === drag.lineId);
         const tail = line?.tails?.[drag.index];
-        if (!tail) return;
-        tail.tip = point;
+        if (!line || !tail) return;
+        if (drag.part === "bend") {
+          // How far the pointer is to the side of the straight tail.
+          const straight = tailGeometry(line, { ...tail, bend: 0 });
+          if (!straight) return;
+          const mid: Point = [(straight.root[0] + tail.tip[0]) / 2, (straight.root[1] + tail.tip[1]) / 2];
+          const length = Math.hypot(tail.tip[0] - straight.root[0], tail.tip[1] - straight.root[1]);
+          let bend = (point[0] - mid[0]) * straight.normal[0] + (point[1] - mid[1]) * straight.normal[1];
+          bend = Math.max(-length * 0.6, Math.min(length * 0.6, bend));
+          if (Math.abs(bend) < 0.4) delete tail.bend;
+          else tail.bend = Math.round(bend * 10) / 10;
+          this.host.status("しっぽを曲げています（まっすぐ近くで戻ります）");
+        } else {
+          tail.tip = drag.part === "body" ? [drag.tip[0] + point[0] - drag.start[0], drag.tip[1] + point[1] - drag.start[1]] : point;
+        }
         drag.moved = true;
         break;
       }
@@ -2002,10 +2096,28 @@ export class PageEditor {
         }
         break;
       }
-      case "tail":
-        if (drag.moved) this.host.commit();
-        else this.host.cancel();
+      case "tail": {
+        const line = drag.slot.page.lines.find((l) => l.id === drag.lineId);
+        const tail = line?.tails?.[drag.index];
+        if (!drag.moved && !drag.created) {
+          this.host.cancel();
+          break;
+        }
+        // A tip put back inside its balloon takes the tail away.
+        if (line && tail && drag.part !== "bend" && insideBalloon(line, tail.tip)) {
+          line.tails = line.tails!.filter((_, i) => i !== drag.index);
+          if (!line.tails.length) delete line.tails;
+          this.host.status(drag.created ? "" : "しっぽを消しました（元に戻すは Ctrl+Z）");
+          if (drag.created) {
+            this.host.cancel();
+            break;
+          }
+        } else if (drag.created) {
+          this.host.status("しっぽを足しました。先をドラッグで向きを、ひし形で曲がりを変えられます");
+        }
+        this.host.commit();
         break;
+      }
       case "fill": {
         const shape = simplify(
           drag.points.map(([x, y]) => [x, y, 1] as [number, number, number]),
@@ -2239,8 +2351,9 @@ export class PageEditor {
       if (frameHandle >= 0 && slot) hover = { kind: "handle", slot, handle: frameHandle };
       else if (slot) {
         const point = this.toPage(slot, sx, sy);
-        const onHandle =
-          this.vertexAt(slot, sx, sy) >= 0 || this.tailAt(slot, sx, sy) >= 0 || !!this.badgeAt(slot, sx, sy, project.pageFormat.canvasMm[0]);
+        const tail = this.tailAt(slot, sx, sy);
+        if (tail) hover = { kind: "tail", slot, hit: tail };
+        const onHandle = !!tail || this.vertexAt(slot, sx, sy) >= 0 || !!this.badgeAt(slot, sx, sy, project.pageFormat.canvasMm[0]);
         const target = onHandle ? null : this.hit(slot, point);
         if (!onHandle && (!target || target.kind === "panel")) {
           const seam = seamAt(slot.page, point, 6 / slot.scale);
@@ -2250,7 +2363,7 @@ export class PageEditor {
       }
     }
     const key = (h: Hover | null) =>
-      !h ? "" : h.kind === "handle" ? `handle:${h.handle}` : h.kind === "seam" ? `seam:${h.slot.page.id}:${h.seam.edges.map((e) => `${e.panelId}.${e.edge}`).join(",")}` : `item:${h.target.pageId}:${h.target.kind}:${h.target.id}`;
+      !h ? "" : h.kind === "tail" ? `tail:${h.hit.lineId}:${h.hit.index}:${h.hit.part}` : h.kind === "handle" ? `handle:${h.handle}` : h.kind === "seam" ? `seam:${h.slot.page.id}:${h.seam.edges.map((e) => `${e.panelId}.${e.edge}`).join(",")}` : `item:${h.target.pageId}:${h.target.kind}:${h.target.id}`;
     if (key(hover) === key(this.hover)) return;
     this.hover = hover;
     this.updateCursor();
@@ -2462,6 +2575,13 @@ function tiltOf(event: PointerEvent): number {
 
 /** A small dot for drawing (the tablet settings' 点 cursor). */
 const DOT_CURSOR = `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="9" height="9"><circle cx="4.5" cy="4.5" r="2" fill="#222" stroke="#fff" stroke-width="1"/></svg>')}") 4 4, crosshair`;
+
+function distanceToSegment(p: Point, a: Point, b: Point): number {
+  const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
+  const length = dx * dx + dy * dy;
+  const t = length ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / length)) : 0;
+  return Math.hypot(p[0] - a[0] - dx * t, p[1] - a[1] - dy * t);
+}
 
 export function isTyping(event: KeyboardEvent): boolean {
   const target = event.target as HTMLElement | null;

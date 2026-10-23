@@ -354,6 +354,9 @@ pub struct Tail {
     pub tip: Point,
     #[serde(default, skip_serializing_if = "is_default")]
     pub style: TailStyle,
+    /// 曲がり: how far (mm) the middle of the tail is pushed to its left.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bend: Option<f64>,
 }
 
 /// セリフ and other text placed on a page.

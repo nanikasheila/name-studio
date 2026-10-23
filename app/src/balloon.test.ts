@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SHAPE_LABELS, pageBalloons, resolvedShape, star, withTails } from "./balloon";
+import { SHAPE_LABELS, insideBalloon, pageBalloons, resolvedShape, star, tailGeometry, withTails } from "./balloon";
 import { emptyPage, insidePolygon, normalize, newProject, type BalloonShape, type Line, type Point } from "./project";
 
 function line(id: string, box: [number, number, number, number], extra: Partial<Line> = {}): Line {
@@ -102,5 +102,31 @@ describe("older files", () => {
     normalize(project);
     expect(project.pages[0].lines[0].balloonShape).toBe("custom");
     expect(project.formatVersion).toBe(2);
+  });
+});
+
+describe("bent tails", () => {
+  it("bows a tail to one side and keeps it in the outline", () => {
+    const straight = line("line1", [100, 100, 112, 140], { tails: [{ tip: [80, 170] }] });
+    const bent = line("line1", [100, 100, 112, 140], { tails: [{ tip: [80, 170], bend: 6 }] });
+    const outline = (l: Line) => withTails(star(l)!, l).star.samples.map((x) => x.point);
+    const geometry = tailGeometry(bent, bent.tails![0])!;
+    // The handle sits 6 mm to the side of the straight tail's middle.
+    const plain = tailGeometry(straight, straight.tails![0])!;
+    expect(Math.hypot(geometry.middle[0] - plain.middle[0], geometry.middle[1] - plain.middle[1])).toBeCloseTo(6);
+    // The bent outline passes by the handle; the straight one stays away from it.
+    const nearest = (points: Point[]) => Math.min(...points.map((p) => Math.hypot(p[0] - geometry.middle[0], p[1] - geometry.middle[1])));
+    expect(nearest(outline(bent))).toBeLessThan(2.5);
+    expect(nearest(outline(straight))).toBeGreaterThan(3.5);
+    expect(outline(bent)).toContainEqual([80, 170]);
+    // Still a closed outline with the samples in angle order.
+    const angles = withTails(star(bent)!, bent).star.samples.map((x) => x.angle);
+    expect([...angles].sort((a, b) => a - b)).toEqual(angles);
+  });
+
+  it("tells a point inside the balloon from one on its tail", () => {
+    const l = line("line1", [100, 100, 112, 140], { tails: [{ tip: [80, 170] }] });
+    expect(insideBalloon(l, [106, 120])).toBe(true);
+    expect(insideBalloon(l, [82, 165])).toBe(false);
   });
 });
