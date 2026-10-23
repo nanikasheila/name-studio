@@ -215,7 +215,7 @@ fn keeps_panel_and_balloon_styles() {
         ],
         "lines": [
           {"id": "line4", "text": "待って", "kind": "speech", "box": [100, 150, 110, 180], "fontSizePt": 13, "vertical": true,
-           "balloonShape": "spike", "tails": [{"tip": [90, 200]}, {"tip": [130, 200], "style": "line"}], "inverted": true, "emphasis": true},
+           "balloonShape": "spike", "tails": [{"tip": [90, 200]}, {"tip": [130, 200], "style": "line", "bend": -4.5}], "inverted": true, "emphasis": true},
           {"id": "line5", "text": "ねえ", "kind": "aside", "box": [80, 150, 90, 170], "fontSizePt": 9, "vertical": true, "linkTo": "line4"}
         ],
         "strokes": [{"id": "stroke6", "points": [[1, 2, 1], [3, 4, 1]], "widthMm": 0.4, "closed": false, "over": true}],
@@ -235,6 +235,8 @@ fn keeps_panel_and_balloon_styles() {
     assert_eq!(page.panels[0].spread, "spread9");
     assert_eq!(page.lines[0].balloon_shape, BalloonShape::Spike);
     assert_eq!(page.lines[0].tails[1].style, TailStyle::Line);
+    assert_eq!(page.lines[0].tails[1].bend, Some(-4.5));
+    assert_eq!(page.lines[0].tails[0].bend, None);
     assert_eq!(page.lines[1].kind, LineKind::Aside);
     assert_eq!(page.lines[1].link_to.as_deref(), Some("line4"));
     assert!(page.strokes[0].over);

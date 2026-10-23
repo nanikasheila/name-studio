@@ -10,6 +10,7 @@ import { AltDialog } from "./altdialog";
 import { ScriptDialog } from "./scriptdialog";
 import { ShortcutDialog } from "./shortcutdialog";
 import { PenDialog } from "./pendialog";
+import { LayerView, moveIntoPanel, type LayerRef } from "./layers";
 import { penPreferences } from "./pen";
 import { comboOf, Shortcuts, type ActionId } from "./shortcuts";
 import { alternativesOf, joinAlternative, makeAlternative, useAlternative } from "./alternatives";
@@ -73,6 +74,7 @@ import {
   removePanel,
   sceneOf,
   sortLines,
+  swapPanelContents,
   textAmount,
   type Brush,
   type BalloonShape,
@@ -135,7 +137,28 @@ export class Workbench {
   readonly editor: PageEditor;
   private readonly history = new History<Project>();
   private readonly state: WorkbenchState = { project: null, path: null, dirty: false, revision: 0, pending: null, roughs: new Map() };
-  private sideTab: "pages" | "script" | "cast" = "pages";
+  private sideTab: "pages" | "script" | "cast" | "layers" = "pages";
+  private readonly layerView = new LayerView({
+    selected: (ref) => this.layerSelected(ref),
+    select: (ref) => this.selectLayer(ref),
+    hidden: () => this.editor.hidden,
+    setHidden: (keys, hide) => {
+      for (const key of keys) {
+        if (hide) this.editor.hidden.add(key);
+        else this.editor.hidden.delete(key);
+      }
+      // Hidden things cannot stay picked.
+      const s = this.editor.selection;
+      if (s && s.kind !== "group" && this.editor.hidden.has(`${s.kind}:${s.id}`)) this.editor.select(null);
+      this.editor.draw();
+      this.renderLayers();
+    },
+    drop: (ref, to) => this.dropLayer(ref, to),
+    lineLabel: (page, id) => {
+      const text = page.lines.find((l) => l.id === id)?.text.replace(/\s+/g, " ").trim() ?? "";
+      return text.length > 14 ? `${text.slice(0, 14)}…` : text || "（空）";
+    },
+  });
   readonly overview: Overview;
   private readonly exportDialog: ExportDialog;
   private readonly altDialog: AltDialog;
@@ -495,12 +518,73 @@ export class Workbench {
     $("side-pages").hidden = this.sideTab !== "pages";
     $("side-script").hidden = this.sideTab !== "script";
     $("side-cast").hidden = this.sideTab !== "cast";
+    $("side-layers").hidden = this.sideTab !== "layers";
     for (const tab of ["pages", "script", "cast"] as const) $(`tab-${tab}`).classList.toggle("active", this.sideTab === tab);
+    $("tab-layers-edit").classList.toggle("active", this.sideTab === "layers");
     const project = this.state.project;
     if (!project) return;
     if (this.sideTab === "pages") this.renderPages(project);
     if (this.sideTab === "script") this.renderScript(project);
     if (this.sideTab === "cast") this.renderCast(project);
+    if (this.sideTab === "layers") this.renderLayers();
+  }
+
+  // --- レイヤー（コマ枠フォルダ） ----------------------------------------------------------
+
+  private renderLayers(): void {
+    const project = this.state.project;
+    if (!project || this.sideTab !== "layers") return;
+    const pages = this.editor
+      .currentPages()
+      .sort((a, b) => a - b)
+      .map((number) => ({ page: project.pages[number - 1], number }))
+      .filter(({ page }) => page);
+    this.layerView.render($("side-layers"), pages);
+  }
+
+  private layerSelected(ref: LayerRef): boolean {
+    const s = this.editor.selection;
+    if (!s || s.pageId !== ref.pageId) return false;
+    if (ref.kind === "strokes") {
+      const picked = s.kind === "group" ? (s.items ?? []).filter((item) => item.kind === "stroke").map((item) => item.id) : s.kind === "stroke" ? [s.id] : [];
+      return picked.length === ref.ids.length && ref.ids.every((id) => picked.includes(id));
+    }
+    return s.kind === ref.kind && s.id === ref.id;
+  }
+
+  private selectLayer(ref: LayerRef): void {
+    if (this.editor.tool !== "select") this.setTool("select");
+    if (ref.kind === "strokes") {
+      const items = ref.ids.map((id) => ({ kind: "stroke" as const, id }));
+      this.editor.select(items.length === 1 ? { kind: "stroke", pageId: ref.pageId, id: ref.ids[0] } : { kind: "group", pageId: ref.pageId, id: "group", items });
+    } else {
+      this.editor.select({ kind: ref.kind, pageId: ref.pageId, id: ref.id });
+    }
+    this.renderLayers();
+  }
+
+  private dropLayer(ref: LayerRef, to: { pageId: string; panelId: string }): void {
+    const project = this.state.project;
+    const from = project?.pages.find((p) => p.id === ref.pageId);
+    const page = project?.pages.find((p) => p.id === to.pageId);
+    const panel = page?.panels.find((p) => p.id === to.panelId);
+    if (!project || !from || !page || !panel) return;
+    if (ref.kind === "panel") {
+      const source = from.panels.find((p) => p.id === ref.id);
+      if (!source || source === panel) return;
+      this.edit(() => swapPanelContents(from, source, page, panel));
+      this.setStatus(`コマ ${source.order} とコマ ${panel.order} の中身を入れ替えました`);
+      return;
+    }
+    let moved = false;
+    this.edit(() => {
+      moved = moveIntoPanel(from, ref, page, panel);
+      for (const p of new Set([from, page])) {
+        assignPanels(p);
+        sortLines(p);
+      }
+    });
+    if (moved) this.setStatus(`コマ ${panel.order} へ移しました（元に戻すは Ctrl+Z）`);
   }
 
   private renderPages(project: Project): void {
@@ -622,6 +706,7 @@ export class Workbench {
 
   renderInspector(): void {
     this.renderInspectorPanel();
+    this.renderLayers();
     // The bar's buttons hold the objects of the project as it is now.
     this.editor.renderBar();
   }
@@ -637,6 +722,12 @@ export class Workbench {
       return b;
     };
     const copy = button("コピー", "コピー（Ctrl+C）。Ctrl+V でポインターのあるページへ", () => this.editor.copy());
+    const transform = button(
+      "変形",
+      "拡大縮小・回転・自由変形（Ctrl+T）。四角で大きさ、丸で回転、Ctrl + 角で自由変形。Enter で終わる",
+      () => this.editor.toggleTransform(),
+      this.editor.isTransforming ? "active" : "",
+    );
     const remove = button("消す", "消す（Delete）", () => this.deleteSelection(), "danger");
     switch (selection.kind) {
       case "panel": {
@@ -647,7 +738,7 @@ export class Workbench {
           this.edit((p) => (created = addInset(p, page, panel)));
           if (created) this.editor.select({ kind: "panel", pageId: page.id, id: (created as Panel).id });
         });
-        return [button("メモ", "このコマのメモをその場で書く（コマをダブルクリックでも）", () => this.editor.editInPlace(page.id, "note", panel.id)), inset, copy, remove];
+        return [button("メモ", "このコマのメモをその場で書く（コマをダブルクリックでも）", () => this.editor.editInPlace(page.id, "note", panel.id)), transform, inset, copy, remove];
       }
       case "line": {
         const line = page.lines.find((l) => l.id === selection.id);
@@ -667,7 +758,7 @@ export class Workbench {
           }),
         );
         tail.disabled = resolvedShape(line) === "none";
-        return [button("書く", "その場で書き直す（ダブルクリックでも）", () => this.editor.editInPlace(page.id, "line", line.id)), kind, tail, copy, remove];
+        return [button("書く", "その場で書き直す（ダブルクリックでも）", () => this.editor.editInPlace(page.id, "line", line.id)), kind, tail, transform, copy, remove];
       }
       case "stroke":
       case "group":
@@ -686,8 +777,10 @@ export class Workbench {
             else fill.tone = value;
           }),
         );
-        return [tone, copy, remove];
+        return [tone, transform, copy, remove];
       }
+      case "breakout":
+        return [transform, copy, remove];
       default:
         return [copy, remove];
     }
@@ -1427,6 +1520,10 @@ export class Workbench {
         this.renderSide();
       });
     }
+    $("tab-layers-edit").addEventListener("click", () => {
+      this.sideTab = "layers";
+      this.renderSide();
+    });
   }
 
   private flip(step: number): void {
@@ -1542,8 +1639,12 @@ export class Workbench {
         return this.editor.transformSelection("flipH");
       case "flip.vertical":
         return this.editor.transformSelection("flipV");
+      case "transform":
+        return this.editor.toggleTransform();
       case "deselect":
-        this.editor.select(null);
+        // Esc ends 変形 first, then lets go of the selection.
+        if (this.editor.isTransforming) this.editor.toggleTransform(false);
+        else this.editor.select(null);
         return true;
       case "page.next":
       case "page.previous":

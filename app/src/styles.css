@@ -55,7 +55,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   border-right: 1px solid var(--line); min-height: 0;
 }
 .tabs { display: flex; gap: 4px; padding: 8px; border-bottom: 1px solid var(--line); }
-.tabs button { flex: 1; }
+.tabs button { flex: 1; white-space: nowrap; padding-left: 4px; padding-right: 4px; }
 .panel { flex: 1; overflow: auto; padding: 6px 0; }
 .layer { display: flex; align-items: center; gap: 6px; padding: 3px 10px; white-space: nowrap; }
 .layer .kind { color: var(--muted); font-size: 12px; margin-left: auto; }
@@ -124,6 +124,21 @@ button.danger { color: #c0392b; }
 .page-item .memo { flex: 1; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .page-item .count { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .page-item .scene { display: block; color: var(--accent); font-size: 11px; }
+.layer-list { padding: 4px 0; }
+.layer-page { font-weight: bold; font-size: 12px; padding: 8px 12px 4px; color: var(--muted); }
+.layer-group { font-size: 12px; color: var(--muted); padding: 6px 12px 2px 34px; }
+.layer-row { display: flex; align-items: center; gap: 4px; padding: 3px 8px; cursor: pointer; user-select: none; touch-action: none; font-size: 13px; }
+.layer-row:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.layer-row.selected { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.layer-row.depth-1 { padding-left: 30px; }
+.layer-row.hidden-layer .layer-name, .layer-row.hidden-layer .layer-detail { opacity: 0.45; }
+.layer-row.drop-target { outline: 2px solid var(--accent); outline-offset: -2px; }
+.layer-eye { border: none; background: none; padding: 0 2px; width: 22px; min-height: 0; font-size: 12px; cursor: pointer; }
+.layer-fold { border: none; background: none; padding: 0; width: 14px; min-height: 0; font-size: 11px; color: var(--muted); display: inline-block; }
+.layer-name { white-space: nowrap; }
+.layer-detail { flex: 1; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.layer-empty { color: var(--muted); font-size: 12px; padding: 4px 12px 4px 34px; }
+.layer-hint { padding: 8px 12px; font-size: 11px; color: var(--muted); }
 .script-line { padding: 4px 12px; cursor: pointer; line-height: 1.5; }
 .script-line:hover, .script-line.current { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .script-line .who { font-weight: bold; margin-right: 0.4em; }
@@ -329,6 +344,7 @@ dialog.pen-settings { width: min(720px, calc(100vw - 32px)); max-height: calc(10
 .action-bar[hidden] { display: none; }
 .action-bar button, .action-bar select { padding: 3px 8px; font-size: 12px; min-height: 0; }
 .action-bar select { width: auto; }
+.action-bar button.active { border-color: var(--accent); color: var(--accent); background: rgb(47 111 219 / 0.08); }
 
 /* Tab: the pages take the whole width. */
 body.focus-mode #editor > .sidebar, body.focus-mode #editor > .inspector { display: none; }

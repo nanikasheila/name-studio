@@ -303,6 +303,41 @@ function tailHalfWidth(line: Line): number {
   return Math.min(Math.max(Math.min(x1 - x0, y1 - y0) * 0.18, 1.6), 4);
 }
 
+/** Whether a point is inside a line's balloon (its outline without tails). */
+export function insideBalloon(line: Line, point: Point): boolean {
+  const s = star(line);
+  if (!s) return false;
+  const angle = Math.atan2(point[1] - s.center[1], point[0] - s.center[0]);
+  return Math.hypot(point[0] - s.center[0], point[1] - s.center[1]) <= radiusAt(s, angle);
+}
+
+/** Where a tail leaves the balloon and the middle of its curve (the handle that bends it). */
+export function tailGeometry(line: Line, tail: Tail): { root: Point; middle: Point; normal: Point } | null {
+  const s = star(line);
+  if (!s) return null;
+  const angle = Math.atan2(tail.tip[1] - s.center[1], tail.tip[0] - s.center[0]);
+  const root = pointAt(s, angle);
+  const [dx, dy] = [tail.tip[0] - root[0], tail.tip[1] - root[1]];
+  const length = Math.hypot(dx, dy) || 1;
+  const normal: Point = [-dy / length, dx / length];
+  const bend = tail.bend ?? 0;
+  return { root, middle: [(root[0] + tail.tip[0]) / 2 + normal[0] * bend, (root[1] + tail.tip[1]) / 2 + normal[1] * bend], normal };
+}
+
+/**
+ * Points along a tail's side from `from` to the tip, bowed by the tail's
+ * bend (its middle is `bend` mm off the straight line), without `from`.
+ */
+function bowed(from: Point, tip: Point, offset: Point, steps = 8): Point[] {
+  // A quadratic whose middle is `offset` off the chord: control at twice it.
+  const control: Point = [(from[0] + tip[0]) / 2 + offset[0] * 2, (from[1] + tip[1]) / 2 + offset[1] * 2];
+  return Array.from({ length: steps }, (_, i) => {
+    const t = (i + 1) / steps;
+    const u = 1 - t;
+    return [u * u * from[0] + 2 * u * t * control[0] + t * t * tip[0], u * u * from[1] + 2 * u * t * control[1] + t * t * tip[1]] as Point;
+  });
+}
+
 /** Splice wedge and zigzag tails into the outline; bubbles and lines become extras. */
 export function withTails(s: Star, line: Line, tails: readonly Tail[] = line.tails ?? []): { star: Star; extras: Extra[] } {
   let samples = s.samples;
@@ -314,18 +349,21 @@ export function withTails(s: Star, line: Line, tails: readonly Tail[] = line.tai
     if (distance <= r + 0.5) continue;
     const style = tail.style ?? "wedge";
     const root = pointAt(s, angle);
+    // 曲がったしっぽ: the middle of the tail pushed `bend` mm to one side.
+    const bend = tail.bend ?? 0;
+    const along: Point = [tail.tip[0] - root[0], tail.tip[1] - root[1]];
+    const length = Math.hypot(along[0], along[1]) || 1;
+    const offset: Point = [(-along[1] / length) * bend, (along[0] / length) * bend];
+    const curve = [root, ...bowed(root, tail.tip, offset, 16)];
+    const alongCurve = (fraction: number): Point => curve[Math.min(curve.length - 1, Math.round(fraction * (curve.length - 1)))];
     if (style === "bubbles") {
       const sizes = [2.2, 1.5, 0.9];
       const fractions = [0.28, 0.6, 0.9];
-      sizes.forEach((size, i) => {
-        const cx = root[0] + (tail.tip[0] - root[0]) * fractions[i];
-        const cy = root[1] + (tail.tip[1] - root[1]) * fractions[i];
-        extras.push({ points: circle([cx, cy], size), closed: true });
-      });
+      sizes.forEach((size, i) => extras.push({ points: circle(alongCurve(fractions[i]), size), closed: true }));
       continue;
     }
     if (style === "line") {
-      extras.push({ points: [root, tail.tip], closed: false });
+      extras.push({ points: bend ? curve : [root, tail.tip], closed: false });
       continue;
     }
     const half = Math.min(tailHalfWidth(line) / r, 0.6);
@@ -345,6 +383,12 @@ export function withTails(s: Star, line: Line, tails: readonly Tail[] = line.tai
       inserted.push({ angle: wrap(angle - half / 2), point: kink(0.35, 1.2) }, { angle: wrap(angle - half / 3), point: kink(0.55, -0.6) });
       inserted.push({ angle: wrap(angle), point: tail.tip });
       inserted.push({ angle: wrap(angle + half / 3), point: kink(0.6, -0.1) }, { angle: wrap(angle + half / 2), point: kink(0.4, 1.8) });
+    } else if (bend) {
+      // Both sides bow the same way; their points take angles in order across the tail.
+      const out = bowed(left, tail.tip, offset);
+      const back = [right, ...bowed(right, tail.tip, offset)].reverse().slice(1, -1);
+      const points = [...out, ...back];
+      points.forEach((point, i) => inserted.push({ angle: wrap(angle - half + (2 * half * (i + 1)) / (points.length + 1)), point }));
     } else {
       inserted.push({ angle: wrap(angle), point: tail.tip });
     }

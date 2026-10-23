@@ -121,3 +121,53 @@ describe("fills", () => {
     expect(page.fills!.map((f) => f.id)).not.toContain(fill.id);
   });
 });
+
+describe("transforming panels, balloons and free deform", () => {
+  it("scales a panel with what is drawn in it", () => {
+    const { page, panel, stroke } = sample();
+    const items = [{ kind: "panel" as const, id: panel.id }, { kind: "stroke" as const, id: stroke.id }];
+    transformItems(page, transformBase(page, items), scaling(0.5, 0.5, [20, 20]));
+    expect(bounds(panel.shape)).toEqual([20, 20, 60, 60]);
+    expect(stroke.points[1].slice(0, 2)).toEqual([35, 25]);
+  });
+
+  it("keeps a flipped panel the same way round, with its bleed on the mirrored edge", () => {
+    const { page, panel } = sample();
+    // Bleed the left edge (x = 20).
+    const left = panel.shape.findIndex(([x], i, s) => x === 20 && s[(i + 1) % s.length][0] === 20);
+    panel.openEdges = [left];
+    const turn = (shape: number[][]) => {
+      let sum = 0;
+      for (let i = 0; i < shape.length; i++) {
+        const [a, b] = [shape[i], shape[(i + 1) % shape.length]];
+        sum += a[0] * b[1] - b[0] * a[1];
+      }
+      return Math.sign(sum);
+    };
+    const before = turn(panel.shape);
+    transformItems(page, transformBase(page, [{ kind: "panel", id: panel.id }]), scaling(-1, 1, [60, 60]));
+    expect(turn(panel.shape)).toBe(before);
+    const i = panel.openEdges![0];
+    const [a, b] = [panel.shape[i], panel.shape[(i + 1) % panel.shape.length]];
+    // The bled edge is now on the right (x = 100).
+    expect([a[0], b[0]]).toEqual([100, 100]);
+  });
+
+  it("grows a balloon on its own with its text", () => {
+    const { page, line } = sample();
+    const size = line.fontSizePt;
+    const [w] = [line.box[2] - line.box[0]];
+    const centre = [(line.box[0] + line.box[2]) / 2, (line.box[1] + line.box[3]) / 2];
+    transformItems(page, transformBase(page, [{ kind: "line", id: line.id }], true), scaling(1.5, 1.5, centre as [number, number]));
+    expect(line.fontSizePt).toBeCloseTo(size * 1.5, 1);
+    expect(line.box[2] - line.box[0]).toBeCloseTo(w * 1.5, 2);
+  });
+
+  it("deforms freely by the four corners", () => {
+    const { page, panel } = sample();
+    const base = transformBase(page, [{ kind: "panel", id: panel.id }]);
+    // Pull the top right corner up and out: a slanted top.
+    transformItems(page, base, { box: [20, 20, 100, 100], corners: [[20, 20], [110, 5], [100, 100], [20, 100]] });
+    expect(panel.shape).toEqual(expect.arrayContaining([[110, 5], [20, 20], [100, 100], [20, 100]]));
+  });
+});

@@ -34,6 +34,7 @@ export type ActionId =
   | "selectAll"
   | "flip.horizontal"
   | "flip.vertical"
+  | "transform"
   | "deselect"
   | "page.next"
   | "page.previous"
@@ -59,6 +60,7 @@ export const ACTIONS: readonly ActionInfo[] = [
   { id: "selectAll", label: "ページの線とセリフを全部選ぶ", group: "編集", keys: ["Ctrl+A"] },
   { id: "flip.horizontal", label: "選んだ線とセリフを左右反転", group: "編集", keys: [] },
   { id: "flip.vertical", label: "選んだ線とセリフを上下反転", group: "編集", keys: [] },
+  { id: "transform", label: "選んだものを変形（拡大縮小・回転・自由変形）", group: "編集", keys: ["Ctrl+T"] },
   { id: "deselect", label: "選択を外す", group: "編集", keys: ["Escape"] },
   { id: "tool.select", label: "選択", group: "道具", keys: ["V"] },
   { id: "tool.cut", label: "コマ割り", group: "道具", keys: ["K"] },
