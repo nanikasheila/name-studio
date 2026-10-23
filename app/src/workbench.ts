@@ -220,7 +220,9 @@ export class Workbench {
         const who = report.characters.length ? `、登場人物 ${report.characters.join("・")} を足しました` : "";
         const scenes = report.replacedScenes ? `、重なっていたシーン ${report.replacedScenes} を台本のシーンに置き換えました` : "";
         const fixed = report.changed + report.added + report.removed + report.kept;
-        const update = fixed ? `。セリフを台本に合わせました: 書き換え ${report.changed}・足す ${report.added}・消す ${report.removed}・そのまま ${report.kept}` : "";
+        const inserted = report.insertedPages ? `、ページを ${report.insertedPages} 枚入れました` : "";
+        const left = report.leftPages.length ? `、台本にないページ ${report.leftPages.join("・")} はそのまま` : "";
+        const update = fixed ? `。セリフを台本に合わせました: 書き換え ${report.changed}・足す ${report.added}・消す ${report.removed}・そのまま ${report.kept}${inserted}${left}` : "";
         this.setStatus(`台本を ${report.pages} ページに入れました（セリフ ${report.lines}、作ったコマ ${report.panels}${who}${scenes}）${update}。元に戻すは Ctrl+Z`);
       },
       plotDone: (report) => {

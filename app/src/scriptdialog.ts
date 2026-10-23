@@ -128,7 +128,13 @@ export class ScriptDialog {
     if (spoken) {
       if (update) {
         const trial = applyScript(structuredClone(project), this.doc, { startPage: start, makePanels: true, update: true });
-        changes = `セリフのある ${spoken} ページは台本に合わせて直します: 書き換え ${trial.changed}・足す ${trial.added}・消す ${trial.removed}・そのまま ${trial.kept}`;
+        changes = [
+          `セリフのある ${spoken} ページは台本に合わせて直します: 書き換え ${trial.changed}・足す ${trial.added}・消す ${trial.removed}・そのまま ${trial.kept}`,
+          trial.insertedPages ? `台本で増えたページ ${trial.insertedPages} 枚を、その位置に入れます。` : "",
+          trial.leftPages.length ? `台本にないページ ${trial.leftPages.join("・")} はそのままにします（要らなければページ一覧で消してください）。` : "",
+        ]
+          .filter(Boolean)
+          .join("\n");
       } else changes = `注意: セリフのある ${spoken} ページに、台本のセリフをもう一組足します（今のセリフは残ります）`;
     }
     summary.textContent = [

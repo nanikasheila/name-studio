@@ -60,7 +60,7 @@ describe("台本の取り込み", () => {
   it("deals the script out onto pages and panels", () => {
     const project = newProject("新しいネーム", 2);
     const report = applyScript(project, parseScript(MARKDOWN), { startPage: 0, makePanels: true });
-    expect(report).toEqual({ pages: 3, panels: 4, lines: 7, characters: ["ミカ", "ソラ"], scenes: 2, replacedScenes: 0, kept: 0, changed: 0, added: 0, removed: 0 });
+    expect(report).toEqual({ pages: 3, panels: 4, lines: 7, characters: ["ミカ", "ソラ"], scenes: 2, replacedScenes: 0, insertedPages: 0, leftPages: [], kept: 0, changed: 0, added: 0, removed: 0 });
     expect(project.title).toBe("星の約束");
     expect(project.pages.length).toBe(3);
     const page = project.pages[0];
@@ -211,6 +211,25 @@ describe("台本を直して取り込み直す", () => {
     expect(text).toContain("［2］");
     const report = applyScript(project, parseScript(text), { startPage: 0, makePanels: true, update: true });
     expect([report.changed, report.added, report.removed]).toEqual([0, 0, 0]);
+  });
+
+  it("finds each page again when the script puts a page in or takes one out", () => {
+    const project = newProject("新しいネーム", 3);
+    applyScript(project, parseScript(MARKDOWN), { startPage: 0, makePanels: true });
+    const [p1, p2, p3] = project.pages;
+    const ids = project.pages.flatMap((page) => page.lines.map((line) => line.id));
+    // A new page 2; the old 2 and 3 are now 3 and 4.
+    const revised = MARKDOWN.replace("### 2ページ", "### 2ページ\n[1] ミカ「待って」\n\n### 3ページ").replace("### 3ページ\nミカ『またね』", "### 4ページ\nミカ『またね』");
+    const report = applyScript(project, parseScript(revised), { startPage: 0, makePanels: true, update: true });
+    expect(report.insertedPages).toBe(1);
+    expect([report.changed, report.added, report.removed]).toEqual([0, 0, 0]);
+    expect(project.pages.map((page) => page.id)).toEqual([p1.id, project.pages[1].id, p2.id, p3.id]);
+    expect(project.pages[1].lines.map((line) => line.text)).toEqual(["待って"]);
+    expect(project.pages.flatMap((page) => page.lines.map((line) => line.id)).filter((id) => ids.includes(id))).toEqual(ids);
+    // The script without its page 2 again: that page is left as it is, the others found.
+    const back = applyScript(project, parseScript(MARKDOWN), { startPage: 0, makePanels: true, update: true });
+    expect([back.insertedPages, back.changed, back.added, back.removed]).toEqual([0, 0, 0, 0]);
+    expect(back.leftPages).toEqual([2]);
   });
 
   it("reads the page number of a page heading", () => {

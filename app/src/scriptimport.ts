@@ -294,6 +294,10 @@ export interface ScriptImportReport {
   scenes: number;
   /** Scenes already on the name that the script's took the place of. */
   replacedScenes: number;
+  /** With `update`: pages put in for script pages the name did not have. */
+  insertedPages: number;
+  /** With `update`: pages (1-based) with dialogue that no script page went to, left as they were. */
+  leftPages: number[];
   /** With `update`: lines left as they were, changed, added and removed. */
   kept: number;
   changed: number;
@@ -333,6 +337,55 @@ function placeLines(project: Project, page: Page, panel: Panel | undefined, line
   layOut(placed, placingBox(project, panel), panel?.shape);
 }
 
+/** How much a page's dialogue reads like a script page's: the mean, over the script's lines, of the most alike line on the page. */
+function pageLikeness(page: Page, scriptPage: ScriptPage): number {
+  const said = scriptPage.panels.flatMap((panel) => panel.lines);
+  if (!said.length || !page.lines.length) return 0;
+  return said.reduce((sum, s) => sum + Math.max(...page.lines.map((line) => likeness(line.text, s.text))), 0) / said.length;
+}
+
+/** A script page and a page below this are not the same page. */
+const SAME_PAGE = 0.4;
+/** An empty page where a new script page falls is taken for it (rather than a page put in beside it). */
+const EMPTY_PAGE = 0.2;
+
+/**
+ * The page each script page goes to when taken in again, from `start` on,
+ * in order: the pairing whose dialogue reads most alike; undefined where the
+ * script has a page the name does not (a page to put in).
+ */
+export function matchPages(project: Project, doc: ScriptDoc, start: number): (Page | undefined)[] {
+  const pages = project.pages.slice(start);
+  const said = doc.pages;
+  const score = (i: number, j: number) => {
+    if (!pages[j].lines.length) return EMPTY_PAGE;
+    const alike = pageLikeness(pages[j], said[i]);
+    return alike >= SAME_PAGE ? alike : 0;
+  };
+  const scores = said.map((_, i) => pages.map((_, j) => score(i, j)));
+  const best: number[][] = Array.from({ length: said.length + 1 }, () => new Array<number>(pages.length + 1).fill(0));
+  for (let i = said.length - 1; i >= 0; i--) {
+    for (let j = pages.length - 1; j >= 0; j--) {
+      const pair = scores[i][j];
+      best[i][j] = Math.max(best[i + 1][j], best[i][j + 1], pair > 0 ? pair + best[i + 1][j + 1] : 0);
+    }
+  }
+  const targets: (Page | undefined)[] = new Array(said.length).fill(undefined);
+  for (let i = 0, j = 0; i < said.length && j < pages.length; ) {
+    const pair = scores[i][j];
+    if (pair > 0 && best[i][j] === pair + best[i + 1][j + 1]) targets[i++] = pages[j++];
+    else if (best[i][j] === best[i + 1][j]) i++;
+    else j++;
+  }
+  // A script page past the name's pages, with none after it matched: the next page, as when first taken in.
+  let last = -1;
+  targets.forEach((page, i) => {
+    if (page) last = pages.indexOf(page);
+    else if (!targets.slice(i + 1).some(Boolean) && last + 1 < pages.length && !pages[last + 1].lines.length) targets[i] = pages[++last];
+  });
+  return targets;
+}
+
 /** Text compared without its line breaks and spaces. */
 const bare = (text: string) => text.replace(/\s+/g, "");
 
@@ -357,28 +410,26 @@ export function likeness(a: string, b: string): number {
 const SAME_LINE = 0.3;
 
 /**
- * Pair a panel's lines with the script's, keeping their order: the pairing
- * with the most likeness (a line and the script line it most reads like).
+ * Pair a panel's lines with the script's: the most alike first (a line and
+ * the script line it most reads like), whatever order the balloons stand in
+ * now; between equally alike ones, the nearest in order.
  */
 function pairLines(old: readonly Line[], said: readonly ScriptLine[], speakerOf: (line: ScriptLine) => string | undefined): [number, number][] {
-  const score = (i: number, j: number) => {
-    const alike = likeness(old[i].text, said[j].text);
-    if (alike < SAME_LINE) return 0;
-    return alike + (old[i].speaker === speakerOf(said[j]) ? 0.2 : 0);
-  };
-  const best: number[][] = Array.from({ length: old.length + 1 }, () => new Array<number>(said.length + 1).fill(0));
-  for (let i = old.length - 1; i >= 0; i--) {
-    for (let j = said.length - 1; j >= 0; j--) {
-      const pair = score(i, j);
-      best[i][j] = Math.max(best[i + 1][j], best[i][j + 1], pair > 0 ? pair + best[i + 1][j + 1] : 0);
-    }
-  }
+  const candidates: [number, number, number][] = [];
+  old.forEach((line, i) =>
+    said.forEach((s, j) => {
+      const alike = likeness(line.text, s.text);
+      if (alike >= SAME_LINE) candidates.push([alike + (line.speaker === speakerOf(s) ? 0.2 : 0) - 0.001 * Math.abs(i - j), i, j]);
+    }),
+  );
+  candidates.sort((a, b) => b[0] - a[0]);
+  const [usedOld, usedNew] = [new Set<number>(), new Set<number>()];
   const pairs: [number, number][] = [];
-  for (let i = 0, j = 0; i < old.length && j < said.length; ) {
-    const pair = score(i, j);
-    if (pair > 0 && best[i][j] === pair + best[i + 1][j + 1]) pairs.push([i++, j++]);
-    else if (best[i][j] === best[i + 1][j]) i++;
-    else j++;
+  for (const [, i, j] of candidates) {
+    if (usedOld.has(i) || usedNew.has(j)) continue;
+    usedOld.add(i);
+    usedNew.add(j);
+    pairs.push([i, j]);
   }
   return pairs;
 }
@@ -477,7 +528,7 @@ function updatePage(project: Project, page: Page, used: ScriptPanel[], speakers:
 
 /** Put a script onto the name. */
 export function applyScript(project: Project, doc: ScriptDoc, options: ScriptImportOptions): ScriptImportReport {
-  const report: ScriptImportReport = { pages: 0, panels: 0, lines: 0, characters: [], scenes: 0, replacedScenes: 0, kept: 0, changed: 0, added: 0, removed: 0 };
+  const report: ScriptImportReport = { pages: 0, panels: 0, lines: 0, characters: [], scenes: 0, replacedScenes: 0, insertedPages: 0, leftPages: [], kept: 0, changed: 0, added: 0, removed: 0 };
   if (doc.title && (!project.title || project.title === "新しいネーム")) project.title = doc.title;
   // Speakers by name; new names become characters.
   const speakers = new Map(project.characters.map((character) => [character.name, character.id]));
@@ -492,9 +543,20 @@ export function applyScript(project: Project, doc: ScriptDoc, options: ScriptImp
     }
   }
   const sceneStarts: { title: string; first: string; last: string }[] = [];
+  // Taken in again: each script page goes to the page whose dialogue it reads like, so pages added or
+  // taken out in the script (and pages after them) still find theirs; a new one is put in where it falls.
+  const targets = options.update ? matchPages(project, doc, options.startPage) : null;
+  let previous = options.startPage - 1;
+  const reached = new Set<string>();
   doc.pages.forEach((scriptPage, i) => {
-    const index = options.startPage + i;
-    const page = project.pages[index] ?? insertPage(project, project.pages.length);
+    let page: Page;
+    if (targets) {
+      const target = targets[i];
+      page = target ?? insertPage(project, previous + 1);
+      if (!target) report.insertedPages++;
+      reached.add(page.id);
+      previous = pageIndex(project, page.id);
+    } else page = project.pages[options.startPage + i] ?? insertPage(project, project.pages.length);
     report.pages++;
     // Taken in again: notes already in the memo are not added twice.
     const fresh = scriptPage.notes.filter((note) => !page.memo.includes(note));
@@ -532,6 +594,14 @@ export function applyScript(project: Project, doc: ScriptDoc, options: ScriptImp
     else if (sceneStarts.length) sceneStarts[sceneStarts.length - 1].last = page.id;
   });
   // A scene takes the place of those it overlaps (a plot's, taken in before).
+  if (targets) {
+    // Pages between the first and last the script went to that it did not: left as they were, and said so.
+    const indices = [...reached].map((id) => pageIndex(project, id));
+    const [from, to] = [Math.min(...indices), Math.max(...indices)];
+    project.pages.forEach((page, i) => {
+      if (i > from && i < to && !reached.has(page.id) && page.lines.length) report.leftPages.push(i + 1);
+    });
+  }
   for (const scene of sceneStarts) {
     report.replacedScenes += putScene(project, pageIndex(project, scene.first), pageIndex(project, scene.last), scene.title).replaced;
   }
