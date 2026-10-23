@@ -130,9 +130,15 @@ export class PageEditor {
   private spaceHeld = false;
   private pointer: Point | null = null;
   private readonly ctx: CanvasRenderingContext2D;
+  /** The pages as drawn when a pen line began: only the new line is drawn over it. */
+  private base: HTMLCanvasElement | null = null;
+  private frame = 0;
 
   constructor(private readonly canvas: HTMLCanvasElement, private readonly host: EditorHost) {
-    this.ctx = canvas.getContext("2d")!;
+    // Low latency: the pen line reaches the screen without waiting for the compositor.
+    this.ctx = canvas.getContext("2d", { desynchronized: true })!;
+    // A pen held still or its barrel button must not open the context menu.
+    canvas.addEventListener("contextmenu", (event) => event.preventDefault());
     onTipLoaded(() => this.draw());
     canvas.addEventListener("pointerdown", (event) => this.pointerDown(event));
     canvas.addEventListener("pointermove", (event) => this.pointerMove(event));
@@ -312,9 +318,32 @@ export class PageEditor {
 
   // --- drawing ----------------------------------------------------------------
 
+  /** Draw on the next frame: pointer events can come many times a frame. */
+  private requestDraw(): void {
+    if (this.frame) return;
+    this.frame = requestAnimationFrame(() => {
+      this.frame = 0;
+      this.draw();
+    });
+  }
+
   draw(): void {
+    if (this.frame) {
+      cancelAnimationFrame(this.frame);
+      this.frame = 0;
+    }
     const ctx = this.ctx;
     const { width, height } = this.canvas.getBoundingClientRect();
+    if (this.drag?.kind === "pen" && this.base) {
+      // While a line is drawn nothing else changes: the pages as they were, then the line.
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      ctx.drawImage(this.base, 0, 0);
+      ctx.restore();
+      this.drawOverlay();
+      return;
+    }
     ctx.clearRect(0, 0, width, height);
     const project = this.host.project();
     if (!project) return;
@@ -716,6 +745,7 @@ export class PageEditor {
         const motion = usesMotion(this.brush("pen"));
         const first: StrokePoint = motion ? [...point, pressureOf(event), tiltOf(event), 0] : [...point, pressureOf(event)];
         this.drag = { kind: "pen", slot, points: [first], last: first, motion, time: event.timeStamp, speed: 0 };
+        this.captureBase();
         return;
       }
       case "breakout":
@@ -734,12 +764,25 @@ export class PageEditor {
     }
   }
 
+  /** Keep the pages as drawn now (without the overlay) for the pen line to go over. */
+  private captureBase(): void {
+    this.base = null;
+    // The screen already shows the pages unless a frame is still to be drawn
+    // (drawing them again would delay the start of the line).
+    if (this.frame) this.draw();
+    const base = document.createElement("canvas");
+    base.width = this.canvas.width;
+    base.height = this.canvas.height;
+    base.getContext("2d")!.drawImage(this.canvas, 0, 0);
+    this.base = base;
+  }
+
   private pointerMove(event: PointerEvent): void {
     this.pointer = [event.offsetX, event.offsetY];
     const drag = this.drag;
     if (!drag) {
       this.setTipEraser(event);
-      if (this.erasing()) this.draw();
+      if (this.erasing()) this.requestDraw();
       return;
     }
     if (drag.kind === "pan") {
@@ -747,7 +790,7 @@ export class PageEditor {
       this.pan[1] += event.clientY - drag.y;
       drag.x = event.clientX;
       drag.y = event.clientY;
-      this.draw();
+      this.requestDraw();
       return;
     }
     const point = this.toPage(drag.slot, event.offsetX, event.offsetY);
@@ -819,12 +862,13 @@ export class PageEditor {
         break;
       }
     }
-    this.draw();
+    this.requestDraw();
   }
 
   private pointerUp(event: PointerEvent): void {
     const drag = this.drag;
     this.drag = null;
+    this.base = null;
     if (!drag) return;
     const project = this.host.project();
     if (!project) return;
