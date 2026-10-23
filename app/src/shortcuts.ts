@@ -8,6 +8,7 @@ export type ActionId =
   | "undo"
   | "redo"
   | "view.edit"
+  | "view.board"
   | "view.structure"
   | "view.emotion"
   | "view.timeline"
@@ -76,6 +77,7 @@ export const ACTIONS: readonly ActionInfo[] = [
   { id: "page.previous", label: "前の見開き（何も選んでいないとき）", group: "ページ", keys: ["ArrowRight"] },
   { id: "option.make", label: "このページの別案を作る", group: "ページ", keys: [] },
   { id: "view.edit", label: "編集画面", group: "画面", keys: ["F1"] },
+  { id: "view.board", label: "全体（型・シーン・時系列・感情・ページを一画面で）", group: "画面", keys: ["F6"] },
   { id: "view.structure", label: "構成", group: "画面", keys: ["F2"] },
   { id: "view.emotion", label: "感情曲線", group: "画面", keys: ["F3"] },
   { id: "view.timeline", label: "時系列", group: "画面", keys: ["F4"] },
