@@ -1,18 +1,27 @@
-name: Build Windows app
+name: Release Windows app
 
-# Builds the installer so the app can be tried without a Rust / Node setup.
-# The installer is not signed yet, so Windows shows a SmartScreen warning.
+# Every merge to main becomes a GitHub release with the Windows installer.
+# With the updater key set up (docs/release.md), the release also carries
+# latest.json and the installer's signature, and installed copies update
+# themselves when they start. The installer itself is not code-signed, so
+# Windows shows a SmartScreen warning on the first install.
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   windows:
     runs-on: windows-latest
+    env:
+      VERSION: 0.2.${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
 
@@ -24,14 +33,40 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
 
+      - name: Version and update key
+        shell: bash
+        env:
+          PUBKEY: ${{ vars.TAURI_UPDATER_PUBKEY }}
+        run: node .github/scripts/release-config.mjs "$VERSION"
+
       - name: Build installer
         working-directory: app
+        env:
+          NAME_STUDIO_RELEASE: "1"
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           npm ci
           npx tauri build --bundles nsis
 
+      - name: Collect release files
+        shell: bash
+        env:
+          NOTES: ${{ github.event.head_commit.message }}
+        run: node .github/scripts/release-files.mjs "$VERSION" release
+
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v$VERSION" release/* \
+            --title "Name Studio v$VERSION" \
+            --notes-file release-notes.md \
+            --target "$GITHUB_SHA"
+
       - uses: actions/upload-artifact@v4
         with:
           name: name-studio-windows-installer
-          path: target/release/bundle/nsis/*.exe
+          path: release/*.exe
           if-no-files-found: error

@@ -16,7 +16,8 @@ usage:
                   [--order rtl_ttb|ltr_ttb] [--first-page N] [--name PATTERN] [--cmc NAME]
                   [--story-index N] [--cmc-template WORK.cmc]
   name-studio-cli decode-time <file.clip>
-  name-studio-cli subtools <tool.sut|EditImageTool.todb> [--materials DIR] [--tips]";
+  name-studio-cli subtools <tool.sut|EditImageTool.todb> [--materials DIR] [--tips]
+  name-studio-cli check <file.clip|file.cmc|DIR>...   (self-check written pages; exit 1 on problems)";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -27,10 +28,62 @@ fn main() -> ExitCode {
         Some("import") => import(&args[1..]),
         Some("split") => split(&args[1..]),
         Some("subtools") => subtools(&args[1..]),
+        Some("check") => check(&args[1..]),
         _ => {
             eprintln!("{USAGE}");
             ExitCode::from(2)
         }
+    }
+}
+
+/// Read written pages and works back (folders: every .clip and .cmc in them)
+/// and print what the self-check finds, as JSON lines.
+fn check(args: &[String]) -> ExitCode {
+    use clip_core::write::verify::{check_clip, verify_work};
+    if args.is_empty() {
+        eprintln!("{USAGE}");
+        return ExitCode::from(2);
+    }
+    let mut files = Vec::new();
+    for arg in args {
+        let path = PathBuf::from(arg);
+        if path.is_dir() {
+            let mut found: Vec<PathBuf> = match std::fs::read_dir(&path) {
+                Ok(entries) => entries.flatten().map(|entry| entry.path()).collect(),
+                Err(error) => {
+                    eprintln!("{}: {error}", path.display());
+                    return ExitCode::from(2);
+                }
+            };
+            found.retain(|file| {
+                file.extension().is_some_and(|extension| {
+                    extension.eq_ignore_ascii_case("clip") || extension.eq_ignore_ascii_case("cmc")
+                })
+            });
+            found.sort();
+            files.extend(found);
+        } else {
+            files.push(path);
+        }
+    }
+    let mut problems = 0;
+    for file in &files {
+        let is_work = file
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("cmc"));
+        let result = if is_work {
+            verify_work(file, None)
+        } else {
+            check_clip(file)
+        };
+        problems += result.problems.len();
+        println!("{}", serde_json::to_string(&result).expect("check result"));
+    }
+    eprintln!("{} files, {problems} problems", files.len());
+    if problems == 0 {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
     }
 }
 

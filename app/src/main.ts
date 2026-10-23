@@ -2,11 +2,13 @@
 // spread, or edit name data (see workbench.ts).
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { open } from "@tauri-apps/plugin-dialog";
+import { ask, open } from "@tauri-apps/plugin-dialog";
+import { formatTime } from "./autosave";
+import { appVersion, checkForUpdate } from "./updater";
 import { buildRequest, folderOf, summarize, type ExportForm, type ExportReport, type Fit } from "./export";
 import { dialogueByPage, effectiveVisibility, initiallyHidden, spreads } from "./pages";
 import { drawSheet, type PlacedImage, type Transform } from "./render";
-import { newProject } from "./project";
+import { newProject, type Project } from "./project";
 import type { LayerView, PageCell, SheetView } from "./types";
 import { PROJECT_EXTENSION, Workbench } from "./workbench";
 
@@ -575,3 +577,45 @@ $("save").addEventListener("click", () => void workbench.save());
 void getCurrentWindow().onCloseRequested(async (event) => {
   if (!(await workbench.confirmDiscard())) event.preventDefault();
 });
+
+interface Recovery {
+  path: string | null;
+  timeMs: number;
+  project: Project;
+}
+
+/** Offer back a project autosave kept when the app stopped before it was saved. */
+async function offerRecovery(): Promise<void> {
+  let recoveries: Recovery[];
+  try {
+    recoveries = await invoke<Recovery[]>("pending_recoveries");
+  } catch {
+    return;
+  }
+  const recovery = recoveries?.[0];
+  if (!recovery) return;
+  const where = recovery.path ?? "（まだ保存していないネーム）";
+  const restore = await ask(
+    `前回、保存しないまま終わったネームがあります。\n\n${recovery.project.title}（${recovery.project.pages.length} ページ、${formatTime(recovery.timeMs)} の自動保存）\n${where}\n\n復元しますか？「いいえ」で控えを消します。`,
+    { title: "Name Studio", kind: "warning" },
+  );
+  if (restore) {
+    showWorkspace("editor");
+    workbench.showRecovered(recovery.project, recovery.path, recovery.timeMs);
+  } else {
+    await invoke("discard_recovery", { path: recovery.path }).catch(() => undefined);
+  }
+}
+
+async function start(): Promise<void> {
+  const version = await appVersion();
+  if (version) $("app-version").textContent = `v${version}`;
+  await checkForUpdate({
+    status: setStatus,
+    busy: () => workbench.project !== null,
+    prepare: () => workbench.confirmDiscard(),
+  });
+  await offerRecovery();
+}
+
+void start();

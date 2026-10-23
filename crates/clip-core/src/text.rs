@@ -389,3 +389,27 @@ fn retarget(blob: &[u8], text: &NewText, counted_runs: bool) -> Result<Vec<u8>> 
     }
     Ok(build_tlv(&items))
 }
+
+/// The colour CSP draws a text in (8-bit RGB): its first font run's own
+/// colour when the run has one, else [`ATTR_COLOR`]. None when neither is there.
+pub fn text_color(blob: &[u8]) -> Result<Option<[u8; 3]>> {
+    let narrow = |bytes: &[u8]| -> [u8; 3] {
+        let channel = |index: usize| (u16::from_le_bytes([bytes[index * 2], bytes[index * 2 + 1]]) / 257) as u8;
+        [channel(0), channel(1), channel(2)]
+    };
+    let mut default = None;
+    for (id, value) in parse_tlv(blob)? {
+        if id == ATTR_FONT_RUNS
+            && let Some(runs) = parse_runs(id, value)
+            && let Some((_, _, _, data)) = runs.first()
+            && data.get(1).is_some_and(|flags| flags & RUN_HAS_COLOR != 0)
+            && data.len() >= 8
+        {
+            return Ok(Some(narrow(&data[2..8])));
+        }
+        if id == ATTR_COLOR && value.len() >= 6 {
+            default = Some(narrow(value));
+        }
+    }
+    Ok(default)
+}

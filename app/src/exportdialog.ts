@@ -2,7 +2,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { buildRequest, folderOf, type ExportForm } from "./export";
-import { exportPdf, exportToCsp, scriptText } from "./nameexport";
+import { checkSummary, exportPdf, exportToCsp, scriptText } from "./nameexport";
 import type { Project, RoughImage } from "./project";
 
 export interface ExportDialogHost {
@@ -161,8 +161,14 @@ export class ExportDialog {
             );
           }
         }
-        this.message(lines.join("\n"));
-        this.host.status(`${report.pages.length} ページを ${this.form.outDir} に書き出しました`);
+        const check = checkSummary(report);
+        lines.push(...check.lines);
+        this.message(lines.join("\n"), !check.ok);
+        this.host.status(
+          check.ok
+            ? `${report.pages.length} ページを ${this.form.outDir} に書き出しました（自己確認 OK）`
+            : `書き出したページに問題があります: ${check.lines[1]}`,
+        );
       } else {
         const extension = this.kind === "pdf" ? "pdf" : "txt";
         const base = (this.host.projectPath() ?? project.title ?? "ネーム").replace(/\.[^.\\/]+$/, "");
