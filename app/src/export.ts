@@ -81,3 +81,28 @@ export function summarize(report: ExportReport): string[] {
   }
   return lines.concat(report.warnings);
 }
+
+/** CSP files already in the export folder (clip-core `manifest::OverwriteCheck`). */
+export interface OverwriteCheck {
+  existing: string[];
+  changed: string[];
+  unknown: string[];
+  lastExportMs: number | null;
+}
+
+const listed = (names: string[]) => (names.length > 6 ? `${names.slice(0, 6).join("、")} ほか ${names.length - 6} 件` : names.join("、"));
+
+/** What to tell before writing over files in the export folder, or null when nothing there needs a word. */
+export function overwriteWarning(check: OverwriteCheck): string | null {
+  // Only our own files, unchanged since the last export: writing them again is the usual thing.
+  if (!check.changed.length && !check.unknown.length) return null;
+  const lines = [`書き出し先に CSP のファイルが ${check.existing.length} 件あり、同じ名前のものは上書きされます。`];
+  if (check.changed.length) {
+    lines.push("", `前回の書き出しのあとに変更されたファイル（CSP で描き進めた可能性があります）:`, listed(check.changed));
+  }
+  if (check.unknown.length) {
+    lines.push("", `この書き出しで作ったものではないファイル:`, listed(check.unknown));
+  }
+  lines.push("", "上書きしますか？ CSP の作業を残すなら「やめる」を押して、別のフォルダーを選んでください。");
+  return lines.join("\n");
+}

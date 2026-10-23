@@ -2,7 +2,7 @@
 // linked balloons (連結) merged into one outline. Every shape is built as a
 // star around the text's centre (points in order of angle), which is what
 // lets a tail or a link replace an arc of the outline.
-import { boxCenter, type BalloonShape, type Line, type LineKind, type Page, type Point, type Tail, type TailStyle } from "./project";
+import { boxCenter, type BalloonShape, type BoxMm, type Line, type LineKind, type Page, type Point, type Tail, type TailStyle } from "./project";
 
 export type ResolvedShape = Exclude<BalloonShape, "auto">;
 
@@ -507,4 +507,13 @@ export function storedOutline(line: Line): Point[] | undefined {
   if (shape === "custom") return line.balloon;
   const s = star(line);
   return s ? s.samples.map((sample) => sample.point) : undefined;
+}
+
+/** The box a line takes on the page with its balloon (without tails). */
+export function balloonExtent(line: Line): BoxMm {
+  const s = star(line);
+  if (!s || !s.samples.length) return line.box;
+  const xs = s.samples.map((sample) => sample.point[0]);
+  const ys = s.samples.map((sample) => sample.point[1]);
+  return [Math.min(...xs, line.box[0]), Math.min(...ys, line.box[1]), Math.max(...xs, line.box[2]), Math.max(...ys, line.box[3])];
 }

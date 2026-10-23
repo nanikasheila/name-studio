@@ -255,3 +255,25 @@ fn keeps_panel_and_balloon_styles() {
     let problems = validate(&broken);
     assert_eq!(problems.len(), 3, "{problems:?}");
 }
+
+/// 別案 (other versions of a run of pages) survive a save.
+#[test]
+fn keeps_alternatives() {
+    let json = r#"{
+      "formatVersion": 2, "title": "t", "binding": "right",
+      "pageFormat": {"canvasMm": [297, 420], "trimMm": [257, 364], "basicMm": [180, 270], "basicOffsetMm": [0, 0]},
+      "pages": [{"id": "page1"}, {"id": "page5"}],
+      "alternatives": [{"id": "alt2", "pageIds": ["page5"], "active": "option4", "options": [
+        {"id": "option3", "name": "案A", "pages": [{"id": "page1-a", "memo": "前の案"}, {"id": "page6"}]},
+        {"id": "option4", "name": "案B", "pages": []}
+      ]}],
+      "nextId": 7
+    }"#;
+    let project = Project::from_json(json).unwrap();
+    assert_eq!(project.alternatives.len(), 1);
+    assert_eq!(project.alternatives[0].options[0].pages.len(), 2);
+    assert_eq!(project.alternatives[0].options[0].pages[0].memo, "前の案");
+    let again = Project::from_json(&project.to_json().unwrap()).unwrap();
+    assert_eq!(again, project);
+    assert!(validate(&project).is_empty());
+}

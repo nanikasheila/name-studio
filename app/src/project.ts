@@ -187,6 +187,94 @@ export interface Page {
   breakouts: Breakout[];
   /** 見開きページ: this page and the next (its facing page) go to CSP as one spread page. */
   joinNext?: boolean;
+  /** 付箋: notes stuck on the page while working (never exported). */
+  stickies?: Sticky[];
+}
+
+export type StickyColor = "yellow" | "pink" | "blue" | "green";
+
+/** 付箋: a note on the page, at its top-left corner. */
+export interface Sticky {
+  id: string;
+  text: string;
+  at: Point;
+  color?: StickyColor;
+}
+
+export const STICKY_COLORS: Record<StickyColor, { label: string; fill: string }> = {
+  yellow: { label: "黄", fill: "#fff3a8" },
+  pink: { label: "桃", fill: "#ffd3e0" },
+  blue: { label: "青", fill: "#cfe6ff" },
+  green: { label: "緑", fill: "#d4f2cf" },
+};
+
+/** Width of a sticky note and the size of its text, in mm on the page. */
+export const STICKY_WIDTH_MM = 64;
+export const STICKY_TEXT_MM = 6;
+
+/** The rows a sticky's text takes (wrapped to its width). */
+export function stickyRows(text: string): string[] {
+  const perRow = Math.floor((STICKY_WIDTH_MM - 4) / STICKY_TEXT_MM);
+  const rows: string[] = [];
+  for (const paragraph of (text || "メモ").replace(/\r\n?/g, "\n").split("\n")) {
+    const chars = [...paragraph];
+    if (!chars.length) rows.push("");
+    for (let i = 0; i < chars.length; i += perRow) rows.push(chars.slice(i, i + perRow).join(""));
+  }
+  return rows;
+}
+
+export function stickyBox(sticky: Sticky): BoxMm {
+  const [x, y] = sticky.at;
+  return [x, y, x + STICKY_WIDTH_MM, y + 4 + stickyRows(sticky.text).length * STICKY_TEXT_MM * 1.3];
+}
+
+export function addSticky(project: Project, page: Page, at: Point, text = ""): Sticky {
+  const sticky: Sticky = { id: newId(project, "sticky"), text, at };
+  (page.stickies ??= []).push(sticky);
+  return sticky;
+}
+
+export function removeSticky(page: Page, id: string): void {
+  page.stickies = (page.stickies ?? []).filter((sticky) => sticky.id !== id);
+  if (!page.stickies.length) delete page.stickies;
+}
+
+export type StructureId = "kishotenketsu" | "threeAct" | "johakyu";
+
+/** Story shapes to hold the page split against: parts and their share of the pages. */
+export const STRUCTURES: Record<StructureId, { label: string; parts: { name: string; share: number }[] }> = {
+  kishotenketsu: {
+    label: "起承転結",
+    parts: [
+      { name: "起", share: 0.2 },
+      { name: "承", share: 0.3 },
+      { name: "転", share: 0.3 },
+      { name: "結", share: 0.2 },
+    ],
+  },
+  threeAct: {
+    label: "三幕構成",
+    parts: [
+      { name: "第1幕（設定）", share: 0.25 },
+      { name: "第2幕（対立）", share: 0.5 },
+      { name: "第3幕（解決）", share: 0.25 },
+    ],
+  },
+  johakyu: {
+    label: "序破急",
+    parts: [
+      { name: "序", share: 0.25 },
+      { name: "破", share: 0.5 },
+      { name: "急", share: 0.25 },
+    ],
+  },
+};
+
+/** 構成補助: what the name is aimed at. */
+export interface Plan {
+  targetPages?: number;
+  structure?: StructureId;
 }
 
 export interface Character {
@@ -231,7 +319,31 @@ export interface Project {
   emotions: EmotionPoint[];
   source?: SourceSheet;
   brushes: Brush[];
+  /** 別案: other versions of runs of pages, kept to compare and switch to. */
+  alternatives?: Alternatives[];
+  /** 構成補助: the aimed page count and story shape. */
+  plan?: Plan;
   nextId: number;
+}
+
+/**
+ * 別案: versions of the same run of pages (a page, a 見開き, a scene). The
+ * option in use has its pages in `Project.pages`; the others keep theirs here.
+ */
+export interface Alternatives {
+  id: string;
+  /** Pages of the option in use, as they are in the project. */
+  pageIds: string[];
+  /** Id of the option in use. */
+  active: string;
+  options: AlternativeOption[];
+}
+
+export interface AlternativeOption {
+  id: string;
+  name: string;
+  /** The option's pages while another option is in use (empty for the one in use). */
+  pages: Page[];
 }
 
 export const FORMAT_VERSION = 2;
@@ -294,7 +406,8 @@ export function normalize(project: Project): Project {
     brush.rotation ??= 0;
   }
   const beforeShapes = (project.formatVersion ?? 1) < 2;
-  for (const page of project.pages) {
+  const stored = (project.alternatives ?? []).flatMap((set) => set.options.flatMap((option) => (option.pages ??= [])));
+  for (const page of [...project.pages, ...stored]) {
     page.memo ??= "";
     page.panels ??= [];
     page.lines ??= [];
@@ -875,6 +988,12 @@ export function removePage(project: Project, pageId: string): void {
   if (index < 0) return;
   project.pages.splice(index, 1);
   project.emotions = project.emotions.filter((point) => point.page !== pageId);
+  // 別案 of only this page go with it.
+  if (project.alternatives) {
+    for (const set of project.alternatives) set.pageIds = set.pageIds.filter((id) => id !== pageId);
+    project.alternatives = project.alternatives.filter((set) => set.pageIds.length);
+    if (!project.alternatives.length) delete project.alternatives;
+  }
   const neighbour = (forward: boolean) => {
     const near = forward ? project.pages[index] : project.pages[index - 1];
     return (near ?? project.pages[index - 1] ?? project.pages[index])?.id;

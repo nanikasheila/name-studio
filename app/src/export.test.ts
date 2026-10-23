@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRequest, folderOf, summarize, type ExportForm } from "./export";
+import { buildRequest, folderOf, overwriteWarning, summarize, type ExportForm } from "./export";
 
 const form: ExportForm = {
   template: "C:\\work\\template\\page.clip",
@@ -60,5 +60,22 @@ describe("buildRequest with several sources", () => {
     const sources = ["C:\\work\\project\\name.namestudio", "C:\\work\\out\\sheet.clip"];
     expect(buildRequest(form, sources)).toMatch(/同じフォルダー/);
     expect(typeof buildRequest(form, sources.slice(0, 1))).toBe("object");
+  });
+});
+
+describe("上書きの知らせ", () => {
+  const check = (changed: string[], unknown: string[]) => ({ existing: [...changed, ...unknown, "page0001.clip"], changed, unknown, lastExportMs: 1 });
+
+  it("says nothing when only the last export's own files are there", () => {
+    expect(overwriteWarning(check([], []))).toBeNull();
+    expect(overwriteWarning({ existing: [], changed: [], unknown: [], lastExportMs: null })).toBeNull();
+  });
+
+  it("names pages changed in CSP since the last export", () => {
+    const text = overwriteWarning(check(["page0003.clip"], []))!;
+    expect(text).toContain("page0003.clip");
+    expect(text).toContain("CSP で描き進めた");
+    const many = overwriteWarning(check([], Array.from({ length: 9 }, (_, i) => `p${i}.clip`)))!;
+    expect(many).toContain("ほか 3 件");
   });
 });

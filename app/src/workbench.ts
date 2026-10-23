@@ -6,6 +6,11 @@ import { Autosaver, autosaveToFile, formatTime } from "./autosave";
 import { addBrushes, loadLibrary } from "./brush";
 import { BrushDialog } from "./brushdialog";
 import { dragSort } from "./dragsort";
+import { AltDialog } from "./altdialog";
+import { ScriptDialog } from "./scriptdialog";
+import { ShortcutDialog } from "./shortcutdialog";
+import { comboOf, Shortcuts, type ActionId } from "./shortcuts";
+import { alternativesOf, joinAlternative, makeAlternative, useAlternative } from "./alternatives";
 import {
   ERASE_MODE_LABELS,
   PANEL_CARRIES_KEY,
@@ -57,6 +62,8 @@ import {
   rectShape,
   removeCharacter,
   removePage,
+  removeSticky,
+  STICKY_COLORS,
   removePanel,
   sceneOf,
   sortLines,
@@ -65,7 +72,10 @@ import {
   type BalloonShape,
   type Line,
   type LineKind,
+  type Alternatives,
   type Page,
+  type Sticky,
+  type StickyColor,
   type Panel,
   type PanelBorder,
   type PanelEffect,
@@ -121,6 +131,10 @@ export class Workbench {
   private sideTab: "pages" | "script" | "cast" = "pages";
   readonly overview: Overview;
   private readonly exportDialog: ExportDialog;
+  private readonly altDialog: AltDialog;
+  private readonly scriptDialog: ScriptDialog;
+  readonly shortcuts = new Shortcuts();
+  private readonly shortcutDialog = new ShortcutDialog(this.shortcuts);
   private readonly brushDialog: BrushDialog;
   private readonly versionDialog: VersionDialog;
   private readonly autosaver = new Autosaver(
@@ -149,6 +163,24 @@ export class Workbench {
         this.renderAll();
       },
       movePages: (first, last, target) => this.movePages(first, last, target),
+      makeOption: (first, last) => this.makeOption(first, last),
+    });
+    this.scriptDialog = new ScriptDialog({
+      project: () => this.state.project,
+      edit: (change) => this.edit(change),
+      done: (report, firstPage) => {
+        if (this.view !== "edit") this.setView("edit");
+        this.editor.selection = null;
+        this.editor.showPage(firstPage);
+        this.renderAll();
+        const who = report.characters.length ? `、登場人物 ${report.characters.join("・")} を足しました` : "";
+        this.setStatus(`台本を ${report.pages} ページに入れました（セリフ ${report.lines}、作ったコマ ${report.panels}${who}）。元に戻すは Ctrl+Z`);
+      },
+    });
+    this.altDialog = new AltDialog({
+      project: () => this.state.project,
+      edit: (change) => this.edit(change),
+      shown: (set) => this.showSet(set),
     });
     this.exportDialog = new ExportDialog({
       project: () => this.state.project,
@@ -378,7 +410,7 @@ export class Workbench {
   private findSelected(s: Selection): boolean {
     const page = this.state.project?.pages.find((p) => p.id === s.pageId);
     if (!page) return false;
-    const lists = { panel: page.panels, line: page.lines, stroke: page.strokes, breakout: page.breakouts };
+    const lists = { panel: page.panels, line: page.lines, stroke: page.strokes, breakout: page.breakouts, sticky: page.stickies ?? [] };
     if (s.kind === "group") return !!s.items?.every((item) => lists[item.kind].some((x: { id: string }) => x.id === item.id));
     return lists[s.kind].some((item: { id: string }) => item.id === s.id);
   }
@@ -481,7 +513,8 @@ export class Workbench {
         { className: `page-item${current.has(index + 1) ? " current" : ""}` },
         element("span", { className: "number", textContent: String(index + 1) }),
         element("span", { className: "memo" }, sceneLabel, page.memo.split("\n")[0] || ""),
-        element("span", { className: "count", textContent: `コマ ${page.panels.length}・字 ${textAmount(page)}` }),
+        ...this.optionTag(project, page),
+        element("span", { className: "count", textContent: `コマ ${page.panels.length}・字 ${textAmount(page)}${page.stickies?.length ? `・付箋 ${page.stickies.length}` : ""}` }),
       );
       item.addEventListener("click", () => {
         if (this.view !== "edit") this.setView("edit");
@@ -500,6 +533,13 @@ export class Workbench {
     const add = element("button", { textContent: "最後にページを足す" });
     add.addEventListener("click", () => this.edit((p) => insertPage(p, p.pages.length)));
     $("side-pages").replaceChildren(work, ...items, element("div", { className: "side-actions" }, add));
+  }
+
+  /** The 別案 in use on a page, for the page list. */
+  private optionTag(project: Project, page: Page): HTMLElement[] {
+    const set = alternativesOf(project, page.id);
+    const option = set?.options.find((o) => o.id === set.active);
+    return option ? [element("span", { className: "option-tag", textContent: option.name, title: `別案 ${set!.options.length} つのうち使用中の案` })] : [];
   }
 
   /** Move pages by dragging and keep the same pages in view. */
@@ -541,7 +581,9 @@ export class Workbench {
       }
     });
     if (!children.length) children.push(element("p", { className: "hint", textContent: "ページがありません" }));
-    $("side-script").replaceChildren(...children);
+    const take = element("button", { textContent: "Markdown の台本を取り込む…" });
+    take.addEventListener("click", () => this.scriptDialog.open());
+    $("side-script").replaceChildren(element("div", { className: "side-actions top" }, take), ...children);
   }
 
   private renderCast(project: Project): void {
@@ -583,6 +625,10 @@ export class Workbench {
     if (s?.kind === "panel") {
       const target = page.panels.find((p) => p.id === s.id);
       if (target) return panel.replaceChildren(...this.panelInspector(project, page, target.id, target.order));
+    }
+    if (s?.kind === "sticky") {
+      const sticky = page.stickies?.find((n) => n.id === s.id);
+      if (sticky) return panel.replaceChildren(...this.stickyInspector(sticky));
     }
     if (s?.kind === "group") {
       const strokes = s.items?.filter((item) => item.kind === "stroke").length ?? 0;
@@ -862,6 +908,33 @@ export class Workbench {
     ];
   }
 
+  private stickyInspector(sticky: Sticky): HTMLElement[] {
+    const text = element("textarea", { value: sticky.text, placeholder: "気づいたこと、直したいこと" });
+    this.liveText(text, (value) => (sticky.text = value));
+    const colors = (Object.keys(STICKY_COLORS) as StickyColor[]).map((color) => {
+      const chip = element("button", { className: `sticky-color${(sticky.color ?? "yellow") === color ? " active" : ""}`, textContent: STICKY_COLORS[color].label, title: `${STICKY_COLORS[color].label}色` });
+      chip.style.background = STICKY_COLORS[color].fill;
+      chip.addEventListener("click", () =>
+        this.edit(() => {
+          if (color === "yellow") delete sticky.color;
+          else sticky.color = color;
+        }),
+      );
+      return chip;
+    });
+    const remove = element("button", { className: "danger", textContent: "この付箋をはがす" });
+    remove.addEventListener("click", () => this.deleteSelection());
+    // A new note: ready to write in.
+    if (!sticky.text) setTimeout(() => text.focus(), 0);
+    return [
+      element("h2", { textContent: "付箋" }),
+      element("label", {}, "メモ", text),
+      element("div", { className: "row sticky-colors" }, ...colors),
+      element("p", { className: "hint", textContent: "付箋は作業用のメモで、CSP・PDF には書き出しません。ドラッグで動かせます。" }),
+      remove,
+    ];
+  }
+
   private pageInspector(project: Project, page: Page): HTMLElement[] {
     const index = pageIndex(project, page.id);
     const memo = element("textarea", { value: page.memo, placeholder: "このページで描くこと、狙い" });
@@ -894,8 +967,9 @@ export class Workbench {
         sortLines(page);
       });
     });
-    const after = button("後ろにページを足す", () => this.edit((p) => insertPage(p, index + 1)));
-    const before = button("前にページを足す", () => this.edit((p) => insertPage(p, index)));
+    // A page added inside a 別案 belongs to that option (another ページ配分).
+    const after = button("後ろにページを足す", () => this.edit((p) => joinAlternative(p, insertPage(p, index + 1).id, page.id, true)));
+    const before = button("前にページを足す", () => this.edit((p) => joinAlternative(p, insertPage(p, index).id, page.id, false)));
     const earlier = button("1 つ前へ", () => this.edit((p) => movePage(p, page.id, -1)), index === 0);
     const later = button("1 つ後ろへ", () => this.edit((p) => movePage(p, page.id, 1)), index === project.pages.length - 1);
     const remove = button("このページを消す", async () => {
@@ -922,6 +996,35 @@ export class Workbench {
         }),
       );
     }
+    const set = alternativesOf(project, page.id);
+    const altSection: HTMLElement[] = [element("h3", { textContent: "別案" })];
+    if (set) {
+      const chips = set.options.map((option) => {
+        const chip = button(option.name, () => this.useOption(set, option.id), false);
+        if (option.id === set.active) chip.className = "in-use";
+        chip.title = option.id === set.active ? "使用中" : "この案にする";
+        return chip;
+      });
+      const first = pageIndex(project, set.pageIds[0]);
+      const last = pageIndex(project, set.pageIds[set.pageIds.length - 1]);
+      altSection.push(
+        element("div", { className: "alt-chips" }, ...chips),
+        element(
+          "div",
+          { className: "row" },
+          button("比べる…", () => this.altDialog.open(set.id)),
+          button("もう 1 案", () => this.makeOption(first, last)),
+        ),
+        element("p", { className: "hint", textContent: "案を押すとその案に入れ替わります。ページを足すと、その案だけのページになります（ページ配分の案）。" }),
+      );
+    } else {
+      altSection.push(element("div", { className: "row" }, button("このページの別案を作る", () => this.makeOption(index, index))));
+      if (pair) {
+        const pairIndex = pageIndex(project, pair[0].id);
+        altSection.push(element("div", { className: "row" }, button(`${pairIndex + 1}–${pairIndex + 2} ページの別案を作る`, () => this.makeOption(pairIndex, pairIndex + 1))));
+      }
+      altSection.push(element("p", { className: "hint", textContent: "今のページを写した案ができ、そちらを編集します。元の案はそのまま残り、比べて選べます。" }));
+    }
     return [
       element("h2", { textContent: `${index + 1} ページ` }),
       element("label", {}, "メモ", memo),
@@ -932,11 +1035,44 @@ export class Workbench {
       element("div", { className: "row" }, pattern, applyButton),
       patternNote,
       ...spreadSection,
+      ...altSection,
       element("h3", { textContent: "ページ" }),
       element("div", { className: "row" }, before, after),
       element("div", { className: "row" }, earlier, later),
       remove,
     ];
+  }
+
+  /** 別案: copy pages `first`..`last` as a new option and edit it. */
+  makeOption(first: number, last: number): void {
+    let set: Alternatives | null = null;
+    this.edit((p) => (set = makeAlternative(p, first, last)));
+    if (!set) {
+      this.setStatus("一部のページがほかの別案に入っているため、この範囲の別案は作れません");
+      return;
+    }
+    const made = set as Alternatives;
+    this.showSet(made);
+    const name = made.options.find((option) => option.id === made.active)?.name;
+    this.setStatus(`別案「${name}」を作りました。元の案と比べるには「比べる…」`);
+  }
+
+  private useOption(set: Alternatives, optionId: string): void {
+    this.edit((p) => useAlternative(p, set.id, optionId));
+    this.showSet(set);
+    this.setStatus(`「${set.options.find((option) => option.id === optionId)?.name}」にしました（元に戻すは Ctrl+Z）`);
+  }
+
+  /** Show the first page of a set's option in use. */
+  private showSet(set: Alternatives): void {
+    const project = this.state.project;
+    if (!project) return;
+    const index = pageIndex(project, set.pageIds[0]);
+    if (index < 0) return;
+    if (this.view !== "edit") this.setView("edit");
+    this.editor.selection = null;
+    this.editor.showPage(index + 1);
+    this.renderAll();
   }
 
   deleteSelection(): void {
@@ -955,6 +1091,7 @@ export class Workbench {
       if (s.kind === "line") page.lines = page.lines.filter((line) => line.id !== s.id);
       if (s.kind === "stroke") page.strokes = page.strokes.filter((stroke) => stroke.id !== s.id);
       if (s.kind === "breakout") page.breakouts = page.breakouts.filter((breakout) => breakout.id !== s.id);
+      if (s.kind === "sticky") removeSticky(page, s.id);
       if (s.kind === "group") {
         const ids = new Set(s.items?.map((item) => item.id));
         page.strokes = page.strokes.filter((stroke) => !ids.has(stroke.id));
@@ -973,7 +1110,7 @@ export class Workbench {
 
   setTool(tool: Tool): void {
     this.editor.setTool(tool);
-    for (const name of ["select", "cut", "text", "pen", "eraser", "breakout"] as const) {
+    for (const name of ["select", "cut", "text", "pen", "eraser", "breakout", "sticky"] as const) {
       $(`tool-${name}`).classList.toggle("active", name === tool);
     }
     this.renderBrushBar();
@@ -1061,7 +1198,7 @@ export class Workbench {
   }
 
   private bindControls(): void {
-    for (const name of ["select", "cut", "text", "pen", "eraser", "breakout"] as const) {
+    for (const name of ["select", "cut", "text", "pen", "eraser", "breakout", "sticky"] as const) {
       $(`tool-${name}`).addEventListener("click", () => this.setTool(name));
     }
     $("undo").addEventListener("click", () => this.undo());
@@ -1090,6 +1227,7 @@ export class Workbench {
     $("brush-import").addEventListener("click", () => void this.brushDialog.open());
     $("name-export").addEventListener("click", () => this.exportDialog.open());
     $("versions").addEventListener("click", () => this.openVersions());
+    $("shortcuts").addEventListener("click", () => this.shortcutDialog.open());
     $("redo").addEventListener("click", () => this.redo());
     $("editor-next").addEventListener("click", () => this.flip(1));
     $("editor-prev").addEventListener("click", () => this.flip(-1));
@@ -1118,48 +1256,15 @@ export class Workbench {
   /** Keyboard shortcuts while the editor is shown; true when handled. */
   handleKey(event: KeyboardEvent): boolean {
     if (!this.state.project) return false;
-    const mod = event.ctrlKey || event.metaKey;
-    if (mod && event.key.toLowerCase() === "s") {
-      void this.save(event.shiftKey);
+    const combo = comboOf(event);
+    const action = combo ? this.shortcuts.actionFor(combo) : null;
+    // Saving works from a text field too; the rest leaves typing alone.
+    if (action === "save" || action === "saveAs") {
+      void this.save(action === "saveAs");
       return true;
     }
-    if (isTyping(event)) return false;
-    if (mod && event.key.toLowerCase() === "z") {
-      if (event.shiftKey) this.redo();
-      else this.undo();
-      return true;
-    }
-    if (mod && event.key.toLowerCase() === "y") {
-      this.redo();
-      return true;
-    }
-    if (mod) return false;
-    const views: Record<string, "edit" | OverviewKind> = { F1: "edit", F2: "structure", F3: "emotion", F4: "timeline" };
-    if (views[event.key]) {
-      this.setView(views[event.key]);
-      return true;
-    }
-    if (this.view !== "edit") return false;
-    const tools: Record<string, Tool> = { v: "select", k: "cut", t: "text", p: "pen", e: "eraser", b: "breakout" };
-    const tool = tools[event.key.toLowerCase()];
-    if (tool === "eraser" && this.editor.tool === "eraser") {
-      // E again: the next way of erasing, as CSP's sub tools cycle.
-      const modes = Object.keys(ERASE_MODE_LABELS) as EditorEraseMode[];
-      this.setEraseMode(modes[(modes.indexOf(this.editor.eraseMode) + 1) % modes.length]);
-      return true;
-    }
-    if (tool) {
-      this.setTool(tool);
-      return true;
-    }
-    if (event.key === "Delete" || event.key === "Backspace") {
-      this.deleteSelection();
-      return true;
-    }
-    if (event.key === "Escape") {
-      this.editor.select(null);
-      return true;
-    }
+    if (isTyping(event) || document.querySelector("dialog[open]")) return false;
+    // Arrows move what is selected (Shift: further) before anything else.
     const step = event.shiftKey ? 5 : 0.5;
     const arrows: Record<string, [number, number]> = {
       ArrowLeft: [-step, 0],
@@ -1168,13 +1273,93 @@ export class Workbench {
       ArrowDown: [0, step],
     };
     const arrow = arrows[event.key];
-    if (arrow) {
-      if (this.editor.selection) return this.editor.nudge(...arrow);
-      // Right-bound book: the next spread is to the left.
-      this.flip(event.key === "ArrowLeft" ? 1 : event.key === "ArrowRight" ? -1 : 0);
+    if (arrow && this.view === "edit" && this.editor.selection && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      return this.editor.nudge(...arrow);
+    }
+    return action ? this.run(action) : false;
+  }
+
+  /** Run a shortcut's action; false when it does not apply now. */
+  run(action: ActionId): boolean {
+    const views: Partial<Record<ActionId, "edit" | OverviewKind>> = {
+      "view.edit": "edit",
+      "view.structure": "structure",
+      "view.emotion": "emotion",
+      "view.timeline": "timeline",
+    };
+    const view = views[action];
+    if (view) {
+      this.setView(view);
       return true;
     }
-    return false;
+    if (action === "undo") this.undo();
+    else if (action === "redo") this.redo();
+    else if (this.view !== "edit") return false;
+    if (action === "undo" || action === "redo") return true;
+    const tools: Partial<Record<ActionId, Tool>> = {
+      "tool.select": "select",
+      "tool.cut": "cut",
+      "tool.text": "text",
+      "tool.pen": "pen",
+      "tool.eraser": "eraser",
+      "tool.breakout": "breakout",
+      "tool.sticky": "sticky",
+    };
+    const tool = tools[action];
+    const nextEraseMode = () => {
+      // As CSP's sub tools cycle.
+      const modes = Object.keys(ERASE_MODE_LABELS) as EditorEraseMode[];
+      this.setEraseMode(modes[(modes.indexOf(this.editor.eraseMode) + 1) % modes.length]);
+    };
+    if (tool === "eraser" && this.editor.tool === "eraser") {
+      nextEraseMode();
+      return true;
+    }
+    if (tool) {
+      this.setTool(tool);
+      return true;
+    }
+    switch (action) {
+      case "eraser.next":
+        if (this.editor.tool !== "eraser") this.setTool("eraser");
+        else nextEraseMode();
+        return true;
+      case "brush.bigger":
+      case "brush.smaller":
+        return this.resizeBrush(action === "brush.bigger" ? 1.25 : 0.8);
+      case "delete":
+        this.deleteSelection();
+        return true;
+      case "deselect":
+        this.editor.select(null);
+        return true;
+      case "page.next":
+      case "page.previous":
+        // Right-bound book: the next spread is to the left.
+        this.flip(action === "page.next" ? 1 : -1);
+        return true;
+      case "option.make": {
+        const [first] = this.editor.currentPages();
+        if (!first) return false;
+        this.makeOption(first - 1, first - 1);
+        return true;
+      }
+      default:
+        return false;
+    }
+  }
+
+  /** ] / [: the pen or eraser in hand a size up or down. */
+  private resizeBrush(factor: number): boolean {
+    const tool = this.editor.tool;
+    if (tool !== "pen" && tool !== "eraser") return false;
+    const round2 = (value: number) => Math.round(value * 100) / 100;
+    if (tool === "pen") this.editor.penWidthMm = Math.min(20, Math.max(0.05, round2(this.editor.penWidthMm * factor)));
+    else this.editor.eraserSizeMm = Math.min(50, Math.max(0.2, round2(this.editor.eraserSizeMm * factor)));
+    this.renderBrushBar();
+    this.editor.draw();
+    this.setStatus(`${tool === "pen" ? "ペン" : "消しゴム"}の太さ: ${tool === "pen" ? this.editor.penWidthMm : this.editor.eraserSizeMm} mm`);
+    return true;
   }
 }
 

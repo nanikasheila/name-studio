@@ -12,6 +12,7 @@
       <button id="new-project" title="白紙のネームを作る">新しいネーム</button>
       <button id="save" class="editor-only" title="保存（Ctrl+S）。編集中は自動でも保存します" hidden>保存</button>
       <button id="versions" class="editor-only" title="版の履歴: 前の状態に戻す、自動保存の設定" hidden>履歴…</button>
+      <button id="shortcuts" class="editor-only" title="ショートカットキーの割り当て" hidden>キー…</button>
       <span id="file-name" class="file-name">ファイルが開かれていません</span>
       <button id="update" class="primary" hidden>更新</button>
       <span id="app-version" class="app-version"></span>
@@ -44,6 +45,7 @@
           <button id="tool-pen" title="ラフを描く（P）">ペン</button>
           <button id="tool-eraser" title="ラフの線を消す（E）">消しゴム</button>
           <button id="tool-breakout" title="コマを突き抜ける所を囲む。中に描いた線はコマ枠の上に（B）">はみ出し</button>
+          <button id="tool-sticky" title="付箋を貼る。作業用のメモで、書き出しには入りません（M）">付箋</button>
         </div>
         <div class="brush-bar edit-only" id="brush-bar">
           <select id="brush-select" title="ペン・消しゴムの種類"></select>
@@ -232,6 +234,49 @@
         <div id="vd-list" class="version-list"></div>
         <p id="vd-message" class="message" role="status"></p>
         <div class="actions">
+          <button value="cancel" formnovalidate>閉じる</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="alt-dialog" class="export alternatives">
+      <form method="dialog">
+        <h2>別案を比べる</h2>
+        <p id="ad-where" class="hint"></p>
+        <div id="ad-options" class="alt-options"></div>
+        <div class="actions">
+          <button value="cancel" formnovalidate>閉じる</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="script-dialog" class="export script-import">
+      <form method="dialog">
+        <h2>台本を取り込む</h2>
+        <p class="hint">Markdown で書いた台本を貼り付けるか、ファイル（.md / .txt）を開きます。## がシーン、### 1ページ（または ■）がページ、#### コマ（または [1]）がコマ、名前「セリフ」・名前：セリフ・名前（心の声）・ナレーション：・SE： がセリフになり、それ以外はページやコマのメモに入ります。</p>
+        <textarea id="sd-text" rows="12" placeholder="## 出会い&#10;### 1ページ&#10;#### コマ1&#10;ミカ「今日も星が見えないね」&#10;ソラ：見えなくても、あるよ"></textarea>
+        <div class="field">
+          <span>ファイル</span>
+          <input type="file" id="sd-file" accept=".md,.markdown,.txt,text/markdown,text/plain" />
+        </div>
+        <div class="field">
+          <span>入れ始めるページ</span>
+          <input type="number" id="sd-start" min="1" value="1" />
+        </div>
+        <label class="check"><input type="checkbox" id="sd-panels" checked /> コマのないページには、台本のコマの数だけコマを作る</label>
+        <p id="sd-summary" class="message" role="status"></p>
+        <div class="actions">
+          <button value="cancel" formnovalidate>閉じる</button>
+          <button type="button" id="sd-run" class="primary" disabled>取り込む</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="shortcut-dialog" class="export shortcuts">
+      <form method="dialog">
+        <h2>ショートカットキー</h2>
+        <p class="hint">＋ を押してからキーを押すと割り当てます。キーを押して外します。左手デバイスやマクロには、ここで割り当てたキーを送るように設定してください。設定はこの PC に残ります。</p>
+        <div id="sc-list" class="sc-list"></div>
+        <p id="sc-message" class="message" role="status"></p>
+        <div class="actions">
+          <button type="button" id="sc-reset">初期設定に戻す</button>
           <button value="cancel" formnovalidate>閉じる</button>
         </div>
       </form>

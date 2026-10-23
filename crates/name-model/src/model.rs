@@ -39,8 +39,37 @@ pub struct Project {
     /// Pens and erasers the strokes are drawn with (often taken from CSP).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub brushes: Vec<Brush>,
+    /// 別案: other versions of runs of pages, kept to compare and switch to.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub alternatives: Vec<Alternatives>,
+    /// 構成補助: the aimed page count and story shape.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan: Option<Plan>,
     /// Next number used by [`Project::new_id`]; ids are never reused.
     pub next_id: u64,
+}
+
+/// 別案: versions of the same run of pages (a page, a 見開き, a scene). The
+/// option in use has its pages in [`Project::pages`]; the others keep theirs here.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Alternatives {
+    pub id: String,
+    /// Pages of the option in use, as they are in the project.
+    pub page_ids: Vec<String>,
+    /// Id of the option in use.
+    pub active: String,
+    pub options: Vec<AlternativeOption>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlternativeOption {
+    pub id: String,
+    pub name: String,
+    /// The option's pages while another option is in use (empty for the one in use).
+    #[serde(default)]
+    pub pages: Vec<Page>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -115,6 +144,33 @@ pub struct Page {
     /// one spread page.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub join_next: bool,
+    /// 付箋: notes stuck on the page while working (never exported).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stickies: Vec<Sticky>,
+}
+
+/// 付箋: a note on the page, at its top-left corner in millimetres.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Sticky {
+    pub id: String,
+    #[serde(default)]
+    pub text: String,
+    pub at: [f64; 2],
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+}
+
+/// 構成補助: what the name is aimed at, to compare the page split with.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Plan {
+    /// 目標ページ数.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_pages: Option<u32>,
+    /// The shape of the story the page split is held against (起承転結 and the like).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub structure: Option<String>,
 }
 
 /// コマ: a polygon (usually a rectangle) in reading order.
@@ -595,6 +651,8 @@ impl Project {
             emotions: Vec::new(),
             source: None,
             brushes: Vec::new(),
+            alternatives: Vec::new(),
+            plan: None,
             next_id: 1,
         }
     }

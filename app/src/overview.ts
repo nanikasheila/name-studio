@@ -3,8 +3,8 @@
 // against page order). Charts are SVG with a hover tooltip; values are also
 // editable in plain tables.
 import { dragSort } from "./dragsort";
-import { addScene, bounds, moveScene, pageBlock, pageIndex, setEmotion, sortScenes, type Project } from "./project";
-import { emotionSeries, pageStats, sceneSpans, timeline, uncoveredRuns, type SceneSpan } from "./story";
+import { addScene, bounds, moveScene, pageBlock, pageIndex, setEmotion, sortScenes, STRUCTURES, type Project, type StructureId } from "./project";
+import { emotionSeries, pageStats, planAdvice, planParts, sceneSpans, timeline, uncoveredRuns, type SceneSpan } from "./story";
 
 export type OverviewKind = "structure" | "emotion" | "timeline";
 
@@ -16,6 +16,8 @@ export interface OverviewHost {
   openPage(pageNumber: number): void;
   /** Pages `first`..`last` dragged to before page `target`. */
   movePages(first: number, last: number, target: number): void;
+  /** 別案 of pages `first`..`last` (0-based), to edit. */
+  makeOption(first: number, last: number): void;
 }
 
 const SVG = "http://www.w3.org/2000/svg";
@@ -163,9 +165,82 @@ export class Overview {
       summary,
       html("h3", { textContent: "ページごとの字数（棒をクリックでそのページへ）" }),
       chart,
+      ...this.planSection(project, spans),
       ...this.sceneTable(project, spans),
       html("h3", { textContent: "ページ一覧（ドラッグで入れ替え）" }),
       this.thumbnails(project, spans),
+    ];
+  }
+
+  /** 構成補助: the aimed page count and story shape against the scenes, and pages worth a look. */
+  private planSection(project: Project, spans: SceneSpan[]): Element[] {
+    const plan = project.plan ?? {};
+    const target = html("input", { type: "number", min: "1", value: plan.targetPages ? String(plan.targetPages) : "", placeholder: String(project.pages.length) });
+    target.addEventListener("change", () =>
+      this.host.edit((p) => {
+        const value = Number.parseInt(target.value, 10);
+        const next = { ...(p.plan ?? {}) };
+        if (Number.isInteger(value) && value > 0) next.targetPages = value;
+        else delete next.targetPages;
+        if (Object.keys(next).length) p.plan = next;
+        else delete p.plan;
+      }),
+    );
+    const shape = html("select");
+    shape.append(html("option", { value: "", textContent: "なし" }));
+    for (const [id, structure] of Object.entries(STRUCTURES)) shape.append(html("option", { value: id, textContent: structure.label, selected: plan.structure === id }));
+    shape.addEventListener("change", () =>
+      this.host.edit((p) => {
+        const next = { ...(p.plan ?? {}) };
+        if (shape.value) next.structure = shape.value as StructureId;
+        else delete next.structure;
+        if (Object.keys(next).length) p.plan = next;
+        else delete p.plan;
+      }),
+    );
+    const controls = html(
+      "div",
+      { className: "plan-controls" },
+      html("label", {}, "目標ページ数 ", target),
+      html("label", {}, "話の型 ", shape),
+    );
+    // The story shape over the pages there are, above the scenes.
+    const count = project.pages.length;
+    const width = this.width();
+    const scale = pageScale(count, PLOT.left, width - PLOT.left - PLOT.right);
+    const parts = planParts(project, count);
+    const band = svg("svg", { width, height: parts.length ? 92 : 56, class: "chart plan", role: "img", "aria-label": "話の型とシーン" });
+    let top = 22;
+    if (parts.length) {
+      parts.forEach((part, i) => {
+        const x = scale.left + scale.step * part.first;
+        const w = scale.step * (part.last - part.first + 1);
+        band.append(
+          svg("rect", { x, y: top, width: w - 2, height: 24, rx: 4, class: `part part-${i % 4}` }),
+          svg("text", { x: x + 6, y: top + 16, class: "part-label" }, `${part.name}（${part.last - part.first + 1}）`),
+        );
+      });
+      band.append(svg("text", { x: PLOT.left - 8, y: top + 16, class: "tick", "text-anchor": "end" }, "型"));
+      top += 36;
+    }
+    band.append(this.sceneBands(spans, scale, top + 10, 20));
+    band.append(svg("text", { x: PLOT.left - 8, y: top + 24, class: "tick", "text-anchor": "end" }, "シーン"));
+    const advice = planAdvice(project);
+    const list = html("ul", { className: "advice" });
+    for (const item of advice) {
+      const row = html("li", { className: item.level, textContent: item.text });
+      if (item.page !== undefined) {
+        const page = item.page;
+        row.classList.add("link");
+        row.addEventListener("click", () => this.host.openPage(page + 1));
+      }
+      list.append(row);
+    }
+    return [
+      html("h3", { textContent: "ページ配分の目安" }),
+      controls,
+      band,
+      advice.length ? list : html("p", { className: "hint", textContent: "目標ページ数や話の型を入れると、今のページ配分と比べます。" }),
     ];
   }
 
@@ -207,6 +282,11 @@ export class Overview {
       );
       const summary = html("textarea", { value: scene.summary, placeholder: "このシーンで起きること" });
       summary.addEventListener("change", () => this.host.edit(() => (scene.summary = summary.value)));
+      const option = html("button", { textContent: "別案", title: "このシーンのページを写した案を作り、ページ配分やコマ割りを試す" });
+      option.addEventListener("click", () => {
+        const span = sceneSpans(project).find((s) => s.scene === scene);
+        if (span) this.host.makeOption(span.first, span.last);
+      });
       const remove = html("button", { className: "danger", textContent: "削除" });
       remove.addEventListener("click", () => this.host.edit((p) => (p.scenes = p.scenes.filter((s) => s !== scene))));
       return html(
@@ -218,7 +298,7 @@ export class Overview {
         html("td", {}, time),
         html("td", {}, order),
         html("td", {}, summary),
-        html("td", {}, remove),
+        html("td", { className: "row-buttons" }, option, remove),
       );
     });
     const add = html("button", { textContent: "シーンを足す", disabled: !project.pages.length });
