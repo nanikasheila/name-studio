@@ -89,7 +89,7 @@ export function layOut(lines: readonly Line[], box: BoxMm, shape?: readonly Poin
       rowHeight = 0;
     }
     let y = Math.max(box[1], Math.min(top, box[3] - MARGIN - h));
-    let [ex0, ey0, width, tall] = [lx0, ly0, w, h];
+    let [ex0, ey0, width] = [lx0, ly0, w];
     if (avoid.length) {
       let place = clearOf(avoid, box, right, y, w, h);
       // Still over a face: broken another way (taller and narrower, or the
@@ -107,13 +107,16 @@ export function layOut(lines: readonly Line[], box: BoxMm, shape?: readonly Poin
         line.text = text;
         fitLine(line);
         const extent = balloonExtent(line);
-        [ex0, ey0, width, tall] = [extent[0], extent[1], extent[2] - extent[0], extent[3] - extent[1]];
+        [ex0, ey0, width] = [extent[0], extent[1], extent[2] - extent[0]];
       }
       [right, y] = [place.right, place.top];
     }
     moveLine(line, right - width - ex0, y - ey0);
-    right -= width + GAP;
-    rowHeight = Math.max(rowHeight, y + tall - top);
+    // A slanted or odd-shaped panel may be too narrow where the row starts: further along, inside.
+    if (shape) slideInside(line, shape, box, avoid);
+    const placed = balloonExtent(line);
+    right = placed[0] - GAP;
+    rowHeight = Math.max(rowHeight, placed[3] - top);
     if (shape) pullInside(line, shape);
   }
 }
@@ -164,6 +167,31 @@ function rewraps(line: Line, height: number): string[] {
   line.text = original;
   fitLine(line);
   return fits;
+}
+
+/**
+ * When `line`'s balloon reaches past the panel's border (a slanted panel
+ * narrows towards one end), move it along the row and up or down, as little
+ * as it takes, to where it is inside, no more over a face than it was.
+ */
+function slideInside(line: Line, shape: readonly Point[], box: BoxMm, avoid: readonly BoxMm[]): void {
+  const extent = balloonExtent(line);
+  if (!spills(extent, shape)) return;
+  const [x0, y0, x1, y1] = extent;
+  const covered = (dx: number, dy: number) =>
+    avoid.reduce((sum, [ax0, ay0, ax1, ay1]) => sum + Math.max(0, Math.min(x1 + dx, ax1) - Math.max(x0 + dx, ax0)) * Math.max(0, Math.min(y1 + dy, ay1) - Math.max(y0 + dy, ay0)), 0);
+  const now = covered(0, 0);
+  let best: { dx: number; dy: number; cost: number } | null = null;
+  for (let dx = 0; x0 - dx >= box[0] - SPILL_MM; dx += 1) {
+    if (best && dx >= best.cost) break;
+    for (let dy = -10; dy <= 10; dy += 1) {
+      const cost = dx + Math.abs(dy);
+      if (best && cost >= best.cost) continue;
+      if (spills([x0 - dx, y0 + dy, x1 - dx, y1 + dy], shape) || covered(-dx, dy) > now) continue;
+      best = { dx, dy, cost };
+    }
+  }
+  if (best) moveLine(line, -best.dx, best.dy);
 }
 
 /** Move `line` as little as it takes off `avoid` (faces, other balloons), inside `box`. */
