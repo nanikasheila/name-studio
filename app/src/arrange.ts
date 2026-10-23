@@ -220,6 +220,40 @@ export function fitSpills(project: Project): number {
   return redone;
 }
 
+/** How much of a face (mm²) a balloon may cover before it counts: about a corner of it. */
+const FACE_MM2 = 8;
+
+/** Whether `line`'s balloon covers a face in its panel's rough (sound effects may). */
+export function onFace(page: Page, line: Line): boolean {
+  const panel = page.panels.find((p) => p.id === line.panel);
+  if (!panel || line.kind === "sfx") return false;
+  const [x0, y0, x1, y1] = balloonExtent(line);
+  return faces(page, panel).some((face) => Math.max(0, Math.min(x1, face[2]) - Math.max(x0, face[0])) * Math.max(0, Math.min(y1, face[3]) - Math.max(y0, face[1])) > FACE_MM2);
+}
+
+/**
+ * 顔からずらす: each balloon on a face moved off it, as little as it takes
+ * (clear of the panel's other balloons); where that is not enough, the
+ * panel's dialogue laid out again. Returns how many lines were on a face.
+ */
+export function clearFaces(project: Project): number {
+  let found = 0;
+  for (const page of project.pages) {
+    for (const panel of page.panels) {
+      const covering = page.lines.filter((line) => line.panel === panel.id && onFace(page, line));
+      if (!covering.length) continue;
+      found += covering.length;
+      const box = placingBox(project, panel);
+      for (const line of covering) {
+        const others = page.lines.filter((other) => other !== line && other.panel === panel.id).map(balloonExtent);
+        moveClear(line, box, [...faces(page, panel), ...others]);
+      }
+      if (covering.some((line) => onFace(page, line))) arrangePanel(project, page, panel);
+    }
+  }
+  return found;
+}
+
 /** このコマのセリフを並べ直す: the panel's dialogue in its reading order. Returns how many lines moved. */
 export function arrangePanel(project: Project, page: Page, panel: Panel): number {
   sortLines(page);

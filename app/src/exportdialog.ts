@@ -32,6 +32,8 @@ export interface ExportDialogHost {
   addTails(): number;
   /** Lay out again the panels whose dialogue reaches past their border; how many. */
   fitSpills(): number;
+  /** Move the dialogue off the faces in the rough; how many lines were on one. */
+  clearFaces(): number;
 }
 
 type Kind = "csp" | "pdf" | "text";
@@ -124,7 +126,7 @@ export class ExportDialog {
     details.classList.toggle("clean", !issues.length);
     $("ne-check-summary").textContent = issues.length
       ? `書き出す前の確認: ${issueSummary(issues)}（押すとそのセリフへ）`
-      : "書き出す前の確認: フキダシの重なり・コマの外・はみ出し・仕上がりの外・しっぽなしはありません";
+      : "書き出す前の確認: フキダシの重なり・コマの外・はみ出し・仕上がりの外・しっぽなし・顔にかかるセリフはありません";
     const list = $("ne-check-list");
     list.replaceChildren(
       ...issues.slice(0, 60).map((issue) => {
@@ -143,6 +145,15 @@ export class ExportDialog {
       const fix = Object.assign(document.createElement("button"), { type: "button", className: "fix", textContent: "しっぽのないセリフ全部にしっぽを付ける（コマのラフの人物へ向ける）" });
       fix.addEventListener("click", () => {
         this.host.addTails();
+        const updated = this.host.project();
+        if (updated) this.renderCheck(updated);
+      });
+      list.prepend(fix);
+    }
+    if (issues.some((issue) => issue.kind === "face")) {
+      const fix = Object.assign(document.createElement("button"), { type: "button", className: "fix", textContent: "顔にかかるセリフをずらす（よけきれないコマは並べ直す）" });
+      fix.addEventListener("click", () => {
+        this.host.clearFaces();
         const updated = this.host.project();
         if (updated) this.renderCheck(updated);
       });

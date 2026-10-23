@@ -10,7 +10,7 @@ import { AltDialog } from "./altdialog";
 import { ScriptDialog } from "./scriptdialog";
 import { ShortcutDialog } from "./shortcutdialog";
 import { PenDialog } from "./pendialog";
-import { arrangePage, arrangePanel, fitSpills } from "./arrange";
+import { arrangePage, arrangePanel, clearFaces, fitSpills } from "./arrange";
 import { LayerView, moveIntoPanel, type LayerRef } from "./layers";
 import { penPreferences } from "./pen";
 import { comboOf, Shortcuts, type ActionId } from "./shortcuts";
@@ -252,6 +252,12 @@ export class Workbench {
         this.edit((p) => (redone = fitSpills(p)));
         this.setStatus(redone ? `はみ出したセリフのあるコマ ${redone} 個を並べ直しました（元に戻すは Ctrl+Z）` : "はみ出したセリフはありません");
         return redone;
+      },
+      clearFaces: () => {
+        let moved = 0;
+        this.edit((p) => (moved = clearFaces(p)));
+        this.setStatus(moved ? `顔にかかっていたセリフ ${moved} 個をずらしました（元に戻すは Ctrl+Z）` : "顔にかかるセリフはありません");
+        return moved;
       },
     });
     this.brushDialog = new BrushDialog({

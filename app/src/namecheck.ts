@@ -1,12 +1,12 @@
 // 書き出し前のチェック: dialogue that will need fixing by hand in CSP, found
 // before the export: balloons on top of each other, lines outside every
-// panel or reaching past their own, balloons past the trim, and speech with
-// no tail.
-import { spills } from "./arrange";
+// panel or reaching past their own, balloons past the trim, speech with no
+// tail, and balloons over a face in the rough.
+import { onFace, spills } from "./arrange";
 import { balloonExtent, resolvedShape } from "./balloon";
 import { boxCenter, insidePolygon, trimBox, type BoxMm, type Project } from "./project";
 
-export type IssueKind = "overlap" | "outside" | "spill" | "trim" | "tail";
+export type IssueKind = "overlap" | "outside" | "spill" | "trim" | "tail" | "face";
 
 export interface NameIssue {
   kind: IssueKind;
@@ -24,6 +24,7 @@ export const ISSUE_LABELS: Record<IssueKind, string> = {
   spill: "コマからはみ出し",
   trim: "仕上がりの外",
   tail: "しっぽなし",
+  face: "顔にかかるセリフ",
 };
 
 /** How much two balloons may touch before it counts (mm², about a corner). */
@@ -50,6 +51,7 @@ export function checkName(project: Project): NameIssue[] {
       if (page.panels.length && !page.panels.some((panel) => insidePolygon(panel.shape, boxCenter(line.box)))) add("outside", line);
       else if (panel && line.kind !== "sfx" && spills(box, panel.shape)) add("spill", line);
       if (box[0] < tx0 || box[1] < ty0 || box[2] > tx1 || box[3] > ty1) add("trim", line);
+      if (onFace(page, line)) add("face", line);
       const balloon = resolvedShape(line) !== "none";
       if (balloon && line.kind === "speech" && !line.tails?.length && !line.linkTo && !page.lines.some((other) => other.linkTo === line.id)) add("tail", line);
     });
