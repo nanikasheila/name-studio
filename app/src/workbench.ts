@@ -631,6 +631,12 @@ export class Workbench {
       return b;
     };
     const copy = button("コピー", "コピー（Ctrl+C）。Ctrl+V でポインターのあるページへ", () => this.editor.copy());
+    const transform = button(
+      "変形",
+      "拡大縮小・回転・自由変形（Ctrl+T）。四角で大きさ、丸で回転、Ctrl + 角で自由変形。Enter で終わる",
+      () => this.editor.toggleTransform(),
+      this.editor.isTransforming ? "active" : "",
+    );
     const remove = button("消す", "消す（Delete）", () => this.deleteSelection(), "danger");
     switch (selection.kind) {
       case "panel": {
@@ -641,7 +647,7 @@ export class Workbench {
           this.edit((p) => (created = addInset(p, page, panel)));
           if (created) this.editor.select({ kind: "panel", pageId: page.id, id: (created as Panel).id });
         });
-        return [button("メモ", "このコマのメモをその場で書く（コマをダブルクリックでも）", () => this.editor.editInPlace(page.id, "note", panel.id)), inset, copy, remove];
+        return [button("メモ", "このコマのメモをその場で書く（コマをダブルクリックでも）", () => this.editor.editInPlace(page.id, "note", panel.id)), transform, inset, copy, remove];
       }
       case "line": {
         const line = page.lines.find((l) => l.id === selection.id);
@@ -661,7 +667,7 @@ export class Workbench {
           }),
         );
         tail.disabled = resolvedShape(line) === "none";
-        return [button("書く", "その場で書き直す（ダブルクリックでも）", () => this.editor.editInPlace(page.id, "line", line.id)), kind, tail, copy, remove];
+        return [button("書く", "その場で書き直す（ダブルクリックでも）", () => this.editor.editInPlace(page.id, "line", line.id)), kind, tail, transform, copy, remove];
       }
       case "stroke":
       case "group":
@@ -680,8 +686,10 @@ export class Workbench {
             else fill.tone = value;
           }),
         );
-        return [tone, copy, remove];
+        return [tone, transform, copy, remove];
       }
+      case "breakout":
+        return [transform, copy, remove];
       default:
         return [copy, remove];
     }
@@ -1535,8 +1543,12 @@ export class Workbench {
         return this.editor.transformSelection("flipH");
       case "flip.vertical":
         return this.editor.transformSelection("flipV");
+      case "transform":
+        return this.editor.toggleTransform();
       case "deselect":
-        this.editor.select(null);
+        // Esc ends 変形 first, then lets go of the selection.
+        if (this.editor.isTransforming) this.editor.toggleTransform(false);
+        else this.editor.select(null);
         return true;
       case "page.next":
       case "page.previous":

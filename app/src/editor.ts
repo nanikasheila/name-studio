@@ -149,6 +149,8 @@ type Drag =
   | { kind: "swap"; slot: Slot; panelId: string; at: [number, number]; to: { slot: Slot; panelId: string } | null }
   | { kind: "seam"; slot: Slot; seam: Seam; base: Map<string, Point[]>; start: Point; moved: boolean; carried: Map<string, CarriedContents> }
   | { kind: "scale"; slot: Slot; handle: number; base: TransformBase; box: BoxMm; moved: boolean }
+  /** 自由変形 (Ctrl + a corner): the corners of the frame, each where it was dragged. */
+  | { kind: "warp"; slot: Slot; handle: number; base: TransformBase; box: BoxMm; corners: [Point, Point, Point, Point]; moved: boolean }
   | { kind: "rotate"; slot: Slot; base: TransformBase; centre: Point; start: number; moved: boolean };
 
 /** Handles of the transform frame: corners from the top left clockwise, then the sides top, right, bottom, left. */
@@ -210,6 +212,8 @@ export class PageEditor {
   private tipEraser = false;
   /** Snap panel corners to the frames. */
   snap = true;
+  /** 変形 (Ctrl+T): the transform frame on a panel, a balloon, a fill or a はみ出し. */
+  private transforming = false;
   private zoom = 1;
   private pan: [number, number] = [0, 0];
   /** 画面の回転 (radians, clockwise): the whole view turns about the middle of the stage. */
@@ -277,6 +281,11 @@ export class PageEditor {
     canvas.addEventListener("wheel", (event) => this.wheel(event), { passive: false });
     canvas.addEventListener("dblclick", (event) => this.doubleClick(event));
     window.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && this.transforming && !isTyping(event)) {
+        event.preventDefault();
+        this.toggleTransform(false);
+        return;
+      }
       if (event.code === "Space" && !isTyping(event)) {
         this.spaceHeld = true;
         this.canvas.style.cursor = "grab";
@@ -391,12 +400,15 @@ export class PageEditor {
 
   setTool(tool: Tool): void {
     this.tool = tool;
+    this.transforming = false;
     this.updateCursor();
     this.renderBar();
     this.draw();
   }
 
   select(selection: Selection | null): void {
+    const same = selection && this.selection && selection.kind === this.selection.kind && selection.id === this.selection.id && selection.pageId === this.selection.pageId;
+    if (!same) this.transforming = false;
     this.selection = selection;
     this.host.selectionChanged(selection);
     this.renderBar();
@@ -752,7 +764,7 @@ export class PageEditor {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(String(panel.order), nx, ny);
-      if (selected) {
+      if (selected && !this.transforming) {
         ctx.fillStyle = "#ffffff";
         ctx.strokeStyle = ACCENT;
         ctx.lineWidth = 1.5;
@@ -1034,12 +1046,57 @@ export class PageEditor {
 
   // --- 変形（拡大縮小・回転・反転） -------------------------------------------------------
 
-  /** The rough lines and dialogue selected, which the transform frame works on. */
+  /** What the transform frame works on: rough lines and dialogue picked, or what is being transformed. */
   private selectedItems(): ItemRef[] {
     const s = this.selection;
     if (s?.kind === "group") return s.items ?? [];
     if (s?.kind === "stroke") return [{ kind: "stroke", id: s.id }];
+    if (!s || !this.transforming) return [];
+    if (s.kind === "panel") {
+      const page = this.host.project()?.pages.find((p) => p.id === s.pageId);
+      const panel = page?.panels.find((p) => p.id === s.id);
+      if (!page || !panel) return [];
+      const items: ItemRef[] = [{ kind: "panel", id: panel.id }];
+      if (this.panelCarries) {
+        // コマ枠フォルダ: what is drawn in the panel goes with it.
+        const carried = carryContents(page, panel);
+        items.push(
+          ...carried.strokes.map(({ id }) => ({ kind: "stroke" as const, id })),
+          ...carried.lines.map(({ id }) => ({ kind: "line" as const, id })),
+          ...(carried.fills ?? []).map(({ id }) => ({ kind: "fill" as const, id })),
+        );
+      }
+      return items;
+    }
+    if (s.kind === "line" || s.kind === "fill" || s.kind === "breakout") return [{ kind: s.kind, id: s.id }];
     return [];
+  }
+
+  get isTransforming(): boolean {
+    return this.transforming;
+  }
+
+  /** 変形 on or off for the selection (Ctrl+T); false when it cannot be transformed. */
+  toggleTransform(on = !this.transforming): boolean {
+    const s = this.selection;
+    if (on) {
+      if (!s || !["panel", "line", "fill", "breakout", "stroke", "group"].includes(s.kind)) return false;
+      const page = this.host.project()?.pages.find((p) => p.id === s.pageId);
+      if (s.kind === "panel" && page?.panels.find((p) => p.id === s.id)?.spread) {
+        this.host.status("見開きのコマは変形できません。頂点や間白で形を変えてください");
+        return false;
+      }
+      if (this.tool !== "select") this.setTool("select");
+    }
+    this.transforming = on;
+    this.renderBar();
+    this.draw();
+    this.host.status(
+      on
+        ? "変形: 四角をドラッグで拡大縮小（Shift で縦横別々、Alt で中心から）、丸で回転、Ctrl + 角で自由変形。Enter で終わる"
+        : "",
+    );
+    return true;
   }
 
   /** The transform frame on screen: its box (mm), slot and handle positions (px). */
@@ -1048,7 +1105,9 @@ export class PageEditor {
     const items = this.selectedItems();
     const slot = this.slots.find((s) => s.page.id === this.selection!.pageId);
     if (!items.length || !slot) return null;
-    const box = baseBounds(transformBase(slot.page, items));
+    // A panel's frame is the panel's own box; what is in it just goes along.
+    const own = items[0].kind === "panel" ? items.slice(0, 1) : items;
+    const box = baseBounds(transformBase(slot.page, own));
     if (!box) return null;
     const pad = 3 / slot.scale;
     const [x0, y0, x1, y1] = [box[0] - pad, box[1] - pad, box[2] + pad, box[3] + pad];
@@ -1070,6 +1129,27 @@ export class PageEditor {
 
   private drawFrame(): void {
     const drag = this.drag;
+    if (drag?.kind === "warp") {
+      // The four corners as they are being pulled.
+      const { slot } = drag;
+      const ctx = this.ctx;
+      ctx.save();
+      ctx.strokeStyle = ACCENT;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      tracePath(ctx, drag.corners, { scale: slot.scale, x: slot.x, y: slot.y }, true);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "#ffffff";
+      ctx.lineWidth = 1.5;
+      for (const [x, y] of drag.corners) {
+        const [px, py] = [slot.x + x * slot.scale, slot.y + y * slot.scale];
+        ctx.fillRect(px - HANDLE + 1, py - HANDLE + 1, 2 * HANDLE - 2, 2 * HANDLE - 2);
+        ctx.strokeRect(px - HANDLE + 1, py - HANDLE + 1, 2 * HANDLE - 2, 2 * HANDLE - 2);
+      }
+      ctx.restore();
+      return;
+    }
     if (drag && drag.kind !== "scale" && drag.kind !== "rotate") return;
     const frame = this.frameGeometry();
     if (!frame) return;
@@ -1292,7 +1372,7 @@ export class PageEditor {
 
   private vertexAt(slot: Slot, sx: number, sy: number): number {
     const s = this.selection;
-    if (!s || s.kind !== "panel" || s.pageId !== slot.page.id) return -1;
+    if (!s || s.kind !== "panel" || s.pageId !== slot.page.id || this.transforming) return -1;
     const panel = slot.page.panels.find((p) => p.id === s.id);
     if (!panel) return -1;
     return panel.shape.findIndex(
@@ -1462,7 +1542,7 @@ export class PageEditor {
     if (!drag) return;
     this.drag = null;
     this.base = null;
-    if (["move", "vertex", "seam", "scale", "rotate", "tail", "erase"].includes(drag.kind)) this.completeDrag(drag);
+    if (["move", "vertex", "seam", "scale", "rotate", "warp", "tail", "erase"].includes(drag.kind)) this.completeDrag(drag);
     this.dragPointer = null;
     this.dragPointerType = "";
     this.draw();
@@ -1518,10 +1598,15 @@ export class PageEditor {
         const handle = this.frameHandleAt(sx, sy);
         if (handle >= 0) {
           const items = this.selectedItems();
-          const base = transformBase(slot.page, items);
+          // A balloon on its own grows with its text.
+          const base = transformBase(slot.page, items, this.selection?.kind === "line");
           const frame = this.frameGeometry()!;
           this.host.begin();
-          if (handle === FRAME_HANDLES) {
+          if (handle < 4 && (event.ctrlKey || event.metaKey)) {
+            const [x0, y0, x1, y1] = frame.box;
+            const corners: [Point, Point, Point, Point] = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+            this.drag = { kind: "warp", slot: frame.slot, handle, base, box: frame.box, corners, moved: false };
+          } else if (handle === FRAME_HANDLES) {
             const [x0, y0, x1, y1] = frame.box;
             const centre: Point = [(x0 + x1) / 2, (y0 + y1) / 2];
             this.drag = { kind: "rotate", slot: frame.slot, base, centre, start: Math.atan2(point[1] - centre[1], point[0] - centre[0]), moved: false };
@@ -1749,6 +1834,13 @@ export class PageEditor {
         transformItems(drag.slot.page, drag.base, m);
         drag.moved = true;
         this.host.status(`大きさ ${Math.round(m[0] * 100)}% × ${Math.round(m[3] * 100)}%（Shift で縦横別々、Alt で中心から）`);
+        break;
+      }
+      case "warp": {
+        drag.corners[drag.handle] = point;
+        transformItems(drag.slot.page, drag.base, { box: drag.box, corners: drag.corners });
+        drag.moved = true;
+        this.host.status("自由変形: 角をそれぞれ動かしています（Ctrl を押したまま角をドラッグ）");
         break;
       }
       case "rotate": {
@@ -2046,10 +2138,12 @@ export class PageEditor {
       }
       case "scale":
       case "rotate":
+      case "warp":
         if (!drag.moved) {
           this.host.cancel();
           break;
         }
+        if (drag.base.panels) orderPanels(drag.slot.page, project.binding);
         assignPanels(drag.slot.page);
         sortLines(drag.slot.page);
         this.host.commit();

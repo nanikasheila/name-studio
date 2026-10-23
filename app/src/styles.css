@@ -329,6 +329,7 @@ dialog.pen-settings { width: min(720px, calc(100vw - 32px)); max-height: calc(10
 .action-bar[hidden] { display: none; }
 .action-bar button, .action-bar select { padding: 3px 8px; font-size: 12px; min-height: 0; }
 .action-bar select { width: auto; }
+.action-bar button.active { border-color: var(--accent); color: var(--accent); background: rgb(47 111 219 / 0.08); }
 
 /* Tab: the pages take the whole width. */
 body.focus-mode #editor > .sidebar, body.focus-mode #editor > .inspector { display: none; }

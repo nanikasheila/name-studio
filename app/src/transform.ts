@@ -1,6 +1,7 @@
-// 選んだものの変形（拡大縮小・回転・反転）とコピー・貼り付け. Rough lines
-// change shape with the transform; dialogue keeps its size and moves with
-// its centre, its tails pointing where they pointed.
+// 選んだものの変形（拡大縮小・回転・反転・自由変形）とコピー・貼り付け.
+// Rough lines, panels, fills and はみ出し change shape with the transform;
+// dialogue keeps its size and moves with its centre, its tails pointing
+// where they pointed (a balloon transformed on its own grows with its text).
 import {
   assignPanels,
   bounds,
@@ -39,23 +40,70 @@ export function rotation(radians: number, [ox, oy]: Point): Affine {
   return [cos, sin, -sin, cos, ox - cos * ox + sin * oy, oy - sin * ox - cos * oy];
 }
 
-/** What a selection is made of: rough lines and dialogue. */
+/**
+ * 自由変形: the box's corners (top left, top right, bottom right, bottom
+ * left) moved each on its own; points inside go with them (bilinear).
+ */
+export interface Quad {
+  box: BoxMm;
+  corners: [Point, Point, Point, Point];
+}
+
+/** Where a transform takes things: an affine map or a free deform. */
+export type Warp = Affine | Quad;
+
+export function warpPoint(w: Warp, p: readonly number[]): Point {
+  if (Array.isArray(w)) return applyAffine(w, p);
+  const [x0, y0, x1, y1] = w.box;
+  const u = x1 > x0 ? (p[0] - x0) / (x1 - x0) : 0;
+  const v = y1 > y0 ? (p[1] - y0) / (y1 - y0) : 0;
+  const [a, b, c, d] = w.corners;
+  const top: Point = [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u];
+  const bottom: Point = [d[0] + (c[0] - d[0]) * u, d[1] + (c[1] - d[1]) * u];
+  return [top[0] + (bottom[0] - top[0]) * v, top[1] + (bottom[1] - top[1]) * v];
+}
+
+/** How much a warp changes sizes: the square root of its change of area. */
+export function warpScale(w: Warp): number {
+  if (Array.isArray(w)) return Math.sqrt(Math.abs(w[0] * w[3] - w[1] * w[2]));
+  const [x0, y0, x1, y1] = w.box;
+  const before = (x1 - x0) * (y1 - y0);
+  const [a, b, c, d] = w.corners;
+  const after = Math.abs((a[0] * b[1] - b[0] * a[1] + b[0] * c[1] - c[0] * b[1] + c[0] * d[1] - d[0] * c[1] + d[0] * a[1] - a[0] * d[1]) / 2);
+  return before > 0 ? Math.sqrt(after / before) : 1;
+}
+
+/** What a selection is made of. */
 export interface ItemRef {
-  kind: "stroke" | "line";
+  kind: "stroke" | "line" | "panel" | "fill" | "breakout";
   id: string;
 }
 
 /** The selected things as they were when a transform began. */
 export interface TransformBase {
   strokes: { id: string; points: StrokePoint[]; widthMm: number }[];
-  lines: { id: string; box: BoxMm; balloon?: Point[]; tails?: Point[] }[];
+  lines: { id: string; box: BoxMm; fontSizePt: number; balloon?: Point[]; tails?: Point[] }[];
+  panels?: { id: string; shape: Point[] }[];
+  fills?: { id: string; shape: Point[] }[];
+  breakouts?: { id: string; shape: Point[] }[];
+  /** A balloon transformed on its own: its text grows and shrinks with it. */
+  scaleText?: boolean;
 }
 
-export function transformBase(page: Page, items: readonly ItemRef[]): TransformBase {
+export function transformBase(page: Page, items: readonly ItemRef[], scaleText = false): TransformBase {
   const ids = (kind: ItemRef["kind"]) => new Set(items.filter((item) => item.kind === kind).map((item) => item.id));
   const strokes = ids("stroke");
   const lines = ids("line");
+  const shapes = <T extends { id: string; shape: Point[] }>(list: readonly T[] | undefined, wanted: Set<string>) =>
+    (list ?? []).filter((x) => wanted.has(x.id)).map((x) => ({ id: x.id, shape: x.shape.map((p) => [...p] as Point) }));
+  const panels = shapes(page.panels, ids("panel"));
+  const fills = shapes(page.fills, ids("fill"));
+  const breakouts = shapes(page.breakouts, ids("breakout"));
   return {
+    ...(panels.length ? { panels } : {}),
+    ...(fills.length ? { fills } : {}),
+    ...(breakouts.length ? { breakouts } : {}),
+    ...(scaleText ? { scaleText } : {}),
     strokes: page.strokes
       .filter((s) => strokes.has(s.id))
       .map((s) => ({ id: s.id, points: s.points.map((p) => [...p] as StrokePoint), widthMm: s.widthMm })),
@@ -64,13 +112,14 @@ export function transformBase(page: Page, items: readonly ItemRef[]): TransformB
       .map((l) => ({
         id: l.id,
         box: [...l.box] as BoxMm,
+        fontSizePt: l.fontSizePt,
         ...(l.balloon ? { balloon: l.balloon.map((p) => [...p] as Point) } : {}),
         ...(l.tails ? { tails: l.tails.map((t) => [...t.tip] as Point) } : {}),
       })),
   };
 }
 
-/** The box around the selected rough lines and dialogue (balloons included). */
+/** The box around the selected things (balloons included). */
 export function baseBounds(base: TransformBase): BoxMm | null {
   const points: Point[] = [];
   for (const stroke of base.strokes) for (const [x, y] of stroke.points) points.push([x, y]);
@@ -78,31 +127,61 @@ export function baseBounds(base: TransformBase): BoxMm | null {
     points.push([line.box[0], line.box[1]], [line.box[2], line.box[3]]);
     for (const p of line.balloon ?? []) points.push(p);
   }
+  for (const { shape } of [...(base.panels ?? []), ...(base.fills ?? []), ...(base.breakouts ?? [])]) points.push(...shape);
   return points.length ? bounds(points) : null;
 }
 
+const round3 = (value: number) => Math.round(value * 1000) / 1000;
+
 /**
- * Put the selected things where `m` takes them from `base`. Line widths
+ * Put the selected things where `w` takes them from `base`. Line widths
  * follow the size (the square root of the area's change), never below
  * 0.05 mm.
  */
-export function transformItems(page: Page, base: TransformBase, m: Affine): void {
-  const sizeFactor = Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2]));
+export function transformItems(page: Page, base: TransformBase, w: Warp): void {
+  const sizeFactor = warpScale(w);
+  const map = (p: readonly number[]): Point => {
+    const [x, y] = warpPoint(w, p);
+    return [round3(x), round3(y)];
+  };
   for (const { id, points, widthMm } of base.strokes) {
     const stroke = page.strokes.find((s) => s.id === id);
     if (!stroke) continue;
-    stroke.points = points.map((p) => [...applyAffine(m, p), ...p.slice(2)] as StrokePoint);
+    stroke.points = points.map((p) => [...warpPoint(w, p), ...p.slice(2)] as StrokePoint);
     stroke.widthMm = Math.max(0.05, Math.round(widthMm * sizeFactor * 1000) / 1000);
   }
-  for (const { id, box, balloon, tails } of base.lines) {
+  for (const { id, box, fontSizePt, balloon, tails } of base.lines) {
     const line = page.lines.find((l) => l.id === id);
     if (!line) continue;
     const centre: Point = [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2];
-    const [cx, cy] = applyAffine(m, centre);
-    const [dx, dy] = [cx - centre[0], cy - centre[1]];
-    line.box = [box[0] + dx, box[1] + dy, box[2] + dx, box[3] + dy];
-    if (balloon) line.balloon = balloon.map(([x, y]) => [x + dx, y + dy]);
-    if (tails && line.tails) line.tails.forEach((tail, i) => tails[i] && (tail.tip = applyAffine(m, tails[i])));
+    const [cx, cy] = warpPoint(w, centre);
+    // On its own the balloon and its text grow together; with others it keeps its size.
+    const k = base.scaleText ? Math.min(Math.max(sizeFactor, 0.2), 8) : 1;
+    const [hw, hh] = [((box[2] - box[0]) / 2) * k, ((box[3] - box[1]) / 2) * k];
+    line.box = [round3(cx - hw), round3(cy - hh), round3(cx + hw), round3(cy + hh)];
+    if (base.scaleText) line.fontSizePt = Math.max(4, Math.round(fontSizePt * k * 10) / 10);
+    if (balloon) line.balloon = balloon.map(([x, y]) => [round3(cx + (x - centre[0]) * k), round3(cy + (y - centre[1]) * k)]);
+    if (tails && line.tails) line.tails.forEach((tail, i) => tails[i] && (tail.tip = map(tails[i])));
+  }
+  const reshape = <T extends { id: string; shape: Point[] }>(list: T[] | undefined, from: { id: string; shape: Point[] }[] | undefined) => {
+    for (const { id, shape } of from ?? []) {
+      const item = list?.find((x) => x.id === id);
+      if (item) item.shape = shape.map(map);
+    }
+  };
+  reshape(page.panels, base.panels);
+  reshape(page.fills, base.fills);
+  reshape(page.breakouts, base.breakouts);
+  // A flip turns shapes inside out: keep panels the same way round.
+  if (Array.isArray(w) && w[0] * w[3] - w[1] * w[2] < 0) {
+    for (const { id } of base.panels ?? []) {
+      const panel = page.panels.find((p) => p.id === id);
+      if (!panel) continue;
+      const n = panel.shape.length;
+      panel.shape.reverse();
+      // Edge i ran from point i to i + 1; reversed, it runs from n - 2 - i to n - 1 - i.
+      if (panel.openEdges) panel.openEdges = panel.openEdges.map((i) => (((n - 2 - i) % n) + n) % n).sort((a, b) => a - b);
+    }
   }
 }
 
