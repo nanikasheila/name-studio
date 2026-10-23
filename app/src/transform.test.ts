@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { addLine, addPanel, addStroke, bounds, newProject, panelContents, rectShape } from "./project";
-import { applyAffine, baseBounds, copySelection, pasteClip, rotation, scaling, transformBase, transformItems } from "./transform";
+import { applyAffine, baseBounds, densify, straightEnd, copySelection, pasteClip, rotation, scaling, transformBase, transformItems } from "./transform";
 
 function sample() {
   const project = newProject("t", 2);
@@ -83,5 +83,21 @@ describe("copy and paste", () => {
   it("copies nothing from an empty selection", () => {
     const { page } = sample();
     expect(copySelection(page, { kind: "stroke", pageId: page.id, id: "none" })).toBeNull();
+  });
+});
+
+describe("straight lines", () => {
+  it("snaps to 45° steps when close, and not otherwise", () => {
+    const [x, y] = straightEnd([0, 0, 1], [10, 0.3]);
+    expect(x).toBeCloseTo(Math.hypot(10, 0.3));
+    expect(y).toBeCloseTo(0);
+    expect(straightEnd([0, 0], [10, 3])).toEqual([10, 3]);
+  });
+
+  it("puts points along the line with pressure going evenly", () => {
+    const points = densify([[0, 0, 0.2], [2, 0, 1]]);
+    expect(points).toHaveLength(5);
+    expect(points[2][0]).toBeCloseTo(1);
+    expect(points[2][2]).toBeCloseTo(0.6);
   });
 });

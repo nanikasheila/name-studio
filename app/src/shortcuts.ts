@@ -12,6 +12,9 @@ export type ActionId =
   | "view.emotion"
   | "view.timeline"
   | "view.focus"
+  | "view.fit"
+  | "view.rotateLeft"
+  | "view.rotateRight"
   | "tool.select"
   | "tool.cut"
   | "tool.text"
@@ -72,6 +75,9 @@ export const ACTIONS: readonly ActionInfo[] = [
   { id: "view.structure", label: "構成", group: "画面", keys: ["F2"] },
   { id: "view.emotion", label: "感情曲線", group: "画面", keys: ["F3"] },
   { id: "view.timeline", label: "時系列", group: "画面", keys: ["F4"] },
+  { id: "view.fit", label: "全体を表示（拡大・移動・回転を戻す）", group: "画面", keys: ["Ctrl+0"] },
+  { id: "view.rotateLeft", label: "画面を左に 15° 回す（Shift + Space + ドラッグで自由に）", group: "画面", keys: ["-"] },
+  { id: "view.rotateRight", label: "画面を右に 15° 回す", group: "画面", keys: ["^"] },
   { id: "view.focus", label: "左右の欄を隠してページを大きく（もう一度で戻す）", group: "画面", keys: ["Tab"] },
 ];
 

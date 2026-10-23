@@ -238,3 +238,24 @@ export function pasteClip(project: Project, page: Page, clip: Clip, offset: Poin
   sortLines(page);
   return pasted;
 }
+
+// --- 直線 ----------------------------------------------------------------------
+
+/** The end of a straight line: along 0°, 45°, 90°... when within 3° of one. */
+export function straightEnd(start: readonly number[], end: Point): Point {
+  const [dx, dy] = [end[0] - start[0], end[1] - start[1]];
+  const length = Math.hypot(dx, dy);
+  const angle = Math.atan2(dy, dx);
+  const step = Math.PI / 4;
+  const snapped = Math.round(angle / step) * step;
+  if (Math.abs(angle - snapped) > (3 * Math.PI) / 180) return end;
+  return [start[0] + Math.cos(snapped) * length, start[1] + Math.sin(snapped) * length];
+}
+
+/** A straight line as points about every half millimetre, each value going evenly from one end to the other. */
+export function densify(points: StrokePoint[]): StrokePoint[] {
+  if (points.length !== 2) return points;
+  const [a, b] = points;
+  const steps = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.5));
+  return Array.from({ length: steps + 1 }, (_, i) => a.map((value, k) => value + ((b[k] ?? value) - value) * (i / steps)) as StrokePoint);
+}

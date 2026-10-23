@@ -1418,6 +1418,12 @@ export class Workbench {
       this.setView(view);
       return true;
     }
+    if (action === "view.fit" || action === "view.rotateLeft" || action === "view.rotateRight") {
+      if (this.view !== "edit") return false;
+      if (action === "view.fit") this.editor.fitView();
+      else this.editor.rotateView(action === "view.rotateLeft" ? -15 : 15);
+      return true;
+    }
     if (action === "view.focus") {
       // As CSP's Tab: the side panels go, the pages take the room.
       document.body.classList.toggle("focus-mode");
