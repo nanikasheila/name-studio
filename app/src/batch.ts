@@ -2,7 +2,7 @@
 // the window opens, writes the pages and the work, leaves a JSON report and closes.
 
 import { invoke } from "@tauri-apps/api/core";
-import { checkSummary, exportToCsp } from "./nameexport";
+import { checkSummary, exportToCsp, imagesNote, missingEditable } from "./nameexport";
 import { normalize, type Project } from "./project";
 
 export interface BatchExport {
@@ -12,6 +12,8 @@ export interface BatchExport {
   workTemplate: string | null;
   workName: string | null;
   storyIndex: number | null;
+  /** 見本のページ: .clip files to copy text and vector layers from. */
+  donors?: string[];
   report: string;
 }
 
@@ -50,14 +52,18 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
         workName: task.workName,
         storyIndex: task.storyIndex,
         inputs: [task.project, project.source?.path].filter((path): path is string => !!path),
-        donors: project.source ? [project.source.path] : [],
+        donors: [...(task.donors ?? []), project.source?.path].filter((path): path is string => !!path),
       },
       true,
       status,
     );
+    if (!report) throw new Error("書き出しが止まりました");
     const check = checkSummary(report);
     ok = check.ok;
-    result = { ok, seconds: (Date.now() - started) / 1000, summary: check.lines, overwrite, ...report };
+    // Read back as written, but not editable in CSP: said first, so it is not missed.
+    const missing = missingEditable(report);
+    const summary = missing.length ? [`注意: ${imagesNote(missing)}`, ...check.lines] : check.lines;
+    result = { ok, seconds: (Date.now() - started) / 1000, summary, overwrite, ...report };
   } catch (error) {
     result = { ok, error: String(error) };
   }

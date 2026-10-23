@@ -81,8 +81,12 @@ cargo build --release -p name-cli
 
 ```bash
 name-studio-app --export-csp ネーム.namestudio --template page.clip --out 書き出し先 \
-  [--work-template 作品.cmc --work-name 第1話] [--story-index 1] [--report 結果.json]
+  [--work-template 作品.cmc --work-name 第1話] [--story-index 1] [--donor 見本.clip] [--report 結果.json]
 ```
+
+線とセリフを CSP で直せるベクター・テキストのレイヤーにするには、CSP がそのレイヤーを作った .clip が要ります。
+ひな形、`--donor`（書き出し画面の「見本のページ」）、取り込み元のネーム用紙、ひな形と同じフォルダーのページの順に探し、
+見つからない部分は画像レイヤーになります（画面では書き出す前に聞き、結果の JSON では `summary` の先頭に「注意」を書きます）。
 
 ## テスト
 

@@ -132,11 +132,14 @@ pub struct Donors {
 }
 
 impl Donors {
-    /// Search the template, then each of `others`, for each kind of donor.
+    /// Search the template, then each of `others`, then the other .clip files
+    /// next to the template (pages of the same work, such as the name sheet),
+    /// for each kind of donor.
     pub fn find(template: &Path, others: &[PathBuf]) -> Result<Self> {
         let mut donors = Donors::default();
-        let candidates =
-            std::iter::once((template.to_path_buf(), true)).chain(others.iter().map(|path| (path.clone(), false)));
+        let candidates = std::iter::once((template.to_path_buf(), true))
+            .chain(others.iter().map(|path| (path.clone(), false)))
+            .chain(neighbours(template).into_iter().map(|path| (path, false)));
         for (path, is_template) in candidates {
             if donors.vector.is_some() && donors.text.is_some() {
                 break;
@@ -144,7 +147,13 @@ impl Donors {
             if !path.exists() || path.extension().is_none_or(|extension| extension != "clip") {
                 continue;
             }
-            let found = PartDonors::find(ClipDocument::read(&path)?, is_template)?;
+            // A neighbour that cannot be read is just not a donor.
+            let document = match ClipDocument::read(&path) {
+                Ok(document) => document,
+                Err(_) if !is_template && !others.contains(&path) => continue,
+                Err(error) => return Err(error),
+            };
+            let found = PartDonors::find(document, is_template)?;
             let (vector, text) = (found.has_vector(), found.has_text());
             if vector && donors.vector.is_none() && text && donors.text.is_none() {
                 // One document serves both; read it twice rather than share.
@@ -157,6 +166,43 @@ impl Donors {
             }
         }
         Ok(donors)
+    }
+}
+
+/// How many .clip files next to the template are looked at for donors.
+const NEIGHBOURS: usize = 12;
+
+/// The other .clip files in the template's folder, by name, a few at most.
+fn neighbours(template: &Path) -> Vec<PathBuf> {
+    let Some(folder) = template.parent() else {
+        return Vec::new();
+    };
+    let Ok(entries) = std::fs::read_dir(if folder.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        folder
+    }) else {
+        return Vec::new();
+    };
+    let mut paths: Vec<PathBuf> = entries
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| {
+            path.is_file()
+                && path
+                    .extension()
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("clip"))
+        })
+        .filter(|path| !same_file(path, template))
+        .collect();
+    paths.sort();
+    paths.truncate(NEIGHBOURS);
+    paths
+}
+
+fn same_file(a: &Path, b: &Path) -> bool {
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
     }
 }
 

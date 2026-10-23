@@ -524,6 +524,13 @@ fn writes_vector_and_text_layers_copied_from_the_sheet() {
     // there is nothing to make them from.
     let mut bare = RasterWorkWriter::new(options(Vec::new())).unwrap();
     assert!(bare.donors.vector.is_none() && bare.donors.text.is_none());
+    // A copy of the sheet next to the template is found without being named.
+    let beside = template_path.with_file_name("page0002.clip");
+    std::fs::copy(&sheet_path, &beside).unwrap();
+    let found = RasterWorkWriter::new(options(Vec::new())).unwrap();
+    assert!(found.donors.vector.is_some() && found.donors.text.is_some());
+    drop(found);
+    std::fs::remove_file(&beside).unwrap();
     let panel = NewVectorLine {
         points: vec![
             (20.0, 30.0, 1.0),

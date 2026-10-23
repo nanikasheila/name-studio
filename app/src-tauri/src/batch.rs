@@ -2,7 +2,8 @@
 //!
 //! ```text
 //! name-studio-app --export-csp <name.namestudio> --template <page.clip> --out <folder>
-//!     [--work-template <work.cmc> --work-name <name>] [--story-index <n>] [--report <file.json>]
+//!     [--work-template <work.cmc> --work-name <name>] [--story-index <n>] [--donor <sample.clip>]...
+//!     [--report <file.json>]
 //! ```
 //!
 //! The window opens, writes the pages and the work as the export dialog would
@@ -23,6 +24,8 @@ pub struct BatchExport {
     pub work_template: Option<String>,
     pub work_name: Option<String>,
     pub story_index: Option<i64>,
+    /// 見本のページ: CSP pages to copy text and vector layers from.
+    pub donors: Vec<String>,
     pub report: String,
 }
 
@@ -36,6 +39,7 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
     let mut work_name = None;
     let mut story_index = None;
     let mut report = None;
+    let mut donors = Vec::new();
     while let Some(arg) = args.next() {
         let mut value = || args.next().ok_or(format!("{arg} の後に値がありません"));
         match arg.as_str() {
@@ -52,6 +56,7 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
                 );
             }
             "--report" => report = Some(value()?),
+            "--donor" => donors.push(value()?),
             // Anything else (such as what the system adds) is left alone.
             _ => {}
         }
@@ -74,6 +79,7 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
         work_template,
         work_name,
         story_index,
+        donors,
         report,
     }))
 }
@@ -110,10 +116,13 @@ mod tests {
             "第1話",
             "--story-index",
             "1",
+            "--donor",
+            "sample.clip",
         ]))
         .unwrap()
         .unwrap();
         assert_eq!(batch.project, "a.namestudio");
+        assert_eq!(batch.donors, vec!["sample.clip".to_owned()]);
         assert_eq!(batch.work_name.as_deref(), Some("第1話"));
         assert_eq!(batch.story_index, Some(1));
         assert_eq!(
