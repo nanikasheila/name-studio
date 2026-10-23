@@ -301,6 +301,11 @@
         </div>
         <label class="check" id="sd-panels-row"><input type="checkbox" id="sd-panels" checked /> コマのないページには、台本のコマの数だけコマを作る</label>
         <label class="check" id="sd-notes-row" hidden><input type="checkbox" id="sd-notes" checked /> 論点・仮置きなどの節を付箋にする</label>
+                <div class="field">
+          <span>作るコマの型</span>
+          <select id="sd-pattern"><option value="">段組み（上から順に）</option></select>
+        </div>
+        <p class="hint">型を選ぶと、ページごとに台本のコマ数に合わせて型を変えて作ります。台本に「型：導入」と書いたページはその型に。</p>
         <p id="sd-summary" class="message" role="status"></p>
         <div class="actions">
           <button value="cancel" formnovalidate>閉じる</button>

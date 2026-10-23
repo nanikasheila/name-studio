@@ -36,6 +36,7 @@ import {
   EFFECT_LABELS,
   FILL_LABELS,
   PATTERNS,
+  patternCount,
   SIDE_LABELS,
   addInset,
   applyPattern,
@@ -78,6 +79,7 @@ import {
   removePanel,
   sceneOf,
   sortLines,
+  trailingEmptyPages,
   swapPanelContents,
   textAmount,
   type Brush,
@@ -321,10 +323,20 @@ export class Workbench {
     this.setStatus("ネーム用紙から取り込み中…");
     const result = await invoke<{ project: Project; warnings: string[] }>("import_project", { path: sheetPath });
     const p = result.project;
+    // A sheet often has more page cells than the episode: the empty ones at the end can go.
+    const empty = trailingEmptyPages(p);
+    if (empty > 0 && empty < p.pages.length) {
+      const keep = p.pages.length - empty;
+      if (await ask(`ネーム用紙の後ろの ${empty} ページは空です。除いて ${keep} ページにしますか？（あとで足すこともできます）`, { title: "Name Studio", kind: "info" })) {
+        p.pages.splice(keep);
+      }
+    }
     const lines = p.pages.reduce((sum, page) => sum + page.lines.length, 0);
     const panels = p.pages.reduce((sum, page) => sum + page.panels.length, 0);
     const warnings = result.warnings.length ? ` ／ ${result.warnings.join(" ／ ")}` : "";
-    this.show(p, null, `${p.pages.length} ページ、コマ ${panels}、セリフ ${lines} を取り込みました。保存先はまだ決まっていません${warnings}`);
+    const margins = p.pages.filter((page) => page.memo.includes("余白: ")).length;
+    const marginNote = margins ? `（余白の文字は ${margins} ページのメモに入れました）` : "";
+    this.show(p, null, `${p.pages.length} ページ、コマ ${panels}、セリフ ${lines} を取り込みました${marginNote}。保存先はまだ決まっていません${warnings}`);
     this.markDirty();
     this.updateTitle();
   }
@@ -1264,14 +1276,21 @@ export class Workbench {
       }),
     );
     const pattern = element("select");
-    for (const item of PATTERNS) pattern.append(element("option", { value: item.id, textContent: item.label, title: item.note }));
+    for (const item of PATTERNS) pattern.append(element("option", { value: item.id, textContent: `${item.label}（${patternCount(item.id)}）`, title: item.note }));
     const patternNote = element("p", { className: "hint", textContent: PATTERNS[0].note });
-    pattern.addEventListener("change", () => (patternNote.textContent = PATTERNS.find((item) => item.id === pattern.value)?.note ?? ""));
+    // コマ数: empty keeps the pattern's own; the page's count is one click away.
+    const count = element("input", { type: "number", min: "1", max: "12", step: "1", className: "count", title: "コマ数（空なら型のまま）" });
+    count.placeholder = String(patternCount(pattern.value));
+    pattern.addEventListener("change", () => {
+      patternNote.textContent = PATTERNS.find((item) => item.id === pattern.value)?.note ?? "";
+      count.placeholder = String(patternCount(pattern.value));
+    });
     const applyButton = button("このページに当てる", async () => {
       const question = "今のコマを置き換えますか？中のセリフ・ラフ線・コマのメモは、コマの順に新しいコマへ移します（元に戻すで戻せます）";
       if (page.panels.length && !(await ask(question, { title: "Name Studio", kind: "warning" }))) return;
       this.edit((p) => {
-        applyPattern(p, page, pattern.value);
+        const wanted = Number(count.value);
+        applyPattern(p, page, pattern.value, wanted >= 1 ? Math.min(12, Math.round(wanted)) : undefined);
         sortLines(page);
       });
     });
@@ -1341,8 +1360,17 @@ export class Workbench {
       button("このページのセリフを並べ直す", () => this.arrange(page.id), !page.lines.length),
       element("p", { className: "hint", textContent: "コマ割り: コマを横切るように線を引くと割れます（ほぼ水平・垂直はまっすぐに。Alt で斜め）。コマの外をドラッグすると新しいコマ。" }),
       element("h3", { textContent: "コマ割りの型" }),
-      element("div", { className: "row" }, pattern, applyButton),
+      element("div", { className: "row" }, pattern, element("label", { className: "inline" }, count, "コマ")),
+      applyButton,
       patternNote,
+      element(
+        "p",
+        { className: "hint" },
+        "コマ数を入れると、型の見た目のまま段のコマをつなげる・割って合わせます。",
+        ...(page.panels.length
+          ? [" ", button(`今のコマ数（${page.panels.length}）にする`, () => (count.value = String(page.panels.length)), false)]
+          : []),
+      ),
       ...spreadSection,
       ...altSection,
       element("h3", { textContent: "ページ" }),

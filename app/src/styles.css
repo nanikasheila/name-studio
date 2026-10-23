@@ -496,3 +496,4 @@ button.small { padding: 1px 6px; font-size: 12px; }
 .new-name .row-field { display: grid; grid-template-columns: 6em 1fr; align-items: center; gap: 8px; margin: 8px 0; }
 .new-name .row-field input, .new-name .row-field select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
 .new-name .row-field input[type="number"] { width: 6em; }
+.inspector input.count, input.count[type="number"] { width: 4.5em; }

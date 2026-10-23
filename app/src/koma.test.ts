@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PATTERNS, applyPattern, bleedPanel, facingPage, spreadPanel, spreadTwin, unspreadPanel, borderLines, borderRuns, clipOutside, dashes, inheritOpenEdges, isBled, patternPanels, wavy } from "./koma";
+import { PATTERNS, applyPattern, fitPattern, patternCount, bleedPanel, facingPage, spreadPanel, spreadTwin, unspreadPanel, borderLines, borderRuns, clipOutside, dashes, inheritOpenEdges, isBled, patternPanels, wavy } from "./koma";
 import { addLine, addStroke, basicBox, boxCenter, bounds, cutPanels, emptyPage, insidePolygon, newProject, rectShape, type Panel, type Point } from "./project";
 
 describe("裁ち切り", () => {
@@ -191,5 +191,52 @@ describe("型を当てる", () => {
     expect(insidePolygon(panels[1].shape, [stroke.points[0][0], stroke.points[0][1]])).toBe(true);
     // Fewer new panels: the rest goes into the last one.
     expect(panels[panels.length - 1].note).toContain("引き");
+  });
+});
+
+describe("型をコマ数に合わせる", () => {
+  it("joins and splits cells, keeping the pattern's rows, bleed and inset where it can", () => {
+    const project = newProject("t", 1);
+    for (const pattern of PATTERNS) {
+      for (const count of [1, 2, 3, 4, 5, 6, 7, 8]) {
+        const panels = patternPanels(project, pattern.id, undefined, count);
+        expect(panels.length, `${pattern.id} → ${count}`).toBe(count);
+        // Still inside the page, none of zero size.
+        for (const panel of panels) {
+          const [x0, y0, x1, y1] = bounds(panel.shape);
+          expect(x1 - x0).toBeGreaterThan(5);
+          expect(y1 - y0).toBeGreaterThan(1);
+        }
+      }
+    }
+    // 導入 (6) to 5: the first row still bleeds, one two-cell row is joined.
+    const opening = PATTERNS.find((p) => p.id === "opening")!;
+    const five = fitPattern(opening, 5);
+    expect(five.rows.map((row) => row.cells.length)).toEqual([1, 2, 1, 1]);
+    expect(five.bleed).toEqual(opening.bleed);
+    // 大ゴマ＋はめ込み (4) to 3 keeps the inset over the big panel; to 5 splits the top row, not the big panel.
+    const big = PATTERNS.find((p) => p.id === "bigInset")!;
+    expect(fitPattern(big, 3).inset).toBe(1);
+    expect(fitPattern(big, 3).rows.map((row) => row.cells.length)).toEqual([1, 1]);
+    expect(fitPattern(big, 5).rows.map((row) => row.cells.length)).toEqual([3, 1]);
+    // The pause row is never split.
+    const pause = fitPattern(PATTERNS.find((p) => p.id === "pause")!, 8);
+    expect(pause.rows[1].cells.length).toBe(1);
+    expect(patternCount("basic4")).toBe(6);
+    expect(patternCount("bigInset")).toBe(4);
+  });
+
+  it("applies a pattern at the page's count, carrying what was in its panels", () => {
+    const project = newProject("t", 1);
+    const page = project.pages[0];
+    applyPattern(project, page, "basic4", 5);
+    expect(page.panels.length).toBe(5);
+    const panels = [...page.panels].sort((a, b) => a.order - b.order);
+    const line = addLine(project, page, boxCenter(bounds(panels[4].shape)), "あ");
+    applyPattern(project, page, "opening", 5);
+    expect(page.panels.length).toBe(5);
+    const last = [...page.panels].sort((a, b) => a.order - b.order)[4];
+    expect(line.panel).toBe(last.id);
+    expect(insidePolygon(last.shape, boxCenter(line.box))).toBe(true);
   });
 });

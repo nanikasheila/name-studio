@@ -15,8 +15,10 @@
 //   名前〔電話〕「…」 名前（叫び）「…」  the balloon: 電話・無線・テレビ → 電子音、叫び → トゲ、
 //                                  小声・ささやき → 破線、独白・心の声 → モノローグ
 //   「…！！」                       a shout (トゲ) unless a tag says otherwise
+//   型：導入 / 型: opening           the page's コマ割りの型 (fitted to its panels)
 // List markers (- * + 1.), quotes (>) and **bold** are ignored.
 import { layOut, placingBox } from "./arrange";
+import { PATTERNS, patternPanels } from "./koma";
 import {
   addCharacter,
   addLine,
@@ -26,6 +28,7 @@ import {
   basicBox,
   DEFAULT_GUTTERS,
   insertPage,
+  orderPanels,
   rectShape,
   sortLines,
   type BalloonShape,
@@ -54,6 +57,8 @@ export interface ScriptPage {
   notes: string[];
   panels: ScriptPanel[];
   scene?: string;
+  /** コマ割りの型 asked for (型：導入), by id. */
+  pattern?: string;
 }
 
 export interface ScriptDoc {
@@ -137,6 +142,17 @@ export function readLine(raw: string): ScriptLine | null {
   return null;
 }
 
+/** A pattern by id or name (導入, 大ゴマ＋はめ込み, 3段…): the first whose name starts with it, else contains it. */
+export function findPattern(name: string): string | undefined {
+  const key = name.replace(/[（(].*$/, "").trim();
+  if (!key) return undefined;
+  return (
+    PATTERNS.find((p) => p.id === key)?.id ??
+    PATTERNS.find((p) => p.label.startsWith(key))?.id ??
+    PATTERNS.find((p) => p.label.includes(key))?.id
+  );
+}
+
 /** Read a script. */
 export function parseScript(source: string): ScriptDoc {
   const doc: ScriptDoc = { pages: [], warnings: [] };
@@ -206,6 +222,11 @@ export function parseScript(source: string): ScriptDoc {
       continue;
     }
     const bare = line.replace(/^(?:[-*+]\s+|\d+[.)]\s+|>\s*)+/, "");
+    const asked = /^(?:型|【型】|コマ割り)\s*[:：]?\s*(.+)$/.exec(plain(bare));
+    if (asked && findPattern(asked[1]) && (page || !pageHeadings)) {
+      currentPage().pattern = findPattern(asked[1]);
+      continue;
+    }
     const panelMark = /^(?:[［[]\s*(\d+)\s*[］\]]|【\s*コマ\s*\d*\s*】|コマ\s*\d+(?:\s|$|[:：]))\s*(.*)$/.exec(bare);
     if (panelMark) {
       newPanel();
@@ -241,6 +262,8 @@ export interface ScriptImportOptions {
   startPage: number;
   /** Pages with no panels get one per script panel, in tiers over the basic frame. */
   makePanels: boolean;
+  /** The コマ割りの型 for those pages (fitted to their panels) when the script names none; none: tiers. */
+  pattern?: string;
 }
 
 export interface ScriptImportReport {
@@ -307,8 +330,14 @@ export function applyScript(project: Project, doc: ScriptDoc, options: ScriptImp
     if (scriptPage.notes.length) page.memo = [page.memo, ...scriptPage.notes].filter(Boolean).join("\n");
     const used = scriptPage.panels.filter((panel) => panel.lines.length || panel.notes.length);
     if (!page.panels.length && options.makePanels && used.length) {
-      for (const box of panelBoxes(basicBox(project.pageFormat), used.length)) addPanel(project, page, rectShape(box));
-      report.panels += used.length;
+      const pattern = scriptPage.pattern ?? options.pattern;
+      if (pattern) {
+        page.panels = patternPanels(project, pattern, DEFAULT_GUTTERS, used.length);
+        orderPanels(page, project.binding);
+      } else {
+        for (const box of panelBoxes(basicBox(project.pageFormat), used.length)) addPanel(project, page, rectShape(box));
+      }
+      report.panels += page.panels.length;
     }
     const panels = [...page.panels].sort((a, b) => a.order - b.order);
     used.forEach((scriptPanel, k) => {
