@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { arrangePage, arrangePanel, placingBox } from "./arrange";
-import { addLine, addPanel, basicBox, boxCenter, insidePolygon, newProject, rectShape, setDefaultShape, setLineKind, trimBox } from "./project";
+import { arrangePage, arrangePanel, fitSpills, placingBox, spills } from "./arrange";
+import { balloonExtent } from "./balloon";
+import { addLine, addPanel, basicBox, boxCenter, fitLine, insidePolygon, newProject, rectShape, setDefaultShape, setLineKind, trimBox } from "./project";
 
 describe("セリフの並べ直し", () => {
   it("lays a panel's dialogue out right to left in reading order, broken into short lines, inside the panel", () => {
@@ -29,6 +30,26 @@ describe("セリフの並べ直し", () => {
     arrangePage(project, page);
     expect(line.box[1]).toBeGreaterThanOrEqual(frame[1]);
     expect(line.box[2]).toBeLessThanOrEqual(frame[2]);
+  });
+});
+
+describe("はみ出しを直す", () => {
+  it("breaks dialogue narrower to fit a short strip, and redoes lines that spill past the border", () => {
+    const project = newProject("t", 1);
+    const page = project.pages[0];
+    // A strip of a flashback: wide and short.
+    const panel = addPanel(project, page, rectShape([40, 40, 200, 75]));
+    const line = addLine(project, page, [150, 50], "私も、あの人と同じ場所に立てる");
+    arrangePanel(project, page, panel);
+    expect(spills(balloonExtent(line), panel.shape)).toBe(false);
+    // Broken by hand too long for the strip: fixed by breaking it again.
+    line.text = "私も、あの人と\n同じ場所に立てる";
+    fitLine(line);
+    arrangePanel(project, page, panel);
+    expect(spills(balloonExtent(line), panel.shape)).toBe(true);
+    expect(fitSpills(project)).toBe(1);
+    expect(spills(balloonExtent(line), panel.shape)).toBe(false);
+    expect(line.text.replace(/\n/g, "")).toBe("私も、あの人と同じ場所に立てる");
   });
 });
 

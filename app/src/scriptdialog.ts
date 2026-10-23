@@ -27,6 +27,14 @@ export async function readTextFile(file: Blob): Promise<string> {
   }
 }
 
+/** Where the plot's 付箋 go: the page they name, the page they are most about, or the first page. */
+function stickyWhere(plot: PlotDoc): string {
+  const named = plot.notes.filter((n) => n.page && !n.guessed).length;
+  const guessed = plot.notes.filter((n) => n.guessed).length;
+  const first = plot.notes.length - named - guessed;
+  return `付箋: ${[named ? `書いてあるページへ ${named}` : "", guessed ? `中身の近いページへ ${guessed}` : "", first ? `1 ページへ ${first}` : ""].filter(Boolean).join("・")}`;
+}
+
 export class ScriptDialog {
   private doc: ScriptDoc | null = null;
   private plot: PlotDoc | null = null;
@@ -83,6 +91,7 @@ export class ScriptDialog {
       summary.textContent = [
         `プロットとして読みます${plot.title ? `（${plot.title}）` : ""}: ページのメモ ${plot.pages.length}・シーン ${plot.scenes.length}・付箋 ${notes}${plot.total ? `・合計 ${plot.total} ページ` : ""}`,
         added ? `ページを ${added} 枚足します。` : "",
+        notes ? stickyWhere(plot) : "",
         plot.scenes.length ? `シーン: ${plot.scenes.map((s) => `${s.title}（${s.first === s.last ? s.first : `${s.first}〜${s.last}`}）`).join("、")}` : "",
         project.scenes.length && plot.scenes.length ? "重なる今のシーンは置き換えます。" : "",
       ]
@@ -111,6 +120,7 @@ export class ScriptDialog {
       `${start + 1} ページから入れます${added ? `（ページを ${added} 枚足します）` : ""}。`,
       fresh.length ? `新しい登場人物: ${fresh.join("、")}` : "",
       shaped ? `型を指定したページ: ${shaped}` : "",
+      scenes && project.scenes.length ? "重なる今のシーンは台本のシーンに置き換えます（同じページ範囲のシーンの要約は引き継ぎます）。" : "",
       ...this.doc.warnings,
     ]
       .filter(Boolean)

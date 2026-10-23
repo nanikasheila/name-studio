@@ -8,7 +8,8 @@
 //   ## 見出し with page headings under it        a scene, when no table gives scenes
 //                                                 (headings naming ページ, like ページごとのプロット, are not scenes)
 //   ## any other section                         its list items (or its text) become 付箋, on the page they name
-import { addScene, addSticky, insertPage, pageIndex, stickyBox, STICKY_WIDTH_MM, type Project } from "./project";
+//                                                 or else the page they are most about (the first page when none stands out)
+import { addSticky, insertPage, putScene, stickyBox, STICKY_WIDTH_MM, type Project } from "./project";
 
 export interface PlotPage {
   /** 1-based page number (the first of a range). */
@@ -30,6 +31,8 @@ export interface PlotNote {
   text: string;
   /** 1-based page the note names, if any. */
   page?: number;
+  /** The page is not named but guessed from what the note is about. */
+  guessed?: boolean;
 }
 
 export interface PlotDoc {
@@ -157,10 +160,48 @@ export function parsePlot(source: string): PlotDoc {
     flush();
     for (const text of notes) {
       const mention = MENTION.exec(text);
-      doc.notes.push({ section: s.heading, text, ...(mention ? { page: Number(mention[1]) } : {}) });
+      const guess = mention || SUMMARY.test(s.heading) ? undefined : likelyPage(doc.pages, text);
+      doc.notes.push({ section: s.heading, text, ...(mention ? { page: Number(mention[1]) } : guess ? { page: guess, guessed: true } : {}) });
     }
   }
   return doc;
+}
+
+/** Sections about the whole story, whose notes stay with the first page. */
+const SUMMARY = /流れ|あらすじ|概要|全体|ログライン/;
+
+/** Pairs of characters inside words (kanji, katakana, Latin): what a note and a page share when they are about the same thing. */
+function wordPairs(text: string): Set<string> {
+  const word = (c: string) => /[一-鿿々ァ-ヿA-Za-z0-9Ａ-Ｚａ-ｚ０-９]/.test(c);
+  const chars = [...text.replace(/\s+/g, "")];
+  const pairs = new Set<string>();
+  for (let i = 0; i + 1 < chars.length; i++) if (word(chars[i]) && word(chars[i + 1])) pairs.add(chars[i] + chars[i + 1]);
+  return pairs;
+}
+
+/**
+ * The page a note is most about, by the words it shares with each page's
+ * heading (counted twice) and text, rarer words counting more; none when no
+ * page stands out.
+ */
+export function likelyPage(pages: readonly PlotPage[], text: string): number | undefined {
+  const sets = pages.map((page) => ({ head: wordPairs(page.heading), body: wordPairs(page.text.join("")) }));
+  const spread = new Map<string, number>();
+  for (const set of sets) for (const pair of new Set([...set.head, ...set.body])) spread.set(pair, (spread.get(pair) ?? 0) + 1);
+  const note = wordPairs(text);
+  const scores = sets.map((set) => {
+    let score = 0;
+    for (const pair of note) {
+      const weight = 1 / (spread.get(pair) ?? 1);
+      if (set.head.has(pair)) score += 2 * weight;
+      else if (set.body.has(pair)) score += weight;
+    }
+    return score;
+  });
+  const order = scores.map((score, i) => [score, i] as const).sort((a, b) => b[0] - a[0]);
+  const [best, second] = [order[0], order[1]];
+  if (!best || best[0] < 1.5 || (second && best[0] < 1.4 * second[0])) return undefined;
+  return pages[best[1]].number;
 }
 
 /** Whether text reads as a plot (prose by page) rather than a script (panels and dialogue). */
@@ -204,15 +245,10 @@ export function applyPlot(project: Project, doc: PlotDoc): PlotImportReport {
     const first = scene.first - 1;
     const last = Math.min(scene.last, project.pages.length) - 1;
     if (first < 0 || last < first) continue;
-    project.scenes = project.scenes.filter((s) => {
-      const [a, b] = [pageIndex(project, s.firstPage), pageIndex(project, s.lastPage)];
-      return b < first || a > last;
-    });
-    const added = addScene(project, project.pages[first].id, project.pages[last].id, scene.title);
-    added.summary = scene.summary;
+    putScene(project, first, last, scene.title, scene.summary);
     report.scenes++;
   }
-  // 付箋 down the right of the page they name (page 1 otherwise), in columns leftwards.
+  // 付箋 down the right of their page (page 1 when none), in columns leftwards.
   const [pageW, pageH] = project.pageFormat.canvasMm;
   const next = new Map<number, [number, number]>();
   for (const note of doc.notes) {
@@ -220,13 +256,14 @@ export function applyPlot(project: Project, doc: PlotDoc): PlotImportReport {
     const page = project.pages[index];
     if (!page) continue;
     let [x, y] = next.get(index) ?? [pageW - STICKY_WIDTH_MM - 6, 6];
-    const sticky = addSticky(project, page, [x, y], `【${note.section}】${note.text}`);
-    const height = stickyBox(sticky)[3] - y;
+    const text = `【${note.section}】${note.text}`;
+    // Its height before it goes down, so it never slides up over the one above.
+    const height = stickyBox({ id: "", text, at: [0, 0] })[3];
     if (y > 6 && y + height > pageH - 6) {
       x = Math.max(6, x - STICKY_WIDTH_MM - 4);
       y = 6;
-      sticky.at = [x, y];
     }
+    addSticky(project, page, [x, y], text);
     next.set(index, [x, y + height + 4]);
     report.stickies++;
   }

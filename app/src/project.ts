@@ -1199,6 +1199,26 @@ export function addScene(project: Project, firstPage: string, lastPage: string, 
   return scene;
 }
 
+/**
+ * A scene over pages `first`..`last` (0-based) that takes the place of the
+ * scenes it overlaps; a scene it replaces over the very same pages hands on
+ * its summary when the new one has none. Returns the scene and how many it replaced.
+ */
+export function putScene(project: Project, first: number, last: number, title: string, summary = ""): { scene: Scene; replaced: number } {
+  const before = project.scenes.length;
+  let kept = "";
+  project.scenes = project.scenes.filter((s) => {
+    const [a, b] = [pageIndex(project, s.firstPage), pageIndex(project, s.lastPage)];
+    if (b < first || a > last) return true;
+    if (a === first && b === last) kept = s.summary;
+    return false;
+  });
+  const replaced = before - project.scenes.length;
+  const scene = addScene(project, project.pages[first].id, project.pages[last].id, title);
+  scene.summary = summary || kept;
+  return { scene, replaced };
+}
+
 export function sortScenes(project: Project): void {
   project.scenes.sort((a, b) => pageIndex(project, a.firstPage) - pageIndex(project, b.firstPage));
 }

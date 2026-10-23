@@ -8,6 +8,8 @@ const NO_START = new Set([..."、。，．,.・：；:;！？!?‼⁉…‥ー�
 /** Characters a line must not end with. */
 const NO_END = new Set([..."（(「『【〔［[｛{〈《"]);
 const PUNCTUATION = new Set([..."、。，．,.！？!?‼⁉…‥"]);
+/** Where one sentence ends and the next begins (after 。！？ and the like, and any closing marks). */
+const SENTENCE = /(?<=[。！？!?‼⁉][。！？!?‼⁉」』）)…‥ー〜～]*)[\s　]*(?=[^\s　。、！？!?‼⁉」』）)…‥ー〜～])/u;
 /** Particles and endings after which a line may break. */
 const PARTICLES = new Set([..."はがをにでともへやかねよなのわぞぜさ"]);
 
@@ -44,6 +46,9 @@ function breakScore(before: string, after: string): number {
  */
 export function wrapDialogue(text: string, width = 8): string {
   if (text.includes("\n")) return text;
+  // A new sentence starts a new line, however short the two are.
+  const sentences = text.split(SENTENCE).map((part) => part.trim()).filter(Boolean);
+  if (sentences.length > 1) return sentences.map((part) => wrapDialogue(part, width)).join("\n");
   const chars = [...text];
   if (chars.length <= width + 1) return text;
   const lines: string[] = [];

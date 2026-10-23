@@ -10,7 +10,7 @@ import { AltDialog } from "./altdialog";
 import { ScriptDialog } from "./scriptdialog";
 import { ShortcutDialog } from "./shortcutdialog";
 import { PenDialog } from "./pendialog";
-import { arrangePage, arrangePanel } from "./arrange";
+import { arrangePage, arrangePanel, fitSpills } from "./arrange";
 import { LayerView, moveIntoPanel, type LayerRef } from "./layers";
 import { penPreferences } from "./pen";
 import { comboOf, Shortcuts, type ActionId } from "./shortcuts";
@@ -218,7 +218,8 @@ export class Workbench {
         this.editor.showPage(firstPage);
         this.renderAll();
         const who = report.characters.length ? `、登場人物 ${report.characters.join("・")} を足しました` : "";
-        this.setStatus(`台本を ${report.pages} ページに入れました（セリフ ${report.lines}、作ったコマ ${report.panels}${who}）。元に戻すは Ctrl+Z`);
+        const scenes = report.replacedScenes ? `、重なっていたシーン ${report.replacedScenes} を台本のシーンに置き換えました` : "";
+        this.setStatus(`台本を ${report.pages} ページに入れました（セリフ ${report.lines}、作ったコマ ${report.panels}${who}${scenes}）。元に戻すは Ctrl+Z`);
       },
       plotDone: (report) => {
         // The plot is about the whole: show it on the board.
@@ -239,6 +240,12 @@ export class Workbench {
       status: (message) => this.setStatus(message),
       goTo: (pageId, lineId) => this.goTo(pageId, "line", lineId),
       addTails: () => this.addTails(),
+      fitSpills: () => {
+        let redone = 0;
+        this.edit((p) => (redone = fitSpills(p)));
+        this.setStatus(redone ? `はみ出したセリフのあるコマ ${redone} 個を並べ直しました（元に戻すは Ctrl+Z）` : "はみ出したセリフはありません");
+        return redone;
+      },
     });
     this.brushDialog = new BrushDialog({
       project: () => this.state.project,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { addLine, addScene, addCharacter, newProject, pageIndex } from "./project";
-import { applyPlot, looksLikePlot, parsePlot } from "./plotimport";
+import { addLine, addScene, addCharacter, newProject, pageIndex, stickyBox } from "./project";
+import { applyPlot, likelyPage, looksLikePlot, parsePlot } from "./plotimport";
 import { parseScript } from "./scriptimport";
 import { emotionRuns, emotionSeries, markSpeakingPages, speakingPages } from "./story";
 
@@ -65,10 +65,11 @@ describe("プロットの取り込み", () => {
       [3, 5, "町を出る相談"],
       [6, 6, "出発"],
     ]);
-    expect(doc.notes.map((n) => [n.section, n.page])).toEqual([
-      ["この話の流れ", undefined],
-      ["残っている論点", undefined],
-      ["残っている論点", 4],
+    // A note that names no page goes to the page it is about (ソラ), the story's flow stays on the first.
+    expect(doc.notes.map((n) => [n.section, n.page, !!n.guessed])).toEqual([
+      ["この話の流れ", undefined, false],
+      ["残っている論点", 2, true],
+      ["残っている論点", 4, false],
     ]);
     expect(doc.notes[1].text).toBe("ソラの正体。 どこまで明かすか。");
   });
@@ -97,10 +98,42 @@ describe("プロットの取り込み", () => {
       ["出発", 6, 6],
     ]);
     expect(project.scenes[1].summary).toBe("町を出る相談");
-    expect(project.pages[0].stickies).toHaveLength(2);
+    expect(project.pages[0].stickies).toHaveLength(1);
+    expect(project.pages[1].stickies?.[0].text).toBe("【残っている論点】ソラの正体。 どこまで明かすか。");
     expect(project.pages[3].stickies?.[0].text).toBe("【残っている論点】4ページの間の取り方。");
     // Taken in twice: the memos are not doubled.
     expect(applyPlot(project, parsePlot(PLOT)).memos).toBe(0);
+  });
+});
+
+describe("プロットの付箋: 第4話の試作から", () => {
+  const pages = [
+    { number: 1, last: 1, heading: "心臓の説明", text: ["局長がニイにザグレウスの心臓を説明する。"] },
+    { number: 2, last: 2, heading: "緊急電話", text: ["叔母からエイコに電話が入る。"] },
+    { number: 3, last: 3, heading: "研究所への避難", text: ["避難先として競合企業の研究所が示される。"] },
+    { number: 4, last: 4, heading: "発信機の問題", text: ["ストラの目に発信機がある。"] },
+  ];
+
+  it("guesses the page a note is about, and none when no page stands out", () => {
+    expect(likelyPage(pages, "避難先は競合企業の研究所。受け入れ条件は未決。")).toBe(3);
+    expect(likelyPage(pages, "発信機を除去する必然。")).toBe(4);
+    expect(likelyPage(pages, "全体の雰囲気は明るめにする。")).toBeUndefined();
+  });
+
+  it("stacks many notes on a page without one covering another", () => {
+    const project = newProject("新しいネーム", 1);
+    const long = "残っている論点の説明。".repeat(12);
+    applyPlot(project, { pages: [], scenes: [], notes: Array.from({ length: 9 }, (_, i) => ({ section: "論点", text: `${i}${long}` })) });
+    const boxes = (project.pages[0].stickies ?? []).map(stickyBox);
+    expect(boxes).toHaveLength(9);
+    const [, height] = project.pageFormat.canvasMm;
+    for (const [i, a] of boxes.entries()) {
+      expect(a[3]).toBeLessThanOrEqual(height);
+      for (const b of boxes.slice(i + 1)) {
+        const overlap = Math.min(a[2], b[2]) > Math.max(a[0], b[0]) && Math.min(a[3], b[3]) > Math.max(a[1], b[1]);
+        expect(overlap).toBe(false);
+      }
+    }
   });
 });
 

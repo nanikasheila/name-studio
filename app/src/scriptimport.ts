@@ -23,12 +23,13 @@ import {
   addCharacter,
   addLine,
   addPanel,
-  addScene,
   assignPanels,
   basicBox,
   DEFAULT_GUTTERS,
   insertPage,
   orderPanels,
+  pageIndex,
+  putScene,
   rectShape,
   sortLines,
   type BalloonShape,
@@ -272,6 +273,8 @@ export interface ScriptImportReport {
   lines: number;
   characters: string[];
   scenes: number;
+  /** Scenes already on the name that the script's took the place of. */
+  replacedScenes: number;
 }
 
 /** Panels for `count` script panels over the basic frame: tiers, two side by side past four. */
@@ -308,7 +311,7 @@ function placeLines(project: Project, page: Page, panel: Panel | undefined, line
 
 /** Put a script onto the name. */
 export function applyScript(project: Project, doc: ScriptDoc, options: ScriptImportOptions): ScriptImportReport {
-  const report: ScriptImportReport = { pages: 0, panels: 0, lines: 0, characters: [], scenes: 0 };
+  const report: ScriptImportReport = { pages: 0, panels: 0, lines: 0, characters: [], scenes: 0, replacedScenes: 0 };
   if (doc.title && (!project.title || project.title === "新しいネーム")) project.title = doc.title;
   // Speakers by name; new names become characters.
   const speakers = new Map(project.characters.map((character) => [character.name, character.id]));
@@ -352,7 +355,10 @@ export function applyScript(project: Project, doc: ScriptDoc, options: ScriptImp
     if (scriptPage.scene) sceneStarts.push({ title: scriptPage.scene, first: page.id, last: page.id });
     else if (sceneStarts.length) sceneStarts[sceneStarts.length - 1].last = page.id;
   });
-  for (const scene of sceneStarts) addScene(project, scene.first, scene.last, scene.title);
+  // A scene takes the place of those it overlaps (a plot's, taken in before).
+  for (const scene of sceneStarts) {
+    report.replacedScenes += putScene(project, pageIndex(project, scene.first), pageIndex(project, scene.last), scene.title).replaced;
+  }
   report.scenes = sceneStarts.length;
   return report;
 }

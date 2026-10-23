@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { scriptText } from "./nameexport";
 import { addCharacter, addLine, addPanel, addScene, basicBox, newProject, rectShape } from "./project";
 import { applyScript, findPattern, panelBoxes, parseScript, readLine } from "./scriptimport";
+import { applyPlot, parsePlot } from "./plotimport";
 
 const MARKDOWN = `# 星の約束
 
@@ -59,7 +60,7 @@ describe("台本の取り込み", () => {
   it("deals the script out onto pages and panels", () => {
     const project = newProject("新しいネーム", 2);
     const report = applyScript(project, parseScript(MARKDOWN), { startPage: 0, makePanels: true });
-    expect(report).toEqual({ pages: 3, panels: 4, lines: 7, characters: ["ミカ", "ソラ"], scenes: 2 });
+    expect(report).toEqual({ pages: 3, panels: 4, lines: 7, characters: ["ミカ", "ソラ"], scenes: 2, replacedScenes: 0 });
     expect(project.title).toBe("星の約束");
     expect(project.pages.length).toBe(3);
     const page = project.pages[0];
@@ -155,6 +156,20 @@ describe("台本の取り込み: 第4話の試作から", () => {
     const [thought, phone] = project.pages[0].lines;
     expect(thought.balloonShape).toBe("polygon");
     expect(phone.balloonShape).toBe("electric");
+  });
+});
+
+describe("台本の取り込み: プロットのあとに", () => {
+  it("takes the place of the plot's scenes it overlaps, keeping a same-page summary", () => {
+    const project = newProject("t", 3);
+    applyPlot(project, parsePlot("## ページ配分\n\n| 1〜2 | 2 | 屋上で出会う |\n| 3 | 1 | 別れ |\n\n### 1ページ 屋上\n\n夜。\n"));
+    expect(project.scenes).toHaveLength(2);
+    const report = applyScript(project, parseScript(MARKDOWN), { startPage: 0, makePanels: true });
+    expect(report.replacedScenes).toBe(2);
+    expect(project.scenes.map((s) => [s.title, s.summary])).toEqual([
+      ["出会い", "屋上で出会う"],
+      ["別れ", "別れ"],
+    ]);
   });
 });
 
