@@ -754,9 +754,18 @@ fn write_through_temporary(path: &Path, bytes: &[u8]) -> Result<(), String> {
     std::fs::rename(&temporary, path).map_err(|error| error.to_string())
 }
 
+/// Whether this build came from the release workflow. Only those update
+/// themselves; a build made on the PC to try a change is left as it is.
+#[tauri::command]
+fn is_release_build() -> bool {
+    option_env!("NAME_STUDIO_RELEASE").is_some()
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             open_sheet,
@@ -781,6 +790,7 @@ pub fn run() {
             write_pdf,
             write_text_file,
             csp_tool_locations,
+            is_release_build,
             read_csp_sub_tools
         ])
         .run(tauri::generate_context!())

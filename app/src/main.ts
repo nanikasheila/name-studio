@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask, open } from "@tauri-apps/plugin-dialog";
 import { formatTime } from "./autosave";
+import { appVersion, checkForUpdate } from "./updater";
 import { buildRequest, folderOf, summarize, type ExportForm, type ExportReport, type Fit } from "./export";
 import { dialogueByPage, effectiveVisibility, initiallyHidden, spreads } from "./pages";
 import { drawSheet, type PlacedImage, type Transform } from "./render";
@@ -606,4 +607,15 @@ async function offerRecovery(): Promise<void> {
   }
 }
 
-void offerRecovery();
+async function start(): Promise<void> {
+  const version = await appVersion();
+  if (version) $("app-version").textContent = `v${version}`;
+  await checkForUpdate({
+    status: setStatus,
+    busy: () => workbench.project !== null,
+    prepare: () => workbench.confirmDiscard(),
+  });
+  await offerRecovery();
+}
+
+void start();

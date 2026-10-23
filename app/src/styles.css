@@ -227,3 +227,4 @@ dialog.versions { width: min(640px, calc(100vw - 32px)); }
 .version .kind.saved { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 .version .time { font-variant-numeric: tabular-nums; }
 .version .what { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-version { color: var(--muted); font-size: 12px; }
