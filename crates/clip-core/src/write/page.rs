@@ -40,13 +40,16 @@ const TEXT_ARRAYS: [&str; 2] = ["TextLayerAttributesArray", "TextLayerAddAttribu
 /// Style runs of a text: u32 count, then (u32 start, u32 length, ...).
 const RUN_TAG: u32 = 0x0B;
 /// CropFrameOptionFlag bits CSP sets for a single left / right page (a spread has 17).
-const LEFT_PAGE_FLAG: i64 = 2;
-const RIGHT_PAGE_FLAG: i64 = 4;
-/// Layer.ComicStoryInfoType of the (ノンブル) layer.
-const NOMBRE_INFO: i64 = 2;
+pub(crate) const LEFT_PAGE_FLAG: i64 = 2;
+pub(crate) const RIGHT_PAGE_FLAG: i64 = 4;
+/// Layer.ComicStoryInfoType of the 作品情報 and (ノンブル) layers.
+pub(crate) const STORY_INFO: i64 = 1;
+pub(crate) const NOMBRE_INFO: i64 = 2;
+/// Layer column of a spread's story info layers: 1 for the right page's.
+pub(crate) const FOR_RIGHT_PAGE: &str = "ComicStoryInfoForRightPage";
 
 /// The TLV items of one text attribute block, as edited in place.
-type TextItems = Vec<(u32, Vec<u8>)>;
+pub(crate) type TextItems = Vec<(u32, Vec<u8>)>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PageResult {
@@ -71,7 +74,7 @@ pub fn write_page(
 ) -> Result<PageResult> {
     let mut editor = ClipEditor::open(template)?;
     editor.renew_ids()?;
-    apply_page_settings(&editor.db, page_index.unwrap_or(page.number - 1), canvas_values)?;
+    apply_page_settings(&editor.db, page_index.unwrap_or(page.number - 1), canvas_values, true)?;
     let source = sheet.database();
     merge_page_schema(&editor.db, source)?;
     share_rows(&editor.db, source)?;
@@ -107,8 +110,23 @@ pub fn write_page(
 
 /// Set the page position in the work and the work's canvas settings (and
 /// with them the episode number in the story information text).
-pub(crate) fn apply_page_settings(db: &Connection, page_index: i64, canvas_values: &Values) -> Result<()> {
-    set_page_index(db, page_index)?;
+///
+/// On a spread, `first_right` tells which half has the page that comes
+/// first in the book (the right one in a right-bound manga).
+pub(crate) fn apply_page_settings(
+    db: &Connection,
+    page_index: i64,
+    canvas_values: &Values,
+    first_right: bool,
+) -> Result<()> {
+    if is_spread(db)? {
+        // A spread keeps its sides: the right half is the right page.
+        if has_column(db, "Canvas", "ComicPageIndex")? {
+            db.execute("UPDATE Canvas SET ComicPageIndex = ?1", [page_index])?;
+        }
+    } else {
+        set_page_index(db, page_index)?;
+    }
     if !canvas_values.is_empty() {
         let old_index = canvas_value(db, "ComicStoryStoryIndex")?;
         set_canvas_values(db, canvas_values)?;
@@ -119,7 +137,7 @@ pub(crate) fn apply_page_settings(db: &Connection, page_index: i64, canvas_value
             replace_story_index(db, old, *new)?;
         }
     }
-    update_nombre(db)
+    update_nombre(db, first_right)
 }
 
 fn add_content(
@@ -223,7 +241,7 @@ fn transform_array(blob: &[u8], scale: f64, dx: f64, dy: f64, column: &str, warn
     }
 }
 
-fn has_column(db: &Connection, table: &str, column: &str) -> Result<bool> {
+pub(crate) fn has_column(db: &Connection, table: &str, column: &str) -> Result<bool> {
     Ok(column_names(db, table)?.iter().any(|name| name == column))
 }
 
@@ -261,17 +279,34 @@ fn set_page_index(db: &Connection, index: i64) -> Result<()> {
 /// The (ノンブル) layer of a single page. A spread has a second one for its
 /// right page; only single pages are templates.
 fn nombre_layer(db: &Connection) -> Result<Option<i64>> {
-    if !has_column(db, "Layer", "ComicStoryInfoType")? {
-        return Ok(None);
-    }
-    let mut statement = db.prepare("SELECT MainId FROM Layer WHERE ComicStoryInfoType = ?1")?;
-    let ids: Vec<i64> = statement
-        .query_map([NOMBRE_INFO], |row| row.get(0))?
-        .collect::<std::result::Result<_, _>>()?;
-    Ok(if ids.len() == 1 { Some(ids[0]) } else { None })
+    let ids = story_layers(db, NOMBRE_INFO)?;
+    Ok(if ids.len() == 1 { Some(ids[0].0) } else { None })
 }
 
-fn canvas_width(db: &Connection) -> Result<i64> {
+/// Story info layers of one kind as (id, for the right page of a spread).
+pub(crate) fn story_layers(db: &Connection, info: i64) -> Result<Vec<(i64, bool)>> {
+    if !has_column(db, "Layer", "ComicStoryInfoType")? {
+        return Ok(Vec::new());
+    }
+    let side = if has_column(db, "Layer", FOR_RIGHT_PAGE)? {
+        format!("IFNULL(\"{FOR_RIGHT_PAGE}\", 0)")
+    } else {
+        "0".to_owned()
+    };
+    let mut statement = db.prepare(&format!(
+        "SELECT MainId, {side} FROM Layer WHERE ComicStoryInfoType = ?1 ORDER BY MainId"
+    ))?;
+    let ids = statement
+        .query_map([info], |row| Ok((row.get(0)?, row.get::<_, i64>(1)? != 0)))?
+        .collect::<std::result::Result<_, _>>()?;
+    Ok(ids)
+}
+
+pub(crate) fn is_spread(db: &Connection) -> Result<bool> {
+    Ok(matches!(canvas_value(db, "CanvasDoublePage")?, Some(Value::Integer(flag)) if flag != 0))
+}
+
+pub(crate) fn canvas_width(db: &Connection) -> Result<i64> {
     let (width, resolution, unit): (f64, f64, i64) = db.query_row(
         "SELECT CanvasWidth, CanvasResolution, CanvasUnit FROM Canvas",
         [],
@@ -280,7 +315,7 @@ fn canvas_width(db: &Connection) -> Result<i64> {
     Ok(round_half_even(canvas_width_px(width, resolution, unit)))
 }
 
-fn layer_offset_x(db: &Connection, layer_id: i64) -> Result<i64> {
+pub(crate) fn layer_offset_x(db: &Connection, layer_id: i64) -> Result<i64> {
     let offset: Option<i64> = db.query_row("SELECT LayerOffsetX FROM Layer WHERE MainId = ?1", [layer_id], |row| {
         row.get(0)
     })?;
@@ -309,18 +344,31 @@ fn mirror_nombre(db: &Connection) -> Result<()> {
 /// `ComicStoryNombreStart + ComicPageIndex` there. The text and its style run
 /// change, and the block widens or narrows by the template's width per
 /// character, keeping the edge nearer to the page border (the binding edge).
-fn update_nombre(db: &Connection) -> Result<()> {
+fn update_nombre(db: &Connection, first_right: bool) -> Result<()> {
     if !has_column(db, "Canvas", "ComicPageIndex")? || !has_column(db, "Canvas", "ComicStoryNombreStart")? {
+        return Ok(());
+    }
+    let (index, start): (Option<i64>, Option<i64>) =
+        db.query_row("SELECT ComicPageIndex, ComicStoryNombreStart FROM Canvas", [], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })?;
+    let first = start.unwrap_or(1) + index.unwrap_or(0);
+    if is_spread(db)? {
+        for (layer_id, right) in story_layers(db, NOMBRE_INFO)? {
+            let number = if right == first_right { first } else { first + 1 };
+            set_nombre(db, layer_id, &number.to_string())?;
+        }
         return Ok(());
     }
     let Some(layer_id) = nombre_layer(db)? else {
         return Ok(());
     };
-    let (index, start): (Option<i64>, Option<i64>) =
-        db.query_row("SELECT ComicPageIndex, ComicStoryNombreStart FROM Canvas", [], |row| {
-            Ok((row.get(0)?, row.get(1)?))
-        })?;
-    let number = (start.unwrap_or(1) + index.unwrap_or(0)).to_string();
+    set_nombre(db, layer_id, &first.to_string())
+}
+
+/// Write `number` into one (ノンブル) layer.
+fn set_nombre(db: &Connection, layer_id: i64, number: &str) -> Result<()> {
+    let number = number.to_owned();
     let (string, attributes): (Value, Value) = db.query_row(
         "SELECT TextLayerString, TextLayerAttributes FROM Layer WHERE MainId = ?1",
         [layer_id],
@@ -397,7 +445,7 @@ fn i32_pair(value: &[u8]) -> [i32; 2] {
     ]
 }
 
-fn map_bbox_x(items: TextItems, change: &dyn Fn(i64, i64) -> (i64, i64)) -> TextItems {
+pub(crate) fn map_bbox_x(items: TextItems, change: &dyn Fn(i64, i64) -> (i64, i64)) -> TextItems {
     items
         .into_iter()
         .map(|(tag, value)| {
@@ -416,7 +464,7 @@ fn map_bbox_x(items: TextItems, change: &dyn Fn(i64, i64) -> (i64, i64)) -> Text
 }
 
 /// Apply `edit` to the TLV items of every attribute blob of one text layer.
-fn edit_text_blocks(db: &Connection, layer_id: i64, edit: &dyn Fn(TextItems) -> TextItems) -> Result<()> {
+pub(crate) fn edit_text_blocks(db: &Connection, layer_id: i64, edit: &dyn Fn(TextItems) -> TextItems) -> Result<()> {
     let owned = |blob: &[u8]| -> Result<Vec<u8>> {
         let items = parse_tlv(blob)?
             .into_iter()
@@ -460,7 +508,7 @@ fn edit_text_blocks(db: &Connection, layer_id: i64, edit: &dyn Fn(TextItems) -> 
 /// image: CSP shows the image the file caches for the text (TLV 0x32 →
 /// Offscreen) rather than the text, so a changed text kept showing the
 /// template's "… 3話" or page number.
-fn drop_render_cache(db: &Connection, layer_id: i64) -> Result<()> {
+pub(crate) fn drop_render_cache(db: &Connection, layer_id: i64) -> Result<()> {
     edit_text_blocks(db, layer_id, &|items| {
         items
             .into_iter()
@@ -485,7 +533,7 @@ fn set_canvas_values(db: &Connection, values: &Values) -> Result<()> {
     Ok(())
 }
 
-fn canvas_value(db: &Connection, column: &str) -> Result<Option<Value>> {
+pub(crate) fn canvas_value(db: &Connection, column: &str) -> Result<Option<Value>> {
     if !has_column(db, "Canvas", column)? {
         return Ok(None);
     }
@@ -586,7 +634,7 @@ fn move_run_length(blob: &[u8], delta: i64) -> Result<Vec<u8>> {
     Ok(build_tlv(&items))
 }
 
-fn canvas_width_px(width: f64, resolution: f64, unit: i64) -> f64 {
+pub(crate) fn canvas_width_px(width: f64, resolution: f64, unit: i64) -> f64 {
     let per_inch = match unit {
         2 => 25.4,
         1 => 2.54,

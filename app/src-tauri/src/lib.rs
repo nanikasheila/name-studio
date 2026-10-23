@@ -24,6 +24,7 @@ use clip_core::write::raster_page::{
     PageLayer, RasterLayer, RasterWorkWriter, TemplateCanvas, WorkOptions, WorkReport,
 };
 use clip_core::write::split::{DEFAULT_NAME_PATTERN, SplitOptions, SplitReport, split_sheet};
+use clip_core::write::spread::SpreadLayout;
 use clip_core::write::verify::{self, ExpectedLayer, FileCheck};
 use name_model::versions::{self, Recovery, VersionInfo, VersionKind, VersionStore};
 use name_model::{PageFormat, Project};
@@ -455,6 +456,11 @@ struct NameExportStart {
     canvas: TemplateCanvas,
     vector_layers: bool,
     text_layers: bool,
+    /// Whether the book's first page (index 0) is a left page.
+    first_page_left: Option<bool>,
+    /// Where pages go on a 見開き page, or why spreads cannot be written.
+    spread: Option<SpreadLayout>,
+    spread_problem: Option<String>,
 }
 
 /// Start writing the name data as CSP pages; returns the template's canvas.
@@ -483,6 +489,9 @@ async fn begin_name_export(
         canvas: writer.canvas,
         vector_layers: writer.donors.vector.is_some(),
         text_layers: writer.donors.text.is_some(),
+        first_page_left: writer.first_page_left,
+        spread: writer.spread.as_ref().ok().map(|(_, layout)| *layout),
+        spread_problem: writer.spread.as_ref().err().cloned(),
     };
     *state.name_export.lock().map_err(lock_error)? = Some(writer);
     Ok(start)
@@ -543,6 +552,9 @@ struct PageLayersMeta {
     /// drawn over the images for the page thumbnail; 0 for none.
     #[serde(default)]
     overlay_length: usize,
+    /// Two pages of the book as one 見開き page (images at the spread's size).
+    #[serde(default)]
+    spread: bool,
 }
 
 /// Rough images from the source sheet, placed on one transparent page image.
@@ -587,7 +599,12 @@ async fn export_name_page(app: tauri::AppHandle, request: tauri::ipc::Request<'_
             .take()
             .ok_or("書き出しが始まっていません")?;
         let result = (|| {
-            let (width, height) = (writer.canvas.width_px, writer.canvas.height_px);
+            let canvas = if meta.spread {
+                writer.spread_canvas().ok_or("見開きページを作れません")?
+            } else {
+                writer.canvas
+            };
+            let (width, height) = (canvas.width_px, canvas.height_px);
             let mut layers = Vec::new();
             if let Some(sheet) = meta.sheet.as_deref().filter(|_| !meta.roughs.is_empty()) {
                 layers.push(PageLayer::Raster(RasterLayer {
@@ -646,9 +663,9 @@ async fn export_name_page(app: tauri::AppHandle, request: tauri::ipc::Request<'_
                 .map(|layer| ExpectedLayer::of(layer, width, height))
                 .collect();
             let path = writer
-                .write_page(&layers, overlay.as_ref())
+                .write_page(&layers, overlay.as_ref(), meta.spread)
                 .map_err(|error| error.to_string())?;
-            Ok(verify::verify_page(&path, &expected, &writer.canvas))
+            Ok(verify::verify_page(&path, &expected, &canvas))
         })();
         *state.name_export.lock().map_err(lock_error)? = Some(writer);
         result

@@ -20,6 +20,7 @@ use super::cmc::{work_canvas_values, write_cmc};
 use super::editor::ClipEditor;
 use super::page::{apply_page_settings, merge_page_schema, replace_preview, share_rows};
 use super::split::page_file_name;
+use super::spread::{SpreadLayout, make_spread_template};
 use super::{Values, set_value, value_of};
 use crate::RgbaImage;
 use crate::clip::{ClipDocument, LayerKind};
@@ -304,6 +305,8 @@ pub fn template_canvas(template: &ClipDocument) -> TemplateCanvas {
 /// and text layers are copied from `donors`. Vector and text layers are not
 /// drawn here, so the thumbnail shows the images with `overlay` (the lines
 /// and texts drawn by the caller, any size with the page's proportions) on top.
+/// For a spread template, `first_right` tells which half is page `page_index`.
+#[allow(clippy::too_many_arguments)]
 pub fn write_name_page(
     template: &Path,
     layers: &[PageLayer],
@@ -312,12 +315,13 @@ pub fn write_name_page(
     output: &Path,
     page_index: i64,
     canvas_values: &Values,
+    first_right: bool,
 ) -> Result<Vec<i64>> {
     let source = ClipDocument::read(template)?;
     let (width, height) = (source.canvas.width_px as u32, source.canvas.height_px as u32);
     let mut editor = ClipEditor::open(template)?;
     editor.renew_ids()?;
-    apply_page_settings(&editor.db, page_index, canvas_values)?;
+    apply_page_settings(&editor.db, page_index, canvas_values, first_right)?;
     let raster = editor.first_raster_layer()?;
     let payload = |id: &str| source.container.external_payload(id).map(<[u8]>::to_vec);
     let mut composite = RgbaImage {
@@ -412,8 +416,34 @@ pub struct RasterWorkWriter {
     canvas_values: Values,
     overrides: Values,
     pages: Vec<PathBuf>,
+    /// Position in the book of the next page (a spread takes two).
+    next_index: i64,
     pub canvas: TemplateCanvas,
     pub donors: Donors,
+    /// Whether page index 0 is a left page (from the template's own pair).
+    pub first_page_left: Option<bool>,
+    /// The spread template made from the template, or why there is none.
+    pub spread: std::result::Result<(PathBuf, SpreadLayout), String>,
+}
+
+impl Drop for RasterWorkWriter {
+    fn drop(&mut self) {
+        if let Ok((path, _)) = &self.spread {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+/// Whether page index 0 is a left page, from a page's own index and side.
+fn first_page_left(template: &ClipDocument) -> Option<bool> {
+    let row = template
+        .database()
+        .query_row("SELECT ComicPageIndex, ComicIsLeftPage FROM Canvas", [], |row| {
+            Ok((row.get::<_, Option<i64>>(0)?, row.get::<_, Option<i64>>(1)?))
+        })
+        .ok()?;
+    let (Some(index), Some(left)) = row else { return None };
+    Some((left != 0) == (index.rem_euclid(2) == 0))
 }
 
 impl RasterWorkWriter {
@@ -444,7 +474,14 @@ impl RasterWorkWriter {
                 ));
             }
         }
-        let canvas = template_canvas(&ClipDocument::read(&options.template)?);
+        let template = ClipDocument::read(&options.template)?;
+        let canvas = template_canvas(&template);
+        let first_page_left = first_page_left(&template);
+        let spread_path =
+            std::env::temp_dir().join(format!("name-studio-spread-{}.clip", uuid::Uuid::new_v4().simple()));
+        let spread = make_spread_template(&options.template, &spread_path)
+            .map(|layout| (spread_path, layout))
+            .map_err(|error| error.to_string());
         let donors = Donors::find(&options.template, &options.donor_sources)?;
         let mut canvas_values = match &options.work {
             Some((_, cmc)) => work_canvas_values(cmc)?,
@@ -465,32 +502,65 @@ impl RasterWorkWriter {
             canvas_values,
             overrides,
             pages: Vec::new(),
+            next_index: 0,
             canvas,
             donors,
+            first_page_left,
+            spread,
         })
     }
 
-    /// Write the next page (numbered from 1 in the order they are written).
-    pub fn write_page(&mut self, layers: &[PageLayer], overlay: Option<&RgbaImage>) -> Result<PathBuf> {
-        let number = self.pages.len() as i64 + 1;
+    /// The size a spread page is written at, for checking it.
+    pub fn spread_canvas(&self) -> Option<TemplateCanvas> {
+        let (_, layout) = self.spread.as_ref().ok()?;
+        Some(TemplateCanvas {
+            width_px: layout.width_px,
+            height_px: layout.height_px,
+            resolution: self.canvas.resolution,
+            trim_px: None,
+            basic_px: None,
+        })
+    }
+
+    /// Write the next page: a single page, or with `spread` the next two
+    /// pages of the book as one 見開き page (the file is numbered after the
+    /// first of them, as CSP does).
+    pub fn write_page(&mut self, layers: &[PageLayer], overlay: Option<&RgbaImage>, spread: bool) -> Result<PathBuf> {
+        let index = self.next_index;
         let output = self
             .options
             .out_dir
-            .join(page_file_name(&self.options.name_pattern, number));
+            .join(page_file_name(&self.options.name_pattern, index + 1));
+        let template = if spread {
+            match &self.spread {
+                Ok((path, _)) => path.clone(),
+                Err(reason) => return Err(CspError::format(format!("見開きページを作れません: {reason}"))),
+            }
+        } else {
+            self.options.template.clone()
+        };
+        // Page `index` is on the left when page 0 is and the two are an even
+        // number apart; the other half of a spread is the next page.
+        let first_right = self
+            .first_page_left
+            .map(|zero_left| zero_left != (index.rem_euclid(2) == 0))
+            .unwrap_or(true);
         write_name_page(
-            &self.options.template,
+            &template,
             layers,
             &self.donors,
             overlay,
             &output,
-            number - 1,
+            index,
             &self.canvas_values,
+            first_right,
         )?;
+        self.next_index += if spread { 2 } else { 1 };
         self.pages.push(output.clone());
         Ok(output)
     }
 
-    pub fn finish(self) -> Result<WorkReport> {
+    pub fn finish(mut self) -> Result<WorkReport> {
         let work = match &self.options.work {
             Some((name, cmc)) => {
                 if self.pages.is_empty() {
@@ -506,7 +576,7 @@ impl RasterWorkWriter {
             None => None,
         };
         Ok(WorkReport {
-            pages: self.pages,
+            pages: std::mem::take(&mut self.pages),
             work,
         })
     }

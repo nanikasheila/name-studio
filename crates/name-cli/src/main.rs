@@ -17,7 +17,8 @@ usage:
                   [--story-index N] [--cmc-template WORK.cmc]
   name-studio-cli decode-time <file.clip>
   name-studio-cli subtools <tool.sut|EditImageTool.todb> [--materials DIR] [--tips]
-  name-studio-cli check <file.clip|file.cmc|DIR>...   (self-check written pages; exit 1 on problems)";
+  name-studio-cli check <file.clip|file.cmc|DIR>...   (self-check written pages; exit 1 on problems)
+  name-studio-cli spread <page.clip> <spread.clip>   (a 見開き page template from a single page)";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -29,9 +30,28 @@ fn main() -> ExitCode {
         Some("split") => split(&args[1..]),
         Some("subtools") => subtools(&args[1..]),
         Some("check") => check(&args[1..]),
+        Some("spread") => spread(&args[1..]),
         _ => {
             eprintln!("{USAGE}");
             ExitCode::from(2)
+        }
+    }
+}
+
+/// Make a spread template from a CSP-made single page; prints its layout.
+fn spread(args: &[String]) -> ExitCode {
+    let [single, output] = args else {
+        eprintln!("{USAGE}");
+        return ExitCode::from(2);
+    };
+    match clip_core::write::spread::make_spread_template(single.as_ref(), output.as_ref()) {
+        Ok(layout) => {
+            println!("{}", serde_json::to_string(&layout).unwrap_or_default());
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("{error}");
+            ExitCode::FAILURE
         }
     }
 }

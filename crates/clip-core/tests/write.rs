@@ -465,6 +465,7 @@ fn writes_whole_page_raster_layers_into_a_work() {
                     }),
                 ],
                 None,
+                false,
             )
             .unwrap();
     }
@@ -556,11 +557,11 @@ fn writes_vector_and_text_layers_copied_from_the_sheet() {
         },
         PageLayer::Text(text.clone()),
     ];
-    assert!(bare.write_page(&layers, None).is_err());
+    assert!(bare.write_page(&layers, None, false).is_err());
 
     let mut writer = RasterWorkWriter::new(options(vec![sheet_path.clone()])).unwrap();
     assert!(writer.donors.vector.is_some() && writer.donors.text.is_some());
-    let page_path = writer.write_page(&layers, None).unwrap();
+    let page_path = writer.write_page(&layers, None, false).unwrap();
     writer.finish().unwrap();
     assert_eq!(digest(&sheet_path), sheet_before);
 
@@ -695,7 +696,7 @@ fn checks_written_pages_and_works() {
         }
     );
     let canvas = writer.canvas;
-    let page = writer.write_page(&layers, None).unwrap();
+    let page = writer.write_page(&layers, None, false).unwrap();
     let report = writer.finish().unwrap();
     let check = verify_page(&page, &expected, &canvas);
     assert!(check.ok(), "{:?}", check.problems);
@@ -745,4 +746,189 @@ fn checks_written_pages_and_works() {
     std::fs::remove_file(&report.pages[0]).unwrap();
     let problems = verify_work(&work, None).problems;
     assert!(problems[0].contains("ありません"), "{problems:?}");
+}
+
+/// The template with a 仕上がり枠 of 30 x 50 mm (300 x 500 px), as spreads need.
+fn trimmed_template(folder: &Path) -> PathBuf {
+    let path = folder.join("template").join("page-trim.clip");
+    let editor = ClipEditor::open(template(folder)).unwrap();
+    editor
+        .db
+        .execute_batch(
+            "ALTER TABLE Canvas ADD COLUMN CropFrameUnitKind;
+             ALTER TABLE Canvas ADD COLUMN CropFrameWidth;
+             ALTER TABLE Canvas ADD COLUMN CropFrameHeight;
+             UPDATE Canvas SET CropFrameUnitKind = 2, CropFrameWidth = 30.0, CropFrameHeight = 50.0;",
+        )
+        .unwrap();
+    editor.save(&path).unwrap();
+    path
+}
+
+/// (text, bbox x0, x1, for the right page) of each story info layer of `kind`.
+fn story_texts(path: &Path, kind: i64) -> Vec<(String, i32, i32, bool)> {
+    let document = ClipDocument::read(path).unwrap();
+    let mut statement = document
+        .database()
+        .prepare(
+            "SELECT TextLayerString, TextLayerAttributes, IFNULL(ComicStoryInfoForRightPage, 0), LayerOffsetX
+             FROM Layer WHERE ComicStoryInfoType = ?1 ORDER BY MainId",
+        )
+        .unwrap();
+    statement
+        .query_map([kind], |row| {
+            let text: Vec<u8> = row.get(0)?;
+            let attributes: Vec<u8> = row.get(1)?;
+            let right: i64 = row.get(2)?;
+            let offset: i64 = row.get(3)?;
+            Ok((text, attributes, right != 0, offset))
+        })
+        .unwrap()
+        .map(Result::unwrap)
+        .map(|(text, attributes, right, offset)| {
+            let items = parse_tlv(&attributes).unwrap();
+            let bbox = items.iter().find(|(tag, _)| *tag == 0x2A).map(|(_, bbox)| *bbox);
+            let x = |at: usize| {
+                bbox.map(|bbox| i32::from_le_bytes(bbox[at..at + 4].try_into().unwrap()) + offset as i32)
+                    .unwrap_or(0)
+            };
+            (String::from_utf8(text).unwrap(), x(0), x(8), right)
+        })
+        .collect()
+}
+
+#[test]
+fn writes_spread_pages() {
+    use clip_core::offscreen::OffscreenParameters;
+    use clip_core::write::raster_page::{PageLayer, RasterLayer, RasterWorkWriter, WorkOptions};
+    use clip_core::write::spread::{SpreadLayout, make_spread_template};
+    use clip_core::write::verify::{ExpectedLayer, verify_page, verify_work};
+    let folder = tempfile::tempdir().unwrap();
+    let template_path = trimmed_template(folder.path());
+    let before = digest(&template_path);
+
+    // The two pages' trims meet at the middle; single-page frame settings.
+    let spread_path = folder.path().join("spread.clip");
+    let layout = make_spread_template(&template_path, &spread_path).unwrap();
+    assert_eq!(digest(&template_path), before);
+    assert_eq!(
+        layout,
+        SpreadLayout {
+            width_px: 800,
+            height_px: 560,
+            gutter_px: 400.0,
+            left_dx: 50.0,
+            right_dx: 350.0
+        }
+    );
+    let spread = ClipDocument::read(&spread_path).unwrap();
+    assert!(spread.canvas.is_double_page);
+    assert_eq!((spread.canvas.width_px, spread.canvas.height_px), (800, 560));
+    assert_eq!(spread.canvas.crop_size_px, Some((300, 500)));
+    let (left, flag): (i64, i64) = spread
+        .database()
+        .query_row("SELECT ComicIsLeftPage, CropFrameOptionFlag FROM Canvas", [], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })
+        .unwrap();
+    assert_eq!((left, flag), (0, 17));
+    // Every render offscreen is as wide as the spread (padded to blocks).
+    let mut statement = spread.database().prepare("SELECT Attribute FROM Offscreen").unwrap();
+    let widths: Vec<(u32, u32)> = statement
+        .query_map([], |row| row.get::<_, Vec<u8>>(0))
+        .unwrap()
+        .map(|attribute| {
+            let attribute = attribute.unwrap();
+            let parameters = OffscreenParameters::parse(&attribute).unwrap();
+            // BlockSize: one entry per block, at the end of the attribute.
+            let count = u32::from_be_bytes(
+                attribute[attribute.len() - 4 * (parameters.blocks_x * parameters.blocks_y) as usize - 8..][..4]
+                    .try_into()
+                    .unwrap(),
+            );
+            assert_eq!(count, parameters.blocks_x * parameters.blocks_y);
+            (parameters.width, parameters.blocks_x)
+        })
+        .collect();
+    assert!(!widths.is_empty());
+    assert!(
+        widths.iter().all(|(width, _)| [800, 1024].contains(width)),
+        "{widths:?}"
+    );
+    // 作品情報 and ノンブル for each page; the ノンブル at each binding edge.
+    let nombres = story_texts(&spread_path, 2);
+    assert_eq!(
+        nombres
+            .iter()
+            .map(|(_, x0, x1, right)| (*x0, *x1, *right))
+            .collect::<Vec<_>>(),
+        vec![(430, 440, false), (360, 370, true)]
+    );
+    let stories: Vec<bool> = story_texts(&spread_path, 1).into_iter().map(|story| story.3).collect();
+    assert_eq!(stories, [false, true]);
+
+    // A work: page 1, the spread of pages 2-3, page 4.
+    let cmc_path = build_cmc(&folder.path().join("template").join("name.cmc"), &["page.clip"]);
+    let mut writer = RasterWorkWriter::new(WorkOptions {
+        template: template_path.clone(),
+        out_dir: folder.path().join("out"),
+        name_pattern: DEFAULT_NAME_PATTERN.into(),
+        work: Some(("見開き".into(), cmc_path)),
+        story_index: None,
+        inputs: Vec::new(),
+        donor_sources: Vec::new(),
+    })
+    .unwrap();
+    assert_eq!(writer.first_page_left, Some(true));
+    let canvas = writer.spread_canvas().unwrap();
+    assert_eq!((canvas.width_px, canvas.height_px), (800, 560));
+    let mut wide = RgbaImage::transparent(800, 560);
+    wide.paste(
+        &RgbaImage {
+            width: 40,
+            height: 40,
+            pixels: [0, 0, 0, 255].repeat(1600),
+        },
+        600,
+        100,
+    );
+    let page = |image: RgbaImage| {
+        vec![PageLayer::Raster(RasterLayer {
+            name: "コマ枠".into(),
+            image,
+        })]
+    };
+    writer
+        .write_page(&page(RgbaImage::transparent(400, 560)), None, false)
+        .unwrap();
+    let layers = page(wide);
+    let expected: Vec<ExpectedLayer> = layers.iter().map(|layer| ExpectedLayer::of(layer, 800, 560)).collect();
+    let spread_page = writer.write_page(&layers, None, true).unwrap();
+    let check = verify_page(&spread_page, &expected, &canvas);
+    assert!(check.problems.is_empty(), "{:?}", check.problems);
+    let last = writer
+        .write_page(&page(RgbaImage::transparent(400, 560)), None, false)
+        .unwrap();
+    let report = writer.finish().unwrap();
+    let names: Vec<String> = report
+        .pages
+        .iter()
+        .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names, ["page0001.clip", "page0002.clip", "page0004.clip"]);
+    // Pages 2 (right) and 3 (left) on the spread; page 4 is a right page.
+    let numbers: Vec<(String, bool)> = story_texts(&spread_page, 2)
+        .into_iter()
+        .map(|(text, _, _, right)| (text, right))
+        .collect();
+    assert_eq!(numbers, [("3".to_owned(), false), ("2".to_owned(), true)]);
+    assert_eq!(canvas_page(&spread_page), (1, 0));
+    assert_eq!(canvas_page(&last), (3, 0));
+    let work = report.work.unwrap();
+    let check = verify_work(&work, Some(&report.pages));
+    assert!(check.problems.is_empty(), "{:?}", check.problems);
+    let project = CmcProject::read(&work).unwrap();
+    let spreads: Vec<bool> = project.pages.iter().map(|page| page.page_flag == 1).collect();
+    assert_eq!(spreads, [false, true, false]);
+    assert_eq!(digest(&template_path), before);
 }
