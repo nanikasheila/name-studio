@@ -5,7 +5,17 @@ import { ask, save } from "@tauri-apps/plugin-dialog";
 import { Autosaver, autosaveToFile, formatTime } from "./autosave";
 import { addBrushes, loadLibrary } from "./brush";
 import { BrushDialog } from "./brushdialog";
-import { PageEditor, isTyping, type Selection, type Tool } from "./editor";
+import { dragSort } from "./dragsort";
+import {
+  ERASE_MODE_LABELS,
+  PANEL_CARRIES_KEY,
+  PageEditor,
+  isTyping,
+  writeFlag,
+  type EditorEraseMode,
+  type Selection,
+  type Tool,
+} from "./editor";
 import { SHAPE_LABELS, TAIL_LABELS, defaultTailStyle, resolvedShape } from "./balloon";
 import { ExportDialog } from "./exportdialog";
 import { History } from "./history";
@@ -23,6 +33,8 @@ import {
   isBled,
   rotatePanel,
   spreadPanel,
+  spreadPair,
+  setSpreadPage,
   spreadTwin,
   unspreadPanel,
   type Side,
@@ -37,6 +49,8 @@ import {
   fitLine,
   insertPage,
   movePage,
+  movePagesTo,
+  pageBlock,
   normalize,
   orderPanels,
   pageIndex,
@@ -59,6 +73,7 @@ import {
   type Project,
   type RoughImage,
   type TailStyle,
+  wantsSpread,
 } from "./project";
 
 export const PROJECT_EXTENSION = "namestudio";
@@ -133,6 +148,7 @@ export class Workbench {
         this.editor.showPage(pageNumber);
         this.renderAll();
       },
+      movePages: (first, last, target) => this.movePages(first, last, target),
     });
     this.exportDialog = new ExportDialog({
       project: () => this.state.project,
@@ -362,8 +378,9 @@ export class Workbench {
   private findSelected(s: Selection): boolean {
     const page = this.state.project?.pages.find((p) => p.id === s.pageId);
     if (!page) return false;
-    const list = { panel: page.panels, line: page.lines, stroke: page.strokes, breakout: page.breakouts }[s.kind];
-    return list.some((item: { id: string }) => item.id === s.id);
+    const lists = { panel: page.panels, line: page.lines, stroke: page.strokes, breakout: page.breakouts };
+    if (s.kind === "group") return !!s.items?.every((item) => lists[item.kind].some((x: { id: string }) => x.id === item.id));
+    return lists[s.kind].some((item: { id: string }) => item.id === s.id);
   }
 
   // --- roughs -------------------------------------------------------------------------
@@ -474,9 +491,30 @@ export class Workbench {
       });
       return item;
     });
+    // Drag a page (a 見開き moves as a pair) to put it elsewhere.
+    dragSort(items, {
+      axis: "y",
+      block: (index) => pageBlock(project, index),
+      drop: (first, last, target) => this.movePages(first, last, target),
+    });
     const add = element("button", { textContent: "最後にページを足す" });
     add.addEventListener("click", () => this.edit((p) => insertPage(p, p.pages.length)));
     $("side-pages").replaceChildren(work, ...items, element("div", { className: "side-actions" }, add));
+  }
+
+  /** Move pages by dragging and keep the same pages in view. */
+  movePages(first: number, last: number, target: number): void {
+    const project = this.state.project;
+    if (!project) return;
+    const shown = this.editor.currentPages().map((number) => project.pages[number - 1]?.id);
+    let moved = false;
+    this.edit((p) => (moved = movePagesTo(p, first, last, target)));
+    if (!moved) return;
+    const index = project.pages.findIndex((page) => page.id === shown[0]);
+    if (index >= 0) this.editor.showPage(index + 1);
+    const count = last - first + 1;
+    this.setStatus(`${count === 1 ? `${first + 1} ページ` : `${first + 1}–${last + 1} ページ`}を動かしました（元に戻すは Ctrl+Z）`);
+    this.renderAll();
   }
 
   private renderScript(project: Project): void {
@@ -545,6 +583,17 @@ export class Workbench {
     if (s?.kind === "panel") {
       const target = page.panels.find((p) => p.id === s.id);
       if (target) return panel.replaceChildren(...this.panelInspector(project, page, target.id, target.order));
+    }
+    if (s?.kind === "group") {
+      const strokes = s.items?.filter((item) => item.kind === "stroke").length ?? 0;
+      const lines = (s.items?.length ?? 0) - strokes;
+      const remove = element("button", { className: "danger", textContent: "選んだものを消す（Delete）" });
+      remove.addEventListener("click", () => this.deleteSelection());
+      return panel.replaceChildren(
+        element("h2", { textContent: "範囲選択" }),
+        element("p", { className: "hint", textContent: `ラフの線 ${strokes} 本、セリフ ${lines} 個。ドラッグや矢印キーでまとめて動かせます。` }),
+        remove,
+      );
     }
     if (s?.kind === "stroke") {
       const stroke = page.strokes.find((x) => x.id === s.id);
@@ -783,6 +832,11 @@ export class Workbench {
       ? button("見開きをやめる", (p) => unspreadPanel(p, page, panel, firstAlone), "向かいのページの半分を消して、このページだけのコマに戻す")
       : button("見開きにする", (p) => spreadPanel(p, page, panel, firstAlone), "のどをまたいで向かいのページまで伸ばす");
     spread.disabled = !panel.spread && !facingPage(project, page, firstAlone);
+    const carries = element("input", { type: "checkbox", checked: this.editor.panelCarries });
+    carries.addEventListener("change", () => {
+      this.editor.panelCarries = carries.checked;
+      writeFlag(PANEL_CARRIES_KEY, carries.checked);
+    });
     const note = element("input", { type: "text", value: panel.note ?? "", placeholder: "例: 俯瞰で教室全体 / 間" });
     this.liveText(note, (value) => {
       if (value) panel.note = value;
@@ -797,11 +851,12 @@ export class Workbench {
       element("div", { className: "row" }, ...bleeds),
       spread,
       element("h3", { textContent: "形と重なり" }),
+      element("label", { className: "inline" }, carries, "動かす・形を変えるとき、中のセリフとラフ線も一緒に"),
       element("div", { className: "row" }, tiltLeft, tiltRight, raise, lower),
       inset,
       element("p", {
         className: "hint",
-        textContent: `セリフ ${lines} 件。角の四角をドラッグすると形を変えられます（枠に吸い付きます。Alt で吸い付かない）。重なり ${panel.z ?? 0}。`,
+        textContent: `セリフ ${lines} 件。角の四角をドラッグすると形を変えられます（枠に吸い付きます。Alt で吸い付かない）。右上の番号を別のコマへドラッグ（または Alt + ドラッグ）すると中身を入れ替えます。重なり ${panel.z ?? 0}。`,
       }),
       remove,
     ];
@@ -849,6 +904,24 @@ export class Workbench {
       this.edit((p) => removePage(p, page.id));
     });
     remove.className = "danger";
+    const pair = spreadPair(project, page, this.editor.firstAlone);
+    const spreadSection: HTMLElement[] = [];
+    if (pair) {
+      const pairIndex = pageIndex(project, pair[0].id);
+      const forced = wantsSpread(project, pairIndex) && !pair[0].joinNext;
+      const box = element("input", { type: "checkbox", checked: wantsSpread(project, pairIndex), disabled: forced });
+      box.addEventListener("change", () => this.edit((p) => setSpreadPage(p, page, this.editor.firstAlone, box.checked)));
+      spreadSection.push(
+        element("h3", { textContent: "見開き" }),
+        element("label", { className: "inline" }, box, `${pairIndex + 1}–${pairIndex + 2} ページを CSP で 1 枚の見開きページにする`),
+        element("p", {
+          className: "hint",
+          textContent: forced
+            ? "ノドをまたぐコマがあるので、見開きページとして書き出します。"
+            : "書き出すと、CSP の見開きページ（幅 2 倍の 1 ファイル）になります。ノドをまたいで線やコマを描けます。",
+        }),
+      );
+    }
     return [
       element("h2", { textContent: `${index + 1} ページ` }),
       element("label", {}, "メモ", memo),
@@ -858,6 +931,7 @@ export class Workbench {
       element("h3", { textContent: "コマ割りの型" }),
       element("div", { className: "row" }, pattern, applyButton),
       patternNote,
+      ...spreadSection,
       element("h3", { textContent: "ページ" }),
       element("div", { className: "row" }, before, after),
       element("div", { className: "row" }, earlier, later),
@@ -881,6 +955,12 @@ export class Workbench {
       if (s.kind === "line") page.lines = page.lines.filter((line) => line.id !== s.id);
       if (s.kind === "stroke") page.strokes = page.strokes.filter((stroke) => stroke.id !== s.id);
       if (s.kind === "breakout") page.breakouts = page.breakouts.filter((breakout) => breakout.id !== s.id);
+      if (s.kind === "group") {
+        const ids = new Set(s.items?.map((item) => item.id));
+        page.strokes = page.strokes.filter((stroke) => !ids.has(stroke.id));
+        page.lines = page.lines.filter((line) => !ids.has(line.id));
+        for (const line of page.lines) if (line.linkTo && ids.has(line.linkTo)) delete line.linkTo;
+      }
       if (s.kind === "line") {
         // Balloons joined to the removed one come loose.
         for (const line of page.lines) if (line.linkTo === s.id) delete line.linkTo;
@@ -901,11 +981,21 @@ export class Workbench {
 
   // --- pens and erasers -------------------------------------------------------------------
 
+  /** Switch how the eraser erases, keeping the tool in hand. */
+  setEraseMode(mode: EditorEraseMode): void {
+    this.editor.eraseMode = mode;
+    this.renderBrushBar();
+    this.editor.draw();
+    this.setStatus(`消し方: ${ERASE_MODE_LABELS[mode]}`);
+  }
+
   /** Use a brush for its kind of tool, with its own size. */
   private useBrush(brush: Brush | null, kind: "pen" | "eraser" = brush?.kind ?? "pen"): void {
     if (kind === "eraser") {
       this.editor.eraserBrush = brush?.id ?? null;
       if (brush) this.editor.eraserSizeMm = brush.sizeMm;
+      // A CSP vector eraser brings its way of erasing; it can be switched after.
+      if (brush?.erase) this.editor.eraseMode = brush.erase;
     } else {
       this.editor.penBrush = brush?.id ?? null;
       this.editor.penWidthMm = brush ? brush.sizeMm : 0.4;
@@ -927,7 +1017,7 @@ export class Workbench {
     const select = $<HTMLSelectElement>("brush-select");
     select.replaceChildren();
     const option = (value: string, label: string) => Object.assign(document.createElement("option"), { value, textContent: label });
-    select.append(option("", kind === "pen" ? "標準のペン" : "標準の消しゴム（線ごと）"));
+    select.append(option("", kind === "pen" ? "標準のペン" : "標準の消しゴム"));
     for (const brush of project.brushes.filter((b) => b.kind === kind)) select.append(option(brush.id, brush.name));
     const others = loadLibrary()
       .map((brush, index) => ({ brush, index }))
@@ -946,6 +1036,10 @@ export class Workbench {
     const sizeMm = kind === "pen" ? this.editor.penWidthMm : this.editor.eraserSizeMm;
     if (document.activeElement !== size) size.value = plainEraser ? "" : String(Math.round(sizeMm * 100) / 100);
     $("brush-tip-label").hidden = !current?.tip;
+    $("erase-modes").hidden = kind !== "eraser";
+    for (const mode of Object.keys(ERASE_MODE_LABELS) as EditorEraseMode[]) {
+      $(`erase-${mode}`).classList.toggle("active", this.editor.eraseMode === mode);
+    }
     $<HTMLInputElement>("brush-tip").checked = !!current?.tip?.enabled;
   }
 
@@ -971,6 +1065,9 @@ export class Workbench {
       $(`tool-${name}`).addEventListener("click", () => this.setTool(name));
     }
     $("undo").addEventListener("click", () => this.undo());
+    for (const mode of Object.keys(ERASE_MODE_LABELS) as EditorEraseMode[]) {
+      $(`erase-${mode}`).addEventListener("click", () => this.setEraseMode(mode));
+    }
     $<HTMLSelectElement>("brush-select").addEventListener("change", (event) => {
       this.chooseBrush((event.target as HTMLSelectElement).value);
     });
@@ -1045,6 +1142,12 @@ export class Workbench {
     if (this.view !== "edit") return false;
     const tools: Record<string, Tool> = { v: "select", k: "cut", t: "text", p: "pen", e: "eraser", b: "breakout" };
     const tool = tools[event.key.toLowerCase()];
+    if (tool === "eraser" && this.editor.tool === "eraser") {
+      // E again: the next way of erasing, as CSP's sub tools cycle.
+      const modes = Object.keys(ERASE_MODE_LABELS) as EditorEraseMode[];
+      this.setEraseMode(modes[(modes.indexOf(this.editor.eraseMode) + 1) % modes.length]);
+      return true;
+    }
     if (tool) {
       this.setTool(tool);
       return true;

@@ -36,6 +36,8 @@ export interface CspSubTool {
   hardness: number;
   antiAlias: number;
   stabilization: number;
+  stabilizationBySpeed?: boolean;
+  postCorrection?: number;
   taperIn: CspLength | null;
   taperOut: CspLength | null;
   interval: number;
@@ -80,6 +82,8 @@ export function brushFromSubTool(tool: CspSubTool, dpi: number, id: string): Bru
     opacity: tool.opacity,
     hardness: tool.hardness,
     stabilization: tool.stabilization,
+    ...(tool.stabilizationBySpeed ? { stabilizationBySpeed: true } : {}),
+    ...(tool.postCorrection ? { postCorrection: tool.postCorrection } : {}),
     taperInMm: lengthMm(tool.taperIn, dpi),
     taperOutMm: lengthMm(tool.taperOut, dpi),
     thickness: tool.thickness || 100,
@@ -258,9 +262,35 @@ export function tiltOf(event: PointerEvent): number {
   return Math.max(0, Math.min(1, Math.atan(Math.hypot(x, y)) / (Math.PI / 2)));
 }
 
-/** 手ブレ補正 while drawing: how far each new point moves towards the pen (1 = all the way). */
-export function followFactor(stabilization: number): number {
-  return 1 / (1 + Math.max(0, stabilization) / 4);
+/**
+ * 手ブレ補正 while drawing: how far each new point moves towards the pen (1 = all the way).
+ * With 速度による手ブレ補正 a fast pen (speed 0–1 of {@link FULL_SPEED_MM}) is held back less,
+ * so quick lines keep up while slow ones stay steady.
+ */
+export function followFactor(stabilization: number, speed = 0, bySpeed = false): number {
+  const strength = Math.max(0, stabilization) * (bySpeed ? 1 - 0.75 * Math.min(1, Math.max(0, speed)) : 1);
+  return 1 / (1 + strength / 4);
+}
+
+/**
+ * 後補正: once the line is drawn, smooth its wobble (positions only; the ends stay put).
+ * `strength` is CSP's 0–100; every 5 is one more pass.
+ */
+export function postCorrect<T extends number[]>(points: T[], strength: number): T[] {
+  const passes = Math.min(20, Math.round(Math.max(0, strength) / 5));
+  if (passes === 0 || points.length < 3) return points;
+  let current = points;
+  for (let pass = 0; pass < passes; pass++) {
+    current = current.map((point, i) => {
+      if (i === 0 || i === current.length - 1) return point;
+      const [before, after] = [current[i - 1], current[i + 1]];
+      const moved = [...point] as T;
+      moved[0] = before[0] * 0.25 + point[0] * 0.5 + after[0] * 0.25;
+      moved[1] = before[1] * 0.25 + point[1] * 0.5 + after[1] * 0.25;
+      return moved;
+    });
+  }
+  return current;
 }
 
 // --- brushes kept between projects ---------------------------------------------------

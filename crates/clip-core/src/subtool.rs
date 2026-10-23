@@ -24,7 +24,8 @@
 //! - `BrushSizeEffector`, `BrushOpacityEffector`, `BrushFlowEffector`: how pen
 //!   pressure and the like change the value; see [`Dynamics::parse`].
 //! - `Opacity` (%), `BrushHardness` (%), `AntiAlias` (0..3),
-//!   `FlickerReduction` (手ブレ補正, 0..100).
+//!   `FlickerReduction` (手ブレ補正, 0..100), `FlickerReductionBySpeed` (速度による手ブレ補正),
+//!   `BrushUseRevision` with `BrushRevision` (後補正 and its strength, 0..100).
 //! - `BrushUseIn` / `BrushUseOut` with `BrushInLength`, `BrushOutLength` and
 //!   their units: 入り抜き (tapering at both ends).
 //! - `BrushInterval` (% of the size between stamps), `BrushThickness`
@@ -235,6 +236,10 @@ pub struct SubTool {
     pub anti_alias: i64,
     /// 手ブレ補正, 0..100.
     pub stabilization: f64,
+    /// 速度による手ブレ補正: steadier the faster the pen moves.
+    pub stabilization_by_speed: bool,
+    /// 後補正: the strength the line is smoothed with once drawn (0 when off).
+    pub post_correction: f64,
     pub taper_in: Option<Length>,
     pub taper_out: Option<Length>,
     /// Stamp spacing in % of the size.
@@ -438,6 +443,12 @@ fn sub_tool(
         hardness: percent(variant, "BrushHardness", 1.0),
         anti_alias: variant.int("AntiAlias"),
         stabilization: variant.real("FlickerReduction"),
+        stabilization_by_speed: variant.int("FlickerReductionBySpeed") != 0,
+        post_correction: if variant.int("BrushUseRevision") != 0 {
+            variant.real("BrushRevision")
+        } else {
+            0.0
+        },
         taper_in: taper("BrushUseIn", "BrushInLength", "BrushInLengthUnit"),
         taper_out: taper("BrushUseOut", "BrushOutLength", "BrushOutLengthUnit"),
         interval: real_or(variant, "BrushInterval", 10.0),
@@ -777,7 +788,7 @@ mod tests {
             .execute_batch(
                 "CREATE TABLE Manager(_PW_ID INTEGER PRIMARY KEY AUTOINCREMENT, ToolType INTEGER, Version INTEGER, RootUuid BLOB);
                  CREATE TABLE Node(_PW_ID INTEGER PRIMARY KEY AUTOINCREMENT, NodeUuid BLOB, NodeName TEXT, NodeInputOp INTEGER, NodeOutputOp INTEGER, NodeFirstChildUuid BLOB, NodeNextUuid BLOB, NodeVariantID INTEGER);
-                 CREATE TABLE Variant(_PW_ID INTEGER PRIMARY KEY AUTOINCREMENT, VariantID INTEGER, Opacity INTEGER, CompositeMode INTEGER, FlickerReduction INTEGER, BrushSize REAL, BrushSizeUnit INTEGER, BrushSizeEffector BLOB, BrushHardness INTEGER, BrushUsePatternImage INTEGER, BrushPatternImageArray BLOB, BrushUseIn INTEGER, BrushInLength REAL, BrushInLengthUnit INTEGER, BrushUseOut INTEGER, BrushOutLength REAL, BrushOutLengthUnit INTEGER, BrushUseVectorEraser INTEGER, BrushVectorEraserType INTEGER);
+                 CREATE TABLE Variant(_PW_ID INTEGER PRIMARY KEY AUTOINCREMENT, VariantID INTEGER, Opacity INTEGER, CompositeMode INTEGER, FlickerReduction INTEGER, BrushSize REAL, BrushSizeUnit INTEGER, BrushSizeEffector BLOB, BrushHardness INTEGER, BrushUsePatternImage INTEGER, BrushPatternImageArray BLOB, BrushUseIn INTEGER, BrushInLength REAL, BrushInLengthUnit INTEGER, BrushUseOut INTEGER, BrushOutLength REAL, BrushOutLengthUnit INTEGER, BrushUseVectorEraser INTEGER, BrushVectorEraserType INTEGER, FlickerReductionBySpeed INTEGER, BrushUseRevision INTEGER, BrushRevision INTEGER);
                  CREATE TABLE MaterialFile(_PW_ID INTEGER PRIMARY KEY AUTOINCREMENT, InstallFolder INTEGER, OriginalPath TEXT, OldMaterial INTEGER, FileData BLOB, CatalogPath TEXT, MaterialUuid TEXT);",
             )
             .unwrap();
@@ -800,7 +811,7 @@ mod tests {
         pattern.extend([0, 0]);
         connection
             .execute(
-                "INSERT INTO Variant VALUES (NULL, 87, 80, ?1, 6, 5.0, 0, ?2, 100, 1, ?3, 1, 20.0, 0, 1, 1.5, 2, ?4, ?5)",
+                "INSERT INTO Variant VALUES (NULL, 87, 80, ?1, 6, 5.0, 0, ?2, 100, 1, ?3, 1, 20.0, 0, 1, 1.5, 2, ?4, ?5, 1, 1, 30)",
                 rusqlite::params![
                     composite,
                     effector(48, 0x10, 10, &[[0.0, 0.0], [0.6, 0.1], [1.0, 1.0]]),
@@ -843,6 +854,8 @@ mod tests {
         assert_eq!(size.pressure_curve.len(), 3);
         assert_eq!(pen.opacity, 0.8);
         assert_eq!(pen.stabilization, 6.0);
+        assert!(pen.stabilization_by_speed);
+        assert_eq!(pen.post_correction, 30.0);
         assert_eq!(
             pen.taper_in,
             Some(Length {

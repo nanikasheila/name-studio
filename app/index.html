@@ -50,6 +50,12 @@
           <label class="size" title="太さ（mm）"><input id="brush-size" type="number" min="0.05" max="30" step="0.05" /> mm</label>
           <label class="check" id="brush-tip-label" title="CSP の素材のサムネイルから作った先端の形で描く"><input type="checkbox" id="brush-tip" /> 先端</label>
           <button id="brush-import" title="CLIP STUDIO PAINT のペン・消しゴムを取り込む">取り込み…</button>
+          <div class="segmented erase-modes" id="erase-modes" title="消し方（消しゴムで E を押すたびに切り替え）。ペンの消しゴム側でも同じ消し方になります">
+            <button id="erase-touched" title="触れた部分だけ消す">触れた部分</button>
+            <button id="erase-intersection" title="触れた線を、ほかの線との交点まで消す">交点まで</button>
+            <button id="erase-whole" title="触れた線を丸ごと消す">線全体</button>
+            <button id="erase-lasso" title="囲んだ中の線を消す">囲って消す</button>
+          </div>
         </div>
         <button id="undo" title="元に戻す（Ctrl+Z）" disabled>↶</button>
         <button id="redo" title="やり直す（Ctrl+Shift+Z）" disabled>↷</button>

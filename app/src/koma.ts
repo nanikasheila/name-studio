@@ -235,6 +235,21 @@ export function facingPage(project: Project, page: Page, firstAlone: boolean): {
   return { page: project.pages[(right ? pair[1] : pair[0]) - 1], gutter: right ? "left" : "right" };
 }
 
+/** The two facing pages `page` is on, in page order, or null when it faces none. */
+export function spreadPair(project: Project, page: Page, firstAlone: boolean): [Page, Page] | null {
+  const facing = facingPage(project, page, firstAlone);
+  if (!facing) return null;
+  return pageIndex(project, page.id) < pageIndex(project, facing.page.id) ? [page, facing.page] : [facing.page, page];
+}
+
+/** 見開きページ: whether `page` and its facing page go to CSP as one spread page. */
+export function setSpreadPage(project: Project, page: Page, firstAlone: boolean, joined: boolean): void {
+  const pair = spreadPair(project, page, firstAlone);
+  if (!pair) return;
+  if (joined) pair[0].joinNext = true;
+  else delete pair[0].joinNext;
+}
+
 /** The other half of a 見開き panel, on the facing page. */
 export function spreadTwin(project: Project, page: Page, panel: Panel): { page: Page; panel: Panel } | null {
   if (!panel.spread) return null;
@@ -269,6 +284,8 @@ export function spreadPanel(project: Project, page: Page, panel: Panel, firstAlo
   facing.page.panels.push(twin);
   orderPanels(facing.page, project.binding);
   assignPanels(facing.page);
+  // A panel across the gutter needs the two pages to be one CSP page.
+  setSpreadPage(project, page, firstAlone, true);
   return twin;
 }
 

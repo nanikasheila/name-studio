@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import { History } from "./history";
 import {
   addCharacter,
+  boxCenter,
+  carryContents,
+  followPanel,
+  movePanel,
+  panelContents,
   addLine,
   addPanel,
   addScene,
@@ -9,11 +14,18 @@ import {
   area,
   basicBox,
   cutPanels,
+  eraseInside,
   eraseStrokes,
   insertPage,
   movePage,
+  movePagesTo,
+  moveScene,
+  pageBlock,
+  swapPanelContents,
   newProject,
   orderPanels,
+  pickInside,
+  splitAtX,
   rectShape,
   removeCharacter,
   removePage,
@@ -177,5 +189,164 @@ describe("History", () => {
     value = history.redo(value)!;
     expect(value.n).toBe(2);
     expect(history.canRedo).toBe(false);
+  });
+});
+
+describe("範囲選択と囲って消す", () => {
+  function setup() {
+    const project = newProject("t", 1);
+    const page = project.pages[0];
+    addStroke(project, page, [[0, 5, 1], [10, 5, 1]], 0.2); // crosses the box
+    addStroke(project, page, [[4, 4, 1], [6, 6, 1]], 0.2); // inside
+    addStroke(project, page, [[20, 20, 1], [30, 30, 1]], 0.2); // outside
+    return { project, page };
+  }
+  const box = rectShape([3, 3, 7, 7]);
+
+  it("erases only inside the outline, cutting lines at its edge", () => {
+    const { project, page } = setup();
+    const [crossing, , outside] = page.strokes;
+    expect(eraseInside(project, page, box)).toBe(2);
+    expect(page.strokes).toHaveLength(3);
+    const pieces = page.strokes.filter((s) => s.points[0][1] === 5);
+    expect(pieces).toHaveLength(2);
+    expect(pieces[0].id).toBe(crossing.id);
+    expect(pieces[0].points[pieces[0].points.length - 1][0]).toBeCloseTo(3, 0);
+    expect(pieces[1].points[0][0]).toBeCloseTo(7, 0);
+    expect(pieces[0].cut).toEqual([false, true]);
+    expect(pieces[1].cut).toEqual([true, false]);
+    expect(page.strokes).toContain(outside);
+    expect(eraseInside(project, page, rectShape([50, 50, 60, 60]))).toBe(0);
+  });
+
+  it("picks lines mostly inside and dialogue whose box centre is", () => {
+    const { project, page } = setup();
+    const line = addLine(project, page, [5, 5]);
+    const picked = pickInside(page, box);
+    expect(picked.strokes).toEqual([page.strokes[1].id]);
+    expect(picked.lines).toEqual(line.box[0] + line.box[2] < 14 ? [line.id] : []);
+  });
+});
+
+describe("見開きのノド", () => {
+  it("splits a line where it crosses the gutter, sharing the crossing point", () => {
+    const runs = splitAtX(
+      [
+        [200, 10, 0.5],
+        [250, 20, 0.5],
+        [300, 30, 0.5],
+        [330, 30, 0.5],
+      ],
+      275,
+    );
+    expect(runs.map((run) => run.beyond)).toEqual([false, true]);
+    expect(runs[0].points.at(-1)).toEqual([275, 25, 0.5]);
+    expect(runs[1].points[0]).toEqual([275, 25, 0.5]);
+    expect(runs[1].points.at(-1)).toEqual([330, 30, 0.5]);
+  });
+
+  it("keeps a line on one side whole, and drops a crossing with nothing after it", () => {
+    expect(splitAtX([[1, 1], [2, 2]] as never, 10)).toHaveLength(1);
+    const back = splitAtX([[5, 0], [15, 0], [5, 0]] as never, 10);
+    expect(back.map((run) => run.beyond)).toEqual([false, true, false]);
+  });
+});
+
+describe("コマに中身が付いてくる", () => {
+  const setup = () => {
+    const project = newProject("t", 1);
+    const page = project.pages[0];
+    const panel = addPanel(project, page, rectShape([10, 10, 110, 110]));
+    const other = addPanel(project, page, rectShape([120, 10, 170, 110]));
+    const inside = addStroke(project, page, [[40, 40, 0.5], [60, 40, 0.5]], 0.5)!;
+    const outside = addStroke(project, page, [[130, 40, 0.5], [150, 40, 0.5]], 0.5)!;
+    const line = addLine(project, page, [50, 60], "セリフ");
+    return { project, page, panel, other, inside, outside, line };
+  };
+
+  it("carries what is inside the panel, not what is in another", () => {
+    const { page, panel, inside, outside, line } = setup();
+    const contents = panelContents(page, panel);
+    expect(contents.strokes).toEqual([inside.id]);
+    expect(contents.lines).toEqual([line.id]);
+    expect(contents.strokes).not.toContain(outside.id);
+  });
+
+  it("moves the contents with the panel and stretches positions with its corner", () => {
+    const { page, panel, inside, outside, line } = setup();
+    const carried = carryContents(page, panel);
+    const lineCentre = boxCenter(line.box);
+    movePanel(panel, 5, 7);
+    followPanel(page, panel, carried);
+    expect(inside.points[0].slice(0, 2)).toEqual([45, 47]);
+    expect(outside.points[0].slice(0, 2)).toEqual([130, 40]);
+    expect(boxCenter(line.box)).toEqual([lineCentre[0] + 5, lineCentre[1] + 7]);
+    // Twice as wide: the stroke's centre goes twice as far from the left edge; its shape keeps its size.
+    const before = carryContents(page, panel);
+    panel.shape = rectShape([15, 17, 215, 117]);
+    followPanel(page, panel, before);
+    expect(inside.points.map((p) => Math.round(p[0]))).toEqual([85, 105]);
+  });
+});
+
+describe("入れ替え", () => {
+  const ids = (project: ReturnType<typeof newProject>) => project.pages.map((page) => page.id);
+
+  it("moves pages by dragging, keeping a 見開き together", () => {
+    const project = newProject("t", 6);
+    const [p1, p2, p3, p4, p5, p6] = ids(project);
+    project.pages[1].joinNext = true;
+    expect(pageBlock(project, 2)).toEqual([1, 2]);
+    expect(pageBlock(project, 1)).toEqual([1, 2]);
+    expect(movePagesTo(project, 1, 2, 6)).toBe(true);
+    expect(ids(project)).toEqual([p1, p4, p5, p6, p2, p3]);
+    // Dropping between the two halves of a 見開き goes before the pair.
+    expect(movePagesTo(project, 0, 0, 5)).toBe(true);
+    expect(ids(project)).toEqual([p4, p5, p6, p1, p2, p3]);
+    expect(movePagesTo(project, 0, 0, 1)).toBe(false);
+  });
+
+  it("keeps scenes on the pages that stay; a moved page joins the scene it lands in", () => {
+    const project = newProject("t", 6);
+    const [p1, p2, p3, p4, p5, p6] = ids(project);
+    const a = addScene(project, p1, p3, "A");
+    const b = addScene(project, p4, p6, "B");
+    movePagesTo(project, 0, 0, 5);
+    expect(ids(project)).toEqual([p2, p3, p4, p5, p1, p6]);
+    expect([a.firstPage, a.lastPage]).toEqual([p2, p3]);
+    expect([b.firstPage, b.lastPage]).toEqual([p4, p6]);
+    expect(sceneOf(project, p1)).toBe(b);
+  });
+
+  it("moves a whole scene before another", () => {
+    const project = newProject("t", 6);
+    const [p1, p2, p3, p4, p5, p6] = ids(project);
+    const a = addScene(project, p1, p2, "A");
+    const b = addScene(project, p3, p4, "B");
+    const c = addScene(project, p5, p6, "C");
+    expect(moveScene(project, c.id, 0)).toBe(true);
+    expect(ids(project)).toEqual([p5, p6, p1, p2, p3, p4]);
+    expect(project.scenes.map((scene) => scene.title)).toEqual(["C", "A", "B"]);
+    expect([a.firstPage, a.lastPage, b.firstPage, b.lastPage]).toEqual([p1, p2, p3, p4]);
+    expect(moveScene(project, a.id, project.pages.length)).toBe(true);
+    expect(ids(project)).toEqual([p5, p6, p3, p4, p1, p2]);
+  });
+
+  it("swaps what two panels hold, also across pages", () => {
+    const project = newProject("t", 2);
+    const [page, next] = project.pages;
+    const big = addPanel(project, page, rectShape([10, 10, 110, 110]));
+    const small = addPanel(project, page, rectShape([120, 10, 170, 60]));
+    const there = addPanel(project, next, rectShape([10, 10, 60, 60]));
+    const drawing = addStroke(project, page, [[40, 40, 0.5], [60, 40, 0.5]], 0.5)!;
+    const said = addLine(project, page, [140, 30], "小さいコマ");
+    swapPanelContents(page, big, page, small);
+    expect(panelContents(page, small).strokes).toEqual([drawing.id]);
+    expect(panelContents(page, big).lines).toEqual([said.id]);
+    expect(said.panel).toBe(big.id);
+    swapPanelContents(page, small, next, there);
+    expect(page.strokes).toEqual([]);
+    expect(next.strokes).toEqual([drawing]);
+    expect(panelContents(next, there).strokes).toEqual([drawing.id]);
   });
 });

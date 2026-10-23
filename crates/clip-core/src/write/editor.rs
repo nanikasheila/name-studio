@@ -380,6 +380,21 @@ impl ClipEditor {
         row_hook: Option<&mut RowHook<'_>>,
         payload_hook: Option<&PayloadHook<'_>>,
     ) -> Result<i64> {
+        let render_from = self.first_raster_layer()?;
+        self.add_layer_rendered_like(source, source_payload, layer_id, row_hook, payload_hook, render_from)
+    }
+
+    /// [`Self::add_layer`] with render offscreens cloned from this file's
+    /// layer `render_from` instead of its raster layer.
+    pub fn add_layer_rendered_like(
+        &mut self,
+        source: &Connection,
+        source_payload: &PayloadSource<'_>,
+        layer_id: i64,
+        row_hook: Option<&mut RowHook<'_>>,
+        payload_hook: Option<&PayloadHook<'_>>,
+        render_from: i64,
+    ) -> Result<i64> {
         let mut values = select_values(
             source,
             "SELECT * FROM Layer WHERE MainId = ?1",
@@ -410,7 +425,7 @@ impl ClipEditor {
             self.externals.insert(id, payload);
         }
         let mut values = translated;
-        let (mipmap, thumbnail) = self.clone_render_offscreens(new_id)?;
+        let (mipmap, thumbnail) = self.clone_render_offscreens(new_id, render_from)?;
         let zero = || Value::Integer(0);
         for (column, value) in [
             ("LayerRenderMipmap", Value::Integer(mipmap)),
@@ -437,8 +452,8 @@ impl ClipEditor {
         Ok(new_id)
     }
 
-    fn clone_render_offscreens(&mut self, owner: i64) -> Result<(i64, i64)> {
-        let template = self.layer_row(self.first_raster_layer()?)?;
+    fn clone_render_offscreens(&mut self, owner: i64, from: i64) -> Result<(i64, i64)> {
+        let template = self.layer_row(from)?;
         let externals = &self.externals;
         let payload = |id: &str| externals.get(id).map(<[u8]>::to_vec);
         let mut copier = RowCopier::new(&self.db, &payload, None, self.canvas_id)?;

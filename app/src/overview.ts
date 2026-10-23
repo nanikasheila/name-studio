@@ -2,7 +2,8 @@
 // 感情曲線 (how each character feels page by page) and 時系列 (story time
 // against page order). Charts are SVG with a hover tooltip; values are also
 // editable in plain tables.
-import { addScene, bounds, pageIndex, setEmotion, sortScenes, type Project } from "./project";
+import { dragSort } from "./dragsort";
+import { addScene, bounds, moveScene, pageBlock, pageIndex, setEmotion, sortScenes, type Project } from "./project";
 import { emotionSeries, pageStats, sceneSpans, timeline, uncoveredRuns, type SceneSpan } from "./story";
 
 export type OverviewKind = "structure" | "emotion" | "timeline";
@@ -13,6 +14,8 @@ export interface OverviewHost {
   edit(change: (project: Project) => void): void;
   /** Open a page (1-based) in the editor. */
   openPage(pageNumber: number): void;
+  /** Pages `first`..`last` dragged to before page `target`. */
+  movePages(first: number, last: number, target: number): void;
 }
 
 const SVG = "http://www.w3.org/2000/svg";
@@ -161,7 +164,7 @@ export class Overview {
       html("h3", { textContent: "ページごとの字数（棒をクリックでそのページへ）" }),
       chart,
       ...this.sceneTable(project, spans),
-      html("h3", { textContent: "ページ一覧" }),
+      html("h3", { textContent: "ページ一覧（ドラッグで入れ替え）" }),
       this.thumbnails(project, spans),
     ];
   }
@@ -209,6 +212,7 @@ export class Overview {
       return html(
         "tr",
         {},
+        html("td", { className: "drag-handle", title: "ドラッグでシーンごとページを入れ替え", textContent: "⋮⋮" }),
         html("td", {}, title),
         html("td", { className: "range" }, first, "〜", last),
         html("td", {}, time),
@@ -229,8 +233,17 @@ export class Overview {
     const head = html(
       "tr",
       {},
-      ...["シーン", "ページ", "物語の中の時", "時系列の順", "あらすじ", ""].map((label) => html("th", { textContent: label })),
+      ...["", "シーン", "ページ", "物語の中の時", "時系列の順", "あらすじ", ""].map((label) => html("th", { textContent: label })),
     );
+    // Drag a scene by its handle: its pages move before the scene it is dropped on.
+    dragSort(rows, {
+      axis: "y",
+      handle: (row) => row.firstElementChild as HTMLElement,
+      drop: (first, _last, target) => {
+        const page = target < spans.length ? spans[target].first : project.pages.length;
+        this.host.edit((p) => moveScene(p, spans[first].scene.id, page));
+      },
+    });
     const uncovered = uncoveredRuns(project);
     const note = uncovered.length
       ? html("p", { className: "hint", textContent: `シーンに入っていないページ: ${uncovered.map(([a, b]) => (a === b ? `${a + 1}` : `${a + 1}〜${b + 1}`)).join("、")}` })
@@ -301,6 +314,12 @@ export class Overview {
       );
       card.addEventListener("click", () => this.host.openPage(index + 1));
       grid.append(card);
+    });
+    // Drag a page (a 見開き moves as a pair) to put it elsewhere.
+    dragSort([...grid.children] as HTMLElement[], {
+      axis: "x",
+      block: (index) => pageBlock(project, index),
+      drop: (first, last, target) => this.host.movePages(first, last, target),
     });
     return grid;
   }

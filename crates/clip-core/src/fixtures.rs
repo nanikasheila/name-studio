@@ -212,12 +212,37 @@ fn utf16(name: &str) -> Vec<u8> {
     data
 }
 
+/// An offscreen attribute laid out as CSP writes it: a header with the
+/// lengths of the Parameter, InitColor and BlockSize sections, then those
+/// sections (BlockSize lists each block record's length, 0x68 when empty).
 pub fn offscreen_attribute(width: u32, height: u32) -> Vec<u8> {
-    let mut data = vec![0; 16];
-    data.extend(utf16("Parameter"));
-    for value in [width, height, width.div_ceil(256), height.div_ceil(256), 1, 1, 4, 5] {
-        data.extend(value.to_be_bytes());
+    let (blocks_x, blocks_y) = (width.div_ceil(256), height.div_ceil(256));
+    let mut parameter = utf16("Parameter");
+    for value in [width, height, blocks_x, blocks_y, 0x21, 1, 4, 5] {
+        parameter.extend(value.to_be_bytes());
     }
+    parameter.extend([
+        0, 1, 0, 0, 0, 0, 0, 4, 0, 0, 4, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 8, 0,
+        0,
+    ]);
+    let mut init = utf16("InitColor");
+    for value in [0x14u32, 0, 0, 0, 0, 4] {
+        init.extend(value.to_be_bytes());
+    }
+    let mut blocks = utf16("BlockSize");
+    for value in [12, blocks_x * blocks_y, 4] {
+        blocks.extend(value.to_be_bytes());
+    }
+    for _ in 0..blocks_x * blocks_y {
+        blocks.extend(0x68u32.to_be_bytes());
+    }
+    let mut data = Vec::new();
+    for length in [16, parameter.len(), init.len(), blocks.len()] {
+        data.extend((length as u32).to_be_bytes());
+    }
+    data.extend(parameter);
+    data.extend(init);
+    data.extend(blocks);
     data
 }
 

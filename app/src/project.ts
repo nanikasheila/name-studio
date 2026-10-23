@@ -155,6 +155,10 @@ export interface Brush {
   hardness: number;
   /** 手ブレ補正, 0..100. */
   stabilization: number;
+  /** 速度による手ブレ補正: steadier the faster the pen moves. */
+  stabilizationBySpeed?: boolean;
+  /** 後補正: smoothing applied once a line is drawn, 0..100. */
+  postCorrection?: number;
   taperInMm: number;
   taperOutMm: number;
   /** Tip height in % of its width, and its angle in degrees. */
@@ -181,6 +185,8 @@ export interface Page {
   strokes: Stroke[];
   roughs: RoughImage[];
   breakouts: Breakout[];
+  /** 見開きページ: this page and the next (its facing page) go to CSP as one spread page. */
+  joinNext?: boolean;
 }
 
 export interface Character {
@@ -963,4 +969,283 @@ export function script(project: Project): { page: number; line: Line }[] {
 /** Count of characters spoken per page, a rough measure of how text heavy it is. */
 export function textAmount(page: Page): number {
   return page.lines.reduce((sum, line) => sum + [...line.text.replace(/\s/g, "")].length, 0);
+}
+
+/** 囲って消す: remove the parts of rough lines inside `shape` (as CSP deletes
+ * a selection on a vector layer); returns how many lines changed. */
+export function eraseInside(project: Project, page: Page, shape: readonly Point[]): number {
+  if (shape.length < 3) return 0;
+  const [x0, y0, x1, y1] = bounds([...shape]);
+  let changed = 0;
+  const result: Stroke[] = [];
+  for (const stroke of page.strokes) {
+    const [sx0, sy0, sx1, sy1] = bounds(stroke.points.map(([x, y]) => [x, y] as Point));
+    const near = sx1 >= x0 && sx0 <= x1 && sy1 >= y0 && sy0 <= y1;
+    if (!near) {
+      result.push(stroke);
+      continue;
+    }
+    const pieces = cutInside(stroke.points, shape);
+    if (pieces.length === 1 && !pieces[0].cutStart && !pieces[0].cutEnd && pieces[0].points.length === stroke.points.length) {
+      result.push(stroke);
+      continue;
+    }
+    changed++;
+    for (const [index, piece] of pieces.entries()) {
+      const part: Stroke = { ...stroke, id: index === 0 ? stroke.id : newId(project, "stroke"), points: piece.points };
+      const cut: [boolean, boolean] = [piece.cutStart || !!stroke.cut?.[0], piece.cutEnd || !!stroke.cut?.[1]];
+      if (cut[0] || cut[1]) part.cut = cut;
+      else delete part.cut;
+      result.push(part);
+    }
+  }
+  page.strokes = result;
+  return changed;
+}
+
+/** The runs of a line outside `shape`, cut close to its edge. */
+function cutInside(points: StrokePoint[], shape: readonly Point[]): Piece[] {
+  const inside = (p: StrokePoint) => insidePolygon(shape, [p[0], p[1]]);
+  const [x0, y0, x1, y1] = bounds([...shape]);
+  // Put extra points on segments that reach the outline so the cut lands close to it.
+  const dense: StrokePoint[] = [points[0]];
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1];
+    const b = points[i];
+    const reaches = Math.max(a[0], b[0]) >= x0 && Math.min(a[0], b[0]) <= x1 && Math.max(a[1], b[1]) >= y0 && Math.min(a[1], b[1]) <= y1;
+    if (reaches) {
+      const count = Math.min(Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.1), 2000);
+      for (let k = 1; k < count; k++) dense.push(lerpPoint(a, b, k / count));
+    }
+    dense.push(b);
+  }
+  const pieces: Piece[] = [];
+  let run: StrokePoint[] = [];
+  let start = 0;
+  dense.forEach((p, index) => {
+    if (!inside(p)) {
+      if (!run.length) start = index;
+      run.push(p);
+      return;
+    }
+    if (run.length >= 2) pieces.push({ points: run, cutStart: start > 0, cutEnd: true });
+    run = [];
+  });
+  if (run.length >= 2) pieces.push({ points: run, cutStart: start > 0, cutEnd: false });
+  return pieces;
+}
+
+/** 範囲選択: rough lines mostly inside `shape` and dialogue whose box centre is. */
+export function pickInside(page: Page, shape: readonly Point[]): { strokes: string[]; lines: string[] } {
+  if (shape.length < 3) return { strokes: [], lines: [] };
+  const strokes = page.strokes
+    .filter((stroke) => {
+      const inside = stroke.points.filter(([x, y]) => insidePolygon(shape, [x, y])).length;
+      return inside > 0 && inside >= stroke.points.length / 2;
+    })
+    .map((stroke) => stroke.id);
+  const lines = page.lines
+    .filter(({ box: [x0, y0, x1, y1] }) => insidePolygon(shape, [(x0 + x1) / 2, (y0 + y1) / 2]))
+    .map((line) => line.id);
+  return { strokes, lines };
+}
+
+/** A line split where it crosses `x` (the gutter of a spread): runs in order,
+ * each marked with the side it is on (`beyond`: x greater than the gutter)
+ * and a crossing point shared by neighbouring runs. */
+export function splitAtX(points: StrokePoint[], x: number): { points: StrokePoint[]; beyond: boolean }[] {
+  const runs: { points: StrokePoint[]; beyond: boolean }[] = [];
+  for (const point of points) {
+    const beyond = point[0] > x;
+    const run = runs[runs.length - 1];
+    if (!run) {
+      runs.push({ points: [point], beyond });
+      continue;
+    }
+    if (run.beyond === beyond) {
+      run.points.push(point);
+      continue;
+    }
+    const last = run.points[run.points.length - 1];
+    const t = (x - last[0]) / (point[0] - last[0]);
+    const crossing = lerpPoint(last, point, Number.isFinite(t) ? t : 0);
+    crossing[0] = x;
+    run.points.push(crossing);
+    runs.push({ points: [crossing.slice() as StrokePoint, point], beyond });
+  }
+  return runs.filter((run) => run.points.length >= 2);
+}
+
+/** Whether page `index` and the next one should go to CSP as one 見開き page. */
+export function wantsSpread(project: Project, index: number): boolean {
+  const page = project.pages[index];
+  const next = project.pages[index + 1];
+  if (!page || !next) return false;
+  if (page.joinNext) return true;
+  // A panel across the gutter can only be one panel on a spread page.
+  const shared = new Set(next.panels.map((panel) => panel.spread).filter(Boolean));
+  return page.panels.some((panel) => panel.spread && shared.has(panel.spread));
+}
+
+// --- コマに中身が付いてくる -------------------------------------------------------
+
+/** The panel that owns a point: the topmost one there (insets over their panel). */
+function ownerAt(page: Page, point: Point): Panel | undefined {
+  let owner: Panel | undefined;
+  for (const panel of page.panels) {
+    if (!insidePolygon(panel.shape, point)) continue;
+    if (!owner || (panel.z ?? 0) > (owner.z ?? 0)) owner = panel;
+  }
+  return owner;
+}
+
+/** What a panel carries along: dialogue whose box centre and rough lines most of whose points are in it. */
+export function panelContents(page: Page, panel: Panel): { strokes: string[]; lines: string[] } {
+  const owns = (point: Point) => ownerAt(page, point)?.id === panel.id;
+  const strokes = page.strokes
+    .filter((stroke) => {
+      const inside = stroke.points.filter(([x, y]) => owns([x, y])).length;
+      return inside > 0 && inside >= stroke.points.length / 2;
+    })
+    .map((stroke) => stroke.id);
+  const lines = page.lines.filter((line) => owns(boxCenter(line.box))).map((line) => line.id);
+  return { strokes, lines };
+}
+
+/** The contents of a panel as they were, to follow the panel as it changes. */
+export interface CarriedContents {
+  box: BoxMm;
+  strokes: { id: string; points: StrokePoint[] }[];
+  lines: { id: string; box: BoxMm; balloon?: Point[]; tails?: Point[] }[];
+}
+
+export function carryContents(page: Page, panel: Panel): CarriedContents {
+  const { strokes, lines } = panelContents(page, panel);
+  return {
+    box: bounds(panel.shape),
+    strokes: page.strokes.filter((s) => strokes.includes(s.id)).map((s) => ({ id: s.id, points: s.points.map((p) => [...p] as StrokePoint) })),
+    lines: page.lines
+      .filter((l) => lines.includes(l.id))
+      .map((l) => ({
+        id: l.id,
+        box: [...l.box] as BoxMm,
+        ...(l.balloon ? { balloon: l.balloon.map((p) => [...p] as Point) } : {}),
+        ...(l.tails ? { tails: l.tails.map((t) => [...t.tip] as Point) } : {}),
+      })),
+  };
+}
+
+/**
+ * Put the carried contents where the panel now is: positions follow the
+ * panel's box (moved, and stretched when a corner is dragged). Rough lines
+ * keep their proportions, scaled by the smaller stretch; dialogue keeps its
+ * size and moves with its centre.
+ */
+export function followPanel(page: Page, panel: Panel, carried: CarriedContents): void {
+  const [ox0, oy0, ox1, oy1] = carried.box;
+  const [nx0, ny0, nx1, ny1] = bounds(panel.shape);
+  const sx = ox1 > ox0 ? (nx1 - nx0) / (ox1 - ox0) : 1;
+  const sy = oy1 > oy0 ? (ny1 - ny0) / (oy1 - oy0) : 1;
+  const map = ([x, y]: readonly number[]): Point => [nx0 + (x - ox0) * sx, ny0 + (y - oy0) * sy];
+  const uniform = Math.min(sx, sy);
+  for (const { id, points } of carried.strokes) {
+    const stroke = page.strokes.find((s) => s.id === id);
+    if (!stroke) continue;
+    const [cx0, cy0, cx1, cy1] = bounds(points.map(([x, y]) => [x, y] as Point));
+    const centre: Point = [(cx0 + cx1) / 2, (cy0 + cy1) / 2];
+    const [mx, my] = map(centre);
+    stroke.points = points.map(([x, y, ...rest]) => [mx + (x - centre[0]) * uniform, my + (y - centre[1]) * uniform, ...rest] as StrokePoint);
+  }
+  for (const { id, box, balloon, tails } of carried.lines) {
+    const line = page.lines.find((l) => l.id === id);
+    if (!line) continue;
+    const [mx, my] = map(boxCenter(box));
+    const [cx, cy] = boxCenter(box);
+    const [dx, dy] = [mx - cx, my - cy];
+    line.box = [box[0] + dx, box[1] + dy, box[2] + dx, box[3] + dy];
+    if (balloon) line.balloon = balloon.map(([x, y]) => [x + dx, y + dy]);
+    if (tails && line.tails) line.tails.forEach((tail, i) => tails[i] && (tail.tip = map(tails[i])));
+  }
+}
+
+// --- 入れ替え（R14） -------------------------------------------------------------
+
+/** The pages that move with page `index`: it and its 見開き partner, as first and last index. */
+export function pageBlock(project: Project, index: number): [number, number] {
+  let [first, last] = [index, index];
+  if (wantsSpread(project, index)) last = index + 1;
+  else if (index > 0 && wantsSpread(project, index - 1)) first = index - 1;
+  return [first, last];
+}
+
+/**
+ * Move pages `first`..`last` (inclusive) to before page `target` (an index
+ * from before the move; `pages.length` is the end). A target between the two
+ * pages of a 見開き moves to before the pair. Scenes keep the pages that stay;
+ * moved pages join the scene they land in, unless their whole scene moved
+ * with them. Returns whether anything moved.
+ */
+export function movePagesTo(project: Project, first: number, last: number, target: number): boolean {
+  const pages = project.pages;
+  if (first < 0 || last >= pages.length || first > last) return false;
+  if (target > 0 && target < pages.length && wantsSpread(project, target - 1)) target--;
+  if (target >= first && target <= last + 1) return false;
+  const moved = new Set(pages.slice(first, last + 1).map((page) => page.id));
+  const staying = new Map(
+    project.scenes.map((scene) => {
+      const [a, b] = [pageIndex(project, scene.firstPage), pageIndex(project, scene.lastPage)];
+      return [scene, pages.slice(a, b + 1).filter((page) => !moved.has(page.id)).map((page) => page.id)];
+    }),
+  );
+  const block = pages.splice(first, last - first + 1);
+  pages.splice(target > last ? target - block.length : target, 0, ...block);
+  for (const scene of project.scenes) {
+    const members = staying.get(scene) ?? [];
+    // A scene moved whole keeps its ends; others keep the pages that stayed.
+    if (!members.length) continue;
+    const at = members.map((id) => pageIndex(project, id));
+    scene.firstPage = members[at.indexOf(Math.min(...at))];
+    scene.lastPage = members[at.indexOf(Math.max(...at))];
+  }
+  sortScenes(project);
+  return true;
+}
+
+/** Move a scene's pages (with any 見開き partners at its ends) to before page `target`. */
+export function moveScene(project: Project, sceneId: string, target: number): boolean {
+  const scene = project.scenes.find((s) => s.id === sceneId);
+  if (!scene) return false;
+  const first = pageBlock(project, pageIndex(project, scene.firstPage))[0];
+  const last = pageBlock(project, pageIndex(project, scene.lastPage))[1];
+  if (first < 0 || last < first) return false;
+  return movePagesTo(project, first, last, target);
+}
+
+/**
+ * コマの入れ替え: the dialogue and rough lines of two panels change places
+ * (the panels stay), fitted to their new panel as when a panel is reshaped.
+ * The panels may be on different pages.
+ */
+export function swapPanelContents(pageA: Page, panelA: Panel, pageB: Page, panelB: Panel): void {
+  if (panelA === panelB) return;
+  const carriedA = carryContents(pageA, panelA);
+  const carriedB = carryContents(pageB, panelB);
+  if (pageA !== pageB) {
+    const take = (from: Page, to: Page, carried: CarriedContents) => {
+      const strokes = new Set(carried.strokes.map((s) => s.id));
+      const lines = new Set(carried.lines.map((l) => l.id));
+      to.strokes.push(...from.strokes.filter((s) => strokes.has(s.id)));
+      to.lines.push(...from.lines.filter((l) => lines.has(l.id)));
+      from.strokes = from.strokes.filter((s) => !strokes.has(s.id));
+      from.lines = from.lines.filter((l) => !lines.has(l.id));
+    };
+    take(pageA, pageB, carriedA);
+    take(pageB, pageA, carriedB);
+  }
+  followPanel(pageB, panelB, carriedA);
+  followPanel(pageA, panelA, carriedB);
+  for (const page of new Set([pageA, pageB])) {
+    assignPanels(page);
+    sortLines(page);
+  }
 }
