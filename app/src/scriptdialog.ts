@@ -72,6 +72,8 @@ export class ScriptDialog {
     $("sd-script-hint").hidden = asPlot;
     $("sd-start-row").hidden = asPlot;
     $("sd-panels-row").hidden = asPlot;
+    $("sd-pattern-row").hidden = asPlot;
+    $("sd-pattern-hint").hidden = asPlot;
     $("sd-notes-row").hidden = !asPlot;
     if (this.plot && project) {
       const plot = this.plot;
