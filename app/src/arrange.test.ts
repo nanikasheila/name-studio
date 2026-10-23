@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { arrangePage, arrangePanel, fitSpills, placingBox, spills } from "./arrange";
+import { arrangePage, arrangePanel, fitSpills, layOut, placingBox, spills } from "./arrange";
 import { balloonExtent } from "./balloon";
 import type { BoxMm, Point } from "./project";
 import { addLine, addPanel, addStroke, basicBox, boxCenter, fitLine, insidePolygon, newProject, rectShape, setDefaultShape, setLineKind, trimBox } from "./project";
@@ -51,6 +51,32 @@ describe("ラフの顔を避ける", () => {
     expect(insidePolygon(panel.shape, boxCenter(line.box))).toBe(true);
     // Still up at the top, beside the face.
     expect(line.box[1]).toBeLessThan(hy);
+  });
+
+  it("breaks a line the app broke another way when that keeps it off a face", () => {
+    const project = newProject("t", 1);
+    const page = project.pages[0];
+    // A narrow panel with a face across its top right: broken tall and thin
+    // the balloon fits neither beside the face nor below it, wider and
+    // shorter it fits below.
+    const box: BoxMm = [0, 0, 42, 90];
+    const face: BoxMm = [10, 0, 42, 30];
+    const said = "あの子のそばにいてくれればそれでいい";
+    const line = addLine(project, page, [20, 50], said);
+    layOut([line], box, undefined, true, [face]);
+    expect(overlaps(balloonExtent(line), face)).toBe(false);
+    expect(line.text.replace(/\n/g, "")).toBe(said);
+    const [x0, y0, x1, y1] = balloonExtent(line);
+    expect(x0).toBeGreaterThanOrEqual(box[0]);
+    expect(x1).toBeLessThanOrEqual(box[2]);
+    expect(y0).toBeGreaterThan(face[3]);
+    expect(y1).toBeLessThanOrEqual(box[3]);
+    // Broken by hand: kept as it is, even where it covers some of the face.
+    const byHand = "あの子の\nそばに\nいてくれれば\nそれでいい";
+    line.text = byHand;
+    fitLine(line);
+    layOut([line], box, undefined, true, [face]);
+    expect(line.text).toBe(byHand);
   });
 });
 

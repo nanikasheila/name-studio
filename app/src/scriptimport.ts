@@ -17,7 +17,7 @@
 //   「…！！」                       a shout (トゲ) unless a tag says otherwise
 //   型：導入 / 型: opening           the page's コマ割りの型 (fitted to its panels)
 // List markers (- * + 1.), quotes (>) and **bold** are ignored.
-import { layOut, placingBox, wrapToFit } from "./arrange";
+import { faces, layOut, moveClear, placingBox, wrapToFit } from "./arrange";
 import { balloonExtent } from "./balloon";
 import { PATTERNS, patternPanels } from "./koma";
 import {
@@ -517,7 +517,12 @@ function updatePage(project: Project, page: Page, used: ScriptPanel[], speakers:
       const [right, top] = previous ? [balloonExtent(previous)[0] - 2, balloonExtent(previous)[1]] : [box[2] - 3, box[1] + 3];
       const [x0, y0, x1] = balloonExtent(line);
       moveLine(line, Math.max(box[0] + 3 - x0, right - x1), top - y0);
-      if (panel) line.panel = panel.id;
+      if (panel) {
+        // Off the faces in the rough and the panel's other balloons, as little as it takes.
+        const others = page.lines.filter((other) => other !== line && other.panel === panel.id && !gone.has(other)).map(balloonExtent);
+        moveClear(line, box, [...faces(page, panel), ...others]);
+        line.panel = panel.id;
+      }
       previous = line;
       report.added++;
     });
