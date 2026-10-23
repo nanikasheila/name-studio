@@ -8,6 +8,8 @@ import { BrushDialog } from "./brushdialog";
 import { dragSort } from "./dragsort";
 import { AltDialog } from "./altdialog";
 import { ScriptDialog } from "./scriptdialog";
+import { ShortcutDialog } from "./shortcutdialog";
+import { comboOf, Shortcuts, type ActionId } from "./shortcuts";
 import { alternativesOf, joinAlternative, makeAlternative, useAlternative } from "./alternatives";
 import {
   ERASE_MODE_LABELS,
@@ -127,6 +129,8 @@ export class Workbench {
   private readonly exportDialog: ExportDialog;
   private readonly altDialog: AltDialog;
   private readonly scriptDialog: ScriptDialog;
+  readonly shortcuts = new Shortcuts();
+  private readonly shortcutDialog = new ShortcutDialog(this.shortcuts);
   private readonly brushDialog: BrushDialog;
   private readonly versionDialog: VersionDialog;
   private readonly autosaver = new Autosaver(
@@ -1187,6 +1191,7 @@ export class Workbench {
     $("brush-import").addEventListener("click", () => void this.brushDialog.open());
     $("name-export").addEventListener("click", () => this.exportDialog.open());
     $("versions").addEventListener("click", () => this.openVersions());
+    $("shortcuts").addEventListener("click", () => this.shortcutDialog.open());
     $("redo").addEventListener("click", () => this.redo());
     $("editor-next").addEventListener("click", () => this.flip(1));
     $("editor-prev").addEventListener("click", () => this.flip(-1));
@@ -1215,48 +1220,15 @@ export class Workbench {
   /** Keyboard shortcuts while the editor is shown; true when handled. */
   handleKey(event: KeyboardEvent): boolean {
     if (!this.state.project) return false;
-    const mod = event.ctrlKey || event.metaKey;
-    if (mod && event.key.toLowerCase() === "s") {
-      void this.save(event.shiftKey);
+    const combo = comboOf(event);
+    const action = combo ? this.shortcuts.actionFor(combo) : null;
+    // Saving works from a text field too; the rest leaves typing alone.
+    if (action === "save" || action === "saveAs") {
+      void this.save(action === "saveAs");
       return true;
     }
-    if (isTyping(event)) return false;
-    if (mod && event.key.toLowerCase() === "z") {
-      if (event.shiftKey) this.redo();
-      else this.undo();
-      return true;
-    }
-    if (mod && event.key.toLowerCase() === "y") {
-      this.redo();
-      return true;
-    }
-    if (mod) return false;
-    const views: Record<string, "edit" | OverviewKind> = { F1: "edit", F2: "structure", F3: "emotion", F4: "timeline" };
-    if (views[event.key]) {
-      this.setView(views[event.key]);
-      return true;
-    }
-    if (this.view !== "edit") return false;
-    const tools: Record<string, Tool> = { v: "select", k: "cut", t: "text", p: "pen", e: "eraser", b: "breakout" };
-    const tool = tools[event.key.toLowerCase()];
-    if (tool === "eraser" && this.editor.tool === "eraser") {
-      // E again: the next way of erasing, as CSP's sub tools cycle.
-      const modes = Object.keys(ERASE_MODE_LABELS) as EditorEraseMode[];
-      this.setEraseMode(modes[(modes.indexOf(this.editor.eraseMode) + 1) % modes.length]);
-      return true;
-    }
-    if (tool) {
-      this.setTool(tool);
-      return true;
-    }
-    if (event.key === "Delete" || event.key === "Backspace") {
-      this.deleteSelection();
-      return true;
-    }
-    if (event.key === "Escape") {
-      this.editor.select(null);
-      return true;
-    }
+    if (isTyping(event) || document.querySelector("dialog[open]")) return false;
+    // Arrows move what is selected (Shift: further) before anything else.
     const step = event.shiftKey ? 5 : 0.5;
     const arrows: Record<string, [number, number]> = {
       ArrowLeft: [-step, 0],
@@ -1265,13 +1237,92 @@ export class Workbench {
       ArrowDown: [0, step],
     };
     const arrow = arrows[event.key];
-    if (arrow) {
-      if (this.editor.selection) return this.editor.nudge(...arrow);
-      // Right-bound book: the next spread is to the left.
-      this.flip(event.key === "ArrowLeft" ? 1 : event.key === "ArrowRight" ? -1 : 0);
+    if (arrow && this.view === "edit" && this.editor.selection && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      return this.editor.nudge(...arrow);
+    }
+    return action ? this.run(action) : false;
+  }
+
+  /** Run a shortcut's action; false when it does not apply now. */
+  run(action: ActionId): boolean {
+    const views: Partial<Record<ActionId, "edit" | OverviewKind>> = {
+      "view.edit": "edit",
+      "view.structure": "structure",
+      "view.emotion": "emotion",
+      "view.timeline": "timeline",
+    };
+    const view = views[action];
+    if (view) {
+      this.setView(view);
       return true;
     }
-    return false;
+    if (action === "undo") this.undo();
+    else if (action === "redo") this.redo();
+    else if (this.view !== "edit") return false;
+    if (action === "undo" || action === "redo") return true;
+    const tools: Partial<Record<ActionId, Tool>> = {
+      "tool.select": "select",
+      "tool.cut": "cut",
+      "tool.text": "text",
+      "tool.pen": "pen",
+      "tool.eraser": "eraser",
+      "tool.breakout": "breakout",
+    };
+    const tool = tools[action];
+    const nextEraseMode = () => {
+      // As CSP's sub tools cycle.
+      const modes = Object.keys(ERASE_MODE_LABELS) as EditorEraseMode[];
+      this.setEraseMode(modes[(modes.indexOf(this.editor.eraseMode) + 1) % modes.length]);
+    };
+    if (tool === "eraser" && this.editor.tool === "eraser") {
+      nextEraseMode();
+      return true;
+    }
+    if (tool) {
+      this.setTool(tool);
+      return true;
+    }
+    switch (action) {
+      case "eraser.next":
+        if (this.editor.tool !== "eraser") this.setTool("eraser");
+        else nextEraseMode();
+        return true;
+      case "brush.bigger":
+      case "brush.smaller":
+        return this.resizeBrush(action === "brush.bigger" ? 1.25 : 0.8);
+      case "delete":
+        this.deleteSelection();
+        return true;
+      case "deselect":
+        this.editor.select(null);
+        return true;
+      case "page.next":
+      case "page.previous":
+        // Right-bound book: the next spread is to the left.
+        this.flip(action === "page.next" ? 1 : -1);
+        return true;
+      case "option.make": {
+        const [first] = this.editor.currentPages();
+        if (!first) return false;
+        this.makeOption(first - 1, first - 1);
+        return true;
+      }
+      default:
+        return false;
+    }
+  }
+
+  /** ] / [: the pen or eraser in hand a size up or down. */
+  private resizeBrush(factor: number): boolean {
+    const tool = this.editor.tool;
+    if (tool !== "pen" && tool !== "eraser") return false;
+    const round2 = (value: number) => Math.round(value * 100) / 100;
+    if (tool === "pen") this.editor.penWidthMm = Math.min(20, Math.max(0.05, round2(this.editor.penWidthMm * factor)));
+    else this.editor.eraserSizeMm = Math.min(50, Math.max(0.2, round2(this.editor.eraserSizeMm * factor)));
+    this.renderBrushBar();
+    this.editor.draw();
+    this.setStatus(`${tool === "pen" ? "ペン" : "消しゴム"}の太さ: ${tool === "pen" ? this.editor.penWidthMm : this.editor.eraserSizeMm} mm`);
+    return true;
   }
 }
 

@@ -12,6 +12,7 @@
       <button id="new-project" title="白紙のネームを作る">新しいネーム</button>
       <button id="save" class="editor-only" title="保存（Ctrl+S）。編集中は自動でも保存します" hidden>保存</button>
       <button id="versions" class="editor-only" title="版の履歴: 前の状態に戻す、自動保存の設定" hidden>履歴…</button>
+      <button id="shortcuts" class="editor-only" title="ショートカットキーの割り当て" hidden>キー…</button>
       <span id="file-name" class="file-name">ファイルが開かれていません</span>
       <button id="update" class="primary" hidden>更新</button>
       <span id="app-version" class="app-version"></span>
@@ -264,6 +265,18 @@
         <div class="actions">
           <button value="cancel" formnovalidate>閉じる</button>
           <button type="button" id="sd-run" class="primary" disabled>取り込む</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="shortcut-dialog" class="export shortcuts">
+      <form method="dialog">
+        <h2>ショートカットキー</h2>
+        <p class="hint">＋ を押してからキーを押すと割り当てます。キーを押して外します。左手デバイスやマクロには、ここで割り当てたキーを送るように設定してください。設定はこの PC に残ります。</p>
+        <div id="sc-list" class="sc-list"></div>
+        <p id="sc-message" class="message" role="status"></p>
+        <div class="actions">
+          <button type="button" id="sc-reset">初期設定に戻す</button>
+          <button value="cancel" formnovalidate>閉じる</button>
         </div>
       </form>
     </dialog>
