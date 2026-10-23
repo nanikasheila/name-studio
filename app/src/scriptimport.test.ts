@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { scriptText } from "./nameexport";
-import { addCharacter, addLine, addPanel, addScene, basicBox, newProject, rectShape } from "./project";
-import { applyScript, findPattern, panelBoxes, parseScript, readLine } from "./scriptimport";
+import { addCharacter, addLine, addPanel, addScene, basicBox, moveLine, newProject, rectShape } from "./project";
+import { applyScript, findPattern, likeness, panelBoxes, parseScript, readLine } from "./scriptimport";
 import { applyPlot, parsePlot } from "./plotimport";
 
 const MARKDOWN = `# 星の約束
@@ -60,7 +60,7 @@ describe("台本の取り込み", () => {
   it("deals the script out onto pages and panels", () => {
     const project = newProject("新しいネーム", 2);
     const report = applyScript(project, parseScript(MARKDOWN), { startPage: 0, makePanels: true });
-    expect(report).toEqual({ pages: 3, panels: 4, lines: 7, characters: ["ミカ", "ソラ"], scenes: 2, replacedScenes: 0 });
+    expect(report).toEqual({ pages: 3, panels: 4, lines: 7, characters: ["ミカ", "ソラ"], scenes: 2, replacedScenes: 0, kept: 0, changed: 0, added: 0, removed: 0 });
     expect(project.title).toBe("星の約束");
     expect(project.pages.length).toBe(3);
     const page = project.pages[0];
@@ -165,11 +165,50 @@ describe("台本の取り込み: プロットのあとに", () => {
     applyPlot(project, parsePlot("## ページ配分\n\n| 1〜2 | 2 | 屋上で出会う |\n| 3 | 1 | 別れ |\n\n### 1ページ 屋上\n\n夜。\n"));
     expect(project.scenes).toHaveLength(2);
     const report = applyScript(project, parseScript(MARKDOWN), { startPage: 0, makePanels: true });
-    expect(report.replacedScenes).toBe(2);
+    // 別れ is the very same scene: not counted.
+    expect(report.replacedScenes).toBe(1);
     expect(project.scenes.map((s) => [s.title, s.summary])).toEqual([
       ["出会い", "屋上で出会う"],
       ["別れ", "別れ"],
     ]);
+  });
+});
+
+describe("台本を直して取り込み直す", () => {
+  it("changes only what changed, keeping where lines are, their shape and tails", () => {
+    const project = newProject("新しいネーム", 3);
+    applyScript(project, parseScript(MARKDOWN), { startPage: 0, makePanels: true });
+    const page = project.pages[0];
+    const [first, second] = page.lines;
+    first.tails = [{ tip: [60, 150] }];
+    first.balloonShape = "wavy";
+    moveLine(second, -5, 8);
+    const where = second.box.slice();
+    const revised = MARKDOWN.replace("ミカ「今日も星が見えないね」", "ミカ「今夜も星が見えないね」").replace("SE：ガチャ", "ソラ「ねえ」").replace("[1] 「誰？」", "[1] 「誰？」\n「わたしだよ」");
+    const report = applyScript(project, parseScript(revised), { startPage: 0, makePanels: true, update: true });
+    expect([report.changed, report.added, report.removed, report.kept]).toEqual([1, 2, 1, 5]);
+    expect(project.pages.reduce((n, p) => n + p.lines.length, 0)).toBe(8);
+    expect(first.text.replace(/\n/g, "")).toBe("今夜も星が見えないね");
+    expect(first.tails).toHaveLength(1);
+    expect(first.balloonShape).toBe("wavy");
+    expect(second.box).toEqual(where);
+    expect(page.lines.some((line) => line.text === "ガチャ")).toBe(false);
+    const added = project.pages[1].lines.find((line) => line.text === "わたしだよ")!;
+    expect(added.panel).toBe(project.pages[1].lines[0].panel);
+    // Not doubled: the memo, nor the lines when taken in once more.
+    expect(page.memo).toBe("夜の屋上。");
+    const again = applyScript(project, parseScript(revised), { startPage: 0, makePanels: true, update: true });
+    expect([again.changed, again.added, again.removed, again.kept]).toEqual([0, 0, 0, 8]);
+  });
+
+  it("reads the page number of a page heading", () => {
+    expect(parseScript("### 5ページ 電話\n#### コマ\nA「もしもし」\n### P6\nB「はい」").pages.map((p) => p.number)).toEqual([5, 6]);
+  });
+
+  it("tells how alike two lines read", () => {
+    expect(likeness("今日も星が\n見えないね", "今日も星が見えないね")).toBe(1);
+    expect(likeness("今日も星が見えないね", "今夜も星が見えないね")).toBeGreaterThan(0.6);
+    expect(likeness("今日も星が見えないね", "ガチャ")).toBe(0);
   });
 });
 

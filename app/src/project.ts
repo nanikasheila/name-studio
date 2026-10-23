@@ -776,9 +776,11 @@ export function removePanel(page: Page, panelId: string, binding: Binding = "rig
 
 /** Give each line the panel its centre is in. */
 export function assignPanels(page: Page): void {
+  // A panel on top (an inset, はめ込み) before the one under it, then reading order.
+  const panels = [...page.panels].sort((a, b) => (b.z ?? 0) - (a.z ?? 0) || a.order - b.order);
   for (const line of page.lines) {
     const center = boxCenter(line.box);
-    const panel = [...page.panels].sort((a, b) => a.order - b.order).find((p) => insidePolygon(p.shape, center));
+    const panel = panels.find((p) => insidePolygon(p.shape, center));
     if (panel) line.panel = panel.id;
     else delete line.panel;
   }
@@ -1205,15 +1207,16 @@ export function addScene(project: Project, firstPage: string, lastPage: string, 
  * its summary when the new one has none. Returns the scene and how many it replaced.
  */
 export function putScene(project: Project, first: number, last: number, title: string, summary = ""): { scene: Scene; replaced: number } {
-  const before = project.scenes.length;
   let kept = "";
+  let replaced = 0;
   project.scenes = project.scenes.filter((s) => {
     const [a, b] = [pageIndex(project, s.firstPage), pageIndex(project, s.lastPage)];
     if (b < first || a > last) return true;
     if (a === first && b === last) kept = s.summary;
+    // The very same scene taken in again is not counted as replaced.
+    if (!(a === first && b === last && s.title === title)) replaced++;
     return false;
   });
-  const replaced = before - project.scenes.length;
   const scene = addScene(project, project.pages[first].id, project.pages[last].id, title);
   scene.summary = summary || kept;
   return { scene, replaced };

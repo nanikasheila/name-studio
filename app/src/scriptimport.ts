@@ -17,7 +17,8 @@
 //   「…！！」                       a shout (トゲ) unless a tag says otherwise
 //   型：導入 / 型: opening           the page's コマ割りの型 (fitted to its panels)
 // List markers (- * + 1.), quotes (>) and **bold** are ignored.
-import { layOut, placingBox } from "./arrange";
+import { layOut, placingBox, wrapToFit } from "./arrange";
+import { balloonExtent } from "./balloon";
 import { PATTERNS, patternPanels } from "./koma";
 import {
   addCharacter,
@@ -26,14 +27,18 @@ import {
   assignPanels,
   basicBox,
   DEFAULT_GUTTERS,
+  fitLine,
   insertPage,
+  moveLine,
   orderPanels,
   pageIndex,
   putScene,
   rectShape,
+  setLineKind,
   sortLines,
   type BalloonShape,
   type BoxMm,
+  type Line,
   type LineKind,
   type Page,
   type Panel,
@@ -60,6 +65,8 @@ export interface ScriptPage {
   scene?: string;
   /** コマ割りの型 asked for (型：導入), by id. */
   pattern?: string;
+  /** The page number its heading gives (### 5ページ), if any. */
+  number?: number;
 }
 
 export interface ScriptDoc {
@@ -195,8 +202,10 @@ export function parseScript(source: string): ScriptDoc {
         if (!pageHeadings || page) page = null;
       } else if (level === 3) {
         newPage();
+        const numbered = PAGE_HEADING.exec(text);
+        if (numbered) page!.number = Number(numbered[1] ?? numbered[2] ?? numbered[3]);
         // ### 1ページ 心臓の説明: the subtitle goes into the page memo.
-        const subtitle = PAGE_HEADING.test(text) ? text.replace(PAGE_NUMBER, "").trim() : text;
+        const subtitle = numbered ? text.replace(PAGE_NUMBER, "").trim() : text;
         if (subtitle) page!.notes.push(subtitle);
       } else {
         newPanel();
@@ -265,6 +274,12 @@ export interface ScriptImportOptions {
   makePanels: boolean;
   /** The コマ割りの型 for those pages (fitted to their panels) when the script names none; none: tiers. */
   pattern?: string;
+  /**
+   * 台本を直して取り込み直す: pages that already have dialogue get theirs
+   * brought in line with the script (changed text in place, new lines added,
+   * lines gone from the script removed) instead of a second copy.
+   */
+  update?: boolean;
 }
 
 export interface ScriptImportReport {
@@ -275,6 +290,11 @@ export interface ScriptImportReport {
   scenes: number;
   /** Scenes already on the name that the script's took the place of. */
   replacedScenes: number;
+  /** With `update`: lines left as they were, changed, added and removed. */
+  kept: number;
+  changed: number;
+  added: number;
+  removed: number;
 }
 
 /** Panels for `count` script panels over the basic frame: tiers, two side by side past four. */
@@ -309,9 +329,151 @@ function placeLines(project: Project, page: Page, panel: Panel | undefined, line
   layOut(placed, placingBox(project, panel), panel?.shape);
 }
 
+/** Text compared without its line breaks and spaces. */
+const bare = (text: string) => text.replace(/\s+/g, "");
+
+/** How alike two lines of dialogue read, 0–1 (shared pairs of characters). */
+export function likeness(a: string, b: string): number {
+  const [x, y] = [bare(a), bare(b)];
+  if (x === y) return 1;
+  const pairs = (text: string) => {
+    const chars = [...text];
+    const counts = new Map<string, number>();
+    for (let i = 0; i + 1 < chars.length; i++) counts.set(chars[i] + chars[i + 1], (counts.get(chars[i] + chars[i + 1]) ?? 0) + 1);
+    return counts;
+  };
+  const [px, py] = [pairs(x), pairs(y)];
+  let shared = 0;
+  for (const [pair, n] of px) shared += Math.min(n, py.get(pair) ?? 0);
+  const total = [...x].length + [...y].length - 2;
+  return total > 0 ? (2 * shared) / total : 0;
+}
+
+/** Below this, a changed line is taken as a different one (removed, and a new one added). */
+const SAME_LINE = 0.3;
+
+/**
+ * Pair a panel's lines with the script's, keeping their order: the pairing
+ * with the most likeness (a line and the script line it most reads like).
+ */
+function pairLines(old: readonly Line[], said: readonly ScriptLine[], speakerOf: (line: ScriptLine) => string | undefined): [number, number][] {
+  const score = (i: number, j: number) => {
+    const alike = likeness(old[i].text, said[j].text);
+    if (alike < SAME_LINE) return 0;
+    return alike + (old[i].speaker === speakerOf(said[j]) ? 0.2 : 0);
+  };
+  const best: number[][] = Array.from({ length: old.length + 1 }, () => new Array<number>(said.length + 1).fill(0));
+  for (let i = old.length - 1; i >= 0; i--) {
+    for (let j = said.length - 1; j >= 0; j--) {
+      const pair = score(i, j);
+      best[i][j] = Math.max(best[i + 1][j], best[i][j + 1], pair > 0 ? pair + best[i + 1][j + 1] : 0);
+    }
+  }
+  const pairs: [number, number][] = [];
+  for (let i = 0, j = 0; i < old.length && j < said.length; ) {
+    const pair = score(i, j);
+    if (pair > 0 && best[i][j] === pair + best[i + 1][j + 1]) pairs.push([i++, j++]);
+    else if (best[i][j] === best[i + 1][j]) i++;
+    else j++;
+  }
+  return pairs;
+}
+
+/** New text for a line, broken again to fit its panel, its top right (where reading starts) kept where it was. */
+function retext(project: Project, line: Line, text: string, panel: Panel | undefined): void {
+  const [, top, right] = line.box;
+  line.text = text;
+  const box = placingBox(project, panel);
+  wrapToFit(line, box[3] - box[1] - 6);
+  fitLine(line);
+  moveLine(line, right - line.box[2], top - line.box[1]);
+}
+
+/** Bring a page's dialogue in line with the script's panels (see `ScriptImportOptions.update`). */
+function updatePage(project: Project, page: Page, used: ScriptPanel[], speakers: Map<string, string>, report: ScriptImportReport): void {
+  sortLines(page);
+  const panels = [...page.panels].sort((a, b) => a.order - b.order);
+  // Script panels past the page's last panel go into its last one, as when first taken in.
+  const wanted = new Map<Panel | undefined, ScriptLine[]>();
+  used.forEach((scriptPanel, k) => {
+    const panel = panels[Math.min(k, panels.length - 1)];
+    if (panel && scriptPanel.notes.length) panel.note = scriptPanel.notes.join("\n");
+    wanted.set(panel, [...(wanted.get(panel) ?? []), ...scriptPanel.lines]);
+  });
+  const speakerOf = (said: ScriptLine) => (said.speaker ? speakers.get(said.speaker) : undefined);
+  const gone = new Set<Line>();
+  for (const panel of panels.length ? panels : [undefined]) {
+    const said = wanted.get(panel) ?? [];
+    const old = page.lines.filter((line) => (panel ? line.panel === panel.id : !line.panel));
+    const pairs = pairLines(old, said, speakerOf);
+    const pairedOld = new Map(pairs.map(([i, j]) => [i, j]));
+    const pairedNew = new Map(pairs.map(([i, j]) => [j, i]));
+    old.forEach((line, i) => {
+      const j = pairedOld.get(i);
+      if (j === undefined) {
+        gone.add(line);
+        return;
+      }
+      const s = said[j];
+      let changed = false;
+      if (bare(line.text) !== bare(s.text)) {
+        retext(project, line, s.text || "…", panel);
+        changed = true;
+      }
+      const speaker = speakerOf(s);
+      if ((line.speaker ?? undefined) !== speaker) {
+        if (speaker) line.speaker = speaker;
+        else delete line.speaker;
+        changed = true;
+      }
+      if (line.kind !== s.kind) {
+        setLineKind(project, line, s.kind);
+        changed = true;
+      }
+      if (s.shape && line.balloonShape !== s.shape) {
+        line.balloonShape = s.shape;
+        fitLine(line);
+        changed = true;
+      }
+      if (changed) report.changed++;
+      else report.kept++;
+    });
+    // New lines: just after the line before them in the script (to its left, the next to be read), or at the panel's top right.
+    let previous: Line | undefined;
+    said.forEach((s, j) => {
+      const i = pairedNew.get(j);
+      if (i !== undefined) {
+        previous = old[i];
+        return;
+      }
+      const line = addLine(project, page, [0, 0], s.text || "…", s.kind);
+      const speaker = speakerOf(s);
+      if (speaker) line.speaker = speaker;
+      if (s.shape) line.balloonShape = s.shape;
+      const box = placingBox(project, panel);
+      wrapToFit(line, box[3] - box[1] - 6);
+      fitLine(line);
+      const [right, top] = previous ? [balloonExtent(previous)[0] - 2, balloonExtent(previous)[1]] : [box[2] - 3, box[1] + 3];
+      const [x0, y0, x1] = balloonExtent(line);
+      moveLine(line, Math.max(box[0] + 3 - x0, right - x1), top - y0);
+      if (panel) line.panel = panel.id;
+      previous = line;
+      report.added++;
+    });
+    report.lines += said.length;
+  }
+  if (gone.size) {
+    page.lines = page.lines.filter((line) => !gone.has(line));
+    for (const line of page.lines) if (line.linkTo && !page.lines.some((other) => other.id === line.linkTo)) delete line.linkTo;
+    report.removed += gone.size;
+  }
+  assignPanels(page);
+  sortLines(page);
+}
+
 /** Put a script onto the name. */
 export function applyScript(project: Project, doc: ScriptDoc, options: ScriptImportOptions): ScriptImportReport {
-  const report: ScriptImportReport = { pages: 0, panels: 0, lines: 0, characters: [], scenes: 0, replacedScenes: 0 };
+  const report: ScriptImportReport = { pages: 0, panels: 0, lines: 0, characters: [], scenes: 0, replacedScenes: 0, kept: 0, changed: 0, added: 0, removed: 0 };
   if (doc.title && (!project.title || project.title === "新しいネーム")) project.title = doc.title;
   // Speakers by name; new names become characters.
   const speakers = new Map(project.characters.map((character) => [character.name, character.id]));
@@ -330,8 +492,16 @@ export function applyScript(project: Project, doc: ScriptDoc, options: ScriptImp
     const index = options.startPage + i;
     const page = project.pages[index] ?? insertPage(project, project.pages.length);
     report.pages++;
-    if (scriptPage.notes.length) page.memo = [page.memo, ...scriptPage.notes].filter(Boolean).join("\n");
+    // Taken in again: notes already in the memo are not added twice.
+    const fresh = scriptPage.notes.filter((note) => !page.memo.includes(note));
+    if (fresh.length) page.memo = [page.memo, ...fresh].filter(Boolean).join("\n");
     const used = scriptPage.panels.filter((panel) => panel.lines.length || panel.notes.length);
+    if (options.update && page.lines.length) {
+      updatePage(project, page, used, speakers, report);
+      if (scriptPage.scene) sceneStarts.push({ title: scriptPage.scene, first: page.id, last: page.id });
+      else if (sceneStarts.length) sceneStarts[sceneStarts.length - 1].last = page.id;
+      return;
+    }
     if (!page.panels.length && options.makePanels && used.length) {
       const pattern = scriptPage.pattern ?? options.pattern;
       if (pattern) {

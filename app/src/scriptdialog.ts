@@ -40,17 +40,18 @@ export class ScriptDialog {
   private plot: PlotDoc | null = null;
 
   constructor(private readonly host: ScriptDialogHost) {
-    $("sd-text").addEventListener("input", () => this.preview());
+    $("sd-text").addEventListener("input", () => this.preview(true));
     $<HTMLInputElement>("sd-file").addEventListener("change", async (event) => {
       const file = (event.target as HTMLInputElement).files?.[0];
       if (!file) return;
       $<HTMLTextAreaElement>("sd-text").value = await readTextFile(file);
       (event.target as HTMLInputElement).value = "";
-      this.preview();
+      this.preview(true);
     });
     $("sd-start").addEventListener("input", () => this.preview());
     $("sd-mode").addEventListener("change", () => this.preview());
     $("sd-notes").addEventListener("change", () => this.preview());
+    $("sd-update").addEventListener("change", () => this.preview());
     $("sd-run").addEventListener("click", () => this.run());
     const pattern = $<HTMLSelectElement>("sd-pattern");
     for (const item of PATTERNS) pattern.append(Object.assign(document.createElement("option"), { value: item.id, textContent: item.label, title: item.note }));
@@ -66,10 +67,13 @@ export class ScriptDialog {
     $<HTMLDialogElement>("script-dialog").showModal();
   }
 
-  private preview(): void {
+  /** What will be read and where it goes; `newText`: new text, so a numbered script starts at its own first page. */
+  private preview(newText = false): void {
     const text = $<HTMLTextAreaElement>("sd-text").value;
     const project = this.host.project();
     this.doc = text.trim() ? parseScript(text) : null;
+    const first = this.doc?.pages[0]?.number;
+    if (newText && first && project) $<HTMLInputElement>("sd-start").value = String(Math.min(first, project.pages.length + 1));
     const run = $<HTMLButtonElement>("sd-run");
     const summary = $("sd-summary");
     const dialogue = this.doc?.pages.reduce((sum, page) => sum + page.panels.reduce((n, p) => n + p.lines.length, 0), 0) ?? 0;
@@ -83,6 +87,7 @@ export class ScriptDialog {
     $("sd-pattern-row").hidden = asPlot;
     $("sd-pattern-hint").hidden = asPlot;
     $("sd-notes-row").hidden = !asPlot;
+    $("sd-update-row").hidden = true;
     if (this.plot && project) {
       const plot = this.plot;
       const notes = $<HTMLInputElement>("sd-notes").checked ? plot.notes.length : 0;
@@ -115,9 +120,21 @@ export class ScriptDialog {
     const added = Math.max(0, start + pages.length - project.pages.length);
     const scenes = new Set(pages.map((page) => page.scene).filter(Boolean)).size;
     const shaped = pages.filter((page) => page.pattern).length;
+    // Pages that already have dialogue: brought in line with the script, or given a second copy.
+    const spoken = project.pages.slice(start, start + pages.length).filter((page) => page.lines.length).length;
+    $("sd-update-row").hidden = !spoken;
+    const update = spoken > 0 && $<HTMLInputElement>("sd-update").checked;
+    let changes = "";
+    if (spoken) {
+      if (update) {
+        const trial = applyScript(structuredClone(project), this.doc, { startPage: start, makePanels: true, update: true });
+        changes = `セリフのある ${spoken} ページは台本に合わせて直します: 書き換え ${trial.changed}・足す ${trial.added}・消す ${trial.removed}・そのまま ${trial.kept}`;
+      } else changes = `注意: セリフのある ${spoken} ページに、台本のセリフをもう一組足します（今のセリフは残ります）`;
+    }
     summary.textContent = [
       `${pages.length} ページ・コマ ${panels}・セリフ ${lines}${scenes ? `・シーン ${scenes}` : ""}${this.doc.title ? `（${this.doc.title}）` : ""}`,
       `${start + 1} ページから入れます${added ? `（ページを ${added} 枚足します）` : ""}。`,
+      changes,
       fresh.length ? `新しい登場人物: ${fresh.join("、")}` : "",
       shaped ? `型を指定したページ: ${shaped}` : "",
       scenes && project.scenes.length ? "重なる今のシーンは台本のシーンに置き換えます（同じページ範囲のシーンの要約は引き継ぎます）。" : "",
@@ -149,8 +166,9 @@ export class ScriptDialog {
     const start = this.start(project);
     const makePanels = $<HTMLInputElement>("sd-panels").checked;
     const pattern = $<HTMLSelectElement>("sd-pattern").value || undefined;
+    const update = !$("sd-update-row").hidden && $<HTMLInputElement>("sd-update").checked;
     let report: ScriptImportReport | null = null;
-    this.host.edit((p) => (report = applyScript(p, doc, { startPage: start, makePanels, pattern })));
+    this.host.edit((p) => (report = applyScript(p, doc, { startPage: start, makePanels, pattern, update })));
     $<HTMLDialogElement>("script-dialog").close();
     if (report) this.host.done(report, start + 1);
   }

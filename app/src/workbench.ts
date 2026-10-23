@@ -219,7 +219,9 @@ export class Workbench {
         this.renderAll();
         const who = report.characters.length ? `、登場人物 ${report.characters.join("・")} を足しました` : "";
         const scenes = report.replacedScenes ? `、重なっていたシーン ${report.replacedScenes} を台本のシーンに置き換えました` : "";
-        this.setStatus(`台本を ${report.pages} ページに入れました（セリフ ${report.lines}、作ったコマ ${report.panels}${who}${scenes}）。元に戻すは Ctrl+Z`);
+        const fixed = report.changed + report.added + report.removed + report.kept;
+        const update = fixed ? `。セリフを台本に合わせました: 書き換え ${report.changed}・足す ${report.added}・消す ${report.removed}・そのまま ${report.kept}` : "";
+        this.setStatus(`台本を ${report.pages} ページに入れました（セリフ ${report.lines}、作ったコマ ${report.panels}${who}${scenes}）${update}。元に戻すは Ctrl+Z`);
       },
       plotDone: (report) => {
         // The plot is about the whole: show it on the board.

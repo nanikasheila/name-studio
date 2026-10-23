@@ -119,6 +119,17 @@ describe("lines", () => {
     expect(page.lines.map((line) => line.text)).toEqual(["先", "後"]);
     expect(first.balloon!.length).toBeGreaterThan(10);
   });
+
+  it("puts a line on an inset (はめ込み) in the inset, not the panel under it", () => {
+    const project = newProject("test", 1);
+    const page = project.pages[0];
+    page.panels = [
+      { id: "big", shape: rectShape([0, 0, 200, 200]), order: 2 },
+      { id: "inset", shape: rectShape([20, 120, 80, 180]), order: 3, z: 1 },
+    ];
+    expect(addLine(project, page, [50, 150], "カツン", "sfx").panel).toBe("inset");
+    expect(addLine(project, page, [150, 50], "ストラ！！").panel).toBe("big");
+  });
 });
 
 describe("strokes", () => {
