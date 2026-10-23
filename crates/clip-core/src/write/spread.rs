@@ -6,7 +6,7 @@
 //! hidden ノンブル) come twice, the right page's marked with
 //! `ComicStoryInfoForRightPage` = 1. Everything sized by the canvas (render
 //! offscreens, layer thumbnails' canvas size, the preview) is widened; see
-//! docs/formats/csp-spread-format.md.
+//! docs/csp-spread-format.md.
 
 use std::path::Path;
 
