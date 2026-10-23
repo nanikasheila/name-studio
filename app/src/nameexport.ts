@@ -24,6 +24,7 @@ import {
   bounds,
   splitAtX,
   trimBox,
+  type BoxMm,
   type Brush,
   type Page,
   type Project,
@@ -32,6 +33,7 @@ import {
   wantsSpread,
 } from "./project";
 import { sceneSpans } from "./story";
+import type { ReadUnit } from "./readback";
 
 /** The template page as `begin_name_export` reports it (clip-core `TemplateCanvas`). */
 export interface TemplateCanvas {
@@ -802,6 +804,39 @@ export async function updateCspDialogue(
     }
     drawing.width = 0;
     return { pages, changed: pages.filter((page) => page.backup).length, warnings };
+  } finally {
+    await invoke("cancel_name_export").catch(() => undefined);
+  }
+}
+
+/**
+ * Read the dialogue back from the pages written to `request.outDir` (as
+ * CSP has it now), each text on its page of the name in mm.
+ */
+export async function readCspDialogue(project: Project, request: CspExportRequest, progress: (message: string) => void): Promise<ReadUnit[]> {
+  const start = await invoke<NameExportStart>("begin_name_export", { request: { ...request, frameFolders: false, notes: false } });
+  try {
+    const full = projectToTemplate(project, start);
+    const { units } = exportUnits(project, start.firstPageLeft, start.spread ? null : start.spreadProblem);
+    const read: ReadUnit[] = [];
+    for (const [unitIndex, unit] of units.entries()) {
+      progress(`${unitIndex + 1} / ${units.length} ページのセリフを読み中…`);
+      const spread = unit.length > 1 && start.spread ? start.spread : null;
+      const placed = unit.map((index, position) => {
+        const right = (position === 0) === (project.binding === "right");
+        return { index, m: shifted(full, spread ? (right ? spread.rightDx : spread.leftDx) : 0), right };
+      });
+      const page = await invoke<{ path: string; dialogue: { texts: { text: string; bbox: number[] | null }[]; written: string[] | null } | null }>("read_name_dialogue", { spread: spread !== null });
+      const texts = (page.dialogue?.texts ?? []).map(({ text, bbox }) => {
+        // On a 見開き page, the page whose side of the gutter it is on.
+        const x = bbox ? (bbox[0] + bbox[2]) / 2 : 0;
+        const on = (spread && placed.find(({ right }) => (x >= spread.gutterPx) === right)) || placed[0];
+        const box = bbox ? (bbox.map((v, i) => (v - (i % 2 ? on.m.y : on.m.x)) / on.m.scale) as BoxMm) : null;
+        return { text, page: on.index, box };
+      });
+      read.push({ pages: unit, path: page.path, found: page.dialogue !== null, written: page.dialogue?.written ?? null, texts });
+    }
+    return read;
   } finally {
     await invoke("cancel_name_export").catch(() => undefined);
   }

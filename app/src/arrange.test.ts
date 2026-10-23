@@ -34,6 +34,27 @@ describe("セリフの並べ直し", () => {
   });
 });
 
+describe("斜めのコマ", () => {
+  it("moves a balloon along from the narrow end of a slanted panel to where it fits inside", () => {
+    const project = newProject("t", 1);
+    const page = project.pages[0];
+    // Tall on the left, narrowing to the right, where the reading starts.
+    const [fx, fy] = basicBox(project.pageFormat);
+    const panel = addPanel(project, page, [
+      [fx + 10, fy + 10],
+      [fx + 130, fy + 10],
+      [fx + 130, fy + 32],
+      [fx + 10, fy + 70],
+    ]);
+    const line = addLine(project, page, [fx + 120, fy + 20], "あれを先に\n手にすれば");
+    arrangePanel(project, page, panel);
+    expect(spills(balloonExtent(line), panel.shape)).toBe(false);
+    expect(line.text).toBe("あれを先に\n手にすれば");
+    // Only as far along as it takes: still in the right half.
+    expect(boxCenter(line.box)[0]).toBeGreaterThan(fx + 70);
+  });
+});
+
 describe("ラフの顔を避ける", () => {
   const overlaps = (a: BoxMm, b: BoxMm) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
   it("puts the balloon beside a face drawn at the top right, not over it", () => {

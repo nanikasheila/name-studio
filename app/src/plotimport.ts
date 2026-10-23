@@ -9,6 +9,7 @@
 //                                                 (headings naming ページ, like ページごとのプロット, are not scenes)
 //   ## any other section                         its list items (or its text) become 付箋, on the page they name
 //                                                 or else the page they are most about (the first page when none stands out)
+import { spreads } from "./pages";
 import { addSticky, insertPage, putScene, stickyBox, STICKY_WIDTH_MM, type Project } from "./project";
 
 export interface PlotPage {
@@ -223,7 +224,7 @@ export interface PlotImportReport {
  * page). Missing pages are added. Memos fill empty pages and are added
  * under what a page already has; scenes replace the scenes they overlap.
  */
-export function applyPlot(project: Project, doc: PlotDoc): PlotImportReport {
+export function applyPlot(project: Project, doc: PlotDoc, firstAlone = true): PlotImportReport {
   const report: PlotImportReport = { memos: 0, scenes: 0, stickies: 0, addedPages: 0 };
   if (doc.title && (!project.title || project.title === "新しいネーム")) project.title = doc.title;
   const needed = Math.max(0, ...doc.pages.map((p) => p.last), ...doc.scenes.map((s) => s.last));
@@ -248,19 +249,22 @@ export function applyPlot(project: Project, doc: PlotDoc): PlotImportReport {
     putScene(project, first, last, scene.title, scene.summary);
     report.scenes++;
   }
-  // 付箋 down the right of their page (page 1 when none), in columns leftwards.
+  // 付箋 down the outer side of their page (page 1 when none), in columns
+  // inwards: on a left-hand page of a spread the gutter side is hidden under
+  // the facing page.
   const [pageW, pageH] = project.pageFormat.canvasMm;
   const next = new Map<number, [number, number]>();
   for (const note of doc.notes) {
     const index = Math.min(Math.max((note.page ?? 1) - 1, 0), project.pages.length - 1);
     const page = project.pages[index];
     if (!page) continue;
-    let [x, y] = next.get(index) ?? [pageW - STICKY_WIDTH_MM - 6, 6];
+    const left = spreads(project.pages.length, firstAlone).some(([, l]) => l === index + 1);
+    let [x, y] = next.get(index) ?? [left ? 6 : pageW - STICKY_WIDTH_MM - 6, 6];
     const text = `【${note.section}】${note.text}`;
     // Its height before it goes down, so it never slides up over the one above.
     const height = stickyBox({ id: "", text, at: [0, 0] })[3];
     if (y > 6 && y + height > pageH - 6) {
-      x = Math.max(6, x - STICKY_WIDTH_MM - 4);
+      x = left ? Math.min(pageW - STICKY_WIDTH_MM - 6, x + STICKY_WIDTH_MM + 4) : Math.max(6, x - STICKY_WIDTH_MM - 4);
       y = 6;
     }
     addSticky(project, page, [x, y], text);

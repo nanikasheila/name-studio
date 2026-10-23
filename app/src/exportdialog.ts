@@ -9,10 +9,12 @@ import {
   exportToCsp,
   imagesNote,
   missingEditable,
+  readCspDialogue,
   ROUGH_LAYERS,
   scriptText,
   updateCspDialogue,
 } from "./nameexport";
+import { applyTakeBack, planTakeBack, takeBackSummary } from "./readback";
 import { ISSUE_LABELS, checkName, issueSummary } from "./namecheck";
 import type { Project, RoughImage } from "./project";
 
@@ -22,12 +24,16 @@ export interface ExportDialogHost {
   projectPath(): string | null;
   rough(rough: RoughImage): Promise<CanvasImageSource | null>;
   status(message: string): void;
+  /** Run `change` as one undoable step. */
+  edit(change: (project: Project) => void): void;
   /** Show a line of dialogue on its page, selected. */
   goTo(pageId: string, lineId: string): void;
   /** Give speech with no tail one; how many were added. */
   addTails(): number;
   /** Lay out again the panels whose dialogue reaches past their border; how many. */
   fitSpills(): number;
+  /** Move the dialogue off the faces in the rough; how many lines were on one. */
+  clearFaces(): number;
 }
 
 type Kind = "csp" | "pdf" | "text";
@@ -99,6 +105,7 @@ export class ExportDialog {
     });
     $("ne-run").addEventListener("click", () => void this.run());
     $("ne-update").addEventListener("click", () => void this.update());
+    $("ne-readback").addEventListener("click", () => void this.readBack());
   }
 
   open(): void {
@@ -119,7 +126,7 @@ export class ExportDialog {
     details.classList.toggle("clean", !issues.length);
     $("ne-check-summary").textContent = issues.length
       ? `書き出す前の確認: ${issueSummary(issues)}（押すとそのセリフへ）`
-      : "書き出す前の確認: フキダシの重なり・コマの外・はみ出し・仕上がりの外・しっぽなしはありません";
+      : "書き出す前の確認: フキダシの重なり・コマの外・はみ出し・仕上がりの外・しっぽなし・顔にかかるセリフはありません";
     const list = $("ne-check-list");
     list.replaceChildren(
       ...issues.slice(0, 60).map((issue) => {
@@ -138,6 +145,15 @@ export class ExportDialog {
       const fix = Object.assign(document.createElement("button"), { type: "button", className: "fix", textContent: "しっぽのないセリフ全部にしっぽを付ける（コマのラフの人物へ向ける）" });
       fix.addEventListener("click", () => {
         this.host.addTails();
+        const updated = this.host.project();
+        if (updated) this.renderCheck(updated);
+      });
+      list.prepend(fix);
+    }
+    if (issues.some((issue) => issue.kind === "face")) {
+      const fix = Object.assign(document.createElement("button"), { type: "button", className: "fix", textContent: "顔にかかるセリフをずらす（よけきれないコマは並べ直す）" });
+      fix.addEventListener("click", () => {
+        this.host.clearFaces();
         const updated = this.host.project();
         if (updated) this.renderCheck(updated);
       });
@@ -165,6 +181,7 @@ export class ExportDialog {
       $(`ne-${kind}`).hidden = kind !== this.kind;
     }
     $("ne-update").hidden = this.kind !== "csp";
+    $("ne-readback").hidden = this.kind !== "csp";
     const path = (id: string, value: string) => {
       $(id).textContent = value || "未選択";
       $(id).title = value;
@@ -391,6 +408,69 @@ export class ExportDialog {
       this.host.status(result.lines[0]);
     } catch (error) {
       this.message(`反映できませんでした: ${error}`, true);
+    } finally {
+      this.busy = false;
+      button.disabled = false;
+    }
+  }
+
+  /** CSP のセリフを読み戻す: dialogue retyped, added or deleted in CSP since the export, into the name. */
+  private async readBack(): Promise<void> {
+    const project = this.host.project();
+    if (!project || this.busy) return;
+    this.readFields();
+    const request = buildRequest(this.form, this.sources());
+    if (typeof request === "string") {
+      this.message(request, true);
+      return;
+    }
+    const target = await invoke<OverwriteCheck>("check_export_target", { outDir: request.outDir }).catch(() => null);
+    if (!target?.existing.some((name) => name.toLowerCase().endsWith(".clip"))) {
+      this.message("書き出し先に CSP のページがありません。前に書き出したフォルダーを選んでください", true);
+      return;
+    }
+    const button = $<HTMLButtonElement>("ne-readback");
+    try {
+      this.busy = true;
+      button.disabled = true;
+      const units = await readCspDialogue(
+        project,
+        {
+          template: request.template,
+          outDir: request.outDir,
+          workTemplate: null,
+          workName: null,
+          storyIndex: null,
+          inputs: this.sources(),
+          donors: [this.donor, project.source?.path].filter((path): path is string => !!path),
+        },
+        (text) => this.message(text),
+      );
+      const plan = planTakeBack(project, units);
+      const summary = takeBackSummary(plan);
+      const changes = plan.retyped.length + plan.added.length + plan.removed.length;
+      if (!changes) {
+        this.message(["CSP で直したセリフはありませんでした", ...summary].join("\n"));
+        return;
+      }
+      const go = await ask(`${request.outDir} のページで CSP で変えたセリフを、ネームに入れます。\n\n${summary.join("\n")}\n\nネームで変えたところはそのままです。元に戻すは Ctrl+Z。`, {
+        title: "Name Studio",
+        kind: "info",
+        okLabel: "読み戻す",
+        cancelLabel: "やめる",
+      });
+      if (!go) {
+        this.message("読み戻しませんでした");
+        return;
+      }
+      this.host.edit((p) => applyTakeBack(p, plan));
+      // From now on these texts count as the name's: セリフだけ反映 leaves them as they are.
+      await invoke("adopt_name_dialogue", { paths: plan.paths });
+      const done = `CSP のセリフを読み戻しました（直した ${plan.retyped.length}・足した ${plan.added.length}・消した ${plan.removed.length}）。元に戻すは Ctrl+Z`;
+      this.message([done, ...summary.filter((line) => !/^CSP で(直した|足した|消した)/.test(line))].join("\n"));
+      this.host.status(done);
+    } catch (error) {
+      this.message(`読み戻せませんでした: ${error}`, true);
     } finally {
       this.busy = false;
       button.disabled = false;

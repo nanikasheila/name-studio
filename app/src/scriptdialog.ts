@@ -11,6 +11,8 @@ export interface ScriptDialogHost {
   edit(change: (project: Project) => void): void;
   /** The script went onto the name: show its first page. */
   done(report: ScriptImportReport, firstPage: number): void;
+  /** Whether page 1 stands alone in the spreads (left-hand pages get notes on their left). */
+  firstAlone(): boolean;
   /** The plot went onto the name. */
   plotDone(report: PlotImportReport): void;
 }
@@ -162,7 +164,7 @@ export class ScriptDialog {
     if (project && plot) {
       const doc = $<HTMLInputElement>("sd-notes").checked ? plot : { ...plot, notes: [] };
       let report: PlotImportReport | null = null;
-      this.host.edit((p) => (report = applyPlot(p, doc)));
+      this.host.edit((p) => (report = applyPlot(p, doc, this.host.firstAlone())));
       $<HTMLDialogElement>("script-dialog").close();
       if (report) this.host.plotDone(report);
       return;

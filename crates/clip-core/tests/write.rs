@@ -1102,9 +1102,9 @@ fn writes_panels_as_a_frame_folder_copied_from_a_finished_page() {
 fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
     use clip_core::text::NewText;
     use clip_core::vector::NewVectorLine;
-    use clip_core::write::manifest::PageRecord;
+    use clip_core::write::manifest::{self, PageRecord, write_manifest};
     use clip_core::write::raster_page::{PageLayer, RasterLayer, RasterWorkWriter, WorkOptions};
-    use clip_core::write::update::{DialogueUpdate, update_dialogue};
+    use clip_core::write::update::{DialogueUpdate, adopt_dialogue, read_dialogue, update_dialogue};
     let folder = tempfile::tempdir().unwrap();
     let template_path = template(folder.path());
     let sheet_path = sheet(folder.path());
@@ -1326,6 +1326,15 @@ fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
     assert_eq!((report.kept, report.foreign, report.left_as_in_csp), (1, 1, 1));
     assert!(report.backup.is_none());
     assert_eq!(digest(&page_path), after);
+    // The name now says what was typed in CSP: that text is kept as the name's, not added again.
+    let taken_back = DialogueUpdate {
+        texts: vec![said("こんにちは", 300), said("さようなら", 150)],
+        ..csp_own
+    };
+    let report = update_dialogue(&page_path, &taken_back, &fallback.donors, &backups).unwrap();
+    assert_eq!((report.kept, report.foreign, report.added.len()), (2, 0, 0));
+    assert!(report.backup.is_none());
+    assert_eq!(digest(&page_path), after);
 
     // A text changed and the balloons not: only the text is swapped.
     let text_only = DialogueUpdate {
@@ -1375,4 +1384,23 @@ fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
         .unwrap();
     let pixels = page.render_layer_pixels(layer).unwrap().unwrap();
     assert_eq!(pixels.alpha_bbox(), Some((10, 500, 60, 510)));
+
+    // Read back for the name: the texts as CSP has them, with what was written.
+    let out = page_path.parent().unwrap();
+    let typed = PageRecord {
+        texts: Some(vec!["こんばんは".into(), "またね".into()]),
+        ..Default::default()
+    };
+    write_manifest(out, &[(page_path.clone(), typed)]).unwrap();
+    let read = read_dialogue(&page_path).unwrap();
+    let texts: Vec<&str> = read.texts.iter().map(|text| text.text.as_str()).collect();
+    assert_eq!(texts, ["こんばんは", "さようなら"]);
+    assert_eq!(read.texts[1].bbox, Some([150, 60, 190, 200]));
+    assert_eq!(read.written, Some(vec!["こんばんは".to_owned(), "またね".to_owned()]));
+    // Taken back into the name: recorded as this tool's.
+    adopt_dialogue(&page_path).unwrap();
+    assert_eq!(
+        manifest::written(&page_path).and_then(|record| record.texts),
+        Some(vec!["こんばんは".to_owned(), "さようなら".to_owned()])
+    );
 }

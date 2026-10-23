@@ -825,6 +825,48 @@ async fn update_name_dialogue(
     .map_err(|error| error.to_string())?
 }
 
+/// The dialogue of the next page as CSP has it now.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CspPageDialogue {
+    path: PathBuf,
+    /// None when the page's file is not there.
+    dialogue: Option<update::CspDialogue>,
+}
+
+/// Read the dialogue of the next page the export wrote (a 見開き page when
+/// `spread`), to take what was changed in CSP back into the name.
+#[tauri::command]
+async fn read_name_dialogue(app: tauri::AppHandle, spread: bool) -> Result<CspPageDialogue, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let mut guard = state.name_export.lock().map_err(lock_error)?;
+        let writer = guard.as_mut().ok_or("書き出しが始まっていません")?;
+        let path = writer.next_page_path(spread);
+        let dialogue = if path.exists() {
+            Some(update::read_dialogue(&path).map_err(|error| format!("{}: {error}", path.display()))?)
+        } else {
+            None
+        };
+        Ok(CspPageDialogue { path, dialogue })
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+/// Record the dialogue of these pages as CSP has it now as the name's (taken back into it).
+#[tauri::command]
+async fn adopt_name_dialogue(paths: Vec<PathBuf>) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        for path in paths {
+            update::adopt_dialogue(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct NameExportReport {
@@ -983,6 +1025,8 @@ pub fn run() {
             begin_name_export,
             export_name_page,
             update_name_dialogue,
+            read_name_dialogue,
+            adopt_name_dialogue,
             finish_name_export,
             cancel_name_export,
             check_export_target,
