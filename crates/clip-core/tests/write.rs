@@ -1097,3 +1097,231 @@ fn writes_panels_as_a_frame_folder_copied_from_a_finished_page() {
         assert!(block.starts_with("extrnlid") && written.container.external_payload(&block).is_none());
     }
 }
+
+#[test]
+fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
+    use clip_core::text::NewText;
+    use clip_core::vector::NewVectorLine;
+    use clip_core::write::manifest::PageRecord;
+    use clip_core::write::raster_page::{PageLayer, RasterLayer, RasterWorkWriter, WorkOptions};
+    use clip_core::write::update::{DialogueUpdate, update_dialogue};
+    let folder = tempfile::tempdir().unwrap();
+    let template_path = template(folder.path());
+    let sheet_path = sheet(folder.path());
+    let mut writer = RasterWorkWriter::new(WorkOptions {
+        template: template_path.clone(),
+        out_dir: folder.path().join("out"),
+        name_pattern: DEFAULT_NAME_PATTERN.into(),
+        work: None,
+        story_index: None,
+        inputs: vec![sheet_path.clone()],
+        donor_sources: vec![sheet_path.clone()],
+        draft_layers: Vec::new(),
+        frame_folders: false,
+    })
+    .unwrap();
+    let balloon = |x: f64| PageLayer::Vector {
+        name: "フキダシ".into(),
+        lines: vec![NewVectorLine {
+            points: vec![
+                (x, 40.0, 1.0),
+                (x + 60.0, 40.0, 1.0),
+                (x + 60.0, 200.0, 1.0),
+                (x, 200.0, 1.0),
+            ],
+            closed: true,
+            width_px: 2.0,
+        }],
+    };
+    let paper = |x: u32| {
+        let mut image = RgbaImage::transparent(400, 560);
+        for y in 40..200 {
+            for dx in 0..60 {
+                let at = ((y * 400 + x + dx) * 4) as usize;
+                image.pixels[at..at + 4].copy_from_slice(&[255, 255, 255, 255]);
+            }
+        }
+        PageLayer::Raster(RasterLayer {
+            name: "フキダシの塗り".into(),
+            image,
+        })
+    };
+    let said = |text: &str, x: i32| NewText {
+        text: text.into(),
+        frame: [x, 60, x + 40, 200],
+        font_size_pt: 7.5,
+        vertical: true,
+        color: None,
+    };
+    let layers = [
+        paper(290),
+        balloon(290.0),
+        PageLayer::Text(said("こんにちは", 300)),
+        PageLayer::Text(said("またね", 200)),
+    ];
+    let page_path = writer.write_page(&layers, None, false).unwrap();
+    // The update repeats the export: the same file for the same page.
+    let report = writer.finish().unwrap();
+    let written = report.records[0].clone();
+    assert_eq!(written.texts, Some(vec!["こんにちは".to_owned(), "またね".to_owned()]));
+    assert_eq!(written.vectors.keys().collect::<Vec<_>>(), ["フキダシ"]);
+
+    // Pen work in CSP: a layer drawn on.
+    let mut editor = ClipEditor::open(&page_path).unwrap();
+    let source = ClipDocument::read(&page_path).unwrap();
+    let payload = |id: &str| source.container.external_payload(id).map(<[u8]>::to_vec);
+    let raster = editor.first_raster_layer().unwrap();
+    let mut rename = |values: &mut clip_core::write::Values| {
+        for (column, value) in values.iter_mut() {
+            if column == "LayerName" {
+                *value = rusqlite::types::Value::Text("ペン入れ".into());
+            }
+        }
+        Ok(())
+    };
+    let ink = editor
+        .add_layer(source.database(), &payload, raster, Some(&mut rename), None)
+        .unwrap();
+    editor.append_to_folder(editor.root_id, ink, None).unwrap();
+    let black = RgbaImage {
+        width: 30,
+        height: 30,
+        pixels: [0, 0, 0, 255].repeat(900),
+    };
+    editor.set_layer_image(ink, &black, (50, 300)).unwrap();
+    // New layers start from a copy of the first raster layer's offscreens: drawn on here too.
+    editor.set_layer_image(raster, &black, (10, 10)).unwrap();
+    editor.save(&page_path).unwrap();
+    drop(source);
+    let drawn = digest(&page_path);
+
+    let fallback = RasterWorkWriter::new(WorkOptions {
+        template: template_path.clone(),
+        out_dir: folder.path().join("out"),
+        name_pattern: DEFAULT_NAME_PATTERN.into(),
+        work: None,
+        story_index: None,
+        inputs: vec![sheet_path.clone()],
+        donor_sources: vec![sheet_path.clone()],
+        draft_layers: Vec::new(),
+        frame_folders: false,
+    })
+    .unwrap();
+    let backups = folder.path().join("backup");
+    // Nothing changed: the page is not touched.
+    let same = DialogueUpdate {
+        texts: vec![said("こんにちは", 300), said("またね", 200)],
+        balloons: vec![paper(290), balloon(290.0)],
+        written: None,
+    };
+    let report = update_dialogue(&page_path, &same, &fallback.donors, &backups).unwrap();
+    assert_eq!((report.kept, report.backup.clone()), (2, None));
+    assert_eq!(digest(&page_path), drawn);
+
+    // 「またね」 became 「さようなら」 and its balloon moved.
+    let update = DialogueUpdate {
+        texts: vec![said("こんにちは", 300), said("さようなら", 150)],
+        balloons: vec![paper(140), balloon(140.0)],
+        written: Some(written.clone()),
+    };
+    let report = update_dialogue(&page_path, &update, &fallback.donors, &backups).unwrap();
+    assert!(report.problems.is_empty(), "{:?}", report.problems);
+    assert_eq!(report.kept, 1);
+    assert_eq!(report.retired, ["またね"]);
+    assert_eq!(report.added, ["さようなら"]);
+    assert_eq!(report.replaced, ["フキダシの塗り", "フキダシ"]);
+    // The page as it was is kept.
+    assert_eq!(digest(report.backup.as_ref().unwrap()), drawn);
+
+    let page = ClipDocument::read(&page_path).unwrap();
+    // Each new layer right above the one it replaces; the drawn layer stays on top.
+    let names: Vec<(String, bool)> = page
+        .root
+        .children
+        .iter()
+        .filter(|layer| layer.kind != clip_core::LayerKind::Paper && layer.kind != clip_core::LayerKind::StoryInfo)
+        .map(|layer| (layer.name.clone(), layer.visible))
+        .collect();
+    let shown = |name: &str| (name.to_owned(), true);
+    let hidden = |name: &str| (name.to_owned(), false);
+    assert_eq!(
+        names,
+        [
+            shown("レイヤー 1"),
+            hidden("（旧）フキダシの塗り"),
+            shown("フキダシの塗り"),
+            hidden("（旧）フキダシ"),
+            shown("フキダシ"),
+            shown("こんにちは"),
+            hidden("（旧）またね"),
+            shown("さようなら"),
+            shown("ペン入れ"),
+        ]
+    );
+    let find = |name: &str| {
+        page.layers()
+            .into_iter()
+            .find(|layer| layer.name == name)
+            .unwrap()
+            .clone()
+    };
+    // The pen work is untouched.
+    let pixels = page.render_layer_pixels(&find("ペン入れ")).unwrap().unwrap();
+    assert_eq!(pixels.alpha_bbox(), Some((50, 300, 80, 330)));
+    // The new balloon and its paper are where the name has them now.
+    let lines = page.vector_objects(&find("フキダシ")).unwrap();
+    assert_eq!(lines[0].points[0], (140.0, 40.0));
+    let fill = page.render_layer_pixels(&find("フキダシの塗り")).unwrap().unwrap();
+    assert_eq!(fill.alpha_bbox(), Some((140, 40, 200, 200)));
+    let new = find("さようなら");
+    assert_eq!(page.text_strings(&new), ["さようなら"]);
+    // Without that drawing copied into their stored images.
+    for layer in [&new, &find("フキダシ")] {
+        let pixels = page.render_layer_pixels(layer).unwrap();
+        assert_eq!(pixels.and_then(|image| image.alpha_bbox()), None, "{}", layer.name);
+    }
+    assert_eq!(page.text_blocks(&new).unwrap()[0].bbox, Some((150, 60, 190, 200)));
+
+    // Texts not written by this tool, or changed in CSP since, are left alone.
+    let after = digest(&page_path);
+    let csp_own = DialogueUpdate {
+        texts: vec![said("こんにちは", 300), said("消したセリフ", 100)],
+        balloons: vec![paper(140), balloon(140.0)],
+        written: Some(PageRecord {
+            texts: Some(vec!["こんにちは".into(), "消したセリフ".into()]),
+            ..report.record.clone()
+        }),
+    };
+    let recorded = report.record.clone();
+    let report = update_dialogue(&page_path, &csp_own, &fallback.donors, &backups).unwrap();
+    assert_eq!((report.kept, report.foreign, report.left_as_in_csp), (1, 1, 1));
+    assert!(report.backup.is_none());
+    assert_eq!(digest(&page_path), after);
+
+    // A text changed and the balloons not: only the text is swapped.
+    let text_only = DialogueUpdate {
+        texts: vec![said("こんばんは", 300), said("さようなら", 150)],
+        balloons: vec![paper(140), balloon(140.0)],
+        written: Some(recorded.clone()),
+    };
+    let report = update_dialogue(&page_path, &text_only, &fallback.donors, &backups).unwrap();
+    assert!(report.problems.is_empty(), "{:?}", report.problems);
+    assert_eq!((report.retired.len(), report.added.len()), (1, 1));
+    assert!(report.replaced.is_empty() && report.conflicts.is_empty());
+
+    // The balloons changed in the name and in CSP: the name's go in, CSP's are hidden and named.
+    let mut edited = recorded.clone();
+    edited.vectors.insert("フキダシ".into(), "1:changed-in-the-name".into());
+    let both = DialogueUpdate {
+        texts: vec![said("こんばんは", 300), said("さようなら", 150)],
+        balloons: vec![paper(100), balloon(100.0)],
+        written: Some(PageRecord {
+            texts: Some(vec!["こんばんは".into(), "さようなら".into()]),
+            ..edited
+        }),
+    };
+    let report = update_dialogue(&page_path, &both, &fallback.donors, &backups).unwrap();
+    assert!(report.problems.is_empty(), "{:?}", report.problems);
+    assert_eq!(report.replaced, ["フキダシの塗り", "フキダシ"]);
+    assert_eq!(report.conflicts, ["フキダシ"]);
+}

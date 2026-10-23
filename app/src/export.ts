@@ -103,6 +103,11 @@ export function overwriteWarning(check: OverwriteCheck): string | null {
   if (check.unknown.length) {
     lines.push("", `この書き出しで作ったものではないファイル:`, listed(check.unknown));
   }
-  lines.push("", "上書きしますか？ CSP の作業を残すなら「やめる」を押して、別のフォルダーを選んでください。");
+  lines.push(
+    "",
+    check.changed.length
+      ? "上書きしますか？ CSP の作業を残すなら「やめる」を押して、別のフォルダーを選んでください。描き進めたページにセリフの直しだけ入れるなら「セリフだけ反映…」を使ってください。"
+      : "上書きしますか？ CSP の作業を残すなら「やめる」を押して、別のフォルダーを選んでください。",
+  );
   return lines.join("\n");
 }

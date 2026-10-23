@@ -671,6 +671,149 @@ export async function exportToCsp(
   }
 }
 
+/** One page brought up to date (clip-core `update::DialogueUpdateReport`). */
+export interface DialogueUpdateReport {
+  path: string;
+  backup: string | null;
+  kept: number;
+  retired: string[];
+  added: string[];
+  foreign: number;
+  leftAsInCsp: number;
+  replaced: string[];
+  notFound: string[];
+  /** Swapped layers that had been changed in CSP too. */
+  conflicts: string[];
+  problems: string[];
+}
+
+export interface DialogueUpdateSummary {
+  pages: (DialogueUpdateReport & { pages: number[] })[];
+  /** Pages whose dialogue changed (and were written). */
+  changed: number;
+  warnings: string[];
+}
+
+/** `name-studio-backup` folder name for this run: when it started. */
+function backupName(now: Date): string {
+  const two = (value: number) => String(value).padStart(2, "0");
+  return `${now.getFullYear()}${two(now.getMonth() + 1)}${two(now.getDate())}-${two(now.getHours())}${two(now.getMinutes())}${two(now.getSeconds())}`;
+}
+
+/**
+ * Bring the dialogue into pages already written to `request.outDir` and
+ * drawn on in CSP since: the same pages as the export (spreads too), but
+ * only texts that changed are swapped (the old ones hidden as 「（旧）」),
+ * with the balloons of those pages. Everything else in the page stays as
+ * CSP saved it; each changed page is copied to `name-studio-backup` first.
+ */
+export async function updateCspDialogue(
+  project: Project,
+  request: CspExportRequest,
+  progress: (message: string) => void,
+): Promise<DialogueUpdateSummary> {
+  await loadTips(project.brushes);
+  const start = await invoke<NameExportStart>("begin_name_export", { request: { ...request, frameFolders: false, notes: false } });
+  try {
+    if (!start.textLayers) throw new Error("テキストのレイヤーの見本が見つかりません。書き出しと同じひな形・見本のページを選んでください");
+    const vector = start.vectorLayers;
+    const full = projectToTemplate(project, start);
+    const { units, warnings } = exportUnits(project, start.firstPageLeft, start.spread ? null : start.spreadProblem);
+    const widest = Math.max(start.widthPx, ...(units.some((unit) => unit.length > 1) && start.spread ? [start.spread.widthPx] : []));
+    const factor = Math.min(1, Math.sqrt(MAX_LAYER_PIXELS / (widest * start.heightPx)));
+    const drawing = document.createElement("canvas");
+    const ctx = drawing.getContext("2d")!;
+    const backup = backupName(new Date());
+    const pages: DialogueUpdateSummary["pages"] = [];
+    for (const [unitIndex, unit] of units.entries()) {
+      progress(`${unitIndex + 1} / ${units.length} ページのセリフを確かめ中…`);
+      const spread = unit.length > 1 && start.spread ? start.spread : null;
+      const pageWidth = spread ? spread.widthPx : start.widthPx;
+      const placed = unit.map((index, position) => {
+        const right = (position === 0) === (project.binding === "right");
+        const dx = spread ? (right ? spread.rightDx : spread.leftDx) : 0;
+        return { page: project.pages[index], m: shifted(full, dx), right };
+      });
+      const texts = placed.flatMap(({ page, m }) => textLayers(page, m, start.resolution));
+      // The balloons as the export writes them: lines and their paper, or one image.
+      const balloons: LayerMeta[] = [];
+      const pngs: Uint8Array[] = [];
+      const width = Math.round(pageWidth * factor);
+      const height = Math.round(start.heightPx * factor);
+      const image = async (kind: LayerKind) => {
+        let png: Uint8Array = new Uint8Array();
+        if (placed.some(({ page }) => partCount(page, kind))) {
+          drawing.width = width;
+          drawing.height = height;
+          for (const { page, m, right } of placed) {
+            ctx.save();
+            if (spread) {
+              ctx.beginPath();
+              const x = spread.gutterPx * factor;
+              ctx.rect(right ? x : 0, 0, right ? width - x : x, height);
+              ctx.clip();
+            }
+            drawPart(ctx, page, kind, scaled(m, factor), project.brushes);
+            ctx.restore();
+          }
+          png = await encode(drawing, "image/png");
+        }
+        balloons.push({ kind: "raster", name: LAYER_NAMES[kind], length: png.length });
+        pngs.push(png);
+      };
+      if (vector) {
+        await image("balloonFills");
+        const lines = placed.flatMap(({ page, m, right }) => {
+          const own = vectorLines(page, "balloons", m, project.brushes);
+          return spread ? clipLines(own, spread.gutterPx, right) : own;
+        });
+        balloons.push({ kind: "vector", name: LAYER_NAMES.balloons, lines });
+      } else {
+        await image("balloons");
+      }
+      const meta = { texts, balloons, spread: spread !== null, backup };
+      const report = await invoke<DialogueUpdateReport>("update_name_dialogue", packBody(meta, pngs));
+      pages.push({ ...report, pages: unit.map((index) => index + 1) });
+    }
+    drawing.width = 0;
+    return { pages, changed: pages.filter((page) => page.backup).length, warnings };
+  } finally {
+    await invoke("cancel_name_export").catch(() => undefined);
+  }
+}
+
+/** What the update did, in a few lines. */
+export function dialogueUpdateSummary(summary: DialogueUpdateSummary): { ok: boolean; lines: string[] } {
+  const where = (page: { pages: number[] }) => (page.pages.length > 1 ? `${page.pages.join("–")} ページ` : `${page.pages[0]} ページ`);
+  const lines: string[] = [];
+  const sum = (pick: (page: DialogueUpdateReport) => number) => summary.pages.reduce((total, page) => total + pick(page), 0);
+  const missing = summary.pages.filter((page) => page.notFound.includes("ページのファイル"));
+  lines.push(
+    summary.changed
+      ? `${summary.changed} ページに反映しました（セリフ: 足した ${sum((page) => page.added.length)}・（旧）にして隠した ${sum((page) => page.retired.length)}・そのまま ${sum((page) => page.kept)}、フキダシを入れ替えたページ ${summary.pages.filter((page) => page.replaced.length).length}）`
+      : "セリフもフキダシも変わったページはありませんでした",
+  );
+  const backup = summary.pages.find((page) => page.backup)?.backup;
+  if (backup) lines.push(`反映する前のページ: ${backup.replace(/[\\/][^\\/]+$/, "")}`);
+  const inCsp = sum((page) => page.leftAsInCsp);
+  if (inCsp) lines.push(`CSP で直した・消したセリフ ${inCsp} 個は、ネームで変えていないので CSP のままにしました`);
+  // A text retyped in CSP is not one this tool wrote either: counted once, above.
+  const foreign = sum((page) => Math.max(0, page.foreign - page.leftAsInCsp));
+  if (foreign) lines.push(`CSP で足したテキスト ${foreign} 個はそのままです`);
+  for (const page of summary.pages) {
+    const lost = page.notFound.filter((name) => name !== "ページのファイル");
+    if (lost.length && page.backup) lines.push(`${where(page)}: 「${lost.join("」「")}」レイヤーが見つからないので、フキダシは前のままです`);
+    if (page.conflicts.length) {
+      lines.push(`${where(page)}: CSP でも直した「${page.conflicts.join("」「")}」をネームのものにしました（CSP で直したものは「（旧）」で隠してあります）`);
+    }
+  }
+  if (missing.length) lines.push(`ページのファイルがありません: ${missing.map(where).join("、")}（書き出したときとページの数・見開きが変わっていませんか）`);
+  lines.push(...summary.warnings);
+  const problems = summary.pages.flatMap((page) => page.problems.map((problem) => `${where(page)}: ${problem}`));
+  if (problems.length) lines.push(`自己確認で ${problems.length} 件の問題:`, ...problems);
+  return { ok: !problems.length && !missing.length, lines };
+}
+
 export interface PdfOptions {
   /** Cut each page at the trim (仕上がり) or keep the whole canvas. */
   area: "trim" | "canvas";

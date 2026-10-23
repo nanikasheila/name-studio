@@ -14,6 +14,7 @@ pub mod raster_page;
 pub mod schema;
 pub mod split;
 pub mod spread;
+pub mod update;
 pub mod verify;
 
 use rusqlite::types::Value;

@@ -21,13 +21,13 @@ use clip_core::raster::decode_png;
 use clip_core::raster::{Filter, resize};
 use clip_core::text::NewText;
 use clip_core::vector::{NewFrame, NewVectorLine};
-use clip_core::write::manifest;
 use clip_core::write::raster_page::{
     PageLayer, RasterLayer, RasterWorkWriter, TemplateCanvas, WorkOptions, WorkReport,
 };
 use clip_core::write::split::{DEFAULT_NAME_PATTERN, SplitOptions, SplitReport, split_sheet};
 use clip_core::write::spread::SpreadLayout;
 use clip_core::write::verify::{self, ExpectedLayer, FileCheck};
+use clip_core::write::{manifest, update};
 use name_model::versions::{self, Recovery, VersionInfo, VersionKind, VersionStore};
 use name_model::{PageFormat, Project};
 use serde::{Deserialize, Serialize};
@@ -625,6 +625,61 @@ fn rough_layer(
     Ok(page)
 }
 
+/// One layer as sent (`take` gives the next PNG of the body) as clip-core's.
+fn page_layer<'a>(
+    layer: LayerMeta,
+    take: &mut impl FnMut(usize) -> Result<&'a [u8], String>,
+    width: u32,
+    height: u32,
+) -> Result<PageLayer, String> {
+    Ok(match layer {
+        LayerMeta::Raster { name, length } => {
+            let png = take(length)?;
+            let image = if png.is_empty() {
+                RgbaImage::transparent(width, height)
+            } else {
+                decode_png(png).map_err(|error| error.to_string())?
+            };
+            PageLayer::Raster(RasterLayer { name, image })
+        }
+        LayerMeta::Vector { name, lines } => PageLayer::Vector {
+            name,
+            lines: lines
+                .into_iter()
+                .map(|line| NewVectorLine {
+                    points: line.points.into_iter().map(|[x, y, w]| (x, y, w)).collect(),
+                    closed: line.closed,
+                    width_px: line.width_px,
+                })
+                .collect(),
+        },
+        LayerMeta::Frames { name, frames, ink } => PageLayer::Frames {
+            name,
+            frames: frames
+                .into_iter()
+                .map(|frame| NewFrame {
+                    points: frame.points.into_iter().map(|[x, y]| (x, y)).collect(),
+                    width_px: frame.width_px,
+                })
+                .collect(),
+            ink,
+        },
+        LayerMeta::Text {
+            text,
+            frame,
+            font_size_pt,
+            vertical,
+            color,
+        } => PageLayer::Text(NewText {
+            text,
+            frame: frame.map(|value| value.round() as i32),
+            font_size_pt,
+            vertical,
+            color,
+        }),
+    })
+}
+
 /// Write the next page from its layer images (raw body, see [`split_body`]),
 /// then read it back to check it holds what was sent.
 #[tauri::command]
@@ -659,52 +714,7 @@ async fn export_name_page(app: tauri::AppHandle, request: tauri::ipc::Request<'_
                 Ok(png)
             };
             for layer in meta.layers {
-                layers.push(match layer {
-                    LayerMeta::Raster { name, length } => {
-                        let png = take(length)?;
-                        let image = if png.is_empty() {
-                            RgbaImage::transparent(width, height)
-                        } else {
-                            decode_png(png).map_err(|error| error.to_string())?
-                        };
-                        PageLayer::Raster(RasterLayer { name, image })
-                    }
-                    LayerMeta::Vector { name, lines } => PageLayer::Vector {
-                        name,
-                        lines: lines
-                            .into_iter()
-                            .map(|line| NewVectorLine {
-                                points: line.points.into_iter().map(|[x, y, w]| (x, y, w)).collect(),
-                                closed: line.closed,
-                                width_px: line.width_px,
-                            })
-                            .collect(),
-                    },
-                    LayerMeta::Frames { name, frames, ink } => PageLayer::Frames {
-                        name,
-                        frames: frames
-                            .into_iter()
-                            .map(|frame| NewFrame {
-                                points: frame.points.into_iter().map(|[x, y]| (x, y)).collect(),
-                                width_px: frame.width_px,
-                            })
-                            .collect(),
-                        ink,
-                    },
-                    LayerMeta::Text {
-                        text,
-                        frame,
-                        font_size_pt,
-                        vertical,
-                        color,
-                    } => PageLayer::Text(NewText {
-                        text,
-                        frame: frame.map(|value| value.round() as i32),
-                        font_size_pt,
-                        vertical,
-                        color,
-                    }),
-                });
+                layers.push(page_layer(layer, &mut take, width, height)?);
             }
             let overlay = match take(meta.overlay_length)? {
                 [] => None,
@@ -718,6 +728,84 @@ async fn export_name_page(app: tauri::AppHandle, request: tauri::ipc::Request<'_
                 .write_page(&layers, overlay.as_ref(), meta.spread)
                 .map_err(|error| error.to_string())?;
             Ok(verify::verify_page(&path, &expected, &canvas))
+        })();
+        *state.name_export.lock().map_err(lock_error)? = Some(writer);
+        result
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DialogueMeta {
+    /// The page's texts (`LayerMeta::Text`) and balloons (vector / raster).
+    texts: Vec<LayerMeta>,
+    balloons: Vec<LayerMeta>,
+    #[serde(default)]
+    spread: bool,
+    /// Folder name under `name-studio-backup` for the pages as they were.
+    backup: String,
+}
+
+/// Bring the dialogue of the next page (raw body: JSON, then the balloon
+/// images) into the page the export wrote there, keeping what was drawn in CSP.
+#[tauri::command]
+async fn update_name_dialogue(
+    app: tauri::AppHandle,
+    request: tauri::ipc::Request<'_>,
+) -> Result<update::DialogueUpdateReport, String> {
+    let body = raw_body(&request)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let (meta, mut rest) = split_body::<DialogueMeta>(&body)?;
+        let mut writer = state
+            .name_export
+            .lock()
+            .map_err(lock_error)?
+            .take()
+            .ok_or("書き出しが始まっていません")?;
+        let result = (|| {
+            let canvas = if meta.spread {
+                writer.spread_canvas().ok_or("見開きページを作れません")?
+            } else {
+                writer.canvas
+            };
+            let (width, height) = (canvas.width_px, canvas.height_px);
+            let path = writer.next_page_path(meta.spread);
+            if !path.exists() {
+                return Ok(update::DialogueUpdateReport {
+                    path,
+                    not_found: vec!["ページのファイル".to_owned()],
+                    ..Default::default()
+                });
+            }
+            let mut take = |length: usize| -> Result<&[u8], String> {
+                let png = rest.get(..length).ok_or("データが壊れています")?;
+                rest = &rest[length..];
+                Ok(png)
+            };
+            let mut texts = Vec::new();
+            for layer in meta.texts {
+                if let PageLayer::Text(text) = page_layer(layer, &mut take, width, height)? {
+                    texts.push(text);
+                }
+            }
+            let mut balloons = Vec::new();
+            for layer in meta.balloons {
+                balloons.push(page_layer(layer, &mut take, width, height)?);
+            }
+            let update = update::DialogueUpdate {
+                texts,
+                balloons,
+                written: manifest::written(&path),
+            };
+            let backup = writer.out_dir().join("name-studio-backup").join(&meta.backup);
+            let report = update::update_dialogue(&path, &update, &writer.donors, &backup)
+                .map_err(|error| format!("{}: {error}", path.display()))?;
+            // What the page now holds from the name, for the next update.
+            let _ = manifest::record_page(&path, report.record.clone());
+            Ok(report)
         })();
         *state.name_export.lock().map_err(lock_error)? = Some(writer);
         result
@@ -748,7 +836,13 @@ async fn finish_name_export(state: tauri::State<'_, AppState>) -> Result<NameExp
         let report = writer.finish().map_err(|error| error.to_string())?;
         // What was written, so the next export here can tell pages changed in CSP.
         if let Some(dir) = report.pages.first().and_then(|page| page.parent()) {
-            let written: Vec<PathBuf> = report.pages.iter().chain(report.work.iter()).cloned().collect();
+            let written: Vec<(PathBuf, manifest::PageRecord)> = report
+                .pages
+                .iter()
+                .cloned()
+                .zip(report.records.iter().cloned())
+                .chain(report.work.iter().map(|work| (work.clone(), Default::default())))
+                .collect();
             let _ = manifest::write_manifest(dir, &written);
         }
         let work_check = report
@@ -877,6 +971,7 @@ pub fn run() {
             rough_image,
             begin_name_export,
             export_name_page,
+            update_name_dialogue,
             finish_name_export,
             cancel_name_export,
             check_export_target,

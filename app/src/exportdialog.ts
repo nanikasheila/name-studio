@@ -2,7 +2,17 @@
 import { invoke } from "@tauri-apps/api/core";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import { buildRequest, folderOf, overwriteWarning, type ExportForm, type OverwriteCheck } from "./export";
-import { checkSummary, exportPdf, exportToCsp, imagesNote, missingEditable, ROUGH_LAYERS, scriptText } from "./nameexport";
+import {
+  checkSummary,
+  dialogueUpdateSummary,
+  exportPdf,
+  exportToCsp,
+  imagesNote,
+  missingEditable,
+  ROUGH_LAYERS,
+  scriptText,
+  updateCspDialogue,
+} from "./nameexport";
 import { ISSUE_LABELS, checkName, issueSummary } from "./namecheck";
 import type { Project, RoughImage } from "./project";
 
@@ -88,6 +98,7 @@ export class ExportDialog {
       this.frameFolders = (event.target as HTMLInputElement).checked;
     });
     $("ne-run").addEventListener("click", () => void this.run());
+    $("ne-update").addEventListener("click", () => void this.update());
   }
 
   open(): void {
@@ -153,6 +164,7 @@ export class ExportDialog {
       $(`ne-kind-${kind}`).classList.toggle("active", kind === this.kind);
       $(`ne-${kind}`).hidden = kind !== this.kind;
     }
+    $("ne-update").hidden = this.kind !== "csp";
     const path = (id: string, value: string) => {
       $(id).textContent = value || "未選択";
       $(id).title = value;
@@ -321,6 +333,62 @@ export class ExportDialog {
       }
     } catch (error) {
       this.message(`書き出せませんでした: ${error}`, true);
+    } finally {
+      this.busy = false;
+      button.disabled = false;
+    }
+  }
+
+  /** セリフだけ反映: the changed dialogue into pages drawn on in CSP since the export. */
+  private async update(): Promise<void> {
+    const project = this.host.project();
+    if (!project || this.busy) return;
+    this.readFields();
+    const request = buildRequest(this.form, this.sources());
+    if (typeof request === "string") {
+      this.message(request, true);
+      return;
+    }
+    const target = await invoke<OverwriteCheck>("check_export_target", { outDir: request.outDir }).catch(() => null);
+    if (!target?.existing.some((name) => name.toLowerCase().endsWith(".clip"))) {
+      this.message("書き出し先に CSP のページがありません。前に書き出したフォルダーを選んでください", true);
+      return;
+    }
+    const go = await ask(
+      `${request.outDir} のページに、ネームで変わったセリフとフキダシだけを入れます。\n\n` +
+        "・描いたレイヤーやほかのレイヤーはそのままです\n" +
+        "・前のセリフとフキダシは消さずに隠し、名前の頭に「（旧）」を付けます（見比べてから CSP で消せます）\n" +
+        "・CSP で直したセリフや足したテキストはそのままです\n" +
+        "・変える前のページは name-studio-backup フォルダーに控えます\n\n" +
+        "CSP でページを開いていたら、保存して閉じてから続けてください。書き出したときと同じひな形・ページ数で反映します。",
+      { title: "Name Studio", kind: "info", okLabel: "反映する", cancelLabel: "やめる" },
+    );
+    if (!go) return;
+    const button = $<HTMLButtonElement>("ne-update");
+    try {
+      this.busy = true;
+      button.disabled = true;
+      const summary = await updateCspDialogue(
+        project,
+        {
+          template: request.template,
+          outDir: request.outDir,
+          workTemplate: null,
+          workName: null,
+          storyIndex: null,
+          inputs: this.sources(),
+          donors: [this.donor, project.source?.path].filter((path): path is string => !!path),
+        },
+        (text) => {
+          this.message(text);
+          this.host.status(text);
+        },
+      );
+      const result = dialogueUpdateSummary(summary);
+      this.message(result.lines.join("\n"), !result.ok);
+      this.host.status(result.lines[0]);
+    } catch (error) {
+      this.message(`反映できませんでした: ${error}`, true);
     } finally {
       this.busy = false;
       button.disabled = false;

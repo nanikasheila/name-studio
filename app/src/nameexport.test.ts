@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LAYER_ORDER, canBeVector, checkSummary, clipLines, imagesNote, missingEditable, exportUnits, frameMetas, hasNotes, mapBox, packBody, partCount, projectToTemplate, scriptText, textLayers, vectorLines, type LayerMeta } from "./nameexport";
+import { LAYER_ORDER, canBeVector, checkSummary, clipLines, dialogueUpdateSummary, imagesNote, missingEditable, exportUnits, frameMetas, hasNotes, mapBox, packBody, partCount, projectToTemplate, scriptText, textLayers, vectorLines, type DialogueUpdateReport, type LayerMeta } from "./nameexport";
 import { addCharacter, addLine, addScene, basicBox, newProject, rectShape } from "./project";
 
 describe("projectToTemplate", () => {
@@ -185,6 +185,50 @@ describe("checkSummary", () => {
     const summary = checkSummary({ checks: [check(), check(["レイヤー「コマ枠」の線が 0 本"])], workCheck: check(["ない"]) });
     expect(summary.ok).toBe(false);
     expect(summary.lines).toEqual(["自己確認で 2 件の問題が見つかりました:", "2 ページ: レイヤー「コマ枠」の線が 0 本", "作品: ない"]);
+  });
+});
+
+describe("dialogueUpdateSummary", () => {
+  const page = (pages: number[], changes: Partial<DialogueUpdateReport> = {}) => ({
+    path: `p${pages[0]}.clip`,
+    backup: null,
+    kept: 3,
+    retired: [],
+    added: [],
+    foreign: 0,
+    leftAsInCsp: 0,
+    replaced: [],
+    notFound: [],
+    conflicts: [],
+    problems: [],
+    pages,
+    ...changes,
+  });
+  it("counts what changed and where the pages were kept", () => {
+    const summary = dialogueUpdateSummary({
+      pages: [
+        page([1]),
+        page([2, 3], { backup: "/out/name-studio-backup/20261023-120000/page0002.clip", retired: ["a"], added: ["b", "c"], replaced: ["フキダシ"] }),
+        page([4], { foreign: 2, leftAsInCsp: 1, conflicts: ["フキダシ"], backup: "/out/name-studio-backup/20261023-120000/page0004.clip" }),
+      ],
+      changed: 2,
+      warnings: [],
+    });
+    expect(summary.ok).toBe(true);
+    expect(summary.lines[0]).toBe("2 ページに反映しました（セリフ: 足した 2・（旧）にして隠した 1・そのまま 9、フキダシを入れ替えたページ 1）");
+    expect(summary.lines).toContain("反映する前のページ: /out/name-studio-backup/20261023-120000");
+    // The text retyped in CSP is said once, not again as one added there.
+    expect(summary.lines.filter((line) => line.includes("CSP で"))).toEqual([
+      "CSP で直した・消したセリフ 1 個は、ネームで変えていないので CSP のままにしました",
+      "CSP で足したテキスト 1 個はそのままです",
+      "4 ページ: CSP でも直した「フキダシ」をネームのものにしました（CSP で直したものは「（旧）」で隠してあります）",
+    ]);
+  });
+  it("is not ok when a page file is missing or reads back wrong", () => {
+    const summary = dialogueUpdateSummary({ pages: [page([1], { notFound: ["ページのファイル"] }), page([2], { problems: ["セリフが 1 個足りません"] })], changed: 0, warnings: [] });
+    expect(summary.ok).toBe(false);
+    expect(summary.lines).toContain("2 ページ: セリフが 1 個足りません");
+    expect(summary.lines.some((line) => line.startsWith("ページのファイルがありません: 1 ページ"))).toBe(true);
   });
 });
 
