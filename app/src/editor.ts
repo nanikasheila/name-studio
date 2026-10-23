@@ -6,6 +6,19 @@ import { FULL_SPEED_MM, followFactor, postCorrect, tiltOf, usesMotion } from "./
 import { spreads } from "./pages";
 import { addBreakout, moveBreakout, stacked } from "./koma";
 import { joinPanels, moveSeam, seamAt, seamBase, seamLines, snapSeam, type Seam } from "./komaedit";
+import {
+  baseBounds,
+  copySelection,
+  pasteClip,
+  rotation,
+  scaling,
+  transformBase,
+  transformItems,
+  type Affine,
+  type Clip,
+  type ItemRef,
+  type TransformBase,
+} from "./transform";
 import { INK, drawBalloons, drawLineText, drawPanelBorders, drawPanelFills, drawStroke, drawStrokes, onTipLoaded, tracePath } from "./pagedraw";
 import {
   addLine,
@@ -28,6 +41,7 @@ import {
   moveStroke,
   orderPanels,
   pageIndex,
+  panelContents,
   pickInside,
   rectShape,
   snapCut,
@@ -43,6 +57,7 @@ import {
   type CarriedContents,
   strokeHit,
   trimBox,
+  type BoxMm,
   type Brush,
   type EraseMode,
   type Line,
@@ -93,6 +108,8 @@ export interface EditorHost {
   /** Pixels of a rough from the source sheet, or null while they load. */
   rough(rough: RoughImage): CanvasImageSource | null;
   status(message: string): void;
+  /** Buttons for the bar shown by the selection (most used actions, at hand). */
+  actions(selection: Selection): HTMLElement[];
 }
 
 interface Slot {
@@ -119,12 +136,19 @@ type Drag =
   | { kind: "eraseLasso"; slot: Slot; points: Point[] }
   | { kind: "erase"; slot: Slot; erased: number }
   | { kind: "swap"; slot: Slot; panelId: string; at: [number, number]; to: { slot: Slot; panelId: string } | null }
-  | { kind: "seam"; slot: Slot; seam: Seam; base: Map<string, Point[]>; start: Point; moved: boolean; carried: Map<string, CarriedContents> };
+  | { kind: "seam"; slot: Slot; seam: Seam; base: Map<string, Point[]>; start: Point; moved: boolean; carried: Map<string, CarriedContents> }
+  | { kind: "scale"; slot: Slot; handle: number; base: TransformBase; box: BoxMm; moved: boolean }
+  | { kind: "rotate"; slot: Slot; base: TransformBase; centre: Point; start: number; moved: boolean };
+
+/** Handles of the transform frame: corners from the top left clockwise, then the sides top, right, bottom, left. */
+const FRAME_HANDLES = 8;
+const ROTATE_GAP = 22;
 
 /** What the pointer is over with the select tool, shown before anything is pressed. */
 type Hover =
   | { kind: "seam"; slot: Slot; seam: Seam }
-  | { kind: "item"; slot: Slot; target: Selection };
+  | { kind: "item"; slot: Slot; target: Selection }
+  | { kind: "handle"; slot: Slot; handle: number };
 
 const ACCENT = "#2f6fdb";
 const MARGIN = 28;
@@ -193,6 +217,11 @@ export class PageEditor {
   private inline: { field: HTMLTextAreaElement; place: () => void; finish: (keep: boolean) => void } | null = null;
   /** Run once the pointer is up (opening a text field during the press would lose its focus). */
   private afterUp: (() => void) | null = null;
+  /** What was copied last (Ctrl+C), and how often it was pasted onto its own page. */
+  private clip: Clip | null = null;
+  private pastes = 0;
+  /** The small bar of actions beside the selection. */
+  private readonly bar: HTMLDivElement;
 
   constructor(private readonly canvas: HTMLCanvasElement, private readonly host: EditorHost) {
     // Low latency: the pen line reaches the screen without waiting for the compositor.
@@ -200,6 +229,12 @@ export class PageEditor {
     // A pen held still or its barrel button must not open the context menu.
     canvas.addEventListener("contextmenu", (event) => event.preventDefault());
     onTipLoaded(() => this.draw());
+    this.bar = document.createElement("div");
+    this.bar.className = "action-bar";
+    this.bar.hidden = true;
+    // Presses on the bar are not presses on the page.
+    this.bar.addEventListener("pointerdown", (event) => event.stopPropagation());
+    canvas.parentElement?.append(this.bar);
     canvas.addEventListener("pointerdown", (event) => this.pointerDown(event));
     canvas.addEventListener("pointermove", (event) => this.pointerMove(event));
     canvas.addEventListener("pointerup", (event) => this.pointerUp(event));
@@ -262,13 +297,64 @@ export class PageEditor {
   setTool(tool: Tool): void {
     this.tool = tool;
     this.updateCursor();
+    this.renderBar();
     this.draw();
   }
 
   select(selection: Selection | null): void {
     this.selection = selection;
     this.host.selectionChanged(selection);
+    this.renderBar();
     this.draw();
+  }
+
+  /** Fill the action bar for the selection (or hide it). */
+  renderBar(): void {
+    const s = this.selection;
+    this.bar.replaceChildren(...(s && this.tool === "select" ? this.host.actions(s) : []));
+    this.placeBar();
+  }
+
+  /** The selection's box on screen (px), when its page is shown. */
+  private selectionScreenBox(): BoxMm | null {
+    const s = this.selection;
+    const slot = s && this.slots.find((x) => x.page.id === s.pageId);
+    if (!s || !slot) return null;
+    const page = slot.page;
+    let box: BoxMm | null = null;
+    if (s.kind === "panel") {
+      const panel = page.panels.find((p) => p.id === s.id);
+      if (panel) box = bounds(panel.shape);
+    } else if (s.kind === "line") {
+      const line = page.lines.find((l) => l.id === s.id);
+      if (line) box = bounds([[line.box[0], line.box[1]], [line.box[2], line.box[3]], ...(line.balloon ?? [])]);
+    } else if (s.kind === "breakout") {
+      const breakout = page.breakouts.find((b) => b.id === s.id);
+      if (breakout) box = bounds(breakout.shape);
+    } else if (s.kind === "sticky") {
+      const sticky = page.stickies?.find((n) => n.id === s.id);
+      if (sticky) box = stickyBox(sticky);
+    } else {
+      box = baseBounds(transformBase(page, this.selectedItems()));
+    }
+    if (!box) return null;
+    return [slot.x + box[0] * slot.scale, slot.y + box[1] * slot.scale, slot.x + box[2] * slot.scale, slot.y + box[3] * slot.scale];
+  }
+
+  /** Put the bar above the selection (below it when there is no room), inside the stage. */
+  private placeBar(): void {
+    const box = this.drag || this.inline || !this.bar.childElementCount ? null : this.selectionScreenBox();
+    this.bar.hidden = !box;
+    if (!box) return;
+    const { width, height } = this.canvas.getBoundingClientRect();
+    const w = this.bar.offsetWidth;
+    const h = this.bar.offsetHeight;
+    // Clear of the turning handle above a transform frame.
+    let y = box[1] - h - ROTATE_GAP - 14;
+    if (y < 6) y = Math.min(box[3] + 14, height - h - 6);
+    const x = Math.min(Math.max((box[0] + box[2]) / 2 - w / 2, 6), width - w - 6);
+    this.bar.style.left = `${x}px`;
+    this.bar.style.top = `${Math.max(y, 6)}px`;
   }
 
   /** The page the selection is on, or the right page of the spread. */
@@ -419,6 +505,7 @@ export class PageEditor {
     this.drawSpreadMark(project);
     this.keepCache();
     this.inline?.place();
+    this.placeBar();
     this.drawOverlay();
   }
 
@@ -793,6 +880,7 @@ export class PageEditor {
       const stroke = { id: "", points, widthMm: this.penWidthMm, closed: false, brush: brush?.id, cut };
       drawStroke(ctx, stroke, { scale: slot.scale, x: slot.x, y: slot.y }, "#3a3834", 0.7, brush);
     }
+    this.drawFrame();
     if (this.erasing() && this.eraseMode !== "lasso" && this.pointer) {
       ctx.strokeStyle = ACCENT;
       ctx.lineWidth = 1;
@@ -800,6 +888,184 @@ export class PageEditor {
       ctx.arc(this.pointer[0], this.pointer[1], this.eraserRadiusPx(), 0, Math.PI * 2);
       ctx.stroke();
     }
+  }
+
+  // --- 変形（拡大縮小・回転・反転） -------------------------------------------------------
+
+  /** The rough lines and dialogue selected, which the transform frame works on. */
+  private selectedItems(): ItemRef[] {
+    const s = this.selection;
+    if (s?.kind === "group") return s.items ?? [];
+    if (s?.kind === "stroke") return [{ kind: "stroke", id: s.id }];
+    return [];
+  }
+
+  /** The transform frame on screen: its box (mm), slot and handle positions (px). */
+  private frameGeometry(): { slot: Slot; box: BoxMm; handles: Point[]; rotate: Point } | null {
+    if (this.tool !== "select" || !this.selection) return null;
+    const items = this.selectedItems();
+    const slot = this.slots.find((s) => s.page.id === this.selection!.pageId);
+    if (!items.length || !slot) return null;
+    const box = baseBounds(transformBase(slot.page, items));
+    if (!box) return null;
+    const pad = 3 / slot.scale;
+    const [x0, y0, x1, y1] = [box[0] - pad, box[1] - pad, box[2] + pad, box[3] + pad];
+    const sx = (x: number) => slot.x + x * slot.scale;
+    const sy = (y: number) => slot.y + y * slot.scale;
+    const [cx, cy] = [(x0 + x1) / 2, (y0 + y1) / 2];
+    const handles: Point[] = [
+      [sx(x0), sy(y0)],
+      [sx(x1), sy(y0)],
+      [sx(x1), sy(y1)],
+      [sx(x0), sy(y1)],
+      [sx(cx), sy(y0)],
+      [sx(x1), sy(cy)],
+      [sx(cx), sy(y1)],
+      [sx(x0), sy(cy)],
+    ];
+    return { slot, box: [x0, y0, x1, y1], handles, rotate: [sx(cx), sy(y0) - ROTATE_GAP] };
+  }
+
+  private drawFrame(): void {
+    const drag = this.drag;
+    if (drag && drag.kind !== "scale" && drag.kind !== "rotate") return;
+    const frame = this.frameGeometry();
+    if (!frame) return;
+    const ctx = this.ctx;
+    const [tl, tr, , bl] = frame.handles;
+    ctx.save();
+    ctx.strokeStyle = ACCENT;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.strokeRect(tl[0], tl[1], tr[0] - tl[0], bl[1] - tl[1]);
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo((tl[0] + tr[0]) / 2, tl[1]);
+    ctx.lineTo(...frame.rotate);
+    ctx.stroke();
+    ctx.fillStyle = "#ffffff";
+    ctx.lineWidth = 1.5;
+    for (const [x, y] of frame.handles) {
+      ctx.fillRect(x - HANDLE + 1, y - HANDLE + 1, 2 * HANDLE - 2, 2 * HANDLE - 2);
+      ctx.strokeRect(x - HANDLE + 1, y - HANDLE + 1, 2 * HANDLE - 2, 2 * HANDLE - 2);
+    }
+    ctx.beginPath();
+    ctx.arc(frame.rotate[0], frame.rotate[1], HANDLE, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** The frame handle at a screen point: 0..7, 8 for turning, or -1. */
+  private frameHandleAt(sx: number, sy: number): number {
+    const frame = this.frameGeometry();
+    if (!frame) return -1;
+    if (Math.hypot(frame.rotate[0] - sx, frame.rotate[1] - sy) <= HANDLE + 3) return FRAME_HANDLES;
+    return frame.handles.findIndex(([x, y]) => Math.abs(x - sx) <= HANDLE + 2 && Math.abs(y - sy) <= HANDLE + 2);
+  }
+
+  private static handleCursor(handle: number): string {
+    return handle === FRAME_HANDLES ? "grab" : ["nwse-resize", "nesw-resize", "nwse-resize", "nesw-resize", "ns-resize", "ew-resize", "ns-resize", "ew-resize"][handle];
+  }
+
+  /** Scale from the handle being dragged: the far side stays (the centre with Alt). */
+  private scaleFor(drag: Extract<Drag, { kind: "scale" }>, point: Point, free: boolean, fromCentre: boolean): Affine {
+    const [x0, y0, x1, y1] = drag.box;
+    const [cx, cy] = [(x0 + x1) / 2, (y0 + y1) / 2];
+    const at: Point[] = [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [cx, y0], [x1, cy], [cx, y1], [x0, cy]];
+    const handle = at[drag.handle];
+    const anchor: Point = fromCentre ? [cx, cy] : at[drag.handle < 4 ? (drag.handle + 2) % 4 : 4 + ((drag.handle - 2) % 4)];
+    const ratio = (i: 0 | 1) => {
+      const span = handle[i] - anchor[i];
+      return Math.abs(span) < 1e-6 ? 1 : Math.max(0.05, (point[i] - anchor[i]) / span);
+    };
+    if (drag.handle >= 4) return drag.handle % 2 === 0 ? scaling(1, ratio(1), anchor) : scaling(ratio(0), 1, anchor);
+    if (free) return scaling(ratio(0), ratio(1), anchor);
+    // Corners keep the proportions: how far along the diagonal the pointer is.
+    const [hx, hy] = [handle[0] - anchor[0], handle[1] - anchor[1]];
+    const s = Math.max(0.05, ((point[0] - anchor[0]) * hx + (point[1] - anchor[1]) * hy) / (hx * hx + hy * hy || 1));
+    return scaling(s, s, anchor);
+  }
+
+  /** 左右反転 / 上下反転 / 90° turns of the selected rough lines and dialogue. */
+  transformSelection(how: "flipH" | "flipV" | "left" | "right"): boolean {
+    const page = this.focusPage();
+    const items = this.selectedItems();
+    if (!page || !items.length) return false;
+    const base = transformBase(page, items);
+    const box = baseBounds(base);
+    if (!box) return false;
+    const centre: Point = [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2];
+    const m =
+      how === "flipH" ? scaling(-1, 1, centre) : how === "flipV" ? scaling(1, -1, centre) : rotation(((how === "right" ? 1 : -1) * Math.PI) / 2, centre);
+    this.host.begin();
+    transformItems(page, base, m);
+    assignPanels(page);
+    sortLines(page);
+    this.host.commit();
+    this.draw();
+    return true;
+  }
+
+  // --- コピー・貼り付け -------------------------------------------------------------
+
+  /** Copy what is selected; with `cut`, take it away too (the caller deletes). */
+  copy(): boolean {
+    const page = this.focusPage();
+    const s = this.selection;
+    if (!page || !s) return false;
+    const panel = s.kind === "panel" ? page.panels.find((p) => p.id === s.id) : undefined;
+    const clip = copySelection(page, s, panel ? panelContents(page, panel) : undefined);
+    if (!clip) return false;
+    this.clip = clip;
+    this.pastes = 0;
+    const count = clip.panels.length + clip.strokes.length + clip.lines.length + clip.breakouts.length + clip.stickies.length;
+    this.host.status(`${clip.panels.length ? "コマと中身" : `${count} 個`}をコピーしました。Ctrl+V で、ポインターのあるページに貼り付けます`);
+    return true;
+  }
+
+  get canPaste(): boolean {
+    return this.clip !== null;
+  }
+
+  /**
+   * Paste onto the page under the pointer (or the selection's page, or the
+   * right page of the spread): where it was on its page, a little lower
+   * right each time it goes onto its own page again.
+   */
+  paste(): boolean {
+    const project = this.host.project();
+    if (!project || !this.clip) return false;
+    const under = this.pointer && this.slotAt(this.pointer[0], this.pointer[1], project);
+    const selected = this.selection && this.slots.find((slot) => slot.page.id === this.selection!.pageId);
+    const slot = under || selected || [...this.slots].sort((a, b) => b.x - a.x)[0];
+    if (!slot) return false;
+    const page = slot.page;
+    if (page.id === this.clip.pageId) this.pastes += 1;
+    const shift = page.id === this.clip.pageId ? this.pastes * 5 : 0;
+    this.host.begin();
+    const pasted = pasteClip(project, page, this.clip, [shift, shift]);
+    this.host.commit();
+    const items = [...pasted.strokes.map((id) => ({ kind: "stroke" as const, id })), ...pasted.lines.map((id) => ({ kind: "line" as const, id }))];
+    if (pasted.panels.length) this.select({ kind: "panel", pageId: page.id, id: pasted.panels[0] });
+    else if (items.length > 1) this.select({ kind: "group", pageId: page.id, id: "group", items });
+    else if (items.length) this.select({ kind: items[0].kind, pageId: page.id, id: items[0].id });
+    else if (pasted.breakouts.length) this.select({ kind: "breakout", pageId: page.id, id: pasted.breakouts[0] });
+    else if (pasted.stickies.length) this.select({ kind: "sticky", pageId: page.id, id: pasted.stickies[0] });
+    this.host.status(`${slot.index + 1} ページに貼り付けました`);
+    return true;
+  }
+
+  /** Ctrl+A: every rough line and line of dialogue on the page. */
+  selectAll(): boolean {
+    const page = this.focusPage();
+    if (!page) return false;
+    const items = [...page.strokes.map((s) => ({ kind: "stroke" as const, id: s.id })), ...page.lines.map((l) => ({ kind: "line" as const, id: l.id }))];
+    if (!items.length) return false;
+    this.setTool("select");
+    this.select(items.length === 1 ? { kind: items[0].kind, pageId: page.id, id: items[0].id } : { kind: "group", pageId: page.id, id: "group", items });
+    this.host.status(`線 ${page.strokes.length} 本・セリフ ${page.lines.length} 個を選びました。枠の四角で大きさ、丸で向きを変えられます`);
+    return true;
   }
 
   /** The brush chosen for the pen or the eraser, if it is still in the project. */
@@ -935,7 +1201,14 @@ export class PageEditor {
       sticky: "copy",
     };
     const eraser = this.eraseMode === "lasso" ? "crosshair" : "none";
-    const hover = this.tool === "select" && this.hover ? (this.hover.kind === "seam" ? PageEditor.seamCursor(this.hover.seam) : "move") : null;
+    const hover =
+      this.tool === "select" && this.hover
+        ? this.hover.kind === "seam"
+          ? PageEditor.seamCursor(this.hover.seam)
+          : this.hover.kind === "handle"
+            ? PageEditor.handleCursor(this.hover.handle)
+            : "move"
+        : null;
     this.canvas.style.cursor = this.spaceHeld ? "grab" : this.tipEraser ? eraser : this.tool === "eraser" ? eraser : hover ?? cursors[this.tool];
   }
 
@@ -968,6 +1241,22 @@ export class PageEditor {
     const point = this.toPage(slot, sx, sy);
     switch (this.tipEraser ? "eraser" : this.tool) {
       case "select": {
+        // The transform frame of the selected rough lines and dialogue.
+        const handle = this.frameHandleAt(sx, sy);
+        if (handle >= 0) {
+          const items = this.selectedItems();
+          const base = transformBase(slot.page, items);
+          const frame = this.frameGeometry()!;
+          this.host.begin();
+          if (handle === FRAME_HANDLES) {
+            const [x0, y0, x1, y1] = frame.box;
+            const centre: Point = [(x0 + x1) / 2, (y0 + y1) / 2];
+            this.drag = { kind: "rotate", slot: frame.slot, base, centre, start: Math.atan2(point[1] - centre[1], point[0] - centre[0]), moved: false };
+          } else {
+            this.drag = { kind: "scale", slot: frame.slot, handle, base, box: frame.box, moved: false };
+          }
+          return;
+        }
         // A panel's memo tag: write in it right there.
         const noted = this.noteAt(slot, sx, sy);
         if (noted) {
@@ -1149,6 +1438,23 @@ export class PageEditor {
         this.follow(drag.slot.page, drag.carried);
         drag.last = point;
         drag.moved = true;
+        break;
+      }
+      case "scale": {
+        const m = this.scaleFor(drag, point, event.shiftKey, event.altKey);
+        transformItems(drag.slot.page, drag.base, m);
+        drag.moved = true;
+        this.host.status(`大きさ ${Math.round(m[0] * 100)}% × ${Math.round(m[3] * 100)}%（Shift で縦横別々、Alt で中心から）`);
+        break;
+      }
+      case "rotate": {
+        let angle = Math.atan2(point[1] - drag.centre[1], point[0] - drag.centre[0]) - drag.start;
+        const step = Math.PI / 12;
+        if (event.shiftKey) angle = Math.round(angle / step) * step;
+        transformItems(drag.slot.page, drag.base, rotation(angle, drag.centre));
+        drag.moved = true;
+        const degrees = ((Math.round((angle * 180) / Math.PI) % 360) + 540) % 360 - 180;
+        this.host.status(`${degrees}° 回しています（Shift で 15° ずつ）`);
         break;
       }
       case "seam": {
@@ -1375,6 +1681,16 @@ export class PageEditor {
         this.host.status(`コマ ${from.order} とコマ ${target.order} の中身を入れ替えました（元に戻すは Ctrl+Z）`);
         break;
       }
+      case "scale":
+      case "rotate":
+        if (!drag.moved) {
+          this.host.cancel();
+          break;
+        }
+        assignPanels(drag.slot.page);
+        sortLines(drag.slot.page);
+        this.host.commit();
+        break;
       case "seam": {
         if (!drag.moved) {
           this.host.cancel();
@@ -1459,7 +1775,9 @@ export class PageEditor {
     let hover: Hover | null = null;
     if (project && this.tool === "select" && !this.spaceHeld && !this.tipEraser) {
       const slot = this.slotAt(sx, sy, project);
-      if (slot) {
+      const frameHandle = this.frameHandleAt(sx, sy);
+      if (frameHandle >= 0 && slot) hover = { kind: "handle", slot, handle: frameHandle };
+      else if (slot) {
         const point = this.toPage(slot, sx, sy);
         const onHandle =
           this.vertexAt(slot, sx, sy) >= 0 || this.tailAt(slot, sx, sy) >= 0 || !!this.badgeAt(slot, sx, sy, project.pageFormat.canvasMm[0]);
@@ -1472,7 +1790,7 @@ export class PageEditor {
       }
     }
     const key = (h: Hover | null) =>
-      !h ? "" : h.kind === "seam" ? `seam:${h.slot.page.id}:${h.seam.edges.map((e) => `${e.panelId}.${e.edge}`).join(",")}` : `item:${h.target.pageId}:${h.target.kind}:${h.target.id}`;
+      !h ? "" : h.kind === "handle" ? `handle:${h.handle}` : h.kind === "seam" ? `seam:${h.slot.page.id}:${h.seam.edges.map((e) => `${e.panelId}.${e.edge}`).join(",")}` : `item:${h.target.pageId}:${h.target.kind}:${h.target.id}`;
     if (key(hover) === key(this.hover)) return;
     this.hover = hover;
     this.updateCursor();

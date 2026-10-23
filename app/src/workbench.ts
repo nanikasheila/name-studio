@@ -154,6 +154,7 @@ export class Workbench {
       selectionChanged: () => this.renderInspector(),
       rough: (rough) => this.rough(rough),
       status: (message) => this.setStatus(message),
+      actions: (selection) => this.actions(selection),
     });
     this.overview = new Overview($("overview"), {
       project: () => this.state.project,
@@ -608,6 +609,68 @@ export class Workbench {
   // --- inspector --------------------------------------------------------------------------
 
   renderInspector(): void {
+    this.renderInspectorPanel();
+    // The bar's buttons hold the objects of the project as it is now.
+    this.editor.renderBar();
+  }
+
+  /** The bar of actions beside the selection: what is used most, without going to the right. */
+  private actions(selection: Selection): HTMLElement[] {
+    const project = this.state.project;
+    const page = project?.pages.find((p) => p.id === selection.pageId);
+    if (!project || !page) return [];
+    const button = (label: string, title: string, run: () => void, className = "") => {
+      const b = element("button", { textContent: label, title, className });
+      b.addEventListener("click", run);
+      return b;
+    };
+    const copy = button("コピー", "コピー（Ctrl+C）。Ctrl+V でポインターのあるページへ", () => this.editor.copy());
+    const remove = button("消す", "消す（Delete）", () => this.deleteSelection(), "danger");
+    switch (selection.kind) {
+      case "panel": {
+        const panel = page.panels.find((p) => p.id === selection.id);
+        if (!panel) return [];
+        const inset = button("はめ込み", "このコマの角に重ねる小さなコマを足す", () => {
+          let created: Panel | null = null;
+          this.edit((p) => (created = addInset(p, page, panel)));
+          if (created) this.editor.select({ kind: "panel", pageId: page.id, id: (created as Panel).id });
+        });
+        return [button("メモ", "このコマのメモをその場で書く（コマをダブルクリックでも）", () => this.editor.editInPlace(page.id, "note", panel.id)), inset, copy, remove];
+      }
+      case "line": {
+        const line = page.lines.find((l) => l.id === selection.id);
+        if (!line) return [];
+        const kind = choice(KIND_LABELS, line.kind, (value: LineKind) =>
+          this.edit(() => {
+            line.kind = value;
+            fitLine(line);
+          }),
+        );
+        kind.title = "種類";
+        const tail = button("しっぽ", "しっぽを足す。丸い先をドラッグして話者に向ける", () =>
+          this.edit(() => {
+            const [x0, , , y1] = line.box;
+            const offset = (line.tails?.length ?? 0) * 8;
+            line.tails = [...(line.tails ?? []), { tip: [x0 - 6 - offset, y1 + 12], style: defaultTailStyle(line) }];
+          }),
+        );
+        tail.disabled = resolvedShape(line) === "none";
+        return [button("書く", "その場で書き直す（ダブルクリックでも）", () => this.editor.editInPlace(page.id, "line", line.id)), kind, tail, copy, remove];
+      }
+      case "stroke":
+      case "group":
+        return [
+          button("左右反転", "左右を入れ替える", () => this.editor.transformSelection("flipH")),
+          button("⟳ 90°", "右に 90° 回す", () => this.editor.transformSelection("right")),
+          copy,
+          remove,
+        ];
+      default:
+        return [copy, remove];
+    }
+  }
+
+  private renderInspectorPanel(): void {
     const panel = $("inspector");
     const project = this.state.project;
     if (!project) {
@@ -639,7 +702,11 @@ export class Workbench {
       remove.addEventListener("click", () => this.deleteSelection());
       return panel.replaceChildren(
         element("h2", { textContent: "範囲選択" }),
-        element("p", { className: "hint", textContent: `ラフの線 ${strokes} 本、セリフ ${lines} 個。ドラッグや矢印キーでまとめて動かせます。` }),
+        element("p", {
+          className: "hint",
+          textContent: `ラフの線 ${strokes} 本、セリフ ${lines} 個。ドラッグや矢印キーでまとめて動かせます。枠の四角で大きさ（Shift で縦横別々、Alt で中心から）、上の丸で向き（Shift で 15° ずつ）。Ctrl+C / Ctrl+V でほかのページへも写せます。`,
+        }),
+        ...this.transformButtons(),
         remove,
       );
     }
@@ -658,6 +725,7 @@ export class Workbench {
       return panel.replaceChildren(
         element("h2", { textContent: "ラフの線" }),
         element("label", { className: "inline" }, over, "コマ枠の上に描く（はみ出し）"),
+        ...this.transformButtons(),
         remove,
       );
     }
@@ -909,6 +977,20 @@ export class Workbench {
         textContent: `セリフ ${lines} 件。コマの境目（間白）をドラッグすると両側のコマが一緒に動き、外側の辺なら辺だけが動きます。境目をダブルクリックで隣とつなげます。角の四角をドラッグすると形を変えられます（枠に吸い付きます。Alt で吸い付かない）。右上の番号を別のコマへドラッグ（または Alt + ドラッグ）すると中身を入れ替えます。重なり ${panel.z ?? 0}。`,
       }),
       remove,
+    ];
+  }
+
+  /** 反転・回転 of the selected rough lines and dialogue. */
+  private transformButtons(): HTMLElement[] {
+    const make = (label: string, how: "flipH" | "flipV" | "left" | "right", title: string) => {
+      const b = element("button", { textContent: label, title });
+      b.addEventListener("click", () => this.editor.transformSelection(how));
+      return b;
+    };
+    return [
+      element("h3", { textContent: "変形" }),
+      element("div", { className: "row" }, make("左右反転", "flipH", "左右を入れ替える"), make("上下反転", "flipV", "上下を入れ替える")),
+      element("div", { className: "row" }, make("⟲ 90°", "left", "左に 90° 回す"), make("⟳ 90°", "right", "右に 90° 回す")),
     ];
   }
 
@@ -1336,6 +1418,13 @@ export class Workbench {
       this.setView(view);
       return true;
     }
+    if (action === "view.focus") {
+      // As CSP's Tab: the side panels go, the pages take the room.
+      document.body.classList.toggle("focus-mode");
+      this.editor.resize();
+      this.setStatus(document.body.classList.contains("focus-mode") ? "左右の欄を隠しました（Tab で戻す）" : "");
+      return true;
+    }
     if (action === "undo") this.undo();
     else if (action === "redo") this.redo();
     else if (this.view !== "edit") return false;
@@ -1374,6 +1463,21 @@ export class Workbench {
       case "delete":
         this.deleteSelection();
         return true;
+      case "copy":
+        return this.editor.copy();
+      case "cut":
+        if (!this.editor.copy()) return false;
+        this.deleteSelection();
+        this.setStatus("切り取りました。Ctrl+V で、ポインターのあるページに貼り付けます");
+        return true;
+      case "paste":
+        return this.editor.paste();
+      case "selectAll":
+        return this.editor.selectAll();
+      case "flip.horizontal":
+        return this.editor.transformSelection("flipH");
+      case "flip.vertical":
+        return this.editor.transformSelection("flipV");
       case "deselect":
         this.editor.select(null);
         return true;
