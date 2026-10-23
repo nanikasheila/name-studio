@@ -102,6 +102,7 @@ dialog.export::backdrop { background: rgb(0 0 0 / 0.35); }
 .name-check-list { display: flex; flex-direction: column; gap: 2px; max-height: 160px; overflow: auto; margin-top: 6px; }
 .name-check-list button { text-align: left; border: none; background: none; padding: 2px 4px; font-size: 12px; }
 .name-check-list button:hover { background: rgb(0 0 0 / 0.05); }
+.name-check-list button.fix { align-self: flex-start; border: 1px solid #c9a24a; border-radius: 4px; background: #fff; padding: 3px 8px; margin-bottom: 4px; }
 .export .message.error { color: #c0392b; }
 .export .actions { display: flex; justify-content: flex-end; gap: 8px; }
 #work-fields[hidden] { display: none; }

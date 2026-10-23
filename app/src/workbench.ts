@@ -52,6 +52,7 @@ import {
   type Side,
 } from "./koma";
 import { joinPanels, joinedShape, neighbours } from "./komaedit";
+import { addAutoTails, wantsTail } from "./autotail";
 import { Overview, type OverviewKind } from "./overview";
 import { pageParts } from "./shapes";
 import {
@@ -242,6 +243,7 @@ export class Workbench {
         this.editor.select({ kind: "line", pageId, id: lineId });
         this.renderAll();
       },
+      addTails: () => this.addTails(),
     });
     this.brushDialog = new BrushDialog({
       project: () => this.state.project,
@@ -1168,6 +1170,16 @@ export class Workbench {
     ];
   }
 
+  /** しっぽを付ける: on one page, or on every page. Returns how many were added. */
+  private addTails(pageId?: string): number {
+    let added = 0;
+    this.edit((p) => {
+      for (const page of p.pages) if (!pageId || page.id === pageId) added += addAutoTails(page);
+    });
+    this.setStatus(added ? `しっぽ ${added} 本を話者（コマのラフ）へ向けて付けました。丸い先をドラッグで直せます（元に戻すは Ctrl+Z）` : "しっぽのないセリフはありません");
+    return added;
+  }
+
   /** セリフの並べ直し: a panel's dialogue, or every panel's on the page. */
   private arrange(pageId: string, panelId?: string): void {
     let moved = 0;
@@ -1358,6 +1370,7 @@ export class Workbench {
       element("h3", { textContent: "コマ" }),
       element("div", { className: "row" }, frame, reorder),
       button("このページのセリフを並べ直す", () => this.arrange(page.id), !page.lines.length),
+      button("しっぽのないセリフにしっぽを付ける", () => this.addTails(page.id), !page.lines.some((line) => wantsTail(page, line))),
       element("p", { className: "hint", textContent: "コマ割り: コマを横切るように線を引くと割れます（ほぼ水平・垂直はまっすぐに。Alt で斜め）。コマの外をドラッグすると新しいコマ。" }),
       element("h3", { textContent: "コマ割りの型" }),
       element("div", { className: "row" }, pattern, element("label", { className: "inline" }, count, "コマ")),
