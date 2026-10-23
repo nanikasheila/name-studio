@@ -16,6 +16,8 @@ export interface OverviewHost {
   openPage(pageNumber: number): void;
   /** Pages `first`..`last` dragged to before page `target`. */
   movePages(first: number, last: number, target: number): void;
+  /** 別案 of pages `first`..`last` (0-based), to edit. */
+  makeOption(first: number, last: number): void;
 }
 
 const SVG = "http://www.w3.org/2000/svg";
@@ -207,6 +209,11 @@ export class Overview {
       );
       const summary = html("textarea", { value: scene.summary, placeholder: "このシーンで起きること" });
       summary.addEventListener("change", () => this.host.edit(() => (scene.summary = summary.value)));
+      const option = html("button", { textContent: "別案", title: "このシーンのページを写した案を作り、ページ配分やコマ割りを試す" });
+      option.addEventListener("click", () => {
+        const span = sceneSpans(project).find((s) => s.scene === scene);
+        if (span) this.host.makeOption(span.first, span.last);
+      });
       const remove = html("button", { className: "danger", textContent: "削除" });
       remove.addEventListener("click", () => this.host.edit((p) => (p.scenes = p.scenes.filter((s) => s !== scene))));
       return html(
@@ -218,7 +225,7 @@ export class Overview {
         html("td", {}, time),
         html("td", {}, order),
         html("td", {}, summary),
-        html("td", {}, remove),
+        html("td", { className: "row-buttons" }, option, remove),
       );
     });
     const add = html("button", { textContent: "シーンを足す", disabled: !project.pages.length });

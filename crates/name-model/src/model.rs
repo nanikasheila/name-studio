@@ -39,8 +39,34 @@ pub struct Project {
     /// Pens and erasers the strokes are drawn with (often taken from CSP).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub brushes: Vec<Brush>,
+    /// 別案: other versions of runs of pages, kept to compare and switch to.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub alternatives: Vec<Alternatives>,
     /// Next number used by [`Project::new_id`]; ids are never reused.
     pub next_id: u64,
+}
+
+/// 別案: versions of the same run of pages (a page, a 見開き, a scene). The
+/// option in use has its pages in [`Project::pages`]; the others keep theirs here.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Alternatives {
+    pub id: String,
+    /// Pages of the option in use, as they are in the project.
+    pub page_ids: Vec<String>,
+    /// Id of the option in use.
+    pub active: String,
+    pub options: Vec<AlternativeOption>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlternativeOption {
+    pub id: String,
+    pub name: String,
+    /// The option's pages while another option is in use (empty for the one in use).
+    #[serde(default)]
+    pub pages: Vec<Page>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -595,6 +621,7 @@ impl Project {
             emotions: Vec::new(),
             source: None,
             brushes: Vec::new(),
+            alternatives: Vec::new(),
             next_id: 1,
         }
     }

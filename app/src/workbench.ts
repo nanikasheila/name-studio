@@ -6,6 +6,8 @@ import { Autosaver, autosaveToFile, formatTime } from "./autosave";
 import { addBrushes, loadLibrary } from "./brush";
 import { BrushDialog } from "./brushdialog";
 import { dragSort } from "./dragsort";
+import { AltDialog } from "./altdialog";
+import { alternativesOf, joinAlternative, makeAlternative, useAlternative } from "./alternatives";
 import {
   ERASE_MODE_LABELS,
   PANEL_CARRIES_KEY,
@@ -65,6 +67,7 @@ import {
   type BalloonShape,
   type Line,
   type LineKind,
+  type Alternatives,
   type Page,
   type Panel,
   type PanelBorder,
@@ -121,6 +124,7 @@ export class Workbench {
   private sideTab: "pages" | "script" | "cast" = "pages";
   readonly overview: Overview;
   private readonly exportDialog: ExportDialog;
+  private readonly altDialog: AltDialog;
   private readonly brushDialog: BrushDialog;
   private readonly versionDialog: VersionDialog;
   private readonly autosaver = new Autosaver(
@@ -149,6 +153,12 @@ export class Workbench {
         this.renderAll();
       },
       movePages: (first, last, target) => this.movePages(first, last, target),
+      makeOption: (first, last) => this.makeOption(first, last),
+    });
+    this.altDialog = new AltDialog({
+      project: () => this.state.project,
+      edit: (change) => this.edit(change),
+      shown: (set) => this.showSet(set),
     });
     this.exportDialog = new ExportDialog({
       project: () => this.state.project,
@@ -481,6 +491,7 @@ export class Workbench {
         { className: `page-item${current.has(index + 1) ? " current" : ""}` },
         element("span", { className: "number", textContent: String(index + 1) }),
         element("span", { className: "memo" }, sceneLabel, page.memo.split("\n")[0] || ""),
+        ...this.optionTag(project, page),
         element("span", { className: "count", textContent: `コマ ${page.panels.length}・字 ${textAmount(page)}` }),
       );
       item.addEventListener("click", () => {
@@ -500,6 +511,13 @@ export class Workbench {
     const add = element("button", { textContent: "最後にページを足す" });
     add.addEventListener("click", () => this.edit((p) => insertPage(p, p.pages.length)));
     $("side-pages").replaceChildren(work, ...items, element("div", { className: "side-actions" }, add));
+  }
+
+  /** The 別案 in use on a page, for the page list. */
+  private optionTag(project: Project, page: Page): HTMLElement[] {
+    const set = alternativesOf(project, page.id);
+    const option = set?.options.find((o) => o.id === set.active);
+    return option ? [element("span", { className: "option-tag", textContent: option.name, title: `別案 ${set!.options.length} つのうち使用中の案` })] : [];
   }
 
   /** Move pages by dragging and keep the same pages in view. */
@@ -894,8 +912,9 @@ export class Workbench {
         sortLines(page);
       });
     });
-    const after = button("後ろにページを足す", () => this.edit((p) => insertPage(p, index + 1)));
-    const before = button("前にページを足す", () => this.edit((p) => insertPage(p, index)));
+    // A page added inside a 別案 belongs to that option (another ページ配分).
+    const after = button("後ろにページを足す", () => this.edit((p) => joinAlternative(p, insertPage(p, index + 1).id, page.id, true)));
+    const before = button("前にページを足す", () => this.edit((p) => joinAlternative(p, insertPage(p, index).id, page.id, false)));
     const earlier = button("1 つ前へ", () => this.edit((p) => movePage(p, page.id, -1)), index === 0);
     const later = button("1 つ後ろへ", () => this.edit((p) => movePage(p, page.id, 1)), index === project.pages.length - 1);
     const remove = button("このページを消す", async () => {
@@ -922,6 +941,35 @@ export class Workbench {
         }),
       );
     }
+    const set = alternativesOf(project, page.id);
+    const altSection: HTMLElement[] = [element("h3", { textContent: "別案" })];
+    if (set) {
+      const chips = set.options.map((option) => {
+        const chip = button(option.name, () => this.useOption(set, option.id), false);
+        if (option.id === set.active) chip.className = "in-use";
+        chip.title = option.id === set.active ? "使用中" : "この案にする";
+        return chip;
+      });
+      const first = pageIndex(project, set.pageIds[0]);
+      const last = pageIndex(project, set.pageIds[set.pageIds.length - 1]);
+      altSection.push(
+        element("div", { className: "alt-chips" }, ...chips),
+        element(
+          "div",
+          { className: "row" },
+          button("比べる…", () => this.altDialog.open(set.id)),
+          button("もう 1 案", () => this.makeOption(first, last)),
+        ),
+        element("p", { className: "hint", textContent: "案を押すとその案に入れ替わります。ページを足すと、その案だけのページになります（ページ配分の案）。" }),
+      );
+    } else {
+      altSection.push(element("div", { className: "row" }, button("このページの別案を作る", () => this.makeOption(index, index))));
+      if (pair) {
+        const pairIndex = pageIndex(project, pair[0].id);
+        altSection.push(element("div", { className: "row" }, button(`${pairIndex + 1}–${pairIndex + 2} ページの別案を作る`, () => this.makeOption(pairIndex, pairIndex + 1))));
+      }
+      altSection.push(element("p", { className: "hint", textContent: "今のページを写した案ができ、そちらを編集します。元の案はそのまま残り、比べて選べます。" }));
+    }
     return [
       element("h2", { textContent: `${index + 1} ページ` }),
       element("label", {}, "メモ", memo),
@@ -932,11 +980,44 @@ export class Workbench {
       element("div", { className: "row" }, pattern, applyButton),
       patternNote,
       ...spreadSection,
+      ...altSection,
       element("h3", { textContent: "ページ" }),
       element("div", { className: "row" }, before, after),
       element("div", { className: "row" }, earlier, later),
       remove,
     ];
+  }
+
+  /** 別案: copy pages `first`..`last` as a new option and edit it. */
+  makeOption(first: number, last: number): void {
+    let set: Alternatives | null = null;
+    this.edit((p) => (set = makeAlternative(p, first, last)));
+    if (!set) {
+      this.setStatus("一部のページがほかの別案に入っているため、この範囲の別案は作れません");
+      return;
+    }
+    const made = set as Alternatives;
+    this.showSet(made);
+    const name = made.options.find((option) => option.id === made.active)?.name;
+    this.setStatus(`別案「${name}」を作りました。元の案と比べるには「比べる…」`);
+  }
+
+  private useOption(set: Alternatives, optionId: string): void {
+    this.edit((p) => useAlternative(p, set.id, optionId));
+    this.showSet(set);
+    this.setStatus(`「${set.options.find((option) => option.id === optionId)?.name}」にしました（元に戻すは Ctrl+Z）`);
+  }
+
+  /** Show the first page of a set's option in use. */
+  private showSet(set: Alternatives): void {
+    const project = this.state.project;
+    if (!project) return;
+    const index = pageIndex(project, set.pageIds[0]);
+    if (index < 0) return;
+    if (this.view !== "edit") this.setView("edit");
+    this.editor.selection = null;
+    this.editor.showPage(index + 1);
+    this.renderAll();
   }
 
   deleteSelection(): void {

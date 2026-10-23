@@ -237,3 +237,18 @@ dialog.versions { width: min(640px, calc(100vw - 32px)); }
 .drag-handle { cursor: grab; color: var(--muted); user-select: none; touch-action: none; padding: 0 4px; }
 .page-item, .thumb { touch-action: none; user-select: none; }
 body.sorting { user-select: none; cursor: grabbing; }
+
+/* 別案 */
+dialog.alternatives { width: min(1100px, calc(100vw - 32px)); }
+.alt-options { display: flex; gap: 14px; overflow-x: auto; padding: 10px 2px; }
+.alt-option { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; flex: none; }
+.alt-option.in-use { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.alt-head { display: flex; align-items: center; gap: 8px; }
+.alt-head input { width: 8em; font: inherit; padding: 2px 6px; }
+.alt-pages { display: flex; gap: 4px; }
+.alt-pages canvas { border: 1px solid var(--line); background: #fff; }
+.alt-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.alt-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+.alt-chips button.in-use { background: var(--accent); color: #fff; border-color: var(--accent); }
+.scenes .row-buttons { white-space: nowrap; }
+.page-item .option-tag { font-size: 11px; color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 0 3px; white-space: nowrap; }
