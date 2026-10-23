@@ -22,6 +22,7 @@ import {
   moveScene,
   pageBlock,
   swapPanelContents,
+  addFill,
   newProject,
   orderPanels,
   pickInside,
@@ -348,5 +349,20 @@ describe("入れ替え", () => {
     expect(page.strokes).toEqual([]);
     expect(next.strokes).toEqual([drawing]);
     expect(panelContents(next, there).strokes).toEqual([drawing.id]);
+  });
+
+  it("takes fills and the panel memo along to another page", () => {
+    const project = newProject("t", 3);
+    const [first, , third] = project.pages;
+    const a = addPanel(project, first, rectShape([10, 10, 110, 110]));
+    const b = addPanel(project, third, rectShape([10, 120, 110, 220]));
+    a.note = "引きの絵";
+    const fill = addFill(project, first, rectShape([20, 20, 40, 40]), "black");
+    swapPanelContents(first, a, third, b);
+    expect(first.fills).toBeUndefined();
+    expect(third.fills).toEqual([fill]);
+    expect(fill.shape[0][1]).toBeGreaterThan(120);
+    expect(b.note).toBe("引きの絵");
+    expect(a.note).toBeUndefined();
   });
 });

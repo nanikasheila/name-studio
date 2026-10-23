@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 // Name Studio front end: open a name sheet and look at it whole or spread by
 // spread, or edit name data (see workbench.ts).
 import { invoke } from "@tauri-apps/api/core";
@@ -626,3 +627,16 @@ async function start(): Promise<void> {
 }
 
 void start();
+
+// Development only: open name data from a test script (no file dialog without Tauri).
+if (import.meta.env.DEV) {
+  Object.assign(window, {
+    nameStudio: {
+      workbench,
+      show(project: Project) {
+        showWorkspace("editor");
+        workbench.show(project, null, "");
+      },
+    },
+  });
+}

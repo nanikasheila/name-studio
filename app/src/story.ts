@@ -1,6 +1,7 @@
 // Story structure derived from the name data for the overview views:
 // scenes over pages, per-page amounts, emotion curves and story time.
-import { pageIndex, STRUCTURES, textAmount, type Project, type Scene } from "./project";
+import { pageIndex, textAmount, type Project, type Scene } from "./project";
+import { beatPage, currentShape, shapeSpans } from "./shapes";
 
 export interface SceneSpan {
   scene: Scene;
@@ -97,24 +98,15 @@ export function timeline(project: Project): TimelineRow[] {
 /** A part of the story shape over the pages (0-based, inclusive). */
 export interface PlanPart {
   name: string;
+  color: string;
   first: number;
   last: number;
 }
 
 /** Where the parts of the chosen story shape fall over `pages` pages. */
 export function planParts(project: Project, pages = project.plan?.targetPages ?? project.pages.length): PlanPart[] {
-  const structure = project.plan?.structure ? STRUCTURES[project.plan.structure] : undefined;
-  if (!structure || pages < structure.parts.length) return [];
-  const parts: PlanPart[] = [];
-  let done = 0;
-  let share = 0;
-  for (const part of structure.parts) {
-    share += part.share;
-    const end = Math.max(done + 1, Math.round(pages * share));
-    parts.push({ name: part.name, first: done, last: Math.min(end, pages) - 1 });
-    done = end;
-  }
-  return parts;
+  const shape = currentShape(project);
+  return shape ? shapeSpans(shape, pages).map(({ name, color, first, last }) => ({ name, color, first, last })) : [];
 }
 
 export interface Advice {
@@ -155,6 +147,12 @@ export function planAdvice(project: Project): Advice[] {
       text: `${part.name}: ${part.first + 1}〜${part.last + 1} ページ（${part.last - part.first + 1} ページ）${names ? ` … ${names}` : spans.length ? " … ここに当たるシーンがありません" : ""}`,
     });
   }
+  const shape = currentShape(project);
+  for (const beat of shape?.beats ?? []) {
+    if (!count) break;
+    const page = beatPage(beat.at, count);
+    advice.push({ level: "info", text: `${beat.name}: ${page + 1} ページあたり`, page });
+  }
   for (const span of spans) {
     const share = (span.last - span.first + 1) / Math.max(count, 1);
     if (spans.length > 1 && share > 0.4) {
@@ -181,4 +179,69 @@ function runs(indexes: number[]): [number, number][] {
     else out.push([index, index]);
   }
   return out;
+}
+
+// --- 全体ボードでの直し --------------------------------------------------------------
+
+/**
+ * Drag an end of a scene to page `index` (0-based). A scene right next to it
+ * gives or takes the pages, so no gap or overlap opens between them; every
+ * scene keeps at least one page. Returns whether anything changed.
+ */
+export function moveSceneEdge(project: Project, sceneId: string, edge: "first" | "last", index: number): boolean {
+  const spans = sceneSpans(project);
+  const at = spans.findIndex((span) => span.scene.id === sceneId);
+  if (at < 0) return false;
+  const span = spans[at];
+  const pages = project.pages;
+  if (edge === "first") {
+    const before = spans[at - 1];
+    const touching = before && before.last === span.first - 1;
+    const low = !before ? 0 : touching ? before.first + 1 : Math.min(before.last + 1, span.first);
+    const next = Math.max(low, Math.min(span.last, index));
+    if (next === span.first) return false;
+    span.scene.firstPage = pages[next].id;
+    if (touching) before.scene.lastPage = pages[next - 1].id;
+  } else {
+    const after = spans[at + 1];
+    const touching = after && after.first === span.last + 1;
+    const high = !after ? pages.length - 1 : touching ? after.last - 1 : Math.max(after.first - 1, span.last);
+    const next = Math.min(high, Math.max(span.first, index));
+    if (next === span.last) return false;
+    span.scene.lastPage = pages[next].id;
+    if (touching) after.scene.firstPage = pages[next + 1].id;
+  }
+  return true;
+}
+
+/**
+ * Put a scene at place `rank` in story time (0 = earliest), keeping the
+ * order of the others. Story orders are renumbered 1, 2, …; when story time
+ * then runs with the pages, they are dropped again.
+ */
+export function setStoryRank(project: Project, sceneId: string, rank: number): boolean {
+  const rows = timeline(project);
+  const byTime = [...rows].sort((a, b) => a.storyRank - b.storyRank);
+  const from = byTime.findIndex((row) => row.scene.id === sceneId);
+  if (from < 0) return false;
+  const to = Math.max(0, Math.min(byTime.length - 1, rank));
+  if (to === from) return false;
+  const [moved] = byTime.splice(from, 1);
+  byTime.splice(to, 0, moved);
+  const inPageOrder = byTime.every((row, i) => row === rows[i]);
+  byTime.forEach((row, i) => {
+    if (inPageOrder) delete row.scene.storyOrder;
+    else row.scene.storyOrder = i + 1;
+  });
+  return true;
+}
+
+/** The scene a page (0-based) is in, if any. */
+export function sceneAtPage(project: Project, index: number): SceneSpan | undefined {
+  return sceneSpans(project).find((span) => span.first <= index && index <= span.last);
+}
+
+/** The pages around `index` that no scene covers (0-based, inclusive), if `index` is one of them. */
+export function uncoveredRunAt(project: Project, index: number): [number, number] | undefined {
+  return uncoveredRuns(project).find(([a, b]) => a <= index && index <= b);
 }

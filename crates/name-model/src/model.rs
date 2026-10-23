@@ -182,9 +182,43 @@ pub struct Plan {
     /// 目標ページ数.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_pages: Option<u32>,
-    /// The shape of the story the page split is held against (起承転結 and the like).
+    /// The shape of the story the page split is held against: a built-in
+    /// one (起承転結, Save the Cat and the like) or the id of one in `shapes`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub structure: Option<String>,
+    /// オリジナルの型 made for this name.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shapes: Vec<StoryShape>,
+}
+
+/// 話の型: parts over the pages by share, and beats (turning points) at
+/// points in them.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoryShape {
+    pub id: String,
+    pub label: String,
+    pub parts: Vec<ShapePart>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub beats: Vec<ShapeBeat>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShapePart {
+    pub name: String,
+    /// Share of the pages; the shares of a shape need not add up to 1.
+    pub share: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShapeBeat {
+    pub name: String,
+    /// Where it falls, 0..1 of the pages.
+    pub at: f64,
 }
 
 /// コマ: a polygon (usually a rectangle) in reading order.

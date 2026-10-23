@@ -3,10 +3,12 @@
 // against page order). Charts are SVG with a hover tooltip; values are also
 // editable in plain tables.
 import { dragSort } from "./dragsort";
-import { addScene, bounds, moveScene, pageBlock, pageIndex, setEmotion, sortScenes, STRUCTURES, type Project, type StructureId } from "./project";
+import { Board } from "./board";
+import { addScene, bounds, moveScene, pageBlock, pageIndex, setEmotion, sortScenes, type Project } from "./project";
+import { pageParts, storyShapes } from "./shapes";
 import { emotionSeries, pageStats, planAdvice, planParts, sceneSpans, timeline, uncoveredRuns, type SceneSpan } from "./story";
 
-export type OverviewKind = "structure" | "emotion" | "timeline";
+export type OverviewKind = "board" | "structure" | "emotion" | "timeline";
 
 export interface OverviewHost {
   project(): Project | null;
@@ -18,6 +20,8 @@ export interface OverviewHost {
   movePages(first: number, last: number, target: number): void;
   /** 別案 of pages `first`..`last` (0-based), to edit. */
   makeOption(first: number, last: number): void;
+  /** Say what was done in the status bar. */
+  status?(message: string): void;
 }
 
 const SVG = "http://www.w3.org/2000/svg";
@@ -61,19 +65,29 @@ function pageScale(count: number, left: number, width: number): PageScale {
 const PLOT = { left: 56, right: 16, top: 26, bottom: 28 };
 
 export class Overview {
-  kind: OverviewKind = "structure";
+  kind: OverviewKind = "board";
   /** Character whose emotion values clicks on the chart change. */
   private editing: string | null = null;
   private readonly tip: HTMLDivElement;
+  private readonly board: Board;
 
   constructor(private readonly root: HTMLElement, private readonly host: OverviewHost) {
     this.tip = html("div", { className: "chart-tip" });
     this.tip.hidden = true;
+    this.board = new Board(host, { show: (event, lines) => this.showTip(event, lines), hide: () => this.hideTip() }, () => this.render());
   }
 
   render(): void {
     const project = this.host.project();
     if (!project) return;
+    this.root.classList.toggle("board-mode", this.kind === "board");
+    if (this.kind === "board") {
+      const board = this.board.render(project, this.root.clientWidth);
+      if (!board) return;
+      this.root.replaceChildren(board, this.tip);
+      this.board.mounted();
+      return;
+    }
     const scroll = this.root.scrollTop;
     const content =
       this.kind === "structure" ? this.structure(project) : this.kind === "emotion" ? this.emotion(project) : this.timelineView(project);
@@ -167,7 +181,8 @@ export class Overview {
       chart,
       ...this.planSection(project, spans),
       ...this.sceneTable(project, spans),
-      html("h3", { textContent: "ページ一覧（ドラッグで入れ替え）" }),
+      html("h3", { textContent: "ページ一覧（ドラッグで入れ替え。色は話の型の区切り）" }),
+      ...this.partLegend(project),
       this.thumbnails(project, spans),
     ];
   }
@@ -188,11 +203,11 @@ export class Overview {
     );
     const shape = html("select");
     shape.append(html("option", { value: "", textContent: "なし" }));
-    for (const [id, structure] of Object.entries(STRUCTURES)) shape.append(html("option", { value: id, textContent: structure.label, selected: plan.structure === id }));
+    for (const structure of storyShapes(project)) shape.append(html("option", { value: structure.id, textContent: structure.label, selected: plan.structure === structure.id }));
     shape.addEventListener("change", () =>
       this.host.edit((p) => {
         const next = { ...(p.plan ?? {}) };
-        if (shape.value) next.structure = shape.value as StructureId;
+        if (shape.value) next.structure = shape.value;
         else delete next.structure;
         if (Object.keys(next).length) p.plan = next;
         else delete p.plan;
@@ -212,11 +227,11 @@ export class Overview {
     const band = svg("svg", { width, height: parts.length ? 92 : 56, class: "chart plan", role: "img", "aria-label": "話の型とシーン" });
     let top = 22;
     if (parts.length) {
-      parts.forEach((part, i) => {
+      parts.forEach((part) => {
         const x = scale.left + scale.step * part.first;
         const w = scale.step * (part.last - part.first + 1);
         band.append(
-          svg("rect", { x, y: top, width: w - 2, height: 24, rx: 4, class: `part part-${i % 4}` }),
+          svg("rect", { x, y: top, width: w - 2, height: 24, rx: 4, class: "part", fill: part.color }),
           svg("text", { x: x + 6, y: top + 16, class: "part-label" }, `${part.name}（${part.last - part.first + 1}）`),
         );
       });
@@ -241,6 +256,7 @@ export class Overview {
       controls,
       band,
       advice.length ? list : html("p", { className: "hint", textContent: "目標ページ数や話の型を入れると、今のページ配分と比べます。" }),
+      html("p", { className: "hint", textContent: "自分の型（オリジナルの型）は「全体」の画面で作って直せます。" }),
     ];
   }
 
@@ -336,11 +352,29 @@ export class Overview {
     ];
   }
 
+  /** Which colour is which part of the story shape. */
+  private partLegend(project: Project): Element[] {
+    const parts = planParts(project, project.pages.length);
+    if (!parts.length) return [];
+    return [
+      html(
+        "div",
+        { className: "legend" },
+        ...parts.map((part) => {
+          const swatch = html("span", { className: "swatch" });
+          swatch.style.background = part.color;
+          return html("span", { className: "chip static" }, swatch, `${part.name} ${part.first + 1}〜${part.last + 1}`);
+        }),
+      ),
+    ];
+  }
+
   private thumbnails(project: Project, spans: SceneSpan[]): HTMLElement {
     const [pageW, pageH] = project.pageFormat.canvasMm;
     const width = 96;
     const scale = width / pageW;
     const grid = html("div", { className: "thumbs" });
+    const parts = pageParts(project);
     project.pages.forEach((page, index) => {
       const canvas = html("canvas", { width: width * 2, height: Math.round(pageH * scale) * 2 });
       const ctx = canvas.getContext("2d");
@@ -385,13 +419,20 @@ export class Overview {
         }
       }
       const scene = spans.find((span) => span.first === index)?.scene.title ?? "";
+      const part = parts[index];
+      const number = html("span", { className: "number", textContent: `${index + 1}` });
       const card = html(
         "button",
-        { className: "thumb", title: page.memo || `${index + 1} ページ` },
+        { className: "thumb", title: [part?.name, page.memo || `${index + 1} ページ`].filter(Boolean).join("・") },
         html("span", { className: "scene", textContent: scene }),
         canvas,
-        html("span", { textContent: `${index + 1}` }),
+        number,
       );
+      // 話の型の色分け: the part the page falls in.
+      if (part) {
+        card.classList.add("tinted");
+        card.style.setProperty("--part", part.color);
+      }
       card.addEventListener("click", () => this.host.openPage(index + 1));
       grid.append(card);
     });
