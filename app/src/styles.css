@@ -33,9 +33,12 @@ button {
 button:disabled { opacity: 0.45; cursor: default; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .toolbar {
-  display: flex; align-items: center; gap: 12px; padding: 8px 12px;
+  display: flex; align-items: center; gap: 12px; padding: 8px 12px; flex-wrap: wrap; row-gap: 6px;
   background: var(--panel); border-bottom: 1px solid var(--line);
 }
+/* A narrow window wraps the toolbar instead of squeezing labels letter by letter. */
+.toolbar button, .toolbar label, .toolbar select { white-space: nowrap; flex-shrink: 0; }
+.toolbar .file-name { flex-shrink: 1; min-width: 4em; }
 .file-name { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40vw; }
 .spacer { flex: 1; }
 .segmented { display: flex; }
@@ -212,3 +215,15 @@ dialog.brushes { width: min(720px, calc(100vw - 32px)); }
 .brush-row .meta { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .brush-row .badge { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
 .brush-bar.off { display: none; }
+
+/* Versions */
+dialog.versions { width: min(640px, calc(100vw - 32px)); }
+.versions label.check { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
+.version-list { max-height: 50vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; margin-top: 10px; }
+.version-list:empty { display: none; }
+.version { display: grid; grid-template-columns: 4.5em 9.5em 1fr auto; gap: 8px; align-items: center; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+.version:last-child { border-bottom: none; }
+.version .kind { font-size: 12px; text-align: center; border-radius: 4px; padding: 1px 4px; background: color-mix(in srgb, var(--muted) 18%, transparent); }
+.version .kind.saved { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.version .time { font-variant-numeric: tabular-nums; }
+.version .what { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

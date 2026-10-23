@@ -1923,6 +1923,7 @@ name = "name-model"
 version = "0.1.0"
 dependencies = [
  "clip-core",
+ "flate2",
  "serde",
  "serde_json",
  "tempfile",

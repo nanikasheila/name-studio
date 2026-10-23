@@ -2,12 +2,14 @@
 // page list, the script, the cast and the inspector for the selection.
 import { invoke } from "@tauri-apps/api/core";
 import { ask, save } from "@tauri-apps/plugin-dialog";
+import { Autosaver, autosaveToFile, formatTime } from "./autosave";
 import { addBrushes, loadLibrary } from "./brush";
 import { BrushDialog } from "./brushdialog";
 import { PageEditor, isTyping, type Selection, type Tool } from "./editor";
 import { SHAPE_LABELS, TAIL_LABELS, defaultTailStyle, resolvedShape } from "./balloon";
 import { ExportDialog } from "./exportdialog";
 import { History } from "./history";
+import { VersionDialog, type VersionInfo } from "./versiondialog";
 import {
   BORDER_LABELS,
   EFFECT_LABELS,
@@ -90,6 +92,8 @@ interface WorkbenchState {
   project: Project | null;
   path: string | null;
   dirty: boolean;
+  /** Counts changes, so a save knows whether more came while it ran. */
+  revision: number;
   /** Snapshot taken by `begin`, pushed to history by `commit`. */
   pending: string | null;
   roughs: Map<string, ImageBitmap | "loading" | "failed">;
@@ -98,11 +102,16 @@ interface WorkbenchState {
 export class Workbench {
   readonly editor: PageEditor;
   private readonly history = new History<Project>();
-  private readonly state: WorkbenchState = { project: null, path: null, dirty: false, pending: null, roughs: new Map() };
+  private readonly state: WorkbenchState = { project: null, path: null, dirty: false, revision: 0, pending: null, roughs: new Map() };
   private sideTab: "pages" | "script" | "cast" = "pages";
   readonly overview: Overview;
   private readonly exportDialog: ExportDialog;
   private readonly brushDialog: BrushDialog;
+  private readonly versionDialog: VersionDialog;
+  private readonly autosaver = new Autosaver(
+    () => this.autosave(),
+    () => this.state.pending !== null,
+  );
   private view: "edit" | OverviewKind = "edit";
 
   constructor(private readonly setStatus: (message: string) => void, private readonly onTitle: (title: string) => void) {
@@ -140,6 +149,11 @@ export class Workbench {
         if (brush) this.useBrush(brush);
       },
     });
+    this.versionDialog = new VersionDialog({
+      path: () => this.state.path,
+      restore: (version) => this.restoreVersion(version),
+      autosaveChanged: () => this.autosaver.notify(),
+    });
     this.bindControls();
   }
 
@@ -165,10 +179,20 @@ export class Workbench {
 
   // --- opening and saving --------------------------------------------------------
 
-  /** Ask before throwing away unsaved changes. */
+  /**
+   * Before the project is closed: let autosave write it to its file, then
+   * ask before throwing away what is still unsaved (and its autosave copy).
+   */
   async confirmDiscard(): Promise<boolean> {
-    if (!this.state.project || !this.state.dirty) return true;
-    return ask("保存していない変更があります。破棄して続けますか？", { title: "Name Studio", kind: "warning" });
+    if (!this.state.project) return true;
+    if (this.state.dirty && this.state.path && autosaveToFile()) await this.autosaver.flush();
+    if (!this.state.dirty) return true;
+    const discard = await ask("保存していない変更があります。破棄して続けますか？", { title: "Name Studio", kind: "warning" });
+    if (discard) {
+      this.autosaver.reset();
+      await invoke("discard_recovery", { path: this.state.path }).catch(() => undefined);
+    }
+    return discard;
   }
 
   show(project: Project, path: string | null, message: string): void {
@@ -178,6 +202,7 @@ export class Workbench {
     this.state.pending = null;
     this.state.roughs = new Map();
     this.history.clear();
+    this.autosaver.reset();
     this.editor.selection = null;
     this.editor.spreadIndex = 0;
     this.editor.resetView();
@@ -199,7 +224,15 @@ export class Workbench {
     const panels = p.pages.reduce((sum, page) => sum + page.panels.length, 0);
     const warnings = result.warnings.length ? ` ／ ${result.warnings.join(" ／ ")}` : "";
     this.show(p, null, `${p.pages.length} ページ、コマ ${panels}、セリフ ${lines} を取り込みました。保存先はまだ決まっていません${warnings}`);
-    this.state.dirty = true;
+    this.markDirty();
+    this.updateTitle();
+  }
+
+  /** A project kept by autosave that was not saved, opened as unsaved changes. */
+  showRecovered(project: Project, path: string | null, timeMs: number): void {
+    const name = path?.split(/[\\/]/).pop() ?? "未保存のネーム";
+    this.show(project, path, `${name} を ${formatTime(timeMs)} の自動保存から復元しました。保存すると確定します`);
+    this.markDirty();
     this.updateTitle();
   }
 
@@ -216,10 +249,14 @@ export class Workbench {
       if (!picked) return false;
       path = picked.toLowerCase().endsWith(`.${PROJECT_EXTENSION}`) ? picked : `${picked}.${PROJECT_EXTENSION}`;
     }
+    const revision = this.state.revision;
     try {
-      await invoke("save_project", { path, project });
+      await invoke("save_project", { path, project, previousPath: this.state.path });
       this.state.path = path;
-      this.state.dirty = false;
+      if (this.state.revision === revision) {
+        this.state.dirty = false;
+        this.autosaver.reset();
+      }
       this.updateTitle();
       this.setStatus(`保存しました: ${path}`);
       return true;
@@ -229,7 +266,56 @@ export class Workbench {
     }
   }
 
+  /** Autosave: the file itself when it has one (and that is on), else a copy. */
+  private async autosave(): Promise<void> {
+    const project = this.state.project;
+    if (!project) return;
+    const path = this.state.path;
+    const revision = this.state.revision;
+    try {
+      const result = await invoke<{ savedToFile: boolean; version: VersionInfo | null }>("autosave_project", {
+        path,
+        project,
+        toFile: autosaveToFile(),
+      });
+      if (result.savedToFile && this.state.path === path && this.state.revision === revision) {
+        this.state.dirty = false;
+        this.updateTitle();
+      }
+    } catch (error) {
+      this.setStatus(`自動保存できませんでした: ${error}`);
+      throw error;
+    }
+  }
+
+  /** Show the versions of this project. */
+  openVersions(): void {
+    if (this.state.project) void this.versionDialog.open();
+  }
+
+  /** Bring an earlier version back as one undoable change. */
+  private async restoreVersion(version: VersionInfo): Promise<void> {
+    const current = this.state.project;
+    if (!current) return;
+    const path = this.state.path;
+    const older = await invoke<Project>("load_version", { path, id: version.id });
+    await invoke("record_version", { path, project: current, kind: "beforeRestore" });
+    this.history.record(current);
+    this.state.project = normalize(older);
+    this.editor.selection = null;
+    this.state.roughs = new Map();
+    this.changed();
+    this.setStatus(`${formatTime(version.timeMs)} の版に戻しました。「元に戻す」で戻る前に戻せます`);
+  }
+
   // --- changes and undo -------------------------------------------------------------
+
+  /** Note a change: the title shows it and autosave picks it up. */
+  private markDirty(): void {
+    this.state.dirty = true;
+    this.state.revision += 1;
+    this.autosaver.notify();
+  }
 
   private begin(): void {
     if (this.state.project) this.state.pending = JSON.stringify(this.state.project);
@@ -252,7 +338,7 @@ export class Workbench {
   }
 
   private changed(): void {
-    this.state.dirty = true;
+    this.markDirty();
     this.renderAll();
   }
 
@@ -267,7 +353,7 @@ export class Workbench {
   private restore(project: Project | null): void {
     if (!project) return;
     this.state.project = project;
-    this.state.dirty = true;
+    this.markDirty();
     const s = this.editor.selection;
     if (s && !this.findSelected(s)) this.editor.selection = null;
     this.renderAll();
@@ -508,7 +594,7 @@ export class Workbench {
     field.addEventListener("focus", () => (snapshot = JSON.stringify(this.state.project)));
     field.addEventListener("input", () => {
       apply(field.value);
-      this.state.dirty = true;
+      this.markDirty();
       this.editor.draw();
       this.updateTitle();
     });
@@ -906,6 +992,7 @@ export class Workbench {
     });
     $("brush-import").addEventListener("click", () => void this.brushDialog.open());
     $("name-export").addEventListener("click", () => this.exportDialog.open());
+    $("versions").addEventListener("click", () => this.openVersions());
     $("redo").addEventListener("click", () => this.redo());
     $("editor-next").addEventListener("click", () => this.flip(1));
     $("editor-prev").addEventListener("click", () => this.flip(-1));

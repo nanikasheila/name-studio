@@ -24,6 +24,7 @@ use clip_core::write::raster_page::{
     PageLayer, RasterLayer, RasterWorkWriter, TemplateCanvas, WorkOptions, WorkReport,
 };
 use clip_core::write::split::{DEFAULT_NAME_PATTERN, SplitOptions, SplitReport, split_sheet};
+use name_model::versions::{self, Recovery, VersionInfo, VersionKind, VersionStore};
 use name_model::{PageFormat, Project};
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
@@ -192,10 +193,134 @@ async fn load_project(path: String) -> Result<Project, String> {
     Project::load(&path).map_err(|error| error.to_string())
 }
 
+// --- saving, autosave and versions ---------------------------------------------
+
+/// Autosave versions are kept at most this often (saves and restores aside).
+const AUTO_VERSION_INTERVAL_MS: u64 = 5 * 60 * 1000;
+
+/// Where versions and autosave copies are kept (`%LOCALAPPDATA%\<app id>`).
+fn data_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    app.path().app_local_data_dir().map_err(|error| error.to_string())
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_millis() as u64)
+}
+
+async fn blocking<T: Send + 'static>(
+    work: impl FnOnce() -> Result<T, name_model::ProjectError> + Send + 'static,
+) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(work)
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(|error| error.to_string())
+}
+
 /// Check and save the name data; nothing is written when it has problems.
+/// The saved state is kept as a version, and the autosave copy is dropped.
+/// `previous_path` is where the project was saved before (none when it never
+/// was, whose history then moves to `path`).
 #[tauri::command]
-async fn save_project(path: String, project: Project) -> Result<(), String> {
-    project.save(&path).map_err(|error| error.to_string())
+async fn save_project(
+    app: tauri::AppHandle,
+    path: String,
+    project: Project,
+    previous_path: Option<String>,
+) -> Result<Option<VersionInfo>, String> {
+    let root = data_root(&app)?;
+    blocking(move || {
+        project.save(&path)?;
+        let path = Path::new(&path);
+        let previous = previous_path.as_deref().map(Path::new);
+        let store = if previous.is_none() {
+            VersionStore::adopt(&root, None, path)?
+        } else {
+            VersionStore::open(&root, Some(path))
+        };
+        versions::clear_recovery(&root, Some(path))?;
+        versions::clear_recovery(&root, previous)?;
+        store.record(&project, VersionKind::Saved, now_ms())
+    })
+    .await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AutosaveResult {
+    /// The project file itself was written (otherwise only the autosave copy).
+    saved_to_file: bool,
+    version: Option<VersionInfo>,
+}
+
+/// Autosave: write the project file when it has one and `to_file` is on,
+/// otherwise a copy that is offered back after a crash; keep a version now
+/// and then.
+#[tauri::command]
+async fn autosave_project(
+    app: tauri::AppHandle,
+    path: Option<String>,
+    project: Project,
+    to_file: bool,
+) -> Result<AutosaveResult, String> {
+    let root = data_root(&app)?;
+    blocking(move || {
+        let path = path.as_deref().map(Path::new);
+        let time = now_ms();
+        let saved_to_file = match path {
+            Some(path) if to_file => {
+                project.save(path)?;
+                versions::clear_recovery(&root, Some(path))?;
+                true
+            }
+            _ => {
+                versions::write_recovery(&root, path, &project, time)?;
+                false
+            }
+        };
+        let version = VersionStore::open(&root, path).record_auto(&project, time, AUTO_VERSION_INTERVAL_MS)?;
+        Ok(AutosaveResult { saved_to_file, version })
+    })
+    .await
+}
+
+/// Versions of the project at `path` (or of the unsaved one), newest first.
+#[tauri::command]
+async fn list_versions(app: tauri::AppHandle, path: Option<String>) -> Result<Vec<VersionInfo>, String> {
+    let root = data_root(&app)?;
+    blocking(move || VersionStore::open(&root, path.as_deref().map(Path::new)).list()).await
+}
+
+#[tauri::command]
+async fn load_version(app: tauri::AppHandle, path: Option<String>, id: String) -> Result<Project, String> {
+    let root = data_root(&app)?;
+    blocking(move || VersionStore::open(&root, path.as_deref().map(Path::new)).load(&id)).await
+}
+
+/// Keep the current state as a version (before an older one replaces it).
+#[tauri::command]
+async fn record_version(
+    app: tauri::AppHandle,
+    path: Option<String>,
+    project: Project,
+    kind: VersionKind,
+) -> Result<Option<VersionInfo>, String> {
+    let root = data_root(&app)?;
+    blocking(move || VersionStore::open(&root, path.as_deref().map(Path::new)).record(&project, kind, now_ms())).await
+}
+
+/// Projects autosave kept that were never saved, newest first.
+#[tauri::command]
+async fn pending_recoveries(app: tauri::AppHandle) -> Result<Vec<Recovery>, String> {
+    let root = data_root(&app)?;
+    Ok(versions::recoveries(&root))
+}
+
+#[tauri::command]
+async fn discard_recovery(app: tauri::AppHandle, path: Option<String>) -> Result<(), String> {
+    let root = data_root(&app)?;
+    versions::clear_recovery(&root, path.as_deref().map(Path::new)).map_err(|error| error.to_string())
 }
 
 /// Where CSP keeps its tools and materials on this computer, when found.
@@ -600,6 +725,12 @@ pub fn run() {
             import_project,
             load_project,
             save_project,
+            autosave_project,
+            list_versions,
+            load_version,
+            record_version,
+            pending_recoveries,
+            discard_recovery,
             rough_image,
             begin_name_export,
             export_name_page,

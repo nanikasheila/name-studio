@@ -6,6 +6,7 @@ description = "ネームデータ（正本）: ページ、コマ、セリフ、
 
 [dependencies]
 clip-core = { path = "../clip-core" }
+flate2 = "1.1.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
