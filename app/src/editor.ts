@@ -5,6 +5,7 @@
 import { FULL_SPEED_MM, followFactor, postCorrect, tiltOf, usesMotion } from "./brush";
 import { spreads } from "./pages";
 import { addBreakout, moveBreakout, stacked } from "./koma";
+import { joinPanels, moveSeam, seamAt, seamBase, seamLines, snapSeam, type Seam } from "./komaedit";
 import { INK, drawBalloons, drawLineText, drawPanelBorders, drawPanelFills, drawStroke, drawStrokes, onTipLoaded, tracePath } from "./pagedraw";
 import {
   addLine,
@@ -113,7 +114,13 @@ type Drag =
   | { kind: "pick"; slot: Slot; points: Point[] }
   | { kind: "eraseLasso"; slot: Slot; points: Point[] }
   | { kind: "erase"; slot: Slot; erased: number }
-  | { kind: "swap"; slot: Slot; panelId: string; at: [number, number]; to: { slot: Slot; panelId: string } | null };
+  | { kind: "swap"; slot: Slot; panelId: string; at: [number, number]; to: { slot: Slot; panelId: string } | null }
+  | { kind: "seam"; slot: Slot; seam: Seam; base: Map<string, Point[]>; start: Point; moved: boolean; carried: Map<string, CarriedContents> };
+
+/** What the pointer is over with the select tool, shown before anything is pressed. */
+type Hover =
+  | { kind: "seam"; slot: Slot; seam: Seam }
+  | { kind: "item"; slot: Slot; target: Selection };
 
 const ACCENT = "#2f6fdb";
 const MARGIN = 28;
@@ -166,6 +173,12 @@ export class PageEditor {
   /** The pages as drawn when a pen line began: only the new line is drawn over it. */
   private base: HTMLCanvasElement | null = null;
   private frame = 0;
+  /** The pages as last drawn, for redrawing only what is over them (hover, eraser ring). */
+  private cache: HTMLCanvasElement | null = null;
+  private overlayFrame = 0;
+  private hover: Hover | null = null;
+  private hoverAt: Point | null = null;
+  private hoverFrame = 0;
 
   constructor(private readonly canvas: HTMLCanvasElement, private readonly host: EditorHost) {
     // Low latency: the pen line reaches the screen without waiting for the compositor.
@@ -179,9 +192,12 @@ export class PageEditor {
     canvas.addEventListener("pointercancel", (event) => this.pointerUp(event));
     canvas.addEventListener("pointerleave", () => {
       this.pointer = null;
-      this.draw();
+      this.hover = null;
+      this.updateCursor();
+      this.requestOverlay();
     });
     canvas.addEventListener("wheel", (event) => this.wheel(event), { passive: false });
+    canvas.addEventListener("dblclick", (event) => this.doubleClick(event));
     window.addEventListener("keydown", (event) => {
       if (event.code === "Space" && !isTyping(event)) {
         this.spaceHeld = true;
@@ -365,6 +381,10 @@ export class PageEditor {
       cancelAnimationFrame(this.frame);
       this.frame = 0;
     }
+    if (this.overlayFrame) {
+      cancelAnimationFrame(this.overlayFrame);
+      this.overlayFrame = 0;
+    }
     const ctx = this.ctx;
     const { width, height } = this.canvas.getBoundingClientRect();
     if (this.drag?.kind === "pen" && this.base) {
@@ -383,7 +403,39 @@ export class PageEditor {
     this.slots = this.layout(project);
     for (const slot of this.slots) this.drawPage(project, slot);
     this.drawSpreadMark(project);
+    this.keepCache();
     this.drawOverlay();
+  }
+
+  private keepCache(): void {
+    const cache = this.cache ?? document.createElement("canvas");
+    if (cache.width !== this.canvas.width || cache.height !== this.canvas.height) {
+      cache.width = this.canvas.width;
+      cache.height = this.canvas.height;
+    }
+    const ctx = cache.getContext("2d")!;
+    ctx.clearRect(0, 0, cache.width, cache.height);
+    ctx.drawImage(this.canvas, 0, 0);
+    this.cache = cache;
+  }
+
+  /** Redraw only what lies over the pages (hover marks, the eraser ring) on the next frame. */
+  private requestOverlay(): void {
+    if (this.frame || this.overlayFrame) return;
+    this.overlayFrame = requestAnimationFrame(() => {
+      this.overlayFrame = 0;
+      if (!this.cache || this.drag) {
+        this.draw();
+        return;
+      }
+      const ctx = this.ctx;
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      ctx.drawImage(this.cache, 0, 0);
+      ctx.restore();
+      this.drawOverlay();
+    });
   }
 
   /** 見開きページ: a mark under the gutter when the two pages go to CSP as one. */
@@ -579,6 +631,46 @@ export class PageEditor {
   private drawOverlay(): void {
     const ctx = this.ctx;
     const drag = this.drag;
+    // Slots are laid out again on every draw: the hover's page as it is now placed.
+    const hoverSlot = this.hover && this.slots.find((s) => s.page.id === this.hover!.slot.page.id);
+    const seam = drag?.kind === "seam" ? drag : this.hover?.kind === "seam" && hoverSlot ? { slot: hoverSlot, seam: this.hover.seam } : null;
+    if (seam) {
+      // The border under the pointer (or being moved): its edges, thick.
+      const { slot } = seam;
+      ctx.save();
+      ctx.strokeStyle = ACCENT;
+      ctx.lineWidth = 3;
+      ctx.lineCap = "round";
+      for (const [a, b] of seamLines(slot.page, seam.seam)) {
+        ctx.beginPath();
+        ctx.moveTo(slot.x + a[0] * slot.scale, slot.y + a[1] * slot.scale);
+        ctx.lineTo(slot.x + b[0] * slot.scale, slot.y + b[1] * slot.scale);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    if (!drag && this.hover?.kind === "item" && hoverSlot) {
+      const { target } = this.hover;
+      const slot = hoverSlot;
+      const m = { scale: slot.scale, x: slot.x, y: slot.y };
+      ctx.save();
+      ctx.strokeStyle = "rgba(47, 111, 219, 0.55)";
+      ctx.lineWidth = 2;
+      if (target.kind === "panel") {
+        const panel = slot.page.panels.find((p) => p.id === target.id);
+        if (panel) {
+          tracePath(ctx, panel.shape, m, true);
+          ctx.stroke();
+        }
+      } else if (target.kind === "line") {
+        const line = slot.page.lines.find((l) => l.id === target.id);
+        if (line) {
+          const [x0, y0, x1, y1] = line.box;
+          ctx.strokeRect(slot.x + x0 * slot.scale - 3, slot.y + y0 * slot.scale - 3, (x1 - x0) * slot.scale + 6, (y1 - y0) * slot.scale + 6);
+        }
+      }
+      ctx.restore();
+    }
     if (drag && (drag.kind === "cut" || drag.kind === "frame")) {
       const { slot } = drag;
       const a = drag.a;
@@ -772,7 +864,8 @@ export class PageEditor {
       sticky: "copy",
     };
     const eraser = this.eraseMode === "lasso" ? "crosshair" : "none";
-    this.canvas.style.cursor = this.spaceHeld ? "grab" : this.tipEraser ? eraser : this.tool === "eraser" ? eraser : cursors[this.tool];
+    const hover = this.tool === "select" && this.hover ? (this.hover.kind === "seam" ? PageEditor.seamCursor(this.hover.seam) : "move") : null;
+    this.canvas.style.cursor = this.spaceHeld ? "grab" : this.tipEraser ? eraser : this.tool === "eraser" ? eraser : hover ?? cursors[this.tool];
   }
 
   private pointerDown(event: PointerEvent): void {
@@ -823,6 +916,23 @@ export class PageEditor {
           return;
         }
         const target = this.hit(slot, point);
+        // コマの境目: the gutter or an edge moves, the panels on both sides with it.
+        if (!target || target.kind === "panel") {
+          const seam = seamAt(slot.page, point, 6 / slot.scale);
+          if (seam) {
+            this.host.begin();
+            const carried = new Map<string, CarriedContents>();
+            if (this.panelCarries) {
+              for (const id of new Set(seam.edges.map((edge) => edge.panelId))) {
+                const panel = slot.page.panels.find((p) => p.id === id);
+                if (panel) carried.set(id, carryContents(slot.page, panel));
+              }
+            }
+            this.drag = { kind: "seam", slot, seam, base: seamBase(slot.page, seam), start: point, moved: false, carried };
+            this.hover = null;
+            return;
+          }
+        }
         // Inside a 範囲選択: drag the whole group.
         if (this.selection?.kind === "group" && this.selection.pageId === slot.page.id && (!target || this.isSelected(slot.page, target.kind, target.id))) {
           if (this.groupHit(slot.page, point, 4 / slot.scale)) {
@@ -923,7 +1033,8 @@ export class PageEditor {
     const drag = this.drag;
     if (!drag) {
       this.setTipEraser(event);
-      if (this.erasing()) this.requestDraw();
+      this.scheduleHover(event.offsetX, event.offsetY);
+      if (this.erasing()) this.requestOverlay();
       return;
     }
     if (drag.kind === "pan") {
@@ -952,6 +1063,20 @@ export class PageEditor {
         this.follow(drag.slot.page, drag.carried);
         drag.last = point;
         drag.moved = true;
+        break;
+      }
+      case "seam": {
+        const { seam } = drag;
+        let distance = (point[0] - drag.start[0]) * seam.normal[0] + (point[1] - drag.start[1]) * seam.normal[1];
+        if (this.snap && !event.altKey) distance = snapSeam(seam, distance, snapLines(project.pageFormat), 8 / drag.slot.scale);
+        const moved = moveSeam(drag.slot.page, drag.base, seam, distance);
+        for (const [id, carried] of drag.carried) {
+          const panel = drag.slot.page.panels.find((p) => p.id === id);
+          if (panel) followPanel(drag.slot.page, panel, carried);
+        }
+        drag.moved = drag.moved || Math.abs(moved) > 0.01;
+        const what = seam.between ? "間白" : "コマの辺";
+        this.host.status(`${what}を ${Math.abs(moved).toFixed(1)} mm 動かしています（Alt で吸い付かない）`);
         break;
       }
       case "vertex": {
@@ -1161,6 +1286,21 @@ export class PageEditor {
         this.host.status(`コマ ${from.order} とコマ ${target.order} の中身を入れ替えました（元に戻すは Ctrl+Z）`);
         break;
       }
+      case "seam": {
+        if (!drag.moved) {
+          this.host.cancel();
+          // A click on an edge picks the panel there.
+          const panel = this.panelAt(drag.slot.page, drag.start) ?? drag.slot.page.panels.find((p) => p.id === drag.seam.edges[0].panelId);
+          this.select(panel ? { kind: "panel", pageId: drag.slot.page.id, id: panel.id } : null);
+          break;
+        }
+        orderPanels(drag.slot.page, project.binding);
+        assignPanels(drag.slot.page);
+        sortLines(drag.slot.page);
+        this.host.commit();
+        this.host.status(drag.seam.between ? "間白を動かしました（両側のコマが一緒に）" : "コマの辺を動かしました");
+        break;
+      }
       case "pan":
         break;
     }
@@ -1212,6 +1352,81 @@ export class PageEditor {
     const s = this.selection;
     const panel = carried && s?.kind === "panel" ? page.panels.find((p) => p.id === s.id) : undefined;
     if (panel && carried) followPanel(page, panel, carried);
+  }
+
+  /** Look for what is under the pointer once a frame, however often it moves. */
+  private scheduleHover(sx: number, sy: number): void {
+    this.hoverAt = [sx, sy];
+    if (this.hoverFrame) return;
+    this.hoverFrame = requestAnimationFrame(() => {
+      this.hoverFrame = 0;
+      if (this.hoverAt && !this.drag) this.updateHover(...this.hoverAt);
+    });
+  }
+
+  /** What the select tool would grab here: shown by a mark and the cursor. */
+  private updateHover(sx: number, sy: number): void {
+    const project = this.host.project();
+    let hover: Hover | null = null;
+    if (project && this.tool === "select" && !this.spaceHeld && !this.tipEraser) {
+      const slot = this.slotAt(sx, sy, project);
+      if (slot) {
+        const point = this.toPage(slot, sx, sy);
+        const onHandle =
+          this.vertexAt(slot, sx, sy) >= 0 || this.tailAt(slot, sx, sy) >= 0 || !!this.badgeAt(slot, sx, sy, project.pageFormat.canvasMm[0]);
+        const target = onHandle ? null : this.hit(slot, point);
+        if (!onHandle && (!target || target.kind === "panel")) {
+          const seam = seamAt(slot.page, point, 6 / slot.scale);
+          if (seam) hover = { kind: "seam", slot, seam };
+        }
+        if (!hover && target) hover = { kind: "item", slot, target };
+      }
+    }
+    const key = (h: Hover | null) =>
+      !h ? "" : h.kind === "seam" ? `seam:${h.slot.page.id}:${h.seam.edges.map((e) => `${e.panelId}.${e.edge}`).join(",")}` : `item:${h.target.pageId}:${h.target.kind}:${h.target.id}`;
+    if (key(hover) === key(this.hover)) return;
+    this.hover = hover;
+    this.updateCursor();
+    this.requestOverlay();
+  }
+
+  /** The cursor for moving a border: across it. */
+  private static seamCursor(seam: Seam): string {
+    const [nx, ny] = seam.normal;
+    if (Math.abs(ny) > 2 * Math.abs(nx)) return "ns-resize";
+    if (Math.abs(nx) > 2 * Math.abs(ny)) return "ew-resize";
+    return nx * ny > 0 ? "nwse-resize" : "nesw-resize";
+  }
+
+  private doubleClick(event: MouseEvent): void {
+    const project = this.host.project();
+    if (!project || this.tool !== "select") return;
+    const slot = this.slotAt(event.offsetX, event.offsetY, project);
+    if (!slot) return;
+    const point = this.toPage(slot, event.offsetX, event.offsetY);
+    const target = this.hit(slot, point);
+    if (target && target.kind !== "panel") return;
+    // つなげる: double-click the gutter between two panels.
+    const seam = seamAt(slot.page, point, 6 / slot.scale);
+    if (!seam?.between) return;
+    const ids = [...new Set(seam.edges.map((edge) => edge.panelId))];
+    if (ids.length !== 2) {
+      this.host.status("つなげられるのは、境目の両側が 1 コマずつのときです");
+      return;
+    }
+    const [a, b] = ids.map((id) => slot.page.panels.find((p) => p.id === id)!).sort((x, y) => x.order - y.order);
+    this.host.begin();
+    if (!joinPanels(slot.page, a, b, project.binding)) {
+      this.host.cancel();
+      this.host.status("この 2 つのコマは形がそろっていないか見開きなので、つなげられません");
+      return;
+    }
+    assignPanels(slot.page);
+    sortLines(slot.page);
+    this.host.commit();
+    this.hover = null;
+    this.select({ kind: "panel", pageId: slot.page.id, id: a.id });
+    this.host.status(`コマ ${a.order} と隣のコマをつなげました（元に戻すは Ctrl+Z）`);
   }
 
   /** Nudge the selection with the arrow keys (mm). */

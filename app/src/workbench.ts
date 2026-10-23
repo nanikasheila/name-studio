@@ -44,6 +44,7 @@ import {
   unspreadPanel,
   type Side,
 } from "./koma";
+import { joinPanels, joinedShape, neighbours } from "./komaedit";
 import { Overview, type OverviewKind } from "./overview";
 import {
   KIND_LABELS,
@@ -900,12 +901,46 @@ export class Workbench {
       element("label", { className: "inline" }, carries, "動かす・形を変えるとき、中のセリフとラフ線も一緒に"),
       element("div", { className: "row" }, tiltLeft, tiltRight, raise, lower),
       inset,
+      ...this.joinButtons(page, panel),
       element("p", {
         className: "hint",
-        textContent: `セリフ ${lines} 件。角の四角をドラッグすると形を変えられます（枠に吸い付きます。Alt で吸い付かない）。右上の番号を別のコマへドラッグ（または Alt + ドラッグ）すると中身を入れ替えます。重なり ${panel.z ?? 0}。`,
+        textContent: `セリフ ${lines} 件。コマの境目（間白）をドラッグすると両側のコマが一緒に動き、外側の辺なら辺だけが動きます。境目をダブルクリックで隣とつなげます。角の四角をドラッグすると形を変えられます（枠に吸い付きます。Alt で吸い付かない）。右上の番号を別のコマへドラッグ（または Alt + ドラッグ）すると中身を入れ替えます。重なり ${panel.z ?? 0}。`,
       }),
       remove,
     ];
+  }
+
+  /** つなげる: one button per panel across a border from this one. */
+  private joinButtons(page: Page, panel: Panel): HTMLElement[] {
+    const found = neighbours(page, panel);
+    if (!found.length) return [];
+    const order = { right: 0, top: 1, bottom: 2, left: 3 } as const;
+    const buttons = found
+      .sort((a, b) => order[a.side] - order[b.side])
+      .map(({ panel: other, side }) => {
+        const b = element("button", { textContent: `${SIDE_LABELS[side]}の ${other.order} とつなげる`, title: "間白をなくして 1 つのコマにする" });
+        b.disabled = !!panel.spread || !!other.spread || !joinedShape(panel, other);
+        if (b.disabled) b.title = "形がそろっていないか見開きのコマなので、つなげられません";
+        b.addEventListener("click", () => {
+          let joined = false;
+          this.edit((p) => {
+            const target = p.pages.find((x) => x.id === page.id);
+            const a = target?.panels.find((x) => x.id === panel.id);
+            const c = target?.panels.find((x) => x.id === other.id);
+            if (!target || !a || !c) return;
+            const [first, second] = a.order < c.order ? [a, c] : [c, a];
+            joined = joinPanels(target, first, second, p.binding);
+            if (joined) {
+              assignPanels(target);
+              sortLines(target);
+              this.editor.selection = { kind: "panel", pageId: page.id, id: first.id };
+            }
+          });
+          if (joined) this.setStatus("コマをつなげました（元に戻すは Ctrl+Z）");
+        });
+        return b;
+      });
+    return [element("h3", { textContent: "つなげる" }), element("div", { className: "row" }, ...buttons)];
   }
 
   private stickyInspector(sticky: Sticky): HTMLElement[] {
