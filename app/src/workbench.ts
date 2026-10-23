@@ -14,6 +14,7 @@ import { alternativesOf, joinAlternative, makeAlternative, useAlternative } from
 import {
   ERASE_MODE_LABELS,
   PANEL_CARRIES_KEY,
+  SHOW_NOTES_KEY,
   PageEditor,
   isTyping,
   writeFlag,
@@ -813,7 +814,8 @@ export class Workbench {
       }),
     );
     setTimeout(() => {
-      if (line.text === "セリフ") {
+      // Written on the page itself when it is open there.
+      if (line.text === "セリフ" && !this.editor.editingInPlace) {
         text.focus();
         text.select();
       }
@@ -891,7 +893,7 @@ export class Workbench {
     });
     return [
       element("h2", { textContent: `${pageIndex(project, page.id) + 1} ページ ${order} コマ目` }),
-      element("label", {}, "演出メモ", note),
+      element("label", {}, "メモ（ページの上にも出ます。コマをダブルクリックでその場で書けます）", note),
       element("div", { className: "row" }, element("label", {}, "枠線", border), element("label", {}, "塗り", fill)),
       element("label", {}, "背景の効果", effect),
       element("h3", { textContent: "裁ち切り（ページの外まで）" }),
@@ -1266,6 +1268,13 @@ export class Workbench {
     $("redo").addEventListener("click", () => this.redo());
     $("editor-next").addEventListener("click", () => this.flip(1));
     $("editor-prev").addEventListener("click", () => this.flip(-1));
+    const showNotes = $<HTMLInputElement>("show-notes");
+    showNotes.checked = this.editor.showNotes;
+    showNotes.addEventListener("change", () => {
+      this.editor.showNotes = showNotes.checked;
+      writeFlag(SHOW_NOTES_KEY, showNotes.checked);
+      this.editor.draw();
+    });
     $<HTMLInputElement>("editor-first-alone").addEventListener("change", (event) => {
       this.editor.firstAlone = (event.target as HTMLInputElement).checked;
       this.editor.spreadIndex = 0;

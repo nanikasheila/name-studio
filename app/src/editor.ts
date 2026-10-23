@@ -18,12 +18,16 @@ import {
   cutPanels,
   eraseInside,
   eraseWith,
+  fitLine,
   insideBox,
   insidePolygon,
+  LINE_PITCH,
+  MM_PER_PT,
   moveLine,
   movePanel,
   moveStroke,
   orderPanels,
+  pageIndex,
   pickInside,
   rectShape,
   snapCut,
@@ -127,6 +131,10 @@ const MARGIN = 28;
 const HANDLE = 5;
 
 export const PANEL_CARRIES_KEY = "namestudio.panelCarries";
+export const SHOW_NOTES_KEY = "namestudio.showNotes";
+
+const NOTE_FONT = '12px "Yu Gothic UI", "Yu Gothic", "Hiragino Sans", "Noto Sans JP", sans-serif';
+const NOTE_ROW = 16;
 
 export function readFlag(key: string, fallback: boolean): boolean {
   try {
@@ -152,6 +160,8 @@ export class PageEditor {
   firstAlone = true;
   /** コマに中身が付いてくる: moving or reshaping a panel takes its contents along. */
   panelCarries = readFlag(PANEL_CARRIES_KEY, true);
+  /** Each panel's memo shown on the page (only on screen, never exported). */
+  showNotes = readFlag(SHOW_NOTES_KEY, true);
   penWidthMm = 0.4;
   /** Brushes in use (ids in the project); null is the plain pen / eraser. */
   penBrush: string | null = null;
@@ -179,6 +189,10 @@ export class PageEditor {
   private hover: Hover | null = null;
   private hoverAt: Point | null = null;
   private hoverFrame = 0;
+  /** A text being written in place on the page (a panel's memo or dialogue). */
+  private inline: { field: HTMLTextAreaElement; place: () => void; finish: (keep: boolean) => void } | null = null;
+  /** Run once the pointer is up (opening a text field during the press would lose its focus). */
+  private afterUp: (() => void) | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement, private readonly host: EditorHost) {
     // Low latency: the pen line reaches the screen without waiting for the compositor.
@@ -404,6 +418,7 @@ export class PageEditor {
     for (const slot of this.slots) this.drawPage(project, slot);
     this.drawSpreadMark(project);
     this.keepCache();
+    this.inline?.place();
     this.drawOverlay();
   }
 
@@ -553,6 +568,7 @@ export class PageEditor {
 
     drawBalloons(ctx, page, m);
     for (const line of page.lines) this.drawLine(project, slot, line);
+    if (this.showNotes) for (const panel of page.panels) if (panel.note) this.drawNote(slot, panel);
     for (const sticky of page.stickies ?? []) this.drawSticky(slot, sticky);
     ctx.restore();
 
@@ -563,6 +579,50 @@ export class PageEditor {
     const memo = page.memo ? `  ${page.memo.split("\n")[0]}` : "";
     const [trimX0, , trimX1] = trimBox(project.pageFormat);
     ctx.fillText(`${slot.index + 1}${memo}`, sx((trimX0 + trimX1) / 2), sy(pageH) + 18);
+  }
+
+  /** Where a panel's memo sits on screen: inside its top-left corner, as wide as the panel allows. */
+  private noteBox(slot: Slot, panel: Panel): { x: number; y: number; w: number; h: number; rows: string[] } {
+    const [x0, y0, x1] = bounds(panel.shape);
+    const left = Math.max(x0, slot.shown[0]);
+    const right = Math.min(x1, slot.shown[1]);
+    const x = slot.x + left * slot.scale + 4;
+    const y = slot.y + Math.max(y0, 0) * slot.scale + 4;
+    // Leave room for the panel's number at the top right.
+    const room = Math.max(60, Math.min((right - left) * slot.scale - 8 - 2 * Math.max(4 * slot.scale, 7) - 6, 280));
+    const ctx = this.ctx;
+    ctx.font = NOTE_FONT;
+    const rows = panel.note ? wrapText(ctx, panel.note, room - 10, 4) : [];
+    const w = rows.length ? Math.min(room, Math.max(...rows.map((row) => ctx.measureText(row).width)) + 10) : 52;
+    return { x, y, w, h: Math.max(rows.length, 1) * NOTE_ROW + 4, rows };
+  }
+
+  /** A panel's memo, on a pale tag in its corner (screen only). */
+  private drawNote(slot: Slot, panel: Panel): void {
+    const ctx = this.ctx;
+    const { x, y, w, h, rows } = this.noteBox(slot, panel);
+    ctx.save();
+    ctx.fillStyle = "rgba(255, 246, 194, 0.92)";
+    ctx.strokeStyle = "rgba(170, 140, 40, 0.6)";
+    ctx.lineWidth = 1;
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    ctx.fillStyle = "#4a3f12";
+    ctx.font = NOTE_FONT;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    rows.forEach((row, i) => ctx.fillText(row, x + 5, y + 4 + i * NOTE_ROW));
+    ctx.restore();
+  }
+
+  /** The panel whose memo tag (or, for the panel under the pointer, its "＋メモ" tag) is at a screen point. */
+  private noteAt(slot: Slot, sx: number, sy: number): Panel | undefined {
+    const hovered = this.hover?.kind === "item" && this.hover.target.kind === "panel" ? this.hover.target.id : null;
+    return slot.page.panels.find((panel) => {
+      if (!(this.showNotes && panel.note) && panel.id !== hovered) return false;
+      const { x, y, w, h } = this.noteBox(slot, panel);
+      return sx >= x && sx <= x + w && sy >= y && sy <= y + h;
+    });
   }
 
   /** 付箋: a coloured note with its text; only here, never in exports. */
@@ -661,6 +721,17 @@ export class PageEditor {
         if (panel) {
           tracePath(ctx, panel.shape, m, true);
           ctx.stroke();
+          if (!panel.note || !this.showNotes) {
+            // An invitation to write the panel's memo right here.
+            const { x, y } = this.noteBox(slot, panel);
+            ctx.fillStyle = "rgba(255, 246, 194, 0.85)";
+            ctx.fillRect(x, y, 52, NOTE_ROW + 4);
+            ctx.fillStyle = "#7a6a2a";
+            ctx.font = NOTE_FONT;
+            ctx.textAlign = "left";
+            ctx.textBaseline = "top";
+            ctx.fillText("＋ メモ", x + 6, y + 4);
+          }
         }
       } else if (target.kind === "line") {
         const line = slot.page.lines.find((l) => l.id === target.id);
@@ -871,6 +942,11 @@ export class PageEditor {
   private pointerDown(event: PointerEvent): void {
     const project = this.host.project();
     if (!project) return;
+    // A click away from text being written only ends the writing.
+    if (this.inline) {
+      this.inline.finish(true);
+      return;
+    }
     try {
       this.canvas.setPointerCapture(event.pointerId);
     } catch {
@@ -892,6 +968,13 @@ export class PageEditor {
     const point = this.toPage(slot, sx, sy);
     switch (this.tipEraser ? "eraser" : this.tool) {
       case "select": {
+        // A panel's memo tag: write in it right there.
+        const noted = this.noteAt(slot, sx, sy);
+        if (noted) {
+          this.select({ kind: "panel", pageId: slot.page.id, id: noted.id });
+          this.afterUp = () => this.editInPlace(slot.page.id, "note", noted.id);
+          return;
+        }
         // コマの入れ替え: drag a panel's number (or Alt + drag the panel) onto another panel.
         const numbered = this.badgeAt(slot, sx, sy, project.pageFormat.canvasMm[0]);
         const altPanel = event.altKey ? this.panelAt(slot.page, point) : undefined;
@@ -964,15 +1047,18 @@ export class PageEditor {
         return;
       }
       case "text": {
+        // Write straight onto the page: a new line, or the one clicked.
         const hit = this.hit(slot, point);
         if (hit?.kind === "line") {
           this.select(hit);
+          this.afterUp = () => this.editInPlace(slot.page.id, "line", hit.id);
           return;
         }
         this.host.begin();
         const line = addLine(project, slot.page, point);
         this.host.commit();
         this.select({ kind: "line", pageId: slot.page.id, id: line.id });
+        this.afterUp = () => this.editInPlace(slot.page.id, "line", line.id);
         return;
       }
       case "pen": {
@@ -1144,6 +1230,9 @@ export class PageEditor {
     const drag = this.drag;
     this.drag = null;
     this.base = null;
+    const after = this.afterUp;
+    this.afterUp = null;
+    if (after) setTimeout(after, 0);
     if (!drag) return;
     const project = this.host.project();
     if (!project) return;
@@ -1405,7 +1494,19 @@ export class PageEditor {
     if (!slot) return;
     const point = this.toPage(slot, event.offsetX, event.offsetY);
     const target = this.hit(slot, point);
+    // Dialogue: write it right there.
+    if (target?.kind === "line") {
+      this.editInPlace(slot.page.id, "line", target.id);
+      return;
+    }
     if (target && target.kind !== "panel") return;
+    // Inside a panel: its memo.
+    const panel = this.panelAt(slot.page, point);
+    if (panel) {
+      this.select({ kind: "panel", pageId: slot.page.id, id: panel.id });
+      this.editInPlace(slot.page.id, "note", panel.id);
+      return;
+    }
     // つなげる: double-click the gutter between two panels.
     const seam = seamAt(slot.page, point, 6 / slot.scale);
     if (!seam?.between) return;
@@ -1427,6 +1528,112 @@ export class PageEditor {
     this.hover = null;
     this.select({ kind: "panel", pageId: slot.page.id, id: a.id });
     this.host.status(`コマ ${a.order} と隣のコマをつなげました（元に戻すは Ctrl+Z）`);
+  }
+
+  /** Whether text is being written on the page right now. */
+  get editingInPlace(): boolean {
+    return this.inline !== null;
+  }
+
+  /**
+   * Write a panel's memo or a line of dialogue in a field laid over the page,
+   * where it is. The page follows each key; Ctrl+Enter or a click elsewhere
+   * keeps it (one undo step), Esc puts it back.
+   */
+  editInPlace(pageId: string, kind: "note" | "line", id: string): void {
+    this.inline?.finish(true);
+    const project = this.host.project();
+    const page = project?.pages.find((p) => p.id === pageId);
+    const panel = kind === "note" ? page?.panels.find((p) => p.id === id) : undefined;
+    const line = kind === "line" ? page?.lines.find((l) => l.id === id) : undefined;
+    if (!page || (!panel && !line)) return;
+    if (!this.slots.some((slot) => slot.page.id === pageId)) this.showPage(pageIndex(project!, pageId) + 1);
+    const field = document.createElement("textarea");
+    field.className = `inline-edit ${kind}`;
+    field.spellcheck = false;
+    const original = (panel ? panel.note : line!.text) ?? "";
+    field.value = original;
+    if (panel) field.placeholder = "このコマのメモ（狙い・演出・直したいこと）";
+    const apply = (value: string) => {
+      if (panel) {
+        if (value.trim()) panel.note = value;
+        else delete panel.note;
+      } else if (line) {
+        line.text = value;
+        fitLine(line);
+      }
+    };
+    const place = () => {
+      const slot = this.slots.find((s) => s.page.id === pageId);
+      if (!slot) return;
+      const style = field.style;
+      if (panel) {
+        const { x, y } = this.noteBox(slot, panel);
+        const [x0, , x1] = bounds(panel.shape);
+        style.left = `${x}px`;
+        style.top = `${y}px`;
+        style.width = `${Math.max(180, Math.min((x1 - x0) * slot.scale - 8, 320))}px`;
+        style.height = `${NOTE_ROW * 4 + 8}px`;
+        style.font = NOTE_FONT;
+        style.writingMode = "horizontal-tb";
+      } else if (line) {
+        const [x0, y0, x1] = line.box;
+        // Never smaller than can be read, even when the page is shown small.
+        const size = Math.max(line.fontSizePt * MM_PER_PT * slot.scale, 12);
+        const pad = 6;
+        style.font = `${line.emphasis ? "bold " : ""}${size}px "Yu Gothic", "Hiragino Sans", "Noto Sans JP", sans-serif`;
+        style.writingMode = line.vertical ? "vertical-rl" : "horizontal-tb";
+        const rows = field.value.replace(/\r\n?/g, "\n").split("\n");
+        const longest = Math.max(1, ...rows.map((row) => [...row].length));
+        // Room for one more character and one more row, so the caret is never squeezed.
+        const across = (rows.length + 1) * size * LINE_PITCH + 2 * pad;
+        const along = (longest + 1) * size + 2 * pad;
+        const [w, h] = line.vertical ? [across, along] : [along, across];
+        // Vertical text starts at the right, as it is read.
+        style.left = `${line.vertical ? slot.x + x1 * slot.scale + pad - w : slot.x + x0 * slot.scale - pad}px`;
+        style.top = `${slot.y + y0 * slot.scale - pad}px`;
+        style.width = `${w}px`;
+        style.height = `${h}px`;
+        style.lineHeight = String(LINE_PITCH);
+      }
+    };
+    this.host.begin();
+    let done = false;
+    const finish = (keep: boolean) => {
+      if (done) return;
+      done = true;
+      if (this.inline?.field === field) this.inline = null;
+      if (!keep) apply(original);
+      field.remove();
+      if (keep && field.value !== original) {
+        this.host.commit();
+        this.host.status(panel ? "コマのメモを書きました" : "セリフを直しました");
+      } else {
+        this.host.cancel();
+        this.host.status("");
+      }
+      this.draw();
+    };
+    field.addEventListener("input", () => {
+      apply(field.value);
+      this.draw();
+    });
+    field.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        finish(false);
+      } else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        finish(true);
+      }
+    });
+    field.addEventListener("blur", () => finish(true));
+    this.inline = { field, place, finish };
+    this.canvas.parentElement!.append(field);
+    place();
+    field.focus();
+    if (line && line.text === "セリフ") field.select();
+    this.host.status(panel ? "コマのメモを書いています（Ctrl+Enter かほかを押すと決定、Esc でやめる）" : "セリフを書いています（改行で行を分ける。Ctrl+Enter かほかを押すと決定、Esc でやめる）");
   }
 
   /** Nudge the selection with the arrow keys (mm). */
@@ -1469,4 +1676,24 @@ function pressureOf(event: PointerEvent): number {
 export function isTyping(event: KeyboardEvent): boolean {
   const target = event.target as HTMLElement | null;
   return !!target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable);
+}
+
+/** Break `text` into rows no wider than `width` px, at most `max` rows (the last ends in …). */
+function wrapText(ctx: CanvasRenderingContext2D, text: string, width: number, max: number): string[] {
+  const rows: string[] = [];
+  for (const paragraph of text.replace(/\r\n?/g, "\n").split("\n")) {
+    let row = "";
+    for (const char of paragraph) {
+      if (row && ctx.measureText(row + char).width > width) {
+        rows.push(row);
+        row = "";
+      }
+      row += char;
+    }
+    rows.push(row);
+  }
+  if (rows.length <= max) return rows;
+  const kept = rows.slice(0, max);
+  kept[max - 1] = `${kept[max - 1].slice(0, -1)}…`;
+  return kept;
 }
