@@ -4,7 +4,7 @@
 // mm → screen mapping.
 import { FULL_SPEED_MM, followFactor, postCorrect, tiltOf as penTilt, usesMotion } from "./brush";
 import { adjustPressure, penPreferences } from "./pen";
-import { defaultTailStyle, insideBalloon, resolvedShape, tailGeometry } from "./balloon";
+import { balloonExtent, defaultTailStyle, insideBalloon, resolvedShape, tailGeometry } from "./balloon";
 import { spreads } from "./pages";
 import { addBreakout, moveBreakout, stacked } from "./koma";
 import { joinPanels, moveSeam, seamAt, seamBase, seamLines, snapSeam, type Seam } from "./komaedit";
@@ -16,8 +16,11 @@ import {
   rotation,
   scaling,
   straightEnd,
+  toggleItem,
   transformBase,
   transformItems,
+  withContents,
+  moveItems,
   type Affine,
   type Clip,
   type ItemRef,
@@ -61,6 +64,7 @@ import {
   followPanel,
   type CarriedContents,
   strokeHit,
+  keepStickyOnPage,
   trimBox,
   type BoxMm,
   type Brush,
@@ -87,8 +91,8 @@ export interface Selection {
   kind: "panel" | "line" | "stroke" | "breakout" | "group" | "sticky" | "fill";
   pageId: string;
   id: string;
-  /** 範囲選択 ("group"): the rough lines and dialogue picked together. */
-  items?: { kind: "stroke" | "line"; id: string }[];
+  /** 範囲選択 ("group"): the things picked together (rough lines, dialogue, panels, fills, はみ出し). */
+  items?: ItemRef[];
 }
 
 /** How the eraser works: CSP's three vector erasers, and 囲って消す. */
@@ -136,7 +140,7 @@ type Drag =
   /** Two fingers: `v` is the view point under their middle (independent of zoom), kept under it. */
   | { kind: "pinch"; ids: [number, number]; dist: number; angle: number; zoom: number; rotation: number; v: Point }
   | { kind: "turn"; from: number; rotation: number }
-  | { kind: "move"; slot: Slot; last: Point; moved: boolean; carried?: CarriedContents }
+  | { kind: "move"; slot: Slot; last: Point; moved: boolean; carried?: CarriedContents; items?: ItemRef[]; cycle?: string }
   | { kind: "vertex"; slot: Slot; panelId: string; vertex: number; moved: boolean; carried?: CarriedContents }
   | { kind: "cut"; slot: Slot; a: Point; b: Point; free: boolean }
   | { kind: "frame"; slot: Slot; a: Point; b: Point }
@@ -145,7 +149,7 @@ type Drag =
   | { kind: "tail"; slot: Slot; lineId: string; index: number; moved: boolean; part: TailPart; start: Point; tip: Point; created?: boolean }
   | { kind: "lasso"; slot: Slot; points: Point[] }
   | { kind: "fill"; slot: Slot; points: Point[] }
-  | { kind: "pick"; slot: Slot; points: Point[] }
+  | { kind: "pick"; slot: Slot; points: Point[]; add?: { base: ItemRef[]; target: ItemRef | null } }
   | { kind: "eraseLasso"; slot: Slot; points: Point[] }
   | { kind: "erase"; slot: Slot; erased: number }
   | { kind: "swap"; slot: Slot; panelId: string; at: [number, number]; to: { slot: Slot; panelId: string } | null }
@@ -206,6 +210,10 @@ export class PageEditor {
   tool: Tool = "select";
   selection: Selection | null = null;
   spreadIndex = 0;
+  /** The page of the spread last clicked or picked in the page list: what the page settings are for. */
+  private focusedPageId: string | null = null;
+  /** Picking the next of overlapping balloons, held back while a double-click may follow. */
+  private cycleTimer = 0;
   firstAlone = true;
   /** コマに中身が付いてくる: moving or reshaping a panel takes its contents along. */
   panelCarries = readFlag(PANEL_CARRIES_KEY, true);
@@ -326,6 +334,7 @@ export class PageEditor {
   }
 
   showPage(pageNumber: number): void {
+    this.focusedPageId = this.host.project()?.pages[pageNumber - 1]?.id ?? null;
     const index = this.spreadList().findIndex((pair) => pair.includes(pageNumber));
     if (index >= 0 && index !== this.spreadIndex) {
       this.spreadIndex = index;
@@ -487,7 +496,7 @@ export class PageEditor {
     this.bar.style.top = `${Math.max(y, 6)}px`;
   }
 
-  /** The page the selection is on, or the right page of the spread. */
+  /** The page the selection is on, else the page of the spread last clicked or picked, else its first page. */
   focusPage(): Page | null {
     const project = this.host.project();
     if (!project) return null;
@@ -495,8 +504,8 @@ export class PageEditor {
       const page = project.pages.find((p) => p.id === this.selection!.pageId);
       if (page) return page;
     }
-    const [first] = this.currentPages();
-    return first ? project.pages[first - 1] : null;
+    const shown = this.currentPages().map((number) => project.pages[number - 1]).filter(Boolean);
+    return shown.find((page) => page.id === this.focusedPageId) ?? shown[0] ?? null;
   }
 
   // --- layout ---------------------------------------------------------------
@@ -563,7 +572,9 @@ export class PageEditor {
     const s = this.selection;
     const facing = this.facingSlot(slot);
     if (!s || !facing || s.pageId !== slot.page.id) return;
-    const items = s.kind === "group" ? (s.items ?? []) : s.kind === "line" || s.kind === "stroke" ? [{ kind: s.kind, id: s.id }] : [];
+    const all: ItemRef[] = s.kind === "group" ? (s.items ?? []) : s.kind === "line" || s.kind === "stroke" ? [{ kind: s.kind, id: s.id }] : [];
+    // Panels, fills and はみ出し stay on their page.
+    const items = all.filter((item) => item.kind === "line" || item.kind === "stroke");
     const shift = (slot.x - facing.x) / slot.scale;
     const across = (x: number) => (facing.x > slot.x ? x > slot.shown[1] : x < slot.shown[0]);
     const moved: typeof items = [];
@@ -589,8 +600,8 @@ export class PageEditor {
     }
     if (!moved.length) return;
     // The selection follows when everything went across.
-    if (moved.length === items.length) this.selection = { ...s, pageId: facing.page.id };
-    else if (s.kind === "group") this.selection = { ...s, items: items.filter((item) => !moved.includes(item)) };
+    if (moved.length === all.length) this.selection = { ...s, pageId: facing.page.id };
+    else if (s.kind === "group") this.selection = { ...s, items: all.filter((item) => !moved.includes(item)) };
     this.host.selectionChanged(this.selection);
     this.host.status(`${moved.length} 個を向かいのページ（${facing.index + 1} ページ）へ移しました`);
   }
@@ -747,13 +758,13 @@ export class PageEditor {
     drawStrokes(ctx, page, m, false, strokeColor, 0.7, brushes);
     drawPanelFills(ctx, page, m);
     drawPageFills(ctx, page, m, (id) => (this.isSelected(page, "fill", id) ? ACCENT : null));
-    const selectedPanel = page.panels.find((panel) => this.isSelected(page, "panel", panel.id));
-    if (selectedPanel) {
-      tracePath(ctx, selectedPanel.shape, m, true);
+    const selectedPanels = page.panels.filter((panel) => this.isSelected(page, "panel", panel.id));
+    for (const panel of selectedPanels) {
+      tracePath(ctx, panel.shape, m, true);
       ctx.fillStyle = "rgba(47, 111, 219, 0.08)";
       ctx.fill();
     }
-    drawPanelBorders(ctx, page, m, (panel) => (panel === selectedPanel ? ACCENT : INK));
+    drawPanelBorders(ctx, page, m, (panel) => (selectedPanels.includes(panel) ? ACCENT : INK));
     drawStrokes(ctx, page, m, true, strokeColor, 0.7, brushes);
 
     // はみ出し: shown by a dashed outline (only here, not in exports).
@@ -768,7 +779,7 @@ export class PageEditor {
     }
 
     for (const panel of stacked(page.panels)) {
-      const selected = panel === selectedPanel;
+      const selected = selectedPanels.includes(panel);
       // Panels with no border at all still show where they are.
       if ((panel.border ?? "solid") === "none" && !selected) {
         tracePath(ctx, panel.shape, m, true);
@@ -794,7 +805,8 @@ export class PageEditor {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(String(panel.order), nx, ny);
-      if (selected && !this.transforming) {
+      // Corners to drag, for a panel selected on its own.
+      if (selected && !this.transforming && this.selection?.kind === "panel") {
         ctx.fillStyle = "#ffffff";
         ctx.strokeStyle = ACCENT;
         ctx.lineWidth = 1.5;
@@ -815,25 +827,45 @@ export class PageEditor {
     ctx.font = "13px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "alphabetic";
-    const memo = page.memo ? `  ${page.memo.split("\n")[0]}` : "";
+    // The page number and its memo, wrapped to the page's width so the two pages of a spread do not run into each other.
     const [trimX0, , trimX1] = trimBox(project.pageFormat);
-    ctx.fillText(`${slot.index + 1}${memo}`, sx((trimX0 + trimX1) / 2), sy(pageH) + 18);
+    const rows = wrapText(ctx, `${slot.index + 1}${page.memo ? `  ${page.memo.replace(/\s*\n\s*/g, " ")}` : ""}`, Math.max(80, (trimX1 - trimX0) * scale - 8), 2);
+    rows.forEach((row, i) => ctx.fillText(row, sx((trimX0 + trimX1) / 2), sy(pageH) + 18 + i * 16));
   }
 
   /** Where a panel's memo sits on screen: inside its top-left corner, as wide as the panel allows. */
   private noteBox(slot: Slot, panel: Panel): { x: number; y: number; w: number; h: number; rows: string[] } {
-    const [x0, y0, x1] = bounds(panel.shape);
-    const left = Math.max(x0, slot.shown[0]);
-    const right = Math.min(x1, slot.shown[1]);
-    const x = slot.x + left * slot.scale + 4;
-    const y = slot.y + Math.max(y0, 0) * slot.scale + 4;
+    // On the paper: a 裁ち切り panel's tag sits inside the trim, not out in the bleed.
+    const format = this.host.project()?.pageFormat;
+    const [tx0, ty0, tx1, ty1] = format ? trimBox(format) : [-Infinity, 0, Infinity, Infinity];
+    const [x0, y0, x1, y1] = bounds(panel.shape);
+    const left = Math.max(x0, slot.shown[0], tx0);
+    const right = Math.min(x1, slot.shown[1], tx1);
+    const top = Math.max(y0, 0, ty0);
+    const bottom = Math.min(y1, ty1);
     // Leave room for the panel's number at the top right.
     const room = Math.max(60, Math.min((right - left) * slot.scale - 8 - 2 * Math.max(4 * slot.scale, 7) - 6, 280));
     const ctx = this.ctx;
     ctx.font = NOTE_FONT;
     const rows = panel.note ? wrapText(ctx, panel.note, room - 10, 4) : [];
     const w = rows.length ? Math.min(room, Math.max(...rows.map((row) => ctx.measureText(row).width)) + 10) : 52;
-    return { x, y, w, h: Math.max(rows.length, 1) * NOTE_ROW + 4, rows };
+    const h = Math.max(rows.length, 1) * NOTE_ROW + 4;
+    // The top left corner, or another one when dialogue is there (balloons start at the top right).
+    const [sl, sr, st, sb] = [slot.x + left * slot.scale + 4, slot.x + right * slot.scale - 4 - w, slot.y + top * slot.scale + 4, slot.y + bottom * slot.scale - 4 - h];
+    const corners: [number, number][] = [
+      [sl, st],
+      [sl, sb],
+      [sr, sb],
+    ];
+    const balloons = slot.page.lines
+      .filter((line) => line.panel === panel.id)
+      .map((line) => {
+        const [bx0, by0, bx1, by1] = balloonExtent(line);
+        return [slot.x + bx0 * slot.scale, slot.y + by0 * slot.scale, slot.x + bx1 * slot.scale, slot.y + by1 * slot.scale];
+      });
+    const clear = ([x, y]: [number, number]) => balloons.every(([bx0, by0, bx1, by1]) => x + w < bx0 || x > bx1 || y + h < by0 || y > by1);
+    const [x, y] = corners.find(clear) ?? corners[0];
+    return { x, y, w, h, rows };
   }
 
   /** A panel's memo, on a pale tag in its corner (screen only). */
@@ -1077,7 +1109,10 @@ export class PageEditor {
   /** What the transform frame works on: rough lines and dialogue picked, or what is being transformed. */
   private selectedItems(): ItemRef[] {
     const s = this.selection;
-    if (s?.kind === "group") return s.items ?? [];
+    if (s?.kind === "group") {
+      const page = this.host.project()?.pages.find((p) => p.id === s.pageId);
+      return page ? withContents(page, s.items ?? [], this.panelCarries) : [];
+    }
     if (s?.kind === "stroke") return [{ kind: "stroke", id: s.id }];
     if (!s || !this.transforming) return [];
     if (s.kind === "panel") {
@@ -1134,7 +1169,7 @@ export class PageEditor {
     const slot = this.slots.find((s) => s.page.id === this.selection!.pageId);
     if (!items.length || !slot) return null;
     // A panel's frame is the panel's own box; what is in it just goes along.
-    const own = items[0].kind === "panel" ? items.slice(0, 1) : items;
+    const own = this.selection.kind === "group" ? (this.selection.items ?? []) : items[0].kind === "panel" ? items.slice(0, 1) : items;
     const box = baseBounds(transformBase(slot.page, own));
     if (!box) return null;
     const pad = 3 / slot.scale;
@@ -1265,7 +1300,8 @@ export class PageEditor {
     const s = this.selection;
     if (!page || !s) return false;
     const panel = s.kind === "panel" ? page.panels.find((p) => p.id === s.id) : undefined;
-    const clip = copySelection(page, s, panel ? panelContents(page, panel) : undefined);
+    const source = s.kind === "group" ? { ...s, items: withContents(page, s.items ?? [], this.panelCarries) } : s;
+    const clip = copySelection(page, source, panel ? panelContents(page, panel) : undefined);
     if (!clip) return false;
     this.clip = clip;
     this.pastes = 0;
@@ -1296,26 +1332,37 @@ export class PageEditor {
     this.host.begin();
     const pasted = pasteClip(project, page, this.clip, [shift, shift]);
     this.host.commit();
-    const items = [...pasted.strokes.map((id) => ({ kind: "stroke" as const, id })), ...pasted.lines.map((id) => ({ kind: "line" as const, id }))];
-    if (pasted.panels.length) this.select({ kind: "panel", pageId: page.id, id: pasted.panels[0] });
+    const items: ItemRef[] = [
+      ...pasted.strokes.map((id) => ({ kind: "stroke" as const, id })),
+      ...pasted.lines.map((id) => ({ kind: "line" as const, id })),
+      ...pasted.panels.map((id) => ({ kind: "panel" as const, id })),
+      ...pasted.fills.map((id) => ({ kind: "fill" as const, id })),
+      ...pasted.breakouts.map((id) => ({ kind: "breakout" as const, id })),
+    ];
+    // One panel goes on with what is in it; more things are picked together.
+    if (pasted.panels.length === 1 && !pasted.fills.length && !pasted.breakouts.length) this.select({ kind: "panel", pageId: page.id, id: pasted.panels[0] });
     else if (items.length > 1) this.select({ kind: "group", pageId: page.id, id: "group", items });
     else if (items.length) this.select({ kind: items[0].kind, pageId: page.id, id: items[0].id });
-    else if (pasted.breakouts.length) this.select({ kind: "breakout", pageId: page.id, id: pasted.breakouts[0] });
     else if (pasted.stickies.length) this.select({ kind: "sticky", pageId: page.id, id: pasted.stickies[0] });
-    else if (pasted.fills.length) this.select({ kind: "fill", pageId: page.id, id: pasted.fills[0] });
     this.host.status(`${slot.index + 1} ページに貼り付けました`);
     return true;
   }
 
-  /** Ctrl+A: every rough line and line of dialogue on the page. */
+  /** Ctrl+A: everything on the page (but halves of 見開き panels), to move or transform the page's whole drawing. */
   selectAll(): boolean {
     const page = this.focusPage();
     if (!page) return false;
-    const items = [...page.strokes.map((s) => ({ kind: "stroke" as const, id: s.id })), ...page.lines.map((l) => ({ kind: "line" as const, id: l.id }))];
+    const items: ItemRef[] = [
+      ...page.panels.filter((panel) => !panel.spread).map((p) => ({ kind: "panel" as const, id: p.id })),
+      ...page.strokes.map((s) => ({ kind: "stroke" as const, id: s.id })),
+      ...page.lines.map((l) => ({ kind: "line" as const, id: l.id })),
+      ...(page.fills ?? []).map((f) => ({ kind: "fill" as const, id: f.id })),
+      ...page.breakouts.map((b) => ({ kind: "breakout" as const, id: b.id })),
+    ];
     if (!items.length) return false;
     this.setTool("select");
     this.select(items.length === 1 ? { kind: items[0].kind, pageId: page.id, id: items[0].id } : { kind: "group", pageId: page.id, id: "group", items });
-    this.host.status(`線 ${page.strokes.length} 本・セリフ ${page.lines.length} 個を選びました。枠の四角で大きさ、丸で向きを変えられます`);
+    this.host.status(`${pickedSummary(items)}を選びました。枠の四角で大きさ、丸で向き、Ctrl + 角で自由変形`);
     return true;
   }
 
@@ -1337,15 +1384,19 @@ export class PageEditor {
     return s.kind === kind && s.id === id;
   }
 
-  /** Whether `point` is on one of the picked lines or inside a picked text. */
+  /** Whether `point` is on one of the picked lines, inside a picked text, or inside a picked panel, fill or はみ出し. */
   private groupHit(page: Page, point: Point, tolerance: number): boolean {
     for (const item of this.selection?.items ?? []) {
       if (item.kind === "stroke") {
         const stroke = page.strokes.find((x) => x.id === item.id);
         if (stroke && strokeHit(stroke, point, tolerance + stroke.widthMm)) return true;
-      } else {
+      } else if (item.kind === "line") {
         const line = page.lines.find((l) => l.id === item.id);
         if (line && insideBox(line.box, point)) return true;
+      } else {
+        const list = item.kind === "panel" ? page.panels : item.kind === "fill" ? (page.fills ?? []) : page.breakouts;
+        const shape = list.find((x) => x.id === item.id)?.shape;
+        if (shape && insidePolygon(shape, point)) return true;
       }
     }
     return false;
@@ -1374,14 +1425,11 @@ export class PageEditor {
     for (const sticky of [...(page.stickies ?? [])].reverse()) {
       if (insideBox(stickyBox(sticky), point)) return { kind: "sticky", pageId: page.id, id: sticky.id };
     }
-    for (const line of [...page.lines].reverse()) {
-      const [x0, y0, x1, y1] = line.box;
-      const pad = 1.5;
-      const inBalloon = line.balloon && insidePolygon(line.balloon, point);
-      if (inBalloon || insideBox([x0 - pad, y0 - pad, x1 + pad, y1 + pad], point)) {
-        return { kind: "line", pageId: page.id, id: line.id };
-      }
-    }
+    // Overlapping balloons: the selected one stays the one picked (a double-click writes in it).
+    const under = this.linesAt(slot, point);
+    const selected = this.selection?.kind === "line" && this.selection.pageId === page.id ? this.selection.id : null;
+    const line = under.find((id) => id === selected) ?? under[0];
+    if (line) return { kind: "line", pageId: page.id, id: line };
     for (const stroke of [...page.strokes].reverse()) {
       if (strokeHit(stroke, point, tolerance)) return { kind: "stroke", pageId: page.id, id: stroke.id };
     }
@@ -1399,6 +1447,18 @@ export class PageEditor {
     return null;
   }
 
+  /** Lines whose balloon or text is under `point`, top first. */
+  private linesAt(slot: Slot, point: Point): string[] {
+    const page = this.visiblePage(slot.page);
+    return [...page.lines]
+      .reverse()
+      .filter((line) => {
+        const [x0, y0, x1, y1] = line.box;
+        return (line.balloon && insidePolygon(line.balloon, point)) || insideBox([x0 - 1.5, y0 - 1.5, x1 + 1.5, y1 + 1.5], point);
+      })
+      .map((line) => line.id);
+  }
+
   private vertexAt(slot: Slot, sx: number, sy: number): number {
     const s = this.selection;
     if (!s || s.kind !== "panel" || s.pageId !== slot.page.id || this.transforming) return -1;
@@ -1413,9 +1473,12 @@ export class PageEditor {
   private badge(slot: Slot, panel: Panel, pageW: number): { x: number; y: number; radius: number } {
     const [, y0, x1] = bounds(panel.shape);
     const radius = Math.max(4 * slot.scale, 7);
+    // On the paper: a 裁ち切り panel's number sits at the trim, not out in the bleed.
+    const format = this.host.project()?.pageFormat;
+    const [, ty0, tx1] = format ? trimBox(format) : [0, 0, pageW];
     return {
-      x: Math.min(slot.x + x1 * slot.scale, slot.x + pageW * slot.scale) - radius - 3,
-      y: Math.max(slot.y + y0 * slot.scale, slot.y) + radius + 3,
+      x: Math.min(slot.x + x1 * slot.scale, slot.x + Math.min(pageW, tx1) * slot.scale) - radius - 3,
+      y: Math.max(slot.y + y0 * slot.scale, slot.y + Math.max(0, ty0) * slot.scale) + radius + 3,
       radius,
     };
   }
@@ -1676,6 +1739,11 @@ export class PageEditor {
       this.select(null);
       return;
     }
+    if (this.focusedPageId !== slot.page.id) {
+      // The page settings follow the page worked on (the left page of a spread too).
+      this.focusedPageId = slot.page.id;
+      this.host.selectionChanged(this.selection);
+    }
     const point = this.toPage(slot, sx, sy);
     switch (this.tipEraser ? "eraser" : this.tool) {
       case "select": {
@@ -1746,6 +1814,17 @@ export class PageEditor {
           return;
         }
         const target = this.hit(slot, point);
+        // Shift: click to add a thing to the picked ones (or take it out), drag around things to add them.
+        if (event.shiftKey) {
+          const s = this.selection;
+          const base: ItemRef[] =
+            s?.pageId !== slot.page.id ? [] : s.kind === "group" ? [...(s.items ?? [])] : isItemKind(s.kind) ? [{ kind: s.kind, id: s.id }] : [];
+          // Halves of 見開き panels move and change only as a pair.
+          const spread = target?.kind === "panel" && slot.page.panels.some((panel) => panel.id === target.id && panel.spread);
+          const ref = target && isItemKind(target.kind) && !spread ? { kind: target.kind, id: target.id } : null;
+          this.drag = { kind: "pick", slot, points: [point], add: { base, target: ref } };
+          return;
+        }
         // コマの境目: the gutter or an edge moves, the panels on both sides with it.
         if (!target || target.kind === "panel") {
           const seam = seamAt(slot.page, point, 6 / slot.scale);
@@ -1767,7 +1846,8 @@ export class PageEditor {
         if (this.selection?.kind === "group" && this.selection.pageId === slot.page.id && (!target || this.isSelected(slot.page, target.kind, target.id))) {
           if (this.groupHit(slot.page, point, 4 / slot.scale)) {
             this.host.begin();
-            this.drag = { kind: "move", slot, last: point, moved: false };
+            // Panels picked take along what is drawn in them.
+            this.drag = { kind: "move", slot, last: point, moved: false, items: this.selectedItems() };
             return;
           }
         }
@@ -1777,12 +1857,16 @@ export class PageEditor {
           this.drag = { kind: "pick", slot, points: [point] };
           return;
         }
+        // A click on the selected balloon where others lie under it picks the next one down.
+        const again = target.kind === "line" && this.isSelected(slot.page, "line", target.id);
+        const under = again ? this.linesAt(slot, point) : [];
+        const cycle = under.length > 1 ? under[(under.indexOf(target.id) + 1) % under.length] : undefined;
         this.select(target);
         this.host.begin();
         // A panel takes its dialogue and rough lines along.
         const panel = target.kind === "panel" ? slot.page.panels.find((p) => p.id === target.id) : undefined;
         const carried = panel && this.panelCarries ? carryContents(slot.page, panel) : undefined;
-        this.drag = { kind: "move", slot, last: point, moved: false, carried };
+        this.drag = { kind: "move", slot, last: point, moved: false, carried, ...(cycle ? { cycle } : {}) };
         return;
       }
       case "cut": {
@@ -1923,7 +2007,7 @@ export class PageEditor {
         const dx = point[0] - drag.last[0];
         const dy = point[1] - drag.last[1];
         if (dx === 0 && dy === 0) return;
-        this.moveSelection(drag.slot.page, dx, dy);
+        this.moveSelection(drag.slot.page, dx, dy, drag.items);
         this.follow(drag.slot.page, drag.carried);
         drag.last = point;
         drag.moved = true;
@@ -2092,16 +2176,29 @@ export class PageEditor {
     if (!project) return;
     switch (drag.kind) {
       case "pick": {
-        const picked = pickInside(drag.slot.page, drag.points);
-        const items = [
-          ...picked.strokes.map((id) => ({ kind: "stroke" as const, id })),
-          ...picked.lines.map((id) => ({ kind: "line" as const, id })),
-        ];
-        if (items.length === 1) this.select({ kind: items[0].kind, pageId: drag.slot.page.id, id: items[0].id });
-        else if (items.length) this.select({ kind: "group", pageId: drag.slot.page.id, id: "group", items });
-        if (items.length > 1) {
-          this.host.status(`線 ${picked.strokes.length} 本・セリフ ${picked.lines.length} 個を選びました。ドラッグで動かし、Delete で消せます`);
+        const page = drag.slot.page;
+        const [x0, y0, x1, y1] = bounds(drag.points);
+        let items: ItemRef[];
+        if (drag.add && Math.max(x1 - x0, y1 - y0) * drag.slot.scale < 4) {
+          // Shift + click.
+          if (!drag.add.target) break;
+          items = toggleItem(drag.add.base, drag.add.target);
+        } else {
+          const picked = pickInside(page, drag.points);
+          const found: ItemRef[] = [
+            ...picked.panels.map((id) => ({ kind: "panel" as const, id })),
+            ...picked.strokes.map((id) => ({ kind: "stroke" as const, id })),
+            ...picked.lines.map((id) => ({ kind: "line" as const, id })),
+            ...picked.fills.map((id) => ({ kind: "fill" as const, id })),
+            ...picked.breakouts.map((id) => ({ kind: "breakout" as const, id })),
+          ];
+          items = drag.add ? [...drag.add.base] : [];
+          for (const item of found) if (!items.some((x) => x.kind === item.kind && x.id === item.id)) items.push(item);
         }
+        if (!items.length) this.select(null);
+        else if (items.length === 1) this.select({ kind: items[0].kind, pageId: page.id, id: items[0].id });
+        else this.select({ kind: "group", pageId: page.id, id: "group", items });
+        if (items.length > 1) this.host.status(`${pickedSummary(items)}を選びました。ドラッグで動かし、枠で変形、Delete で消せます（Shift + クリックで足す・外す）`);
         break;
       }
       case "eraseLasso": {
@@ -2173,9 +2270,20 @@ export class PageEditor {
       case "vertex":
         if (!drag.moved) {
           this.host.cancel();
+          if (drag.kind === "move" && drag.cycle) {
+            // Not at once: the second click of a double-click writes in the selected one.
+            const pageId = drag.slot.page.id;
+            const id = drag.cycle;
+            this.cycleTimer = window.setTimeout(() => {
+              this.select({ kind: "line", pageId, id });
+              this.host.status("重なったセリフの下のものを選びました（同じ所をもう一度押すと次へ）");
+            }, 320);
+          }
           break;
         }
-        if (drag.kind === "vertex" || this.selection?.kind === "panel") orderPanels(drag.slot.page, project.binding);
+        if (drag.kind === "vertex" || this.selection?.kind === "panel" || this.selection?.items?.some((item) => item.kind === "panel")) {
+          orderPanels(drag.slot.page, project.binding);
+        }
         if (drag.kind === "move") this.carryAcrossGutter(drag.slot);
         for (const slot of this.slots) {
           assignPanels(slot.page);
@@ -2309,7 +2417,8 @@ export class PageEditor {
     if (this.drag?.kind === "erase") this.drag.erased += erased;
   }
 
-  private moveSelection(page: Page, dx: number, dy: number): void {
+  /** Move what is selected; `items`: a 範囲選択 with what its panels hold, as taken when the drag began. */
+  private moveSelection(page: Page, dx: number, dy: number, items?: ItemRef[]): void {
     const s = this.selection;
     if (!s) return;
     if (s.kind === "line") {
@@ -2323,20 +2432,16 @@ export class PageEditor {
       if (breakout) moveBreakout(breakout, dx, dy);
     } else if (s.kind === "sticky") {
       const sticky = page.stickies?.find((n) => n.id === s.id);
-      if (sticky) sticky.at = [sticky.at[0] + dx, sticky.at[1] + dy];
+      if (sticky) {
+        sticky.at = [sticky.at[0] + dx, sticky.at[1] + dy];
+        const project = this.host.project();
+        if (project) keepStickyOnPage(project, sticky);
+      }
     } else if (s.kind === "fill") {
       const fill = page.fills?.find((f) => f.id === s.id);
       if (fill) fill.shape = fill.shape.map(([x, y]) => [x + dx, y + dy]);
     } else if (s.kind === "group") {
-      for (const item of s.items ?? []) {
-        if (item.kind === "line") {
-          const line = page.lines.find((l) => l.id === item.id);
-          if (line) moveLine(line, dx, dy);
-        } else {
-          const stroke = page.strokes.find((x) => x.id === item.id);
-          if (stroke) moveStroke(stroke, dx, dy);
-        }
-      }
+      moveItems(page, items ?? this.selectedItems(), dx, dy);
     } else {
       const stroke = page.strokes.find((p) => p.id === s.id);
       if (stroke) moveStroke(stroke, dx, dy);
@@ -2398,6 +2503,7 @@ export class PageEditor {
   }
 
   private doubleClick(event: MouseEvent): void {
+    window.clearTimeout(this.cycleTimer);
     const project = this.host.project();
     if (!project || this.tool !== "select") return;
     const [ex, ey] = this.at(event);
@@ -2555,6 +2661,7 @@ export class PageEditor {
     if (!page || !this.selection) return false;
     this.host.begin();
     this.moveSelection(page, dx, dy);
+    if (this.selection.kind === "panel" || this.selection.items?.some((item) => item.kind === "panel")) orderPanels(page, this.host.project()!.binding);
     assignPanels(page);
     sortLines(page);
     this.host.commit();
@@ -2627,3 +2734,24 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, width: number, ma
   return kept;
 }
 
+
+/** Kinds of things a 範囲選択 can hold. */
+function isItemKind(kind: Selection["kind"]): kind is ItemRef["kind"] {
+  return kind === "stroke" || kind === "line" || kind === "panel" || kind === "fill" || kind === "breakout";
+}
+
+/** 「コマ 2 つ・線 5 本・セリフ 3 個」 for the status line. */
+export function pickedSummary(items: readonly ItemRef[]): string {
+  const count = (kind: ItemRef["kind"]) => items.filter((item) => item.kind === kind).length;
+  const parts = [
+    [count("panel"), "コマ", "つ"],
+    [count("stroke"), "線", "本"],
+    [count("line"), "セリフ", "個"],
+    [count("fill"), "塗り", "つ"],
+    [count("breakout"), "はみ出し", "つ"],
+  ] as const;
+  return parts
+    .filter(([n]) => n > 0)
+    .map(([n, name, unit]) => `${name} ${n} ${unit}`)
+    .join("・");
+}

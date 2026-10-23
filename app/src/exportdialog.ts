@@ -2,7 +2,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import { buildRequest, folderOf, overwriteWarning, type ExportForm, type OverwriteCheck } from "./export";
-import { checkSummary, exportPdf, exportToCsp, scriptText } from "./nameexport";
+import { checkSummary, exportPdf, exportToCsp, imagesNote, missingEditable, scriptText } from "./nameexport";
+import { ISSUE_LABELS, checkName, issueSummary } from "./namecheck";
 import type { Project, RoughImage } from "./project";
 
 export interface ExportDialogHost {
@@ -11,9 +12,22 @@ export interface ExportDialogHost {
   projectPath(): string | null;
   rough(rough: RoughImage): Promise<CanvasImageSource | null>;
   status(message: string): void;
+  /** Show a line of dialogue on its page, selected. */
+  goTo(pageId: string, lineId: string): void;
 }
 
 type Kind = "csp" | "pdf" | "text";
+
+/** 見本のページ: kept on this computer for the next export. */
+const DONOR_KEY = "namestudio.exportDonor";
+
+function readDonor(): string {
+  try {
+    return localStorage.getItem(DONOR_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
 
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -31,6 +45,8 @@ export class ExportDialog {
   };
   private editable = true;
   private busy = false;
+  /** A CSP page with text and vector layers to copy, when the template has none. */
+  private donor = readDonor();
 
   constructor(private readonly host: ExportDialogHost) {
     for (const kind of ["csp", "pdf", "text"] as const) {
@@ -43,6 +59,8 @@ export class ExportDialog {
     $("ne-pick-template").addEventListener("click", () => this.pick("template"));
     $("ne-pick-out-dir").addEventListener("click", () => this.pick("outDir"));
     $("ne-pick-work-template").addEventListener("click", () => this.pick("workTemplate"));
+    $("ne-pick-donor").addEventListener("click", () => void this.pickDonor());
+    $("ne-clear-donor").addEventListener("click", () => this.setDonor(""));
     $<HTMLInputElement>("ne-make-work").addEventListener("change", (event) => {
       this.form.makeWork = (event.target as HTMLInputElement).checked;
       this.show();
@@ -60,7 +78,32 @@ export class ExportDialog {
     if (!this.form.storyIndex && project.storyIndex !== undefined) this.form.storyIndex = String(project.storyIndex);
     this.show();
     this.message("");
+    this.renderCheck(project);
     $<HTMLDialogElement>("name-export-dialog").showModal();
+  }
+
+  /** 書き出す前の確認: what will need fixing by hand afterwards, each one a click away. */
+  private renderCheck(project: Project): void {
+    const issues = checkName(project);
+    const details = $<HTMLDetailsElement>("ne-check");
+    details.classList.toggle("clean", !issues.length);
+    $("ne-check-summary").textContent = issues.length
+      ? `書き出す前の確認: ${issueSummary(issues)}（押すとそのセリフへ）`
+      : "書き出す前の確認: フキダシの重なり・コマの外・仕上がりの外・しっぽなしはありません";
+    const list = $("ne-check-list");
+    list.replaceChildren(
+      ...issues.slice(0, 60).map((issue) => {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.textContent = `${issue.page} ページ  ${ISSUE_LABELS[issue.kind]}  「${issue.text}」`;
+        item.addEventListener("click", () => {
+          $<HTMLDialogElement>("name-export-dialog").close();
+          this.host.goTo(issue.pageId, issue.lineId);
+        });
+        return item;
+      }),
+    );
+    if (issues.length > 60) list.append(Object.assign(document.createElement("p"), { className: "hint", textContent: `ほか ${issues.length - 60} 件` }));
   }
 
   private sources(): string[] {
@@ -80,6 +123,8 @@ export class ExportDialog {
     path("ne-template", this.form.template);
     path("ne-out-dir", this.form.outDir);
     path("ne-work-template", this.form.workTemplate);
+    path("ne-donor", this.donor);
+    $("ne-clear-donor").hidden = !this.donor;
     $<HTMLInputElement>("ne-editable").checked = this.editable;
     $<HTMLInputElement>("ne-make-work").checked = this.form.makeWork;
     $("ne-work-fields").hidden = !this.form.makeWork;
@@ -110,6 +155,23 @@ export class ExportDialog {
     if (typeof path === "string") this.form[field] = path;
     this.show();
     this.message("");
+  }
+
+  private async pickDonor(): Promise<void> {
+    const start = folderOf(this.donor || this.form.template || this.sources()[0] || "");
+    const path = await open({ multiple: false, defaultPath: start || undefined, filters: [{ name: "CLIP STUDIO PAINT のページ", extensions: ["clip"] }] });
+    if (typeof path === "string") this.setDonor(path);
+  }
+
+  private setDonor(path: string): void {
+    this.donor = path;
+    try {
+      if (path) localStorage.setItem(DONOR_KEY, path);
+      else localStorage.removeItem(DONOR_KEY);
+    } catch {
+      // Not kept for the next start.
+    }
+    this.show();
   }
 
   private readFields(): void {
@@ -153,23 +215,29 @@ export class ExportDialog {
             workName: request.workName,
             storyIndex: request.storyIndex,
             inputs: this.sources(),
-            donors: project.source ? [project.source.path] : [],
+            donors: [this.donor, project.source?.path].filter((path): path is string => !!path),
           },
           this.editable,
           progress,
+          (missing) =>
+            ask(
+              `ひな形・見本のページ・ネーム用紙に CSP の${missing.join("と")}のレイヤーがありません。このまま書き出すと、その部分は画像レイヤーになり、CSP で直せません。\n\n` +
+                "CSP でテキストとベクター線を描いて保存したページを「見本のページ」に選ぶと、直せるレイヤーで書き出せます。",
+              { title: "Name Studio", kind: "warning", okLabel: "画像のまま書き出す", cancelLabel: "やめて見本を選ぶ" },
+            ),
         );
+        if (!report) {
+          this.message("書き出しをやめました。「見本のページ」に、CSP でテキストとベクター線を描いて保存したページ（.clip）を選んでください。");
+          this.host.status("書き出しをやめました");
+          return;
+        }
         const spreads = report.spreads ? `（うち見開きページ ${report.spreads} 枚）` : "";
         const lines = [`${report.pages.length} 枚のページを書き出しました${spreads}（${seconds()} 秒）`];
         if (report.work) lines.push(`作品ファイル: ${report.work}`);
         lines.push(...(report.warnings ?? []));
         if (this.editable) {
-          const missing = [!report.vectorLayers && "ベクター線", !report.textLayers && "テキスト"].filter(Boolean);
-          if (missing.length) {
-            lines.push(
-              `ひな形とネーム用紙に CSP の${missing.join("と")}レイヤーが見つからないため、その部分は画像レイヤーにしました。` +
-                "CSP の .clip のネーム用紙から取り込んだネームなら、用紙の線やテキストを写して使えます。",
-            );
-          }
+          const missing = missingEditable(report);
+          if (missing.length) lines.push(imagesNote(missing));
         }
         const check = checkSummary(report);
         lines.push(...check.lines);

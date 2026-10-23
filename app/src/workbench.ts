@@ -10,6 +10,7 @@ import { AltDialog } from "./altdialog";
 import { ScriptDialog } from "./scriptdialog";
 import { ShortcutDialog } from "./shortcutdialog";
 import { PenDialog } from "./pendialog";
+import { arrangePage, arrangePanel } from "./arrange";
 import { LayerView, moveIntoPanel, type LayerRef } from "./layers";
 import { penPreferences } from "./pen";
 import { comboOf, Shortcuts, type ActionId } from "./shortcuts";
@@ -20,6 +21,7 @@ import {
   SHOW_NOTES_KEY,
   PageEditor,
   isTyping,
+  pickedSummary,
   writeFlag,
   type EditorEraseMode,
   type Selection,
@@ -59,6 +61,8 @@ import {
   assignPanels,
   basicBox,
   fitLine,
+  setDefaultShape,
+  setLineKind,
   insertPage,
   movePage,
   movePagesTo,
@@ -228,6 +232,14 @@ export class Workbench {
       projectPath: () => this.state.path,
       rough: (rough) => this.loadRough(rough),
       status: (message) => this.setStatus(message),
+      goTo: (pageId, lineId) => {
+        const index = this.state.project?.pages.findIndex((p) => p.id === pageId) ?? -1;
+        if (index < 0) return;
+        if (this.view !== "edit") this.setView("edit");
+        this.editor.showPage(index + 1);
+        this.editor.select({ kind: "line", pageId, id: lineId });
+        this.renderAll();
+      },
     });
     this.brushDialog = new BrushDialog({
       project: () => this.state.project,
@@ -745,17 +757,21 @@ export class Workbench {
           this.edit((p) => (created = addInset(p, page, panel)));
           if (created) this.editor.select({ kind: "panel", pageId: page.id, id: (created as Panel).id });
         });
-        return [button("メモ", "このコマのメモをその場で書く（コマをダブルクリックでも）", () => this.editor.editInPlace(page.id, "note", panel.id)), transform, inset, copy, remove];
+        const hasLines = page.lines.some((line) => line.panel === panel.id);
+        const arrange = button("セリフを並べる", "このコマのセリフを読む順に右上から並べ直す（長いセリフは改行）", () => this.arrange(page.id, panel.id));
+        return [
+          button("メモ", "このコマのメモをその場で書く（コマをダブルクリックでも）", () => this.editor.editInPlace(page.id, "note", panel.id)),
+          transform,
+          ...(hasLines ? [arrange] : []),
+          inset,
+          copy,
+          remove,
+        ];
       }
       case "line": {
         const line = page.lines.find((l) => l.id === selection.id);
         if (!line) return [];
-        const kind = choice(KIND_LABELS, line.kind, (value: LineKind) =>
-          this.edit(() => {
-            line.kind = value;
-            fitLine(line);
-          }),
-        );
+        const kind = choice(KIND_LABELS, line.kind, (value: LineKind) => this.edit((p) => setLineKind(p, line, value)));
         kind.title = "種類";
         const tail = button("しっぽ", "しっぽを足す。丸い先をドラッグして話者に向ける", () =>
           this.edit(() => {
@@ -838,15 +854,13 @@ export class Workbench {
       }
     }
     if (s?.kind === "group") {
-      const strokes = s.items?.filter((item) => item.kind === "stroke").length ?? 0;
-      const lines = (s.items?.length ?? 0) - strokes;
       const remove = element("button", { className: "danger", textContent: "選んだものを消す（Delete）" });
       remove.addEventListener("click", () => this.deleteSelection());
       return panel.replaceChildren(
         element("h2", { textContent: "範囲選択" }),
         element("p", {
           className: "hint",
-          textContent: `ラフの線 ${strokes} 本、セリフ ${lines} 個。ドラッグや矢印キーでまとめて動かせます。枠の四角で大きさ（Shift で縦横別々、Alt で中心から）、上の丸で向き（Shift で 15° ずつ）。Ctrl+C / Ctrl+V でほかのページへも写せます。`,
+          textContent: `${pickedSummary(s.items ?? [])}。ドラッグや矢印キーでまとめて動かせます（コマは中に描いたものと一緒に）。枠の四角で大きさ（Shift で縦横別々、Alt で中心から）、上の丸で向き（Shift で 15° ずつ）、Ctrl + 角で自由変形。Shift + クリックで足す・外す。Ctrl+C / Ctrl+V でほかのページへも写せます。`,
         }),
         ...this.transformButtons(),
         remove,
@@ -922,12 +936,7 @@ export class Workbench {
     const kind = element("select");
     for (const [value, label] of Object.entries(KIND_LABELS)) kind.append(element("option", { value, textContent: label }));
     kind.value = line.kind;
-    kind.addEventListener("change", () =>
-      this.edit(() => {
-        line.kind = kind.value as LineKind;
-        fitLine(line);
-      }),
-    );
+    kind.addEventListener("change", () => this.edit((p) => setLineKind(p, line, kind.value as LineKind)));
     const speaker = element("select");
     speaker.append(element("option", { value: "", textContent: "（なし）" }));
     for (const character of project.characters) speaker.append(element("option", { value: character.id, textContent: character.name }));
@@ -975,6 +984,21 @@ export class Workbench {
         }),
       ["custom"],
     );
+    // 作品の既定: this kind of line gets this shape from now on.
+    const current = line.balloonShape ?? "auto";
+    const usual = project.lineShapes?.[line.kind] ?? "auto";
+    const makeDefault = element("button", {
+      textContent: `「${KIND_LABELS[line.kind]}」の既定にする`,
+      title: "この作品で、この種類のセリフを作るときの形にする。今までの既定の形だった同じ種類のセリフも変わります",
+      disabled: current === usual || current === "custom",
+    });
+    makeDefault.addEventListener("click", () => {
+      let changed = 0;
+      this.edit((p) => {
+        changed = setDefaultShape(p, line.kind, current);
+      });
+      this.setStatus(`「${KIND_LABELS[line.kind]}」の形を「${SHAPE_LABELS[current]}」にしました（同じ種類のほかのセリフ ${changed} 個も変えました）。台本の取り込みや新しいセリフもこの形になります`);
+    });
     const flag = (label: string, checked: boolean, set: (on: boolean) => void) => {
       const box = element("input", { type: "checkbox", checked });
       box.addEventListener("change", () => this.edit(() => set(box.checked)));
@@ -1038,6 +1062,7 @@ export class Workbench {
       element("div", { className: "row" }, emphasis, inverted),
       element("h3", { textContent: "フキダシ" }),
       element("label", {}, "形", shape),
+      makeDefault,
       element("div", { className: "row" }, addTail, removeTail),
       element("label", {}, `しっぽ（${tails.length} 本）`, tailStyle),
       element("label", {}, "つなぐ（連結フキダシ）", link),
@@ -1113,6 +1138,15 @@ export class Workbench {
       element("label", { className: "inline" }, carries, "動かす・形を変えるとき、中のセリフとラフ線も一緒に"),
       element("div", { className: "row" }, tiltLeft, tiltRight, raise, lower),
       inset,
+      ...(lines
+        ? [
+            (() => {
+              const b = element("button", { textContent: "このコマのセリフを並べ直す", title: "読む順に右上から並べ直す。長いセリフは句読点や助詞のあとで改行する" });
+              b.addEventListener("click", () => this.arrange(page.id, panel.id));
+              return b;
+            })(),
+          ]
+        : []),
       ...this.joinButtons(page, panel),
       element("p", {
         className: "hint",
@@ -1120,6 +1154,18 @@ export class Workbench {
       }),
       remove,
     ];
+  }
+
+  /** セリフの並べ直し: a panel's dialogue, or every panel's on the page. */
+  private arrange(pageId: string, panelId?: string): void {
+    let moved = 0;
+    this.edit((p) => {
+      const page = p.pages.find((x) => x.id === pageId);
+      const panel = page?.panels.find((x) => x.id === panelId);
+      if (!page) return;
+      moved = panel ? arrangePanel(p, page, panel) : arrangePage(p, page);
+    });
+    this.setStatus(moved ? `セリフ ${moved} 個を読む順に並べ直しました（元に戻すは Ctrl+Z）` : "並べ直すセリフがありません（コマの中のセリフだけを並べます）");
   }
 
   /** 反転・回転 of the selected rough lines and dialogue. */
@@ -1222,7 +1268,8 @@ export class Workbench {
     const patternNote = element("p", { className: "hint", textContent: PATTERNS[0].note });
     pattern.addEventListener("change", () => (patternNote.textContent = PATTERNS.find((item) => item.id === pattern.value)?.note ?? ""));
     const applyButton = button("このページに当てる", async () => {
-      if (page.panels.length && !(await ask("今のコマを置き換えますか？（元に戻すで戻せます）", { title: "Name Studio", kind: "warning" }))) return;
+      const question = "今のコマを置き換えますか？中のセリフ・ラフ線・コマのメモは、コマの順に新しいコマへ移します（元に戻すで戻せます）";
+      if (page.panels.length && !(await ask(question, { title: "Name Studio", kind: "warning" }))) return;
       this.edit((p) => {
         applyPattern(p, page, pattern.value);
         sortLines(page);
@@ -1291,6 +1338,7 @@ export class Workbench {
       element("label", {}, "メモ", memo),
       element("h3", { textContent: "コマ" }),
       element("div", { className: "row" }, frame, reorder),
+      button("このページのセリフを並べ直す", () => this.arrange(page.id), !page.lines.length),
       element("p", { className: "hint", textContent: "コマ割り: コマを横切るように線を引くと割れます（ほぼ水平・垂直はまっすぐに。Alt で斜め）。コマの外をドラッグすると新しいコマ。" }),
       element("h3", { textContent: "コマ割りの型" }),
       element("div", { className: "row" }, pattern, applyButton),
@@ -1355,10 +1403,19 @@ export class Workbench {
       if (s.kind === "sticky") removeSticky(page, s.id);
       if (s.kind === "fill" && page.fills) page.fills = page.fills.filter((fill) => fill.id !== s.id);
       if (s.kind === "group") {
-        const ids = new Set(s.items?.map((item) => item.id));
-        page.strokes = page.strokes.filter((stroke) => !ids.has(stroke.id));
-        page.lines = page.lines.filter((line) => !ids.has(line.id));
-        for (const line of page.lines) if (line.linkTo && ids.has(line.linkTo)) delete line.linkTo;
+        const ids = (kind: string) => new Set(s.items?.filter((item) => item.kind === kind).map((item) => item.id));
+        const [strokes, lines, panels, fills, breakouts] = ["stroke", "line", "panel", "fill", "breakout"].map(ids);
+        page.strokes = page.strokes.filter((stroke) => !strokes.has(stroke.id));
+        page.lines = page.lines.filter((line) => !lines.has(line.id));
+        for (const line of page.lines) if (line.linkTo && lines.has(line.linkTo)) delete line.linkTo;
+        page.breakouts = page.breakouts.filter((breakout) => !breakouts.has(breakout.id));
+        if (page.fills) page.fills = page.fills.filter((fill) => !fills.has(fill.id));
+        if (panels.size) {
+          // What was drawn in the panels stays, as when one panel is removed.
+          page.panels = page.panels.filter((panel) => !panels.has(panel.id));
+          orderPanels(page, project.binding);
+          assignPanels(page);
+        }
       }
       if (s.kind === "line") {
         // Balloons joined to the removed one come loose.

@@ -253,8 +253,18 @@ export function stickyBox(sticky: Sticky): BoxMm {
 
 export function addSticky(project: Project, page: Page, at: Point, text = ""): Sticky {
   const sticky: Sticky = { id: newId(project, "sticky"), text, at };
+  keepStickyOnPage(project, sticky);
   (page.stickies ??= []).push(sticky);
   return sticky;
+}
+
+/** Keep a 付箋 on its own page, so it does not cover the facing page of a spread. */
+export function keepStickyOnPage(project: Project, sticky: Sticky): void {
+  const [width, height] = project.pageFormat.canvasMm;
+  const [x0, y0, x1, y1] = stickyBox(sticky);
+  const x = Math.min(Math.max(x0, 0), Math.max(0, width - (x1 - x0)));
+  const y = Math.min(Math.max(y0, 0), Math.max(0, height - (y1 - y0)));
+  sticky.at = [x, y];
 }
 
 export function removeSticky(page: Page, id: string): void {
@@ -402,6 +412,8 @@ export interface Project {
   alternatives?: Alternatives[];
   /** 構成補助: the aimed page count and story shape. */
   plan?: Plan;
+  /** 作品ごとのフキダシの既定: the shape new lines of each kind get. */
+  lineShapes?: Partial<Record<LineKind, BalloonShape>>;
   nextId: number;
 }
 
@@ -818,11 +830,49 @@ export function addLine(project: Project, page: Page, center: Point, text = "セ
     fontSizePt: kind === "narration" ? DEFAULT_FONT_PT - 1 : DEFAULT_FONT_PT,
     vertical: true,
   };
+  const shape = project.lineShapes?.[kind];
+  if (shape && shape !== "auto") line.balloonShape = shape;
   fitLine(line);
   page.lines.push(line);
   assignPanels(page);
   sortLines(page);
   return line;
+}
+
+/** Change a line's kind; a balloon that had the old kind's usual shape takes the new kind's. */
+export function setLineKind(project: Project, line: Line, kind: LineKind): void {
+  const usual = (k: LineKind) => project.lineShapes?.[k] ?? "auto";
+  if ((line.balloonShape ?? "auto") === usual(line.kind)) {
+    const shape = usual(kind);
+    if (shape === "auto") delete line.balloonShape;
+    else line.balloonShape = shape;
+  }
+  line.kind = kind;
+  fitLine(line);
+}
+
+/**
+ * 作品の既定にする: new lines of `kind` get `shape`, and so do the lines of
+ * that kind that had the usual shape until now. Returns how many changed.
+ */
+export function setDefaultShape(project: Project, kind: LineKind, shape: BalloonShape): number {
+  const before = project.lineShapes?.[kind] ?? "auto";
+  const shapes = { ...project.lineShapes };
+  if (shape === "auto") delete shapes[kind];
+  else shapes[kind] = shape;
+  if (Object.keys(shapes).length) project.lineShapes = shapes;
+  else delete project.lineShapes;
+  let changed = 0;
+  for (const page of project.pages) {
+    for (const line of page.lines) {
+      if (line.kind !== kind || (line.balloonShape ?? "auto") !== before || before === shape) continue;
+      if (shape === "auto") delete line.balloonShape;
+      else line.balloonShape = shape;
+      fitLine(line);
+      changed++;
+    }
+  }
+  return changed;
 }
 
 /** Move a line with its balloon; tails keep pointing at their speakers. */
@@ -1237,9 +1287,11 @@ function cutInside(points: StrokePoint[], shape: readonly Point[]): Piece[] {
   return pieces;
 }
 
-/** 範囲選択: rough lines mostly inside `shape` and dialogue whose box centre is. */
-export function pickInside(page: Page, shape: readonly Point[]): { strokes: string[]; lines: string[] } {
-  if (shape.length < 3) return { strokes: [], lines: [] };
+/** 範囲選択: rough lines mostly inside `shape`, dialogue whose box centre is, and panels, fills and はみ出し wholly inside (not halves of 見開き panels). */
+export function pickInside(page: Page, shape: readonly Point[]): { strokes: string[]; lines: string[]; panels: string[]; fills: string[]; breakouts: string[] } {
+  if (shape.length < 3) return { strokes: [], lines: [], panels: [], fills: [], breakouts: [] };
+  // Panels, fills and はみ出し only when all of them is inside.
+  const whole = (points: readonly Point[]) => points.length > 0 && points.every((point) => insidePolygon(shape, point));
   const strokes = page.strokes
     .filter((stroke) => {
       const inside = stroke.points.filter(([x, y]) => insidePolygon(shape, [x, y])).length;
@@ -1249,7 +1301,13 @@ export function pickInside(page: Page, shape: readonly Point[]): { strokes: stri
   const lines = page.lines
     .filter(({ box: [x0, y0, x1, y1] }) => insidePolygon(shape, [(x0 + x1) / 2, (y0 + y1) / 2]))
     .map((line) => line.id);
-  return { strokes, lines };
+  return {
+    strokes,
+    lines,
+    panels: page.panels.filter((panel) => !panel.spread && whole(panel.shape)).map((panel) => panel.id),
+    fills: (page.fills ?? []).filter((fill) => whole(fill.shape)).map((fill) => fill.id),
+    breakouts: page.breakouts.filter((breakout) => whole(breakout.shape)).map((breakout) => breakout.id),
+  };
 }
 
 /** A line split where it crosses `x` (the gutter of a spread): runs in order,

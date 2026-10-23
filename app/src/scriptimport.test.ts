@@ -118,3 +118,42 @@ describe("台本の取り込み", () => {
     expect(doc.pages[1].panels[0].lines[0].text).toBe("星だ");
   });
 });
+
+describe("台本の取り込み: 第4話の試作から", () => {
+  it("breaks long lines and keeps each in its script panel", () => {
+    const project = newProject("t", 1);
+    const long = "数か月前、この街の空から星がひとつ消えたことを、まだ誰も知らない。";
+    const script = `### 1ページ\n- コマ1\n- ナレーション：${long}\n- コマ2\n- ストラ「はい」\n- コマ3\n- エイコ「${long}」`;
+    applyScript(project, parseScript(script), { startPage: 0, makePanels: true });
+    const page = project.pages[0];
+    expect(page.panels.length).toBe(3);
+    expect(page.lines[0].text).toContain("\n");
+    expect(page.lines[0].text.replace(/\n/g, "")).toBe(long);
+    // Each line in the panel the script put it in, by its centre.
+    expect(page.lines.map((line) => page.panels.find((p) => p.id === line.panel)?.order)).toEqual([1, 2, 3]);
+  });
+
+  it("puts the page heading's subtitle into the page memo", () => {
+    const doc = parseScript("### 1ページ 心臓の説明\n- コマ1\n- ストラ「はい」\n### 2ページ\n- ストラ「うん」");
+    expect(doc.pages[0].notes).toEqual(["心臓の説明"]);
+    expect(doc.pages[1].notes).toEqual([]);
+  });
+
+  it("reads balloon tags and shouts", () => {
+    expect(readLine("叔母〔電話〕「もしもし」")).toEqual({ speaker: "叔母", kind: "speech", text: "もしもし", shape: "electric" });
+    expect(readLine("叔母（電話）「もしもし」")).toEqual({ speaker: "叔母", kind: "speech", text: "もしもし", shape: "electric" });
+    expect(readLine("局長〔無線〕：応答せよ")).toEqual({ speaker: "局長", kind: "speech", text: "応答せよ", shape: "electric" });
+    expect(readLine("ストラ〔独白〕「どうしよう」")).toEqual({ speaker: "ストラ", kind: "thought", text: "どうしよう" });
+    expect(readLine("ニイ「待てーっ！！」")).toEqual({ speaker: "ニイ", kind: "speech", text: "待てーっ！！", shape: "spike" });
+    expect(readLine("ストラ（どうしよう）")).toEqual({ speaker: "ストラ", kind: "thought", text: "どうしよう" });
+  });
+
+  it("gives new lines the work's usual shape for their kind", () => {
+    const project = newProject("t", 1);
+    project.lineShapes = { thought: "polygon" };
+    applyScript(project, parseScript("### 1\n- ストラ（どうしよう）\n- 叔母〔電話〕「もしもし」"), { startPage: 0, makePanels: true });
+    const [thought, phone] = project.pages[0].lines;
+    expect(thought.balloonShape).toBe("polygon");
+    expect(phone.balloonShape).toBe("electric");
+  });
+});

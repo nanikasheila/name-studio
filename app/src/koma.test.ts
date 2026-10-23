@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { PATTERNS, bleedPanel, facingPage, spreadPanel, spreadTwin, unspreadPanel, borderLines, borderRuns, clipOutside, dashes, inheritOpenEdges, isBled, patternPanels, wavy } from "./koma";
-import { basicBox, bounds, cutPanels, emptyPage, newProject, rectShape, type Panel, type Point } from "./project";
+import { PATTERNS, applyPattern, bleedPanel, facingPage, spreadPanel, spreadTwin, unspreadPanel, borderLines, borderRuns, clipOutside, dashes, inheritOpenEdges, isBled, patternPanels, wavy } from "./koma";
+import { addLine, addStroke, basicBox, boxCenter, bounds, cutPanels, emptyPage, insidePolygon, newProject, rectShape, type Panel, type Point } from "./project";
 
 describe("裁ち切り", () => {
   it("runs a panel off the page and back", () => {
@@ -166,5 +166,30 @@ describe("layout patterns", () => {
     expect(isBled(opening[0], "top", project.pageFormat)).toBe(true);
     const big = patternPanels(project, "bigInset");
     expect(big.filter((p) => p.z === 1 && p.fill === "white")).toHaveLength(1);
+  });
+});
+
+describe("型を当てる", () => {
+  it("keeps the panels' memos and moves what was in them into the new panels in order", () => {
+    const project = newProject("t", 1);
+    const page = project.pages[0];
+    applyPattern(project, page, "basic4");
+    const old = [...page.panels].sort((a, b) => a.order - b.order);
+    old[0].note = "街の遠景";
+    old[1].note = "ストラの顔";
+    const first = addLine(project, page, boxCenter(bounds(old[0].shape)), "おはよう");
+    const second = addLine(project, page, boxCenter(bounds(old[1].shape)), "うん");
+    const stroke = addStroke(project, page, [[...boxCenter(bounds(old[1].shape)), 1], [boxCenter(bounds(old[1].shape))[0] + 5, boxCenter(bounds(old[1].shape))[1], 1]], 0.4)!;
+    old[old.length - 1].note = "引き";
+    applyPattern(project, page, "three");
+    const panels = [...page.panels].sort((a, b) => a.order - b.order);
+    expect(panels.length).toBeLessThan(old.length);
+    expect(panels[0].note).toBe("街の遠景");
+    expect(first.panel).toBe(panels[0].id);
+    expect(panels[1].note).toBe("ストラの顔");
+    expect(second.panel).toBe(panels[1].id);
+    expect(insidePolygon(panels[1].shape, [stroke.points[0][0], stroke.points[0][1]])).toBe(true);
+    // Fewer new panels: the rest goes into the last one.
+    expect(panels[panels.length - 1].note).toContain("引き");
   });
 });

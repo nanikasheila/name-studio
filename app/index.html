@@ -161,15 +161,20 @@
           <button type="button" id="ne-kind-pdf">PDF</button>
           <button type="button" id="ne-kind-text">台本（テキスト）</button>
         </div>
+        <details id="ne-check" class="name-check"><summary id="ne-check-summary"></summary><div id="ne-check-list" class="name-check-list"></div></details>
         <div id="ne-csp">
           <p class="hint">ページごとに .clip を作り、ラフ線・コマ枠・フキダシ・セリフを別々のレイヤーにします（取り込んだネーム用紙のラフ画像もレイヤーに）。ネームの基本枠を、ひな形の基本枠に合わせます。</p>
           <label class="check"><input type="checkbox" id="ne-editable" checked /> 線をベクターレイヤー、セリフをテキストレイヤーにする（CSP で直せる）</label>
-          <p class="hint">CSP で描いたベクター線とテキストのレイヤーを、ひな形か取り込み元のネーム用紙から写して使います。見つからないときは画像レイヤーになります。</p>
+          <p class="hint">CSP で描いたベクター線とテキストのレイヤーを、ひな形・見本のページ・取り込み元のネーム用紙・ひな形と同じフォルダーのページから写して使います。見つからないときは書き出す前に知らせます。</p>
           <div class="field">
             <span>ひな形のページ</span>
             <output id="ne-template" class="path">未選択</output>
             <button type="button" id="ne-pick-template">選ぶ…</button>
             <small>同じ作品の設定で CSP が保存した、空のページ（.clip）</small>
+            <span>見本のページ</span>
+            <output id="ne-donor" class="path">未選択</output>
+            <span class="row"><button type="button" id="ne-pick-donor">選ぶ…</button><button type="button" id="ne-clear-donor">外す</button></span>
+            <small>任意。CSP でテキストとベクター線を描いて保存したページ（.clip）。ひな形に無いとき、そのレイヤーを写します</small>
           </div>
           <div class="field">
             <span>書き出し先</span>

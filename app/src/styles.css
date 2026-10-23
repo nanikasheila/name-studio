@@ -90,18 +90,26 @@ dialog.export::backdrop { background: rgb(0 0 0 / 0.35); }
   display: grid; grid-template-columns: 8.5em 1fr auto; gap: 6px 8px; align-items: center; margin: 12px 0;
 }
 .export .field small { grid-column: 2 / -1; }
+.export .field .row { display: flex; gap: 4px; }
 .export .field input, .export .field select { grid-column: 2 / -1; font: inherit; padding: 4px 6px; }
 .export .path {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); direction: rtl; text-align: left;
 }
 .export .message { min-height: 1.5em; white-space: pre-line; }
+.name-check { margin: 10px 0; padding: 6px 10px; border: 1px solid #e3c16f; border-radius: 6px; background: #fff8e1; font-size: 12px; }
+.name-check.clean { border-color: var(--line); background: transparent; color: var(--muted); }
+.name-check summary { cursor: pointer; }
+.name-check-list { display: flex; flex-direction: column; gap: 2px; max-height: 160px; overflow: auto; margin-top: 6px; }
+.name-check-list button { text-align: left; border: none; background: none; padding: 2px 4px; font-size: 12px; }
+.name-check-list button:hover { background: rgb(0 0 0 / 0.05); }
 .export .message.error { color: #c0392b; }
 .export .actions { display: flex; justify-content: flex-end; gap: 8px; }
 #work-fields[hidden] { display: none; }
 .export .kinds { margin: 10px 0 4px; }
 
 [hidden] { display: none !important; }
-.toolbar-group { display: flex; align-items: center; gap: 12px; }
+/* Its controls wrap onto another row rather than run off the window (1400 px with the pen chosen). */
+.toolbar-group { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; row-gap: 6px; min-width: 0; max-width: 100%; }
 .inspector {
   width: 300px; background: var(--panel); border-left: 1px solid var(--line); overflow: auto; padding: 12px;
   display: flex; flex-direction: column; gap: 10px;

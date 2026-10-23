@@ -365,6 +365,19 @@ export interface CspExportReport {
   spreads?: number;
 }
 
+/** The kinds of layer that will be images because no CSP-made layer was found to copy. */
+export function missingEditable(found: Pick<CspExportReport, "vectorLayers" | "textLayers">): string[] {
+  return [!found.vectorLayers && "ベクター線（コマ枠・フキダシ・ラフ線）", !found.textLayers && "テキスト（セリフ）"].filter((x): x is string => !!x);
+}
+
+/** Why some parts went as images, and how to have them editable. */
+export function imagesNote(missing: string[]): string {
+  return (
+    `ひな形・見本・ネーム用紙に CSP の${missing.join("と")}のレイヤーが見つからないため、その部分を画像レイヤーにしました（CSP で直せません）。` +
+    "CSP でテキストとベクター線を描いて保存したページ（.clip）を「見本のページ」に選ぶか、ひな形と同じフォルダーに置くと、直せるレイヤーで書き出せます。"
+  );
+}
+
 /** The self-check in a few lines: all fine, or what is wrong where. */
 export function checkSummary(report: Pick<CspExportReport, "checks" | "workCheck">): { ok: boolean; lines: string[] } {
   const lines: string[] = [];
@@ -394,12 +407,19 @@ export async function exportToCsp(
   request: CspExportRequest,
   editable: boolean,
   progress: (message: string) => void,
-): Promise<CspExportReport> {
+  confirmImages?: (missing: string[]) => Promise<boolean>,
+): Promise<CspExportReport | null> {
   await loadTips(project.brushes);
   const start = await invoke<NameExportStart>("begin_name_export", { request });
   const vector = editable && start.vectorLayers;
   const text = editable && start.textLayers;
   try {
+    // Asked before anything is written: lines and dialogue CSP cannot edit stop the pen work.
+    const missing = editable ? missingEditable(start) : [];
+    if (missing.length && confirmImages && !(await confirmImages(missing))) {
+      await invoke("cancel_name_export");
+      return null;
+    }
     const full = projectToTemplate(project, start);
     const { units, warnings } = exportUnits(project, start.firstPageLeft, start.spread ? null : start.spreadProblem);
     const checks: FileCheck[] = [];

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { addLine, addPanel, addStroke, bounds, newProject, panelContents, rectShape } from "./project";
-import { applyAffine, baseBounds, densify, straightEnd, copySelection, pasteClip, rotation, scaling, transformBase, transformItems } from "./transform";
+import { addFill, addLine, addPanel, addStroke, bounds, newProject, panelContents, pickInside, rectShape } from "./project";
+import { applyAffine, baseBounds, densify, straightEnd, copySelection, moveItems, pasteClip, rotation, scaling, toggleItem, transformBase, transformItems, withContents } from "./transform";
 
 function sample() {
   const project = newProject("t", 2);
@@ -169,5 +169,67 @@ describe("transforming panels, balloons and free deform", () => {
     // Pull the top right corner up and out: a slanted top.
     transformItems(page, base, { box: [20, 20, 100, 100], corners: [[20, 20], [110, 5], [100, 100], [20, 100]] });
     expect(panel.shape).toEqual(expect.arrayContaining([[110, 5], [20, 20], [100, 100], [20, 100]]));
+  });
+});
+
+describe("picking several things", () => {
+  it("takes along what is drawn in the picked panels, each thing once", () => {
+    const { page, panel, stroke, line } = sample();
+    const items = withContents(page, [{ kind: "panel", id: panel.id }, { kind: "line", id: line.id }], true);
+    expect(items).toEqual([
+      { kind: "panel", id: panel.id },
+      { kind: "line", id: line.id },
+      { kind: "stroke", id: stroke.id },
+    ]);
+    expect(withContents(page, [{ kind: "panel", id: panel.id }], false)).toEqual([{ kind: "panel", id: panel.id }]);
+  });
+
+  it("moves panels, fills and はみ出し with rough lines and dialogue", () => {
+    const { project, page, panel, stroke, line } = sample();
+    const fill = addFill(project, page, rectShape([30, 60, 40, 70]), "black");
+    page.breakouts.push({ id: "b1", shape: rectShape([90, 90, 110, 110]) });
+    const items = withContents(page, [{ kind: "panel", id: panel.id }, { kind: "breakout", id: "b1" }], true);
+    const box = [...line.box];
+    moveItems(page, items, 5, -2);
+    expect(bounds(panel.shape)).toEqual([25, 18, 105, 98]);
+    expect(bounds(fill.shape)).toEqual([35, 58, 45, 68]);
+    expect(bounds(page.breakouts[0].shape)).toEqual([95, 88, 115, 108]);
+    expect(stroke.points[0].slice(0, 2)).toEqual([35, 28]);
+    expect(line.box).toEqual([box[0] + 5, box[1] - 2, box[2] + 5, box[3] - 2]);
+  });
+
+  it("adds a thing with Shift + click and takes it out again", () => {
+    const one = { kind: "panel" as const, id: "p1" };
+    const two = { kind: "line" as const, id: "l1" };
+    expect(toggleItem([one], two)).toEqual([one, two]);
+    expect(toggleItem([one, two], one)).toEqual([two]);
+  });
+
+  it("picks panels, fills and はみ出し wholly inside the lasso, not halves of 見開き panels", () => {
+    const { project, page, panel } = sample();
+    const fill = addFill(project, page, rectShape([30, 60, 40, 70]), "black");
+    const outside = addPanel(project, page, rectShape([120, 20, 170, 100]));
+    const half = addPanel(project, page, rectShape([20, 110, 100, 150]));
+    half.spread = "x";
+    const picked = pickInside(page, rectShape([10, 10, 110, 160]));
+    expect(picked.panels).toEqual([panel.id]);
+    expect(picked.fills).toEqual([fill.id]);
+    expect(picked.panels).not.toContain(outside.id);
+  });
+
+  it("copies a 範囲選択 with its panels, fills and はみ出し", () => {
+    const { project, page, panel, stroke } = sample();
+    addFill(project, page, rectShape([30, 60, 40, 70]), "black");
+    page.breakouts.push({ id: "b1", shape: rectShape([90, 90, 110, 110]) });
+    const items = withContents(page, [{ kind: "panel", id: panel.id }, { kind: "breakout", id: "b1" }], true);
+    const clip = copySelection(page, { kind: "group", pageId: page.id, id: "group", items })!;
+    expect(clip.panels).toHaveLength(1);
+    expect(clip.breakouts).toHaveLength(1);
+    expect(clip.fills).toHaveLength(1);
+    expect(clip.strokes.map((s) => s.id)).toEqual([stroke.id]);
+    const pasted = pasteClip(project, project.pages[1], clip);
+    expect(pasted.panels).toHaveLength(1);
+    expect(pasted.breakouts).toHaveLength(1);
+    expect(pasted.fills).toHaveLength(1);
   });
 });

@@ -12,8 +12,11 @@
 //   ナレーション：… / N：…          narration
 //   SE：… / 擬音：… / 描き文字：…    sound effect (描き文字)
 //   「セリフ」                      speech with no speaker
+//   名前〔電話〕「…」 名前（叫び）「…」  the balloon: 電話・無線・テレビ → 電子音、叫び → トゲ、
+//                                  小声・ささやき → 破線、独白・心の声 → モノローグ
+//   「…！！」                       a shout (トゲ) unless a tag says otherwise
 // List markers (- * + 1.), quotes (>) and **bold** are ignored.
-import { balloonExtent } from "./balloon";
+import { layOut, placingBox } from "./arrange";
 import {
   addCharacter,
   addLine,
@@ -21,15 +24,15 @@ import {
   addScene,
   assignPanels,
   basicBox,
-  bounds,
   DEFAULT_GUTTERS,
   insertPage,
-  moveLine,
   rectShape,
   sortLines,
+  type BalloonShape,
   type BoxMm,
   type LineKind,
   type Page,
+  type Panel,
   type Project,
 } from "./project";
 
@@ -37,6 +40,8 @@ export interface ScriptLine {
   speaker?: string;
   kind: LineKind;
   text: string;
+  /** フキダシの形 asked for by a tag (〔電話〕) or the text (！！). */
+  shape?: BalloonShape;
 }
 
 export interface ScriptPanel {
@@ -62,6 +67,30 @@ const SFX = new Set(["se", "sfx", "擬音", "効果音", "描き文字", "音", 
 const NOTES = new Set(["ト書き", "トガキ", "演出", "メモ", "note", "絵"]);
 
 const PAGE_HEADING = /^(?:(\d+)\s*(?:ページ|頁|p|P)|[pP]\.?\s*(\d+)|(\d+))(?:\s|$|[:：）)])/;
+/** The page number at the start of a page heading, with what follows it up to the subtitle. */
+const PAGE_NUMBER = /^(?:\d+\s*(?:ページ目?|頁|p|P)|[pP]\.?\s*\d+|\d+)\s*[:：）)]?\s*/;
+
+/** Tags after a speaker's name: what kind of line and balloon. */
+const TAGS: [RegExp, { kind?: LineKind; shape?: BalloonShape }][] = [
+  [/電話|通話|無線|通信|スマホ|携帯|テレビ|TV|ラジオ|スピーカー|放送|モニター|機械|インカム/i, { shape: "electric" }],
+  [/叫び|叫ぶ|絶叫|怒鳴|大声|怒号/, { shape: "spike" }],
+  [/小声|ささやき|囁|ひそひそ|つぶやき|呟/, { shape: "dashed" }],
+  [/独白|心の声|モノローグ|内心|心中/, { kind: "thought" }],
+  [/ナレ|語り/, { kind: "narration" }],
+];
+
+/** A speaker written with a tag, 叔母〔電話〕 / 叔母（電話）: the name and what the tag asks for. */
+function tagged(name: string): { name: string; kind?: LineKind; shape?: BalloonShape } {
+  const match = /^(.*?)\s*[〔［[<＜（(]([^〕］\]>＞）)]{1,10})[〕］\]>＞）)]$/.exec(name);
+  if (!match) return { name };
+  const found = TAGS.find(([pattern]) => pattern.test(match[2]));
+  return { name: match[1].trim(), ...(found ? found[1] : {}) };
+}
+
+/** A shout written with doubled marks gets a spiky balloon. */
+function shouted(text: string): boolean {
+  return /[！!]{2,}|[！!][？?][！!]/.test(text);
+}
 
 function plain(text: string): string {
   return text
@@ -75,11 +104,21 @@ function plain(text: string): string {
 export function readLine(raw: string): ScriptLine | null {
   const text = plain(raw);
   if (!text) return null;
-  // 名前「…」 / 名前『…』 / 「…」
-  let match = /^([^「『（(：:\s]{0,20})\s*[「『]([\s\S]*?)[」』]?$/.exec(text);
+  // 名前〔電話〕「…」 / 名前（叫び）「…」 / 名前「…」 / 名前『…』 / 「…」
+  let match = /^((?:[^「『（(：:\s〔［]{0,20})(?:\s*[〔［[<＜（(][^〕］\]>＞）)「『]{1,10}[〕］\]>＞）)])?)\s*[「『]([\s\S]*?)[」』]?$/.exec(text);
   if (match) {
-    const name = match[1].trim();
-    return { ...(name ? { speaker: name } : {}), kind: "speech", text: match[2].trim() };
+    const { name, kind, shape } = tagged(match[1].trim());
+    const said = match[2].trim();
+    const balloon = shape ?? (shouted(said) ? "spike" : undefined);
+    return { ...(name ? { speaker: name } : {}), kind: kind ?? "speech", text: said, ...(balloon ? { shape: balloon } : {}) };
+  }
+  // 名前〔電話〕：… (before 名前（…）, which would take the tag for a thought).
+  match = /^([^「『（(：:〔［\s]{1,20}\s*[〔［[<＜（(][^〕］\]>＞）)]{1,10}[〕］\]>＞）)])\s*[：:]\s*([\s\S]+)$/.exec(text);
+  if (match) {
+    const { name, kind, shape } = tagged(match[1].trim());
+    const said = match[2].trim().replace(/^[「『](.*)[」』]$/, "$1");
+    const balloon = shape ?? (shouted(said) ? "spike" : undefined);
+    return { speaker: name, kind: kind ?? "speech", text: said, ...(balloon ? { shape: balloon } : {}) };
   }
   // 名前（…） : thought. A bare （…） is a stage direction.
   match = /^([^「『（(：:\s]{1,20})\s*[（(]([\s\S]*?)[）)]?$/.exec(text);
@@ -139,7 +178,9 @@ export function parseScript(source: string): ScriptDoc {
         if (!pageHeadings || page) page = null;
       } else if (level === 3) {
         newPage();
-        if (!PAGE_HEADING.test(text) && text) page!.notes.push(text);
+        // ### 1ページ 心臓の説明: the subtitle goes into the page memo.
+        const subtitle = PAGE_HEADING.test(text) ? text.replace(PAGE_NUMBER, "").trim() : text;
+        if (subtitle) page!.notes.push(subtitle);
       } else {
         newPanel();
         const note = text.replace(/^(?:コマ|\[|［)?\s*\d*\s*(?:コマ目?|\]|］)?\s*[:：]?\s*/, "").trim();
@@ -231,30 +272,15 @@ export function panelBoxes(box: BoxMm, count: number, gutters = DEFAULT_GUTTERS)
   return boxes;
 }
 
-/** Deal the lines of a panel out over its box: right to left, wrapping down. */
-function placeLines(project: Project, page: Page, box: BoxMm, lines: ScriptLine[], speakers: Map<string, string>): void {
-  const margin = 3;
-  const gap = 2;
-  let right = box[2] - margin;
-  let top = box[1] + margin;
-  let rowHeight = 0;
-  for (const said of lines) {
+/** Deal the lines of a panel out over its box: right to left, wrapping down, broken into short lines and kept in the panel. */
+function placeLines(project: Project, page: Page, panel: Panel | undefined, lines: ScriptLine[], speakers: Map<string, string>): void {
+  const placed = lines.map((said) => {
     const line = addLine(project, page, [0, 0], said.text || "…", said.kind);
     if (said.speaker) line.speaker = speakers.get(said.speaker);
-    // Room for the balloon around the text, not just the text.
-    const [lx0, ly0, lx1, ly1] = balloonExtent(line);
-    const [w, h] = [lx1 - lx0, ly1 - ly0];
-    if (right - w < box[0] + margin && rowHeight > 0) {
-      right = box[2] - margin;
-      top += rowHeight + gap;
-      rowHeight = 0;
-    }
-    // A full panel: lines pile up at its bottom, still inside it.
-    const y = Math.max(box[1], Math.min(top, box[3] - margin - h));
-    moveLine(line, right - w - lx0, y - ly0);
-    right -= w + gap;
-    rowHeight = Math.max(rowHeight, h);
-  }
+    if (said.shape) line.balloonShape = said.shape;
+    return line;
+  });
+  layOut(placed, placingBox(project, panel), panel?.shape);
 }
 
 /** Put a script onto the name. */
@@ -285,13 +311,11 @@ export function applyScript(project: Project, doc: ScriptDoc, options: ScriptImp
       report.panels += used.length;
     }
     const panels = [...page.panels].sort((a, b) => a.order - b.order);
-    const frame = basicBox(project.pageFormat);
     used.forEach((scriptPanel, k) => {
       // More script panels than panels: the rest go into the last panel.
       const panel = panels[Math.min(k, panels.length - 1)];
       if (panel && scriptPanel.notes.length) panel.note = [panel.note, ...scriptPanel.notes].filter(Boolean).join("\n");
-      const [px0, py0, px1, py1] = panel ? bounds(panel.shape) : frame;
-      placeLines(project, page, [px0, py0, px1, py1], scriptPanel.lines, speakers);
+      placeLines(project, page, panel, scriptPanel.lines, speakers);
       report.lines += scriptPanel.lines.length;
     });
     assignPanels(page);

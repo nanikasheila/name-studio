@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LAYER_ORDER, canBeVector, checkSummary, clipLines, exportUnits, mapBox, packBody, partCount, projectToTemplate, scriptText, textLayers, vectorLines, type LayerMeta } from "./nameexport";
+import { LAYER_ORDER, canBeVector, checkSummary, clipLines, imagesNote, missingEditable, exportUnits, mapBox, packBody, partCount, projectToTemplate, scriptText, textLayers, vectorLines, type LayerMeta } from "./nameexport";
 import { addCharacter, addLine, addScene, basicBox, newProject, rectShape } from "./project";
 
 describe("projectToTemplate", () => {
@@ -199,5 +199,15 @@ describe("見開きページの書き出し", () => {
     const left = clipLines([box], 100, false);
     expect(left.every((part) => !part.closed && part.points.every(([x]) => x <= 100))).toBe(true);
     expect(clipLines([line], 200, false)).toEqual([line]);
+  });
+});
+
+describe("parts that go as images", () => {
+  it("names what CSP will not be able to edit, and how to fix it", () => {
+    expect(missingEditable({ vectorLayers: true, textLayers: true })).toEqual([]);
+    const missing = missingEditable({ vectorLayers: false, textLayers: false });
+    expect(missing).toHaveLength(2);
+    expect(missing[1]).toContain("テキスト");
+    expect(imagesNote(missing)).toContain("見本のページ");
   });
 });

@@ -5,6 +5,10 @@
 import {
   assignPanels,
   bounds,
+  carryContents,
+  moveLine,
+  movePanel,
+  moveStroke,
   newId,
   orderPanels,
   sortLines,
@@ -77,6 +81,59 @@ export function warpScale(w: Warp): number {
 export interface ItemRef {
   kind: "stroke" | "line" | "panel" | "fill" | "breakout";
   id: string;
+}
+
+/**
+ * What a 範囲選択 takes along: the things picked and, as with CSP's コマ枠
+ * フォルダ, what is drawn in the panels among them, each thing once.
+ */
+export function withContents(page: Page, items: readonly ItemRef[], carries: boolean): ItemRef[] {
+  const all = [...items];
+  const seen = new Set(items.map((item) => `${item.kind}:${item.id}`));
+  const add = (kind: ItemRef["kind"], id: string) => {
+    if (seen.has(`${kind}:${id}`)) return;
+    seen.add(`${kind}:${id}`);
+    all.push({ kind, id });
+  };
+  if (!carries) return all;
+  for (const item of items) {
+    const panel = item.kind === "panel" ? page.panels.find((p) => p.id === item.id) : undefined;
+    if (!panel) continue;
+    const carried = carryContents(page, panel);
+    for (const { id } of carried.strokes) add("stroke", id);
+    for (const { id } of carried.lines) add("line", id);
+    for (const { id } of carried.fills ?? []) add("fill", id);
+  }
+  return all;
+}
+
+/** Move the things by `dx`, `dy` mm. */
+export function moveItems(page: Page, items: readonly ItemRef[], dx: number, dy: number): void {
+  const shift = (shape: Point[]) => shape.map(([x, y]) => [x + dx, y + dy] as Point);
+  for (const item of items) {
+    if (item.kind === "stroke") {
+      const stroke = page.strokes.find((s) => s.id === item.id);
+      if (stroke) moveStroke(stroke, dx, dy);
+    } else if (item.kind === "line") {
+      const line = page.lines.find((l) => l.id === item.id);
+      if (line) moveLine(line, dx, dy);
+    } else if (item.kind === "panel") {
+      const panel = page.panels.find((p) => p.id === item.id);
+      if (panel) movePanel(panel, dx, dy);
+    } else if (item.kind === "fill") {
+      const fill = page.fills?.find((f) => f.id === item.id);
+      if (fill) fill.shape = shift(fill.shape);
+    } else {
+      const breakout = page.breakouts.find((b) => b.id === item.id);
+      if (breakout) breakout.shape = shift(breakout.shape);
+    }
+  }
+}
+
+/** Shift + click: the thing added to the picked ones, or taken out if it was in. */
+export function toggleItem(items: readonly ItemRef[], ref: ItemRef): ItemRef[] {
+  const inside = items.some((item) => item.kind === ref.kind && item.id === ref.id);
+  return inside ? items.filter((item) => !(item.kind === ref.kind && item.id === ref.id)) : [...items, ref];
 }
 
 /** The selected things as they were when a transform began. */
@@ -217,9 +274,18 @@ export function copySelection(page: Page, selection: CopySource, contents?: { st
     if (kind === "stroke") {
       const stroke = page.strokes.find((s) => s.id === id);
       if (stroke) clip.strokes.push(clone(stroke));
-    } else {
+    } else if (kind === "line") {
       const line = page.lines.find((l) => l.id === id);
       if (line) clip.lines.push(clone(line));
+    } else if (kind === "panel") {
+      const panel = page.panels.find((p) => p.id === id);
+      if (panel) clip.panels.push(clone(panel));
+    } else if (kind === "fill") {
+      const fill = page.fills?.find((f) => f.id === id);
+      if (fill) clip.fills = [...(clip.fills ?? []), clone(fill)];
+    } else {
+      const breakout = page.breakouts.find((b) => b.id === id);
+      if (breakout) clip.breakouts.push(clone(breakout));
     }
   };
   switch (selection.kind) {
