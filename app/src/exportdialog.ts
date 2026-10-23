@@ -2,7 +2,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import { buildRequest, folderOf, overwriteWarning, type ExportForm, type OverwriteCheck } from "./export";
-import { checkSummary, exportPdf, exportToCsp, imagesNote, missingEditable, scriptText } from "./nameexport";
+import { checkSummary, exportPdf, exportToCsp, imagesNote, missingEditable, ROUGH_LAYERS, scriptText } from "./nameexport";
 import { ISSUE_LABELS, checkName, issueSummary } from "./namecheck";
 import type { Project, RoughImage } from "./project";
 
@@ -48,6 +48,8 @@ export class ExportDialog {
     storyIndex: "",
   };
   private editable = true;
+  /** The rough written as 下描き layers at half opacity, to ink over. */
+  private draftRough = true;
   private busy = false;
   /** A CSP page with text and vector layers to copy, when the template has none. */
   private donor = readDonor();
@@ -71,6 +73,9 @@ export class ExportDialog {
     });
     $<HTMLInputElement>("ne-editable").addEventListener("change", (event) => {
       this.editable = (event.target as HTMLInputElement).checked;
+    });
+    $<HTMLInputElement>("ne-draft").addEventListener("change", (event) => {
+      this.draftRough = (event.target as HTMLInputElement).checked;
     });
     $("ne-run").addEventListener("click", () => void this.run());
   }
@@ -148,6 +153,7 @@ export class ExportDialog {
     path("ne-donor", this.donor);
     $("ne-clear-donor").hidden = !this.donor;
     $<HTMLInputElement>("ne-editable").checked = this.editable;
+    $<HTMLInputElement>("ne-draft").checked = this.draftRough;
     $<HTMLInputElement>("ne-make-work").checked = this.form.makeWork;
     $("ne-work-fields").hidden = !this.form.makeWork;
     $<HTMLInputElement>("ne-work-name").value = this.form.workName;
@@ -238,6 +244,7 @@ export class ExportDialog {
             storyIndex: request.storyIndex,
             inputs: this.sources(),
             donors: [this.donor, project.source?.path].filter((path): path is string => !!path),
+            draftLayers: this.draftRough ? ROUGH_LAYERS : [],
           },
           this.editable,
           progress,

@@ -163,6 +163,9 @@ export const LAYER_NAMES: Record<LayerKind, string> = {
   text: "セリフ",
 };
 
+/** The rough's layers (the name sheet's rough image too): what is inked over in CSP. */
+export const ROUGH_LAYERS = [LAYER_NAMES.strokes, LAYER_NAMES.overStrokes, "ラフ（ネーム用紙）"];
+
 export function partCount(page: Page, kind: LayerKind): number {
   switch (kind) {
     case "strokes":
@@ -336,6 +339,8 @@ export interface CspExportRequest {
   inputs: string[];
   /** .clip files (the name sheet) to copy CSP's vector / text layers from. */
   donors: string[];
+  /** Layers (by name) written as 下描き layers at half opacity: `ROUGH_LAYERS` to ink over the rough. */
+  draftLayers?: string[];
 }
 
 /** A written file read back (clip-core `verify::FileCheck`). */

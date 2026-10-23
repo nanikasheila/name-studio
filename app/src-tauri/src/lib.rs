@@ -459,6 +459,9 @@ struct NameExportRequest {
     /// editable layers are copied from, after the template.
     #[serde(default)]
     donors: Vec<String>,
+    /// Layers (by name) written as 下描き layers at half opacity.
+    #[serde(default)]
+    draft_layers: Vec<String>,
 }
 
 /// The template's canvas and which parts can be written as editable layers.
@@ -496,6 +499,7 @@ async fn begin_name_export(
         story_index: request.story_index,
         inputs: request.inputs.into_iter().map(PathBuf::from).collect(),
         donor_sources: request.donors.into_iter().map(PathBuf::from).collect(),
+        draft_layers: request.draft_layers,
     })
     .map_err(|error| error.to_string())?;
     let start = NameExportStart {

@@ -20,6 +20,7 @@ vi.mock("./nameexport", () => ({
     return {};
   },
   checkSummary: () => ({ ok: true, lines: [] }),
+  ROUGH_LAYERS: ["ラフ線"],
 }));
 
 import { runBatchExport } from "./batch";

@@ -26,6 +26,8 @@ pub struct BatchExport {
     pub story_index: Option<i64>,
     /// 見本のページ: CSP pages to copy text and vector layers from.
     pub donors: Vec<String>,
+    /// The rough as 下描き layers at half opacity (`--no-draft-rough` turns it off).
+    pub draft_rough: bool,
     pub report: String,
 }
 
@@ -40,6 +42,7 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
     let mut story_index = None;
     let mut report = None;
     let mut donors = Vec::new();
+    let mut draft_rough = true;
     while let Some(arg) = args.next() {
         let mut value = || args.next().ok_or(format!("{arg} の後に値がありません"));
         match arg.as_str() {
@@ -57,6 +60,7 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
             }
             "--report" => report = Some(value()?),
             "--donor" => donors.push(value()?),
+            "--no-draft-rough" => draft_rough = false,
             // Anything else (such as what the system adds) is left alone.
             _ => {}
         }
@@ -80,6 +84,7 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
         work_name,
         story_index,
         donors,
+        draft_rough,
         report,
     }))
 }
@@ -125,10 +130,27 @@ mod tests {
         assert_eq!(batch.donors, vec!["sample.clip".to_owned()]);
         assert_eq!(batch.work_name.as_deref(), Some("第1話"));
         assert_eq!(batch.story_index, Some(1));
+        assert!(batch.draft_rough);
         assert_eq!(
             batch.report,
             Path::new("out").join("name-studio-export.json").display().to_string()
         );
+    }
+
+    #[test]
+    fn leaves_the_rough_as_it_is_when_asked() {
+        let batch = from_args(args(&[
+            "--export-csp",
+            "a",
+            "--template",
+            "t",
+            "--out",
+            "o",
+            "--no-draft-rough",
+        ]))
+        .unwrap()
+        .unwrap();
+        assert!(!batch.draft_rough);
     }
 
     #[test]

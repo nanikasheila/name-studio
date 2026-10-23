@@ -2,7 +2,7 @@
 // the window opens, writes the pages and the work, leaves a JSON report and closes.
 
 import { invoke } from "@tauri-apps/api/core";
-import { checkSummary, exportToCsp, imagesNote, missingEditable } from "./nameexport";
+import { checkSummary, exportToCsp, imagesNote, missingEditable, ROUGH_LAYERS } from "./nameexport";
 import { normalize, type Project } from "./project";
 
 export interface BatchExport {
@@ -14,6 +14,8 @@ export interface BatchExport {
   storyIndex: number | null;
   /** 見本のページ: .clip files to copy text and vector layers from. */
   donors?: string[];
+  /** The rough as 下描き layers (on unless --no-draft-rough). */
+  draftRough?: boolean;
   report: string;
 }
 
@@ -53,6 +55,7 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
         storyIndex: task.storyIndex,
         inputs: [task.project, project.source?.path].filter((path): path is string => !!path),
         donors: [...(task.donors ?? []), project.source?.path].filter((path): path is string => !!path),
+        draftLayers: task.draftRough === false ? [] : ROUGH_LAYERS,
       },
       true,
       status,

@@ -437,6 +437,7 @@ fn writes_whole_page_raster_layers_into_a_work() {
         story_index: Some(2),
         inputs: Vec::new(),
         donor_sources: Vec::new(),
+        draft_layers: Vec::new(),
     })
     .unwrap();
     assert_eq!((writer.canvas.width_px, writer.canvas.height_px), (400, 560));
@@ -497,6 +498,7 @@ fn writes_whole_page_raster_layers_into_a_work() {
         story_index: None,
         inputs: Vec::new(),
         donor_sources: Vec::new(),
+        draft_layers: Vec::new(),
     });
     assert!(refused.is_err());
 }
@@ -519,6 +521,7 @@ fn writes_vector_and_text_layers_copied_from_the_sheet() {
         story_index: None,
         inputs: vec![sheet_path.clone()],
         donor_sources,
+        draft_layers: Vec::new(),
     };
     // The template has no vector or text layer to copy: without the sheet
     // there is nothing to make them from.
@@ -652,6 +655,7 @@ fn checks_written_pages_and_works() {
         story_index: None,
         inputs: vec![sheet_path.clone()],
         donor_sources: vec![sheet_path.clone()],
+        draft_layers: vec!["ラフ".into()],
     })
     .unwrap();
     let mut rough = RgbaImage::transparent(200, 280);
@@ -709,6 +713,17 @@ fn checks_written_pages_and_works() {
     assert!(check.ok(), "{:?}", check.problems);
     assert_eq!((check.vector_lines, check.texts), (1, 1));
     assert!(check_clip(&page).ok());
+    // The rough is a 下描き layer at half opacity, the others as they were.
+    let written = ClipDocument::read(&page).unwrap();
+    let opacity = |name: &str| {
+        written
+            .layers()
+            .iter()
+            .find(|layer| layer.name == name)
+            .unwrap()
+            .opacity
+    };
+    assert_eq!((opacity("ラフ"), opacity("空")), (0.5, 1.0));
     let work = report.work.unwrap();
     assert!(verify_work(&work, Some(&report.pages)).ok());
 
@@ -884,6 +899,7 @@ fn writes_spread_pages() {
         story_index: None,
         inputs: Vec::new(),
         donor_sources: Vec::new(),
+        draft_layers: Vec::new(),
     })
     .unwrap();
     assert_eq!(writer.first_page_left, Some(true));

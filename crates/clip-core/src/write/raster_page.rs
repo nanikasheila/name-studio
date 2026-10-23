@@ -224,6 +224,33 @@ fn freshen(values: &mut Values, name: &str) {
     set_value(values, "LayerName", Value::Text(name.to_owned()));
 }
 
+/// Half opacity for a 下描き layer (CSP's full is 256).
+const DRAFT_OPACITY: i64 = 128;
+
+/// A layer's name as it is written.
+fn layer_name(layer: &PageLayer) -> &str {
+    match layer {
+        PageLayer::Raster(layer) => &layer.name,
+        PageLayer::Vector { name, .. } => name,
+        PageLayer::Text(text) => &text.text,
+    }
+}
+
+/// Make a layer a 下描き layer (CSP: レイヤー > 下描きレイヤーに設定) at half opacity.
+fn make_draft(editor: &ClipEditor, id: i64) -> Result<()> {
+    let has_draft = editor.db.prepare("SELECT DraftLayer FROM Layer LIMIT 0").is_ok();
+    if has_draft {
+        editor
+            .db
+            .execute("UPDATE Layer SET DraftLayer = 1 WHERE MainId = ?1", [id])?;
+    }
+    editor.db.execute(
+        "UPDATE Layer SET LayerOpacity = ?1 WHERE MainId = ?2",
+        [DRAFT_OPACITY, id],
+    )?;
+    Ok(())
+}
+
 /// Make `editor` able to hold the donor's layers (its tables, columns and
 /// brush styles), once per donor document.
 fn prepare_for(editor: &ClipEditor, donor: &PartDonors) -> Result<()> {
@@ -362,6 +389,7 @@ pub fn write_name_page(
     page_index: i64,
     canvas_values: &Values,
     first_right: bool,
+    draft_layers: &[String],
 ) -> Result<Vec<i64>> {
     let source = ClipDocument::read(template)?;
     let (width, height) = (source.canvas.width_px as u32, source.canvas.height_px as u32);
@@ -420,6 +448,9 @@ pub fn write_name_page(
             }
         };
         editor.append_to_folder(editor.root_id, id, None)?;
+        if draft_layers.iter().any(|draft| *draft == layer_name(layer)) {
+            make_draft(&editor, id)?;
+        }
         ids.push(id);
     }
     let thumbnail = match overlay {
@@ -447,6 +478,9 @@ pub struct WorkOptions {
     pub inputs: Vec<PathBuf>,
     /// .clip files (after the template) to copy vector and text layers from.
     pub donor_sources: Vec<PathBuf>,
+    /// Layers (by name) made 下描き (draft) layers at half opacity: the
+    /// rough, to ink over in CSP without it being filled against or printed.
+    pub draft_layers: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -600,6 +634,7 @@ impl RasterWorkWriter {
             index,
             &self.canvas_values,
             first_right,
+            &self.options.draft_layers,
         )?;
         self.next_index += if spread { 2 } else { 1 };
         self.pages.push(output.clone());
