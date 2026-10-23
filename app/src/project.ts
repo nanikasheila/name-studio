@@ -402,6 +402,8 @@ export interface Project {
   alternatives?: Alternatives[];
   /** 構成補助: the aimed page count and story shape. */
   plan?: Plan;
+  /** 作品ごとのフキダシの既定: the shape new lines of each kind get. */
+  lineShapes?: Partial<Record<LineKind, BalloonShape>>;
   nextId: number;
 }
 
@@ -818,11 +820,49 @@ export function addLine(project: Project, page: Page, center: Point, text = "セ
     fontSizePt: kind === "narration" ? DEFAULT_FONT_PT - 1 : DEFAULT_FONT_PT,
     vertical: true,
   };
+  const shape = project.lineShapes?.[kind];
+  if (shape && shape !== "auto") line.balloonShape = shape;
   fitLine(line);
   page.lines.push(line);
   assignPanels(page);
   sortLines(page);
   return line;
+}
+
+/** Change a line's kind; a balloon that had the old kind's usual shape takes the new kind's. */
+export function setLineKind(project: Project, line: Line, kind: LineKind): void {
+  const usual = (k: LineKind) => project.lineShapes?.[k] ?? "auto";
+  if ((line.balloonShape ?? "auto") === usual(line.kind)) {
+    const shape = usual(kind);
+    if (shape === "auto") delete line.balloonShape;
+    else line.balloonShape = shape;
+  }
+  line.kind = kind;
+  fitLine(line);
+}
+
+/**
+ * 作品の既定にする: new lines of `kind` get `shape`, and so do the lines of
+ * that kind that had the usual shape until now. Returns how many changed.
+ */
+export function setDefaultShape(project: Project, kind: LineKind, shape: BalloonShape): number {
+  const before = project.lineShapes?.[kind] ?? "auto";
+  const shapes = { ...project.lineShapes };
+  if (shape === "auto") delete shapes[kind];
+  else shapes[kind] = shape;
+  if (Object.keys(shapes).length) project.lineShapes = shapes;
+  else delete project.lineShapes;
+  let changed = 0;
+  for (const page of project.pages) {
+    for (const line of page.lines) {
+      if (line.kind !== kind || (line.balloonShape ?? "auto") !== before || before === shape) continue;
+      if (shape === "auto") delete line.balloonShape;
+      else line.balloonShape = shape;
+      fitLine(line);
+      changed++;
+    }
+  }
+  return changed;
 }
 
 /** Move a line with its balloon; tails keep pointing at their speakers. */

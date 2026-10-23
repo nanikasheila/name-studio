@@ -45,6 +45,9 @@ pub struct Project {
     /// 構成補助: the aimed page count and story shape.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan: Option<Plan>,
+    /// 作品ごとのフキダシの既定: the shape new lines of each kind get.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line_shapes: Option<LineShapes>,
     /// Next number used by [`Project::new_id`]; ids are never reused.
     pub next_id: u64,
 }
@@ -329,6 +332,22 @@ pub enum LineKind {
     Sfx,
     /// 小書き: a muttered aside written small without a balloon.
     Aside,
+}
+
+/// The balloon shape new lines of each kind get in a work (such as 多角形 for monologue).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LineShapes {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speech: Option<BalloonShape>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thought: Option<BalloonShape>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub narration: Option<BalloonShape>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sfx: Option<BalloonShape>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aside: Option<BalloonShape>,
 }
 
 /// フキダシの形
@@ -704,6 +723,7 @@ impl Project {
             brushes: Vec::new(),
             alternatives: Vec::new(),
             plan: None,
+            line_shapes: None,
             next_id: 1,
         }
     }

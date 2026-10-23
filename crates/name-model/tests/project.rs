@@ -223,9 +223,14 @@ fn keeps_panel_and_balloon_styles() {
         "breakouts": [{"id": "breakout7", "shape": [[60, 90], [80, 90], [70, 130]], "note": "全身"}],
         "fills": [{"id": "fill8", "shape": [[10, 10], [20, 10], [15, 20]]}, {"id": "fill9", "shape": [[30, 30], [40, 30], [35, 40]], "tone": "gray"}]
       }],
-      "characters": [], "scenes": [], "emotions": [], "nextId": 10
+      "characters": [], "scenes": [], "emotions": [], "nextId": 10,
+      "lineShapes": {"thought": "polygon", "speech": "rounded"}
     }"##;
     let project = Project::from_json(text).expect("format 2 project");
+    let shapes = project.line_shapes.as_ref().expect("line shapes");
+    assert_eq!(shapes.thought, Some(BalloonShape::Polygon));
+    assert_eq!(shapes.speech, Some(BalloonShape::Rounded));
+    assert_eq!(shapes.narration, None);
     let page = &project.pages[0];
     assert_eq!(page.panels[0].border, PanelBorder::Wavy);
     assert_eq!(page.panels[0].open_edges, vec![0]);
