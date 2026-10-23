@@ -244,6 +244,7 @@ export class Workbench {
       projectPath: () => this.state.path,
       rough: (rough) => this.loadRough(rough),
       status: (message) => this.setStatus(message),
+      edit: (change) => this.edit(change),
       goTo: (pageId, lineId) => this.goTo(pageId, "line", lineId),
       addTails: () => this.addTails(),
       fitSpills: () => {

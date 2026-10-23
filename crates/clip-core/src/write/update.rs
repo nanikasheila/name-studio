@@ -154,6 +154,68 @@ fn place_above(editor: &ClipEditor, parent: i64, anchor: i64, id: i64) -> Result
     editor.append_to_folder(parent, id, next)
 }
 
+/// A dialogue text on a page, as CSP has it now.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CspText {
+    pub text: String,
+    /// Where its text sits, in page px (the union of its blocks).
+    pub bbox: Option<[i64; 4]>,
+}
+
+/// The dialogue of a page as CSP has it now, and what this tool wrote there
+/// last (to tell what was changed in CSP).
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CspDialogue {
+    pub texts: Vec<CspText>,
+    pub written: Option<Vec<String>>,
+}
+
+/// Read the dialogue texts of the page at `path`, with what the last export
+/// or update wrote there.
+pub fn read_dialogue(path: &Path) -> Result<CspDialogue> {
+    let document = ClipDocument::read(path)?;
+    let texts = page_texts(&document)
+        .into_iter()
+        .map(|text| {
+            // Moved in CSP: the layer's offset on top of where its text sits.
+            let bbox = document
+                .layers()
+                .into_iter()
+                .find(|layer| layer.main_id == text.id)
+                .and_then(|layer| {
+                    let (dx, dy) = (layer.offset_x, layer.offset_y);
+                    document
+                        .text_blocks(layer)
+                        .ok()?
+                        .into_iter()
+                        .filter_map(|block| block.bbox)
+                        .map(|(x0, y0, x1, y1)| [x0 as i64 + dx, y0 as i64 + dy, x1 as i64 + dx, y1 as i64 + dy])
+                        .reduce(|a, b| [a[0].min(b[0]), a[1].min(b[1]), a[2].max(b[2]), a[3].max(b[3])])
+                });
+            CspText { text: text.key, bbox }
+        })
+        .collect();
+    Ok(CspDialogue {
+        texts,
+        written: super::manifest::written(path).and_then(|record| record.texts),
+    })
+}
+
+/// Record the page's dialogue as CSP has it now as this tool's: once the
+/// name has taken it back, the next update leaves it as it is.
+pub fn adopt_dialogue(path: &Path) -> Result<()> {
+    let document = ClipDocument::read(path)?;
+    let texts = page_texts(&document).into_iter().map(|text| text.key).collect();
+    let record = PageRecord {
+        texts: Some(texts),
+        ..super::manifest::written(path).unwrap_or_default()
+    };
+    super::manifest::record_page(path, record)?;
+    Ok(())
+}
+
 /// Bring `update` into the page at `path` (see the module notes); the page
 /// is left untouched when its dialogue is already the same. `fallback`
 /// gives layers to copy when the page has none of a kind.
@@ -172,6 +234,8 @@ pub fn update_dialogue(
     // Texts written last time that are not on the page any more: changed or
     // deleted in CSP, which stands while the name still has them as written.
     let mut edited_in_csp: Vec<String> = Vec::new();
+    // Texts typed in CSP (added, or retyped from this tool's).
+    let mut csp_texts: Vec<String> = Vec::new();
     if let Some(written) = update.written.as_ref().and_then(|record| record.texts.as_ref()) {
         // Only texts written last time (each once) are this tool's to change.
         let mut left: Vec<String> = written.iter().map(|text| text_key(text)).collect();
@@ -181,7 +245,7 @@ pub fn update_dialogue(
                 true
             }
             None => {
-                report.foreign += 1;
+                csp_texts.push(text.key.clone());
                 false
             }
         });
@@ -194,6 +258,11 @@ pub fn update_dialogue(
         if let Some(index) = unmatched.iter().position(|old| old.key == key) {
             unmatched.remove(index);
             report.kept += 1;
+        } else if let Some(index) = csp_texts.iter().position(|old| *old == key) {
+            // The name now says what was typed in CSP (read back, or typed
+            // in both): that text is the name's from here on.
+            csp_texts.remove(index);
+            report.kept += 1;
         } else if let Some(index) = edited_in_csp.iter().position(|old| *old == key) {
             edited_in_csp.remove(index);
             report.left_as_in_csp += 1;
@@ -201,6 +270,7 @@ pub fn update_dialogue(
             added.push(text);
         }
     }
+    report.foreign = csp_texts.len();
     let texts_changed = !unmatched.is_empty() || !added.is_empty();
     // Balloon lines are swapped when the name's differ from what was written
     // (or, unrecorded, from what the page has); their images go with them.

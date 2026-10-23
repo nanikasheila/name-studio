@@ -2,8 +2,9 @@
 // the window opens, writes the pages and the work, leaves a JSON report and closes.
 
 import { invoke } from "@tauri-apps/api/core";
-import { checkSummary, dialogueUpdateSummary, exportToCsp, imagesNote, missingEditable, ROUGH_LAYERS, updateCspDialogue } from "./nameexport";
+import { checkSummary, dialogueUpdateSummary, exportToCsp, imagesNote, missingEditable, readCspDialogue, ROUGH_LAYERS, updateCspDialogue } from "./nameexport";
 import { normalize, type Project } from "./project";
+import { applyTakeBack, planTakeBack, takeBackSummary } from "./readback";
 
 export interface BatchExport {
   project: string;
@@ -22,6 +23,8 @@ export interface BatchExport {
   notes?: boolean;
   /** Bring the dialogue into the pages there instead (--update-dialogue). */
   updateDialogue?: boolean;
+  /** Take the dialogue changed in CSP back into the name, and save it (--read-dialogue). */
+  readDialogue?: boolean;
   report: string;
 }
 
@@ -51,7 +54,31 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
     const overwrite = await invoke("check_export_target", { outDir: task.outDir }).catch(() => null);
     // As when the window opens a file: empty lists are left out of the saved JSON.
     const project = normalize(await invoke<Project>("load_project", { path: task.project }));
-    if (task.updateDialogue) {
+    if (task.readDialogue) {
+      const units = await readCspDialogue(
+        project,
+        {
+          template: task.template,
+          outDir: task.outDir,
+          workTemplate: null,
+          workName: null,
+          storyIndex: null,
+          inputs: [task.project, project.source?.path].filter((path): path is string => !!path),
+          donors: [...(task.donors ?? []), project.source?.path].filter((path): path is string => !!path),
+        },
+        status,
+      );
+      const plan = planTakeBack(project, units);
+      const changes = plan.retyped.length + plan.added.length + plan.removed.length;
+      if (changes) {
+        applyTakeBack(project, plan);
+        await invoke("save_project", { path: task.project, project, previousPath: task.project });
+        await invoke("adopt_name_dialogue", { paths: plan.paths });
+      }
+      ok = !plan.missing.length;
+      const summary = [changes ? `CSP のセリフを読み戻して ${task.project} に保存しました` : "CSP で直したセリフはありませんでした", ...takeBackSummary(plan)];
+      result = { ok, seconds: (Date.now() - started) / 1000, summary, ...plan };
+    } else if (task.updateDialogue) {
       const summary = await updateCspDialogue(
         project,
         {

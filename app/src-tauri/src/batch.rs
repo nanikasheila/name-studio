@@ -3,12 +3,15 @@
 //! ```text
 //! name-studio-app --export-csp <name.namestudio> --template <page.clip> --out <folder>
 //!     [--work-template <work.cmc> --work-name <name>] [--story-index <n>] [--donor <sample.clip>]...
-//!     [--no-draft-rough] [--no-notes] [--frame-folders] [--update-dialogue] [--report <file.json>]
+//!     [--no-draft-rough] [--no-notes] [--frame-folders] [--update-dialogue | --read-dialogue]
+//!     [--report <file.json>]
 //! ```
 //!
 //! With `--update-dialogue` the pages already in the folder (drawn on in CSP
 //! since) get only the changed dialogue and its balloons, as the export
-//! dialog's 「セリフだけ反映」 does.
+//! dialog's 「セリフだけ反映」 does. With `--read-dialogue` it goes the other
+//! way, as 「CSP のセリフを読み戻す」: dialogue retyped, added or deleted in
+//! those pages in CSP is taken into the name, which is saved.
 //!
 //! The window opens, writes the pages and the work as the export dialog would
 //! (CSP layers where it can), writes a report (JSON, by default
@@ -38,6 +41,8 @@ pub struct BatchExport {
     pub notes: bool,
     /// Bring the dialogue into the pages there instead of writing them (`--update-dialogue`).
     pub update_dialogue: bool,
+    /// Take the dialogue changed in CSP back into the name (`--read-dialogue`).
+    pub read_dialogue: bool,
     pub report: String,
 }
 
@@ -56,6 +61,7 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
     let mut frame_folders = false;
     let mut notes = true;
     let mut update_dialogue = false;
+    let mut read_dialogue = false;
     while let Some(arg) = args.next() {
         let mut value = || args.next().ok_or(format!("{arg} の後に値がありません"));
         match arg.as_str() {
@@ -77,6 +83,7 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
             "--frame-folders" => frame_folders = true,
             "--no-notes" => notes = false,
             "--update-dialogue" => update_dialogue = true,
+            "--read-dialogue" => read_dialogue = true,
             // Anything else (such as what the system adds) is left alone.
             _ => {}
         }
@@ -104,6 +111,7 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
         frame_folders,
         notes,
         update_dialogue,
+        read_dialogue,
         report,
     }))
 }
@@ -173,6 +181,19 @@ mod tests {
         .unwrap()
         .unwrap();
         assert!(!batch.draft_rough && batch.frame_folders && !batch.notes && batch.update_dialogue);
+        assert!(!batch.read_dialogue);
+        let batch = from_args(args(&[
+            "--export-csp",
+            "a",
+            "--template",
+            "t",
+            "--out",
+            "o",
+            "--read-dialogue",
+        ]))
+        .unwrap()
+        .unwrap();
+        assert!(batch.read_dialogue && !batch.update_dialogue);
     }
 
     #[test]
