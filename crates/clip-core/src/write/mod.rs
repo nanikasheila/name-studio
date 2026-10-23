@@ -7,6 +7,7 @@
 pub mod cmc;
 pub mod container;
 pub mod editor;
+pub mod manifest;
 pub mod offscreen;
 pub mod page;
 pub mod raster_page;

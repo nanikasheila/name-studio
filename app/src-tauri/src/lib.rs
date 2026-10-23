@@ -21,6 +21,7 @@ use clip_core::raster::decode_png;
 use clip_core::raster::{Filter, resize};
 use clip_core::text::NewText;
 use clip_core::vector::NewVectorLine;
+use clip_core::write::manifest;
 use clip_core::write::raster_page::{
     PageLayer, RasterLayer, RasterWorkWriter, TemplateCanvas, WorkOptions, WorkReport,
 };
@@ -706,6 +707,11 @@ async fn finish_name_export(state: tauri::State<'_, AppState>) -> Result<NameExp
         .ok_or("書き出しが始まっていません")?;
     tauri::async_runtime::spawn_blocking(move || {
         let report = writer.finish().map_err(|error| error.to_string())?;
+        // What was written, so the next export here can tell pages changed in CSP.
+        if let Some(dir) = report.pages.first().and_then(|page| page.parent()) {
+            let written: Vec<PathBuf> = report.pages.iter().chain(report.work.iter()).cloned().collect();
+            let _ = manifest::write_manifest(dir, &written);
+        }
         let work_check = report
             .work
             .as_ref()
@@ -714,6 +720,12 @@ async fn finish_name_export(state: tauri::State<'_, AppState>) -> Result<NameExp
     })
     .await
     .map_err(|error| error.to_string())?
+}
+
+/// CSP files an export into `out_dir` would overwrite, and which of them were changed after the last export.
+#[tauri::command]
+async fn check_export_target(out_dir: String) -> manifest::OverwriteCheck {
+    manifest::check_overwrite(Path::new(&out_dir))
 }
 
 #[tauri::command]
@@ -828,6 +840,7 @@ pub fn run() {
             export_name_page,
             finish_name_export,
             cancel_name_export,
+            check_export_target,
             write_pdf,
             write_text_file,
             csp_tool_locations,

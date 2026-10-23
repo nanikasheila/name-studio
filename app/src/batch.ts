@@ -37,6 +37,8 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
   let ok = false;
   try {
     status(`${task.project} を書き出し中…`);
+    // Not asked here (no one to ask): what was overwritten goes in the report.
+    const overwrite = await invoke("check_export_target", { outDir: task.outDir }).catch(() => null);
     const project = await invoke<Project>("load_project", { path: task.project });
     const report = await exportToCsp(
       project,
@@ -54,7 +56,7 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
     );
     const check = checkSummary(report);
     ok = check.ok;
-    result = { ok, seconds: (Date.now() - started) / 1000, summary: check.lines, ...report };
+    result = { ok, seconds: (Date.now() - started) / 1000, summary: check.lines, overwrite, ...report };
   } catch (error) {
     result = { ok, error: String(error) };
   }

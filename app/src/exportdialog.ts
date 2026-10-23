@@ -1,7 +1,7 @@
 // The dialog that writes the name data out (CSP pages and work, PDF, script).
 import { invoke } from "@tauri-apps/api/core";
-import { open, save } from "@tauri-apps/plugin-dialog";
-import { buildRequest, folderOf, type ExportForm } from "./export";
+import { ask, open, save } from "@tauri-apps/plugin-dialog";
+import { buildRequest, folderOf, overwriteWarning, type ExportForm, type OverwriteCheck } from "./export";
 import { checkSummary, exportPdf, exportToCsp, scriptText } from "./nameexport";
 import type { Project, RoughImage } from "./project";
 
@@ -14,6 +14,7 @@ export interface ExportDialogHost {
 }
 
 type Kind = "csp" | "pdf" | "text";
+
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -134,6 +135,13 @@ export class ExportDialog {
         const request = buildRequest(this.form, this.sources());
         if (typeof request === "string") {
           this.message(request, true);
+          return;
+        }
+        // 上書きの知らせ: pages there may have been drawn on in CSP since.
+        const target = await invoke<OverwriteCheck>("check_export_target", { outDir: request.outDir }).catch(() => null);
+        const warning = target && overwriteWarning(target);
+        if (warning && !(await ask(warning, { title: "Name Studio", kind: "warning", okLabel: "上書きする", cancelLabel: "やめる" }))) {
+          this.message("書き出しをやめました。CSP の作業を残すには、別のフォルダーを選んでください。");
           return;
         }
         const report = await exportToCsp(
