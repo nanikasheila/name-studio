@@ -41,6 +41,22 @@ pub struct PageRecord {
     /// Each vector layer's [`crate::vector::shape_signature`], by layer name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub vectors: BTreeMap<String, String>,
+    /// [`image_signature`] of the 下描き image layers (the memos), by name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub rasters: BTreeMap<String, String>,
+}
+
+/// A short fingerprint of an image's pixels, to tell whether it changed.
+pub fn image_signature(image: &crate::RgbaImage) -> String {
+    // FNV-1a over 8-byte words: the same on every build, and quick on a page.
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for word in image.pixels.chunks(8) {
+        let mut bytes = [0u8; 8];
+        bytes[..word.len()].copy_from_slice(word);
+        hash ^= u64::from_le_bytes(bytes);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    format!("{}x{}:{hash:016x}", image.width, image.height)
 }
 
 fn stamp(path: &Path) -> Option<(u64, u64)> {
@@ -188,6 +204,7 @@ mod tests {
         let record = |text: &str| PageRecord {
             texts: Some(vec![text.to_owned()]),
             vectors: BTreeMap::from([("フキダシ".to_owned(), "1:0".to_owned())]),
+            ..Default::default()
         };
         let written_pages: Vec<(PathBuf, PageRecord)> =
             pages.iter().map(|page| (page.clone(), record("セリフ"))).collect();

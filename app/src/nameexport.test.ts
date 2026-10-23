@@ -200,6 +200,7 @@ describe("dialogueUpdateSummary", () => {
     replaced: [],
     notFound: [],
     conflicts: [],
+    notes: false,
     problems: [],
     pages,
     ...changes,
@@ -208,14 +209,14 @@ describe("dialogueUpdateSummary", () => {
     const summary = dialogueUpdateSummary({
       pages: [
         page([1]),
-        page([2, 3], { backup: "/out/name-studio-backup/20261023-120000/page0002.clip", retired: ["a"], added: ["b", "c"], replaced: ["フキダシ"] }),
+        page([2, 3], { backup: "/out/name-studio-backup/20261023-120000/page0002.clip", retired: ["a"], added: ["b", "c"], replaced: ["フキダシ"], notes: true }),
         page([4], { foreign: 2, leftAsInCsp: 1, conflicts: ["フキダシ"], backup: "/out/name-studio-backup/20261023-120000/page0004.clip" }),
       ],
       changed: 2,
       warnings: [],
     });
     expect(summary.ok).toBe(true);
-    expect(summary.lines[0]).toBe("2 ページに反映しました（セリフ: 足した 2・（旧）にして隠した 1・そのまま 9、フキダシを入れ替えたページ 1）");
+    expect(summary.lines[0]).toBe("2 ページに反映しました（セリフ: 足した 2・（旧）にして隠した 1・そのまま 9、フキダシを入れ替えたページ 1、メモを描き直したページ 1）");
     expect(summary.lines).toContain("反映する前のページ: /out/name-studio-backup/20261023-120000");
     // The text retyped in CSP is said once, not again as one added there.
     expect(summary.lines.filter((line) => line.includes("CSP で"))).toEqual([

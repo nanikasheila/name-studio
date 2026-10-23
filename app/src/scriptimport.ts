@@ -303,6 +303,8 @@ export interface ScriptImportReport {
   changed: number;
   added: number;
   removed: number;
+  /** With `update`: panel memos (演出のメモ) changed by the script. */
+  notes?: number;
 }
 
 /** Panels for `count` script panels over the basic frame: tiers, two side by side past four. */
@@ -452,7 +454,11 @@ function updatePage(project: Project, page: Page, used: ScriptPanel[], speakers:
   const wanted = new Map<Panel | undefined, ScriptLine[]>();
   used.forEach((scriptPanel, k) => {
     const panel = panels[Math.min(k, panels.length - 1)];
-    if (panel && scriptPanel.notes.length) panel.note = scriptPanel.notes.join("\n");
+    if (panel && scriptPanel.notes.length) {
+      const note = scriptPanel.notes.join("\n");
+      if (panel.note !== note) report.notes = (report.notes ?? 0) + 1;
+      panel.note = note;
+    }
     wanted.set(panel, [...(wanted.get(panel) ?? []), ...scriptPanel.lines]);
   });
   const speakerOf = (said: ScriptLine) => (said.speaker ? speakers.get(said.speaker) : undefined);

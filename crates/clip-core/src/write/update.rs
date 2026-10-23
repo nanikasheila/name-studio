@@ -20,9 +20,12 @@ use rusqlite::types::Value;
 use serde::Serialize;
 
 use super::editor::ClipEditor;
-use super::manifest::PageRecord;
-use super::raster_page::{Donors, PageLayer, PartDonors, add_text_layer, add_vector_layer, prepare_for};
+use super::manifest::{PageRecord, image_signature};
+use super::raster_page::{
+    Donors, PageLayer, PartDonors, RasterLayer, add_text_layer, add_vector_layer, make_draft, prepare_for,
+};
 use super::{Values, set_value};
+use crate::RgbaImage;
 use crate::clip::{ClipDocument, ClipLayer, LayerKind};
 use crate::error::{CspError, Result};
 use crate::raster::{Filter, resize};
@@ -42,6 +45,8 @@ pub struct DialogueUpdate {
     /// name: the balloon lines, and the images that go with them (swapped
     /// with the lines, or with the dialogue when there are no lines).
     pub balloons: Vec<PageLayer>,
+    /// The memos (a 下描き image layer, redrawn in place: nothing is drawn on it in CSP).
+    pub notes: Option<RasterLayer>,
     /// What this tool wrote into the page last time, when known. Other texts
     /// there were added in CSP and are left alone; without it every plain
     /// text counts as this tool's.
@@ -70,6 +75,8 @@ pub struct DialogueUpdateReport {
     pub not_found: Vec<String>,
     /// Swapped layers that had been changed in CSP too (CSP's are hidden as 「（旧）」).
     pub conflicts: Vec<String>,
+    /// Whether the memos were redrawn.
+    pub notes: bool,
     /// What the page holds from this tool now, to record.
     #[serde(skip)]
     pub record: PageRecord,
@@ -232,11 +239,30 @@ pub fn update_dialogue(
                 .filter(|layer| matches!(layer, PageLayer::Raster(_))),
         );
     }
+    // The memos are redrawn in their own layer when they changed in the name
+    // (unrecorded: once, if the page has the layer).
+    let mut rasters = update
+        .written
+        .as_ref()
+        .map(|record| record.rasters.clone())
+        .unwrap_or_default();
+    let notes = update.notes.as_ref().filter(|notes| {
+        let new = image_signature(&notes.image);
+        match rasters.insert(notes.name.clone(), new.clone()) {
+            Some(recorded) => recorded != new,
+            // Unrecorded (written by an older version): compared with the page.
+            None => match named_layer(&document, &notes.name) {
+                Some(layer) => !same_pixels(&document, layer, &notes.image),
+                None => !notes.image.is_transparent(),
+            },
+        }
+    });
     report.record = PageRecord {
         texts: Some(update.texts.iter().map(|text| text.text.clone()).collect()),
         vectors,
+        rasters,
     };
-    if !texts_changed && swaps.is_empty() {
+    if !texts_changed && swaps.is_empty() && notes.is_none() {
         return Ok(report);
     }
 
@@ -277,6 +303,7 @@ pub fn update_dialogue(
             (layer, found)
         })
         .collect();
+    let named_layer_id = notes.and_then(|notes| named_layer(&document, &notes.name).map(|layer| layer.main_id));
     // The page's own layers are copied first: what CSP saved there fits it.
     let mut own = PartDonors::find(document, true)?;
     let text_donor = if own.has_text() {
@@ -352,11 +379,7 @@ pub fn update_dialogue(
                 if raster.image.is_transparent() {
                     editor.clear_layer_image(id)?;
                 } else {
-                    let image = if (raster.image.width, raster.image.height) == (width, height) {
-                        None
-                    } else {
-                        Some(resize(&raster.image, width, height, Filter::Lanczos3))
-                    };
+                    let image = fit(&raster.image, width, height);
                     editor.set_layer_image(id, image.as_ref().unwrap_or(&raster.image), (0, 0))?;
                 }
                 id
@@ -368,9 +391,74 @@ pub fn update_dialogue(
         report.replaced.push(name);
     }
 
+    if let Some(notes) = notes {
+        let id = match named_layer_id {
+            Some(id) => id,
+            None => {
+                // A page written without memos: a new 下描き layer on top.
+                let source = &own.source;
+                let payload = |id: &str| source.container.external_payload(id).map(<[u8]>::to_vec);
+                let raster = editor.first_raster_layer()?;
+                let mut rename = |values: &mut Values| -> Result<()> {
+                    set_value(values, "LayerName", Value::Text(notes.name.clone()));
+                    for (column, value) in [("LayerVisibility", 1), ("LayerLock", 0)] {
+                        if super::value_of(values, column).is_some() {
+                            set_value(values, column, Value::Integer(value));
+                        }
+                    }
+                    Ok(())
+                };
+                let id = editor.add_layer(source.database(), &payload, raster, Some(&mut rename), None)?;
+                editor.append_to_folder(root, id, None)?;
+                make_draft(&editor, id)?;
+                id
+            }
+        };
+        if notes.image.is_transparent() {
+            editor.clear_layer_image(id)?;
+        } else {
+            let image = fit(&notes.image, width, height);
+            editor.set_layer_image(id, image.as_ref().unwrap_or(&notes.image), (0, 0))?;
+        }
+        report.notes = true;
+    }
+
     editor.save_with(path, true)?;
     report.problems = check_update(path, update, &report);
     Ok(report)
+}
+
+/// Whether `layer` holds `image` (at the page's size): the same coverage,
+/// and the same colour where it covers.
+fn same_pixels(document: &ClipDocument, layer: &ClipLayer, image: &RgbaImage) -> bool {
+    let (width, height) = (document.canvas.width_px as u32, document.canvas.height_px as u32);
+    let fitted = fit(image, width, height);
+    let image = fitted.as_ref().unwrap_or(image);
+    let stored = match document.render_layer_pixels(layer) {
+        Ok(Some(stored)) => stored,
+        Ok(None) => return image.is_transparent(),
+        Err(_) => return false,
+    };
+    let (origin_x, origin_y) = layer.pixel_origin();
+    (0..height as i64).all(|y| {
+        (0..width as i64).all(|x| {
+            let at = ((y * width as i64 + x) * 4) as usize;
+            let new = &image.pixels[at..at + 4];
+            let (sx, sy) = (x - origin_x, y - origin_y);
+            let old: &[u8] = if sx < 0 || sy < 0 || sx >= stored.width as i64 || sy >= stored.height as i64 {
+                &[0, 0, 0, 0]
+            } else {
+                let at = ((sy * stored.width as i64 + sx) * 4) as usize;
+                &stored.pixels[at..at + 4]
+            };
+            new[3] == old[3] && (new[3] == 0 || new[..3] == old[..3])
+        })
+    })
+}
+
+/// `image` at the page's size, when it is not already.
+fn fit(image: &RgbaImage, width: u32, height: u32) -> Option<RgbaImage> {
+    ((image.width, image.height) != (width, height)).then(|| resize(image, width, height, Filter::Lanczos3))
 }
 
 /// Schema and shared rows for a donor from another file (always: the page

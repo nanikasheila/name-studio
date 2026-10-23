@@ -62,6 +62,7 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
           storyIndex: null,
           inputs: [task.project, project.source?.path].filter((path): path is string => !!path),
           donors: [...(task.donors ?? []), project.source?.path].filter((path): path is string => !!path),
+          notes: task.notes !== false,
         },
         status,
       );

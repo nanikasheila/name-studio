@@ -742,6 +742,9 @@ struct DialogueMeta {
     /// The page's texts (`LayerMeta::Text`) and balloons (vector / raster).
     texts: Vec<LayerMeta>,
     balloons: Vec<LayerMeta>,
+    /// The memos layer (`LayerMeta::Raster`, its PNG after the balloons'), if written.
+    #[serde(default)]
+    notes: Option<LayerMeta>,
     #[serde(default)]
     spread: bool,
     /// Folder name under `name-studio-backup` for the pages as they were.
@@ -795,9 +798,17 @@ async fn update_name_dialogue(
             for layer in meta.balloons {
                 balloons.push(page_layer(layer, &mut take, width, height)?);
             }
+            let notes = match meta.notes {
+                Some(layer) => match page_layer(layer, &mut take, width, height)? {
+                    PageLayer::Raster(notes) => Some(notes),
+                    _ => None,
+                },
+                None => None,
+            };
             let update = update::DialogueUpdate {
                 texts,
                 balloons,
+                notes,
                 written: manifest::written(&path),
             };
             let backup = writer.out_dir().join("name-studio-backup").join(&meta.backup);

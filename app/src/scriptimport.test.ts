@@ -199,6 +199,11 @@ describe("台本を直して取り込み直す", () => {
     expect(page.memo).toBe("夜の屋上。");
     const again = applyScript(project, parseScript(revised), { startPage: 0, makePanels: true, update: true });
     expect([again.changed, again.added, again.removed, again.kept]).toEqual([0, 0, 0, 8]);
+    expect(again.notes ?? 0).toBe(0);
+    // A changed panel memo is counted (and goes to the memos layer in CSP).
+    const directed = applyScript(project, parseScript(revised.replace("#### コマ1 引きの絵", "#### コマ1 俯瞰の引きの絵")), { startPage: 0, makePanels: true, update: true });
+    expect(directed.notes).toBe(1);
+    expect(page.panels.find((panel) => panel.order === 1)!.note).toBe("俯瞰の引きの絵");
   });
 
   it("takes back the script the app writes without changing anything", () => {

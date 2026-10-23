@@ -18,7 +18,7 @@ use serde::Serialize;
 
 use super::cmc::{work_canvas_values, write_cmc};
 use super::editor::ClipEditor;
-use super::manifest::PageRecord;
+use super::manifest::{PageRecord, image_signature};
 use super::page::{apply_page_settings, merge_page_schema, replace_preview, share_rows};
 use super::split::page_file_name;
 use super::spread::{SpreadLayout, make_spread_template};
@@ -278,7 +278,7 @@ fn layer_name(layer: &PageLayer) -> &str {
 }
 
 /// Make a layer a 下描き layer (CSP: レイヤー > 下描きレイヤーに設定) at half opacity.
-fn make_draft(editor: &ClipEditor, id: i64) -> Result<()> {
+pub(crate) fn make_draft(editor: &ClipEditor, id: i64) -> Result<()> {
     let has_draft = editor.db.prepare("SELECT DraftLayer FROM Layer LIMIT 0").is_ok();
     if has_draft {
         editor
@@ -562,8 +562,9 @@ pub fn write_name_page(
     Ok(ids)
 }
 
-/// What `layers` put into a page: its texts and the shapes of its vector layers.
-pub fn page_record(layers: &[PageLayer]) -> PageRecord {
+/// What `layers` put into a page: its texts, the shapes of its vector
+/// layers and the pixels of the image layers named in `images`.
+pub fn page_record(layers: &[PageLayer], images: &[String]) -> PageRecord {
     let mut record = PageRecord {
         texts: Some(Vec::new()),
         ..Default::default()
@@ -576,6 +577,11 @@ pub fn page_record(layers: &[PageLayer]) -> PageRecord {
                 record
                     .vectors
                     .insert(name.clone(), shape_signature(points.iter().map(Vec::as_slice)));
+            }
+            PageLayer::Raster(raster) if images.contains(&raster.name) => {
+                record
+                    .rasters
+                    .insert(raster.name.clone(), image_signature(&raster.image));
             }
             _ => {}
         }
@@ -762,7 +768,7 @@ impl RasterWorkWriter {
         )?;
         self.next_index += if spread { 2 } else { 1 };
         self.pages.push(output.clone());
-        self.records.push(page_record(layers));
+        self.records.push(page_record(layers, &self.options.draft_layers));
         Ok(output)
     }
 

@@ -359,6 +359,7 @@ export class ExportDialog {
         "・描いたレイヤーやほかのレイヤーはそのままです\n" +
         "・前のセリフとフキダシは消さずに隠し、名前の頭に「（旧）」を付けます（見比べてから CSP で消せます）\n" +
         "・CSP で直したセリフや足したテキストはそのままです\n" +
+        "・「メモ（ネーム）」レイヤーは、メモが変わっていれば描き直します\n" +
         "・変える前のページは name-studio-backup フォルダーに控えます\n\n" +
         "CSP でページを開いていたら、保存して閉じてから続けてください。書き出したときと同じひな形・ページ数で反映します。",
       { title: "Name Studio", kind: "info", okLabel: "反映する", cancelLabel: "やめる" },
@@ -378,6 +379,7 @@ export class ExportDialog {
           storyIndex: null,
           inputs: this.sources(),
           donors: [this.donor, project.source?.path].filter((path): path is string => !!path),
+          notes: this.notes,
         },
         (text) => {
           this.message(text);

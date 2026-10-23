@@ -684,6 +684,8 @@ export interface DialogueUpdateReport {
   notFound: string[];
   /** Swapped layers that had been changed in CSP too. */
   conflicts: string[];
+  /** Whether the memos layer was redrawn. */
+  notes: boolean;
   problems: string[];
 }
 
@@ -713,6 +715,7 @@ export async function updateCspDialogue(
   progress: (message: string) => void,
 ): Promise<DialogueUpdateSummary> {
   await loadTips(project.brushes);
+  const notes = request.notes !== false;
   const start = await invoke<NameExportStart>("begin_name_export", { request: { ...request, frameFolders: false, notes: false } });
   try {
     if (!start.textLayers) throw new Error("テキストのレイヤーの見本が見つかりません。書き出しと同じひな形・見本のページを選んでください");
@@ -771,7 +774,29 @@ export async function updateCspDialogue(
       } else {
         await image("balloons");
       }
-      const meta = { texts, balloons, spread: spread !== null, backup };
+      let memos: LayerMeta | null = null;
+      if (notes) {
+        let png: Uint8Array = new Uint8Array();
+        if (placed.some(({ page }) => hasNotes(page))) {
+          drawing.width = width;
+          drawing.height = height;
+          for (const { page, m, right } of placed) {
+            ctx.save();
+            if (spread) {
+              ctx.beginPath();
+              const x = spread.gutterPx * factor;
+              ctx.rect(right ? x : 0, 0, right ? width - x : x, height);
+              ctx.clip();
+            }
+            drawNotes(ctx, project, page, scaled(m, factor));
+            ctx.restore();
+          }
+          png = await encode(drawing, "image/png");
+        }
+        memos = { kind: "raster", name: NOTES_LAYER_NAME, length: png.length };
+        pngs.push(png);
+      }
+      const meta = { texts, balloons, notes: memos, spread: spread !== null, backup };
       const report = await invoke<DialogueUpdateReport>("update_name_dialogue", packBody(meta, pngs));
       pages.push({ ...report, pages: unit.map((index) => index + 1) });
     }
@@ -790,8 +815,8 @@ export function dialogueUpdateSummary(summary: DialogueUpdateSummary): { ok: boo
   const missing = summary.pages.filter((page) => page.notFound.includes("ページのファイル"));
   lines.push(
     summary.changed
-      ? `${summary.changed} ページに反映しました（セリフ: 足した ${sum((page) => page.added.length)}・（旧）にして隠した ${sum((page) => page.retired.length)}・そのまま ${sum((page) => page.kept)}、フキダシを入れ替えたページ ${summary.pages.filter((page) => page.replaced.length).length}）`
-      : "セリフもフキダシも変わったページはありませんでした",
+      ? `${summary.changed} ページに反映しました（セリフ: 足した ${sum((page) => page.added.length)}・（旧）にして隠した ${sum((page) => page.retired.length)}・そのまま ${sum((page) => page.kept)}、フキダシを入れ替えたページ ${summary.pages.filter((page) => page.replaced.length).length}、メモを描き直したページ ${summary.pages.filter((page) => page.notes).length}）`
+      : "セリフ・フキダシ・メモの変わったページはありませんでした",
   );
   const backup = summary.pages.find((page) => page.backup)?.backup;
   if (backup) lines.push(`反映する前のページ: ${backup.replace(/[\\/][^\\/]+$/, "")}`);
