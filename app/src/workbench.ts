@@ -5,7 +5,7 @@ import { ask, save } from "@tauri-apps/plugin-dialog";
 import { Autosaver, autosaveToFile, formatTime } from "./autosave";
 import { addBrushes, loadLibrary } from "./brush";
 import { BrushDialog } from "./brushdialog";
-import { PageEditor, isTyping, type Selection, type Tool } from "./editor";
+import { ERASE_MODE_LABELS, PageEditor, isTyping, type EditorEraseMode, type Selection, type Tool } from "./editor";
 import { SHAPE_LABELS, TAIL_LABELS, defaultTailStyle, resolvedShape } from "./balloon";
 import { ExportDialog } from "./exportdialog";
 import { History } from "./history";
@@ -362,8 +362,9 @@ export class Workbench {
   private findSelected(s: Selection): boolean {
     const page = this.state.project?.pages.find((p) => p.id === s.pageId);
     if (!page) return false;
-    const list = { panel: page.panels, line: page.lines, stroke: page.strokes, breakout: page.breakouts }[s.kind];
-    return list.some((item: { id: string }) => item.id === s.id);
+    const lists = { panel: page.panels, line: page.lines, stroke: page.strokes, breakout: page.breakouts };
+    if (s.kind === "group") return !!s.items?.every((item) => lists[item.kind].some((x: { id: string }) => x.id === item.id));
+    return lists[s.kind].some((item: { id: string }) => item.id === s.id);
   }
 
   // --- roughs -------------------------------------------------------------------------
@@ -545,6 +546,17 @@ export class Workbench {
     if (s?.kind === "panel") {
       const target = page.panels.find((p) => p.id === s.id);
       if (target) return panel.replaceChildren(...this.panelInspector(project, page, target.id, target.order));
+    }
+    if (s?.kind === "group") {
+      const strokes = s.items?.filter((item) => item.kind === "stroke").length ?? 0;
+      const lines = (s.items?.length ?? 0) - strokes;
+      const remove = element("button", { className: "danger", textContent: "選んだものを消す（Delete）" });
+      remove.addEventListener("click", () => this.deleteSelection());
+      return panel.replaceChildren(
+        element("h2", { textContent: "範囲選択" }),
+        element("p", { className: "hint", textContent: `ラフの線 ${strokes} 本、セリフ ${lines} 個。ドラッグや矢印キーでまとめて動かせます。` }),
+        remove,
+      );
     }
     if (s?.kind === "stroke") {
       const stroke = page.strokes.find((x) => x.id === s.id);
@@ -881,6 +893,12 @@ export class Workbench {
       if (s.kind === "line") page.lines = page.lines.filter((line) => line.id !== s.id);
       if (s.kind === "stroke") page.strokes = page.strokes.filter((stroke) => stroke.id !== s.id);
       if (s.kind === "breakout") page.breakouts = page.breakouts.filter((breakout) => breakout.id !== s.id);
+      if (s.kind === "group") {
+        const ids = new Set(s.items?.map((item) => item.id));
+        page.strokes = page.strokes.filter((stroke) => !ids.has(stroke.id));
+        page.lines = page.lines.filter((line) => !ids.has(line.id));
+        for (const line of page.lines) if (line.linkTo && ids.has(line.linkTo)) delete line.linkTo;
+      }
       if (s.kind === "line") {
         // Balloons joined to the removed one come loose.
         for (const line of page.lines) if (line.linkTo === s.id) delete line.linkTo;
@@ -901,11 +919,21 @@ export class Workbench {
 
   // --- pens and erasers -------------------------------------------------------------------
 
+  /** Switch how the eraser erases, keeping the tool in hand. */
+  setEraseMode(mode: EditorEraseMode): void {
+    this.editor.eraseMode = mode;
+    this.renderBrushBar();
+    this.editor.draw();
+    this.setStatus(`消し方: ${ERASE_MODE_LABELS[mode]}`);
+  }
+
   /** Use a brush for its kind of tool, with its own size. */
   private useBrush(brush: Brush | null, kind: "pen" | "eraser" = brush?.kind ?? "pen"): void {
     if (kind === "eraser") {
       this.editor.eraserBrush = brush?.id ?? null;
       if (brush) this.editor.eraserSizeMm = brush.sizeMm;
+      // A CSP vector eraser brings its way of erasing; it can be switched after.
+      if (brush?.erase) this.editor.eraseMode = brush.erase;
     } else {
       this.editor.penBrush = brush?.id ?? null;
       this.editor.penWidthMm = brush ? brush.sizeMm : 0.4;
@@ -927,7 +955,7 @@ export class Workbench {
     const select = $<HTMLSelectElement>("brush-select");
     select.replaceChildren();
     const option = (value: string, label: string) => Object.assign(document.createElement("option"), { value, textContent: label });
-    select.append(option("", kind === "pen" ? "標準のペン" : "標準の消しゴム（線ごと）"));
+    select.append(option("", kind === "pen" ? "標準のペン" : "標準の消しゴム"));
     for (const brush of project.brushes.filter((b) => b.kind === kind)) select.append(option(brush.id, brush.name));
     const others = loadLibrary()
       .map((brush, index) => ({ brush, index }))
@@ -946,6 +974,10 @@ export class Workbench {
     const sizeMm = kind === "pen" ? this.editor.penWidthMm : this.editor.eraserSizeMm;
     if (document.activeElement !== size) size.value = plainEraser ? "" : String(Math.round(sizeMm * 100) / 100);
     $("brush-tip-label").hidden = !current?.tip;
+    $("erase-modes").hidden = kind !== "eraser";
+    for (const mode of Object.keys(ERASE_MODE_LABELS) as EditorEraseMode[]) {
+      $(`erase-${mode}`).classList.toggle("active", this.editor.eraseMode === mode);
+    }
     $<HTMLInputElement>("brush-tip").checked = !!current?.tip?.enabled;
   }
 
@@ -971,6 +1003,9 @@ export class Workbench {
       $(`tool-${name}`).addEventListener("click", () => this.setTool(name));
     }
     $("undo").addEventListener("click", () => this.undo());
+    for (const mode of Object.keys(ERASE_MODE_LABELS) as EditorEraseMode[]) {
+      $(`erase-${mode}`).addEventListener("click", () => this.setEraseMode(mode));
+    }
     $<HTMLSelectElement>("brush-select").addEventListener("change", (event) => {
       this.chooseBrush((event.target as HTMLSelectElement).value);
     });
@@ -1045,6 +1080,12 @@ export class Workbench {
     if (this.view !== "edit") return false;
     const tools: Record<string, Tool> = { v: "select", k: "cut", t: "text", p: "pen", e: "eraser", b: "breakout" };
     const tool = tools[event.key.toLowerCase()];
+    if (tool === "eraser" && this.editor.tool === "eraser") {
+      // E again: the next way of erasing, as CSP's sub tools cycle.
+      const modes = Object.keys(ERASE_MODE_LABELS) as EditorEraseMode[];
+      this.setEraseMode(modes[(modes.indexOf(this.editor.eraseMode) + 1) % modes.length]);
+      return true;
+    }
     if (tool) {
       this.setTool(tool);
       return true;

@@ -9,11 +9,14 @@ import {
   area,
   basicBox,
   cutPanels,
+  eraseInside,
   eraseStrokes,
   insertPage,
   movePage,
   newProject,
   orderPanels,
+  pickInside,
+  splitAtX,
   rectShape,
   removeCharacter,
   removePage,
@@ -177,5 +180,65 @@ describe("History", () => {
     value = history.redo(value)!;
     expect(value.n).toBe(2);
     expect(history.canRedo).toBe(false);
+  });
+});
+
+describe("範囲選択と囲って消す", () => {
+  function setup() {
+    const project = newProject("t", 1);
+    const page = project.pages[0];
+    addStroke(project, page, [[0, 5, 1], [10, 5, 1]], 0.2); // crosses the box
+    addStroke(project, page, [[4, 4, 1], [6, 6, 1]], 0.2); // inside
+    addStroke(project, page, [[20, 20, 1], [30, 30, 1]], 0.2); // outside
+    return { project, page };
+  }
+  const box = rectShape([3, 3, 7, 7]);
+
+  it("erases only inside the outline, cutting lines at its edge", () => {
+    const { project, page } = setup();
+    const [crossing, , outside] = page.strokes;
+    expect(eraseInside(project, page, box)).toBe(2);
+    expect(page.strokes).toHaveLength(3);
+    const pieces = page.strokes.filter((s) => s.points[0][1] === 5);
+    expect(pieces).toHaveLength(2);
+    expect(pieces[0].id).toBe(crossing.id);
+    expect(pieces[0].points[pieces[0].points.length - 1][0]).toBeCloseTo(3, 0);
+    expect(pieces[1].points[0][0]).toBeCloseTo(7, 0);
+    expect(pieces[0].cut).toEqual([false, true]);
+    expect(pieces[1].cut).toEqual([true, false]);
+    expect(page.strokes).toContain(outside);
+    expect(eraseInside(project, page, rectShape([50, 50, 60, 60]))).toBe(0);
+  });
+
+  it("picks lines mostly inside and dialogue whose box centre is", () => {
+    const { project, page } = setup();
+    const line = addLine(project, page, [5, 5]);
+    const picked = pickInside(page, box);
+    expect(picked.strokes).toEqual([page.strokes[1].id]);
+    expect(picked.lines).toEqual(line.box[0] + line.box[2] < 14 ? [line.id] : []);
+  });
+});
+
+describe("見開きのノド", () => {
+  it("splits a line where it crosses the gutter, sharing the crossing point", () => {
+    const runs = splitAtX(
+      [
+        [200, 10, 0.5],
+        [250, 20, 0.5],
+        [300, 30, 0.5],
+        [330, 30, 0.5],
+      ],
+      275,
+    );
+    expect(runs.map((run) => run.beyond)).toEqual([false, true]);
+    expect(runs[0].points.at(-1)).toEqual([275, 25, 0.5]);
+    expect(runs[1].points[0]).toEqual([275, 25, 0.5]);
+    expect(runs[1].points.at(-1)).toEqual([330, 30, 0.5]);
+  });
+
+  it("keeps a line on one side whole, and drops a crossing with nothing after it", () => {
+    expect(splitAtX([[1, 1], [2, 2]] as never, 10)).toHaveLength(1);
+    const back = splitAtX([[5, 0], [15, 0], [5, 0]] as never, 10);
+    expect(back.map((run) => run.beyond)).toEqual([false, true, false]);
   });
 });

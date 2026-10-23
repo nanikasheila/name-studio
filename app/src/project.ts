@@ -964,3 +964,108 @@ export function script(project: Project): { page: number; line: Line }[] {
 export function textAmount(page: Page): number {
   return page.lines.reduce((sum, line) => sum + [...line.text.replace(/\s/g, "")].length, 0);
 }
+
+/** 囲って消す: remove the parts of rough lines inside `shape` (as CSP deletes
+ * a selection on a vector layer); returns how many lines changed. */
+export function eraseInside(project: Project, page: Page, shape: readonly Point[]): number {
+  if (shape.length < 3) return 0;
+  const [x0, y0, x1, y1] = bounds([...shape]);
+  let changed = 0;
+  const result: Stroke[] = [];
+  for (const stroke of page.strokes) {
+    const [sx0, sy0, sx1, sy1] = bounds(stroke.points.map(([x, y]) => [x, y] as Point));
+    const near = sx1 >= x0 && sx0 <= x1 && sy1 >= y0 && sy0 <= y1;
+    if (!near) {
+      result.push(stroke);
+      continue;
+    }
+    const pieces = cutInside(stroke.points, shape);
+    if (pieces.length === 1 && !pieces[0].cutStart && !pieces[0].cutEnd && pieces[0].points.length === stroke.points.length) {
+      result.push(stroke);
+      continue;
+    }
+    changed++;
+    for (const [index, piece] of pieces.entries()) {
+      const part: Stroke = { ...stroke, id: index === 0 ? stroke.id : newId(project, "stroke"), points: piece.points };
+      const cut: [boolean, boolean] = [piece.cutStart || !!stroke.cut?.[0], piece.cutEnd || !!stroke.cut?.[1]];
+      if (cut[0] || cut[1]) part.cut = cut;
+      else delete part.cut;
+      result.push(part);
+    }
+  }
+  page.strokes = result;
+  return changed;
+}
+
+/** The runs of a line outside `shape`, cut close to its edge. */
+function cutInside(points: StrokePoint[], shape: readonly Point[]): Piece[] {
+  const inside = (p: StrokePoint) => insidePolygon(shape, [p[0], p[1]]);
+  const [x0, y0, x1, y1] = bounds([...shape]);
+  // Put extra points on segments that reach the outline so the cut lands close to it.
+  const dense: StrokePoint[] = [points[0]];
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1];
+    const b = points[i];
+    const reaches = Math.max(a[0], b[0]) >= x0 && Math.min(a[0], b[0]) <= x1 && Math.max(a[1], b[1]) >= y0 && Math.min(a[1], b[1]) <= y1;
+    if (reaches) {
+      const count = Math.min(Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.1), 2000);
+      for (let k = 1; k < count; k++) dense.push(lerpPoint(a, b, k / count));
+    }
+    dense.push(b);
+  }
+  const pieces: Piece[] = [];
+  let run: StrokePoint[] = [];
+  let start = 0;
+  dense.forEach((p, index) => {
+    if (!inside(p)) {
+      if (!run.length) start = index;
+      run.push(p);
+      return;
+    }
+    if (run.length >= 2) pieces.push({ points: run, cutStart: start > 0, cutEnd: true });
+    run = [];
+  });
+  if (run.length >= 2) pieces.push({ points: run, cutStart: start > 0, cutEnd: false });
+  return pieces;
+}
+
+/** 範囲選択: rough lines mostly inside `shape` and dialogue whose box centre is. */
+export function pickInside(page: Page, shape: readonly Point[]): { strokes: string[]; lines: string[] } {
+  if (shape.length < 3) return { strokes: [], lines: [] };
+  const strokes = page.strokes
+    .filter((stroke) => {
+      const inside = stroke.points.filter(([x, y]) => insidePolygon(shape, [x, y])).length;
+      return inside > 0 && inside >= stroke.points.length / 2;
+    })
+    .map((stroke) => stroke.id);
+  const lines = page.lines
+    .filter(({ box: [x0, y0, x1, y1] }) => insidePolygon(shape, [(x0 + x1) / 2, (y0 + y1) / 2]))
+    .map((line) => line.id);
+  return { strokes, lines };
+}
+
+/** A line split where it crosses `x` (the gutter of a spread): runs in order,
+ * each marked with the side it is on (`beyond`: x greater than the gutter)
+ * and a crossing point shared by neighbouring runs. */
+export function splitAtX(points: StrokePoint[], x: number): { points: StrokePoint[]; beyond: boolean }[] {
+  const runs: { points: StrokePoint[]; beyond: boolean }[] = [];
+  for (const point of points) {
+    const beyond = point[0] > x;
+    const run = runs[runs.length - 1];
+    if (!run) {
+      runs.push({ points: [point], beyond });
+      continue;
+    }
+    if (run.beyond === beyond) {
+      run.points.push(point);
+      continue;
+    }
+    const last = run.points[run.points.length - 1];
+    const t = (x - last[0]) / (point[0] - last[0]);
+    const crossing = lerpPoint(last, point, Number.isFinite(t) ? t : 0);
+    crossing[0] = x;
+    run.points.push(crossing);
+    runs.push({ points: [crossing.slice() as StrokePoint, point], beyond });
+  }
+  return runs.filter((run) => run.points.length >= 2);
+}
