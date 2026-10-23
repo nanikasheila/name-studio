@@ -17,6 +17,7 @@ export type ActionId =
   | "tool.pen"
   | "tool.eraser"
   | "tool.breakout"
+  | "tool.sticky"
   | "eraser.next"
   | "brush.bigger"
   | "brush.smaller"
@@ -47,6 +48,7 @@ export const ACTIONS: readonly ActionInfo[] = [
   { id: "tool.pen", label: "ペン", group: "道具", keys: ["P"] },
   { id: "tool.eraser", label: "消しゴム（もう一度で消し方を切り替え）", group: "道具", keys: ["E"] },
   { id: "tool.breakout", label: "はみ出し", group: "道具", keys: ["B"] },
+  { id: "tool.sticky", label: "付箋", group: "道具", keys: ["M"] },
   { id: "eraser.next", label: "消し方を切り替える", group: "道具", keys: [] },
   { id: "brush.bigger", label: "ペン・消しゴムを太く", group: "道具", keys: ["]"] },
   { id: "brush.smaller", label: "ペン・消しゴムを細く", group: "道具", keys: ["["] },

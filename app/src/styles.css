@@ -269,3 +269,22 @@ dialog.shortcuts { width: min(620px, calc(100vw - 32px)); }
 .sc-keys { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
 .sc-key { font: 12px ui-monospace, monospace; padding: 1px 6px; }
 .sc-add.waiting { border-color: var(--accent); color: var(--accent); }
+.sticky-colors { display: flex; gap: 6px; }
+.sticky-color { min-width: 2.4em; color: #3a3420; border: 1px solid var(--line); }
+.sticky-color.active { outline: 2px solid var(--accent); }
+
+/* 構成補助 */
+.plan-controls { display: flex; gap: 16px; align-items: center; margin: 6px 0 10px; font-size: 13px; }
+.plan-controls input { width: 5em; }
+.chart.plan { margin-bottom: 8px; }
+.chart.plan .band { stroke: var(--muted); stroke-width: 0.5; }
+.chart.plan .band.odd { fill: color-mix(in srgb, var(--band) 50%, transparent); }
+.chart .part { fill-opacity: 0.22; }
+.chart .part-0 { fill: var(--series-1); }
+.chart .part-1 { fill: #eb6834; }
+.chart .part-2 { fill: #1baf7a; }
+.chart .part-3 { fill: #6250d6; }
+.chart .part-label { fill: var(--text); font-size: 12px; }
+.advice { margin: 0 0 12px; padding-left: 1.2em; font-size: 13px; line-height: 1.7; }
+.advice .warn { color: #b4541a; }
+.advice .link { cursor: pointer; text-decoration: underline dotted; }

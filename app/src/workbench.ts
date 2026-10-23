@@ -62,6 +62,8 @@ import {
   rectShape,
   removeCharacter,
   removePage,
+  removeSticky,
+  STICKY_COLORS,
   removePanel,
   sceneOf,
   sortLines,
@@ -72,6 +74,8 @@ import {
   type LineKind,
   type Alternatives,
   type Page,
+  type Sticky,
+  type StickyColor,
   type Panel,
   type PanelBorder,
   type PanelEffect,
@@ -406,7 +410,7 @@ export class Workbench {
   private findSelected(s: Selection): boolean {
     const page = this.state.project?.pages.find((p) => p.id === s.pageId);
     if (!page) return false;
-    const lists = { panel: page.panels, line: page.lines, stroke: page.strokes, breakout: page.breakouts };
+    const lists = { panel: page.panels, line: page.lines, stroke: page.strokes, breakout: page.breakouts, sticky: page.stickies ?? [] };
     if (s.kind === "group") return !!s.items?.every((item) => lists[item.kind].some((x: { id: string }) => x.id === item.id));
     return lists[s.kind].some((item: { id: string }) => item.id === s.id);
   }
@@ -510,7 +514,7 @@ export class Workbench {
         element("span", { className: "number", textContent: String(index + 1) }),
         element("span", { className: "memo" }, sceneLabel, page.memo.split("\n")[0] || ""),
         ...this.optionTag(project, page),
-        element("span", { className: "count", textContent: `コマ ${page.panels.length}・字 ${textAmount(page)}` }),
+        element("span", { className: "count", textContent: `コマ ${page.panels.length}・字 ${textAmount(page)}${page.stickies?.length ? `・付箋 ${page.stickies.length}` : ""}` }),
       );
       item.addEventListener("click", () => {
         if (this.view !== "edit") this.setView("edit");
@@ -621,6 +625,10 @@ export class Workbench {
     if (s?.kind === "panel") {
       const target = page.panels.find((p) => p.id === s.id);
       if (target) return panel.replaceChildren(...this.panelInspector(project, page, target.id, target.order));
+    }
+    if (s?.kind === "sticky") {
+      const sticky = page.stickies?.find((n) => n.id === s.id);
+      if (sticky) return panel.replaceChildren(...this.stickyInspector(sticky));
     }
     if (s?.kind === "group") {
       const strokes = s.items?.filter((item) => item.kind === "stroke").length ?? 0;
@@ -900,6 +908,33 @@ export class Workbench {
     ];
   }
 
+  private stickyInspector(sticky: Sticky): HTMLElement[] {
+    const text = element("textarea", { value: sticky.text, placeholder: "気づいたこと、直したいこと" });
+    this.liveText(text, (value) => (sticky.text = value));
+    const colors = (Object.keys(STICKY_COLORS) as StickyColor[]).map((color) => {
+      const chip = element("button", { className: `sticky-color${(sticky.color ?? "yellow") === color ? " active" : ""}`, textContent: STICKY_COLORS[color].label, title: `${STICKY_COLORS[color].label}色` });
+      chip.style.background = STICKY_COLORS[color].fill;
+      chip.addEventListener("click", () =>
+        this.edit(() => {
+          if (color === "yellow") delete sticky.color;
+          else sticky.color = color;
+        }),
+      );
+      return chip;
+    });
+    const remove = element("button", { className: "danger", textContent: "この付箋をはがす" });
+    remove.addEventListener("click", () => this.deleteSelection());
+    // A new note: ready to write in.
+    if (!sticky.text) setTimeout(() => text.focus(), 0);
+    return [
+      element("h2", { textContent: "付箋" }),
+      element("label", {}, "メモ", text),
+      element("div", { className: "row sticky-colors" }, ...colors),
+      element("p", { className: "hint", textContent: "付箋は作業用のメモで、CSP・PDF には書き出しません。ドラッグで動かせます。" }),
+      remove,
+    ];
+  }
+
   private pageInspector(project: Project, page: Page): HTMLElement[] {
     const index = pageIndex(project, page.id);
     const memo = element("textarea", { value: page.memo, placeholder: "このページで描くこと、狙い" });
@@ -1056,6 +1091,7 @@ export class Workbench {
       if (s.kind === "line") page.lines = page.lines.filter((line) => line.id !== s.id);
       if (s.kind === "stroke") page.strokes = page.strokes.filter((stroke) => stroke.id !== s.id);
       if (s.kind === "breakout") page.breakouts = page.breakouts.filter((breakout) => breakout.id !== s.id);
+      if (s.kind === "sticky") removeSticky(page, s.id);
       if (s.kind === "group") {
         const ids = new Set(s.items?.map((item) => item.id));
         page.strokes = page.strokes.filter((stroke) => !ids.has(stroke.id));
@@ -1074,7 +1110,7 @@ export class Workbench {
 
   setTool(tool: Tool): void {
     this.editor.setTool(tool);
-    for (const name of ["select", "cut", "text", "pen", "eraser", "breakout"] as const) {
+    for (const name of ["select", "cut", "text", "pen", "eraser", "breakout", "sticky"] as const) {
       $(`tool-${name}`).classList.toggle("active", name === tool);
     }
     this.renderBrushBar();
@@ -1162,7 +1198,7 @@ export class Workbench {
   }
 
   private bindControls(): void {
-    for (const name of ["select", "cut", "text", "pen", "eraser", "breakout"] as const) {
+    for (const name of ["select", "cut", "text", "pen", "eraser", "breakout", "sticky"] as const) {
       $(`tool-${name}`).addEventListener("click", () => this.setTool(name));
     }
     $("undo").addEventListener("click", () => this.undo());
@@ -1267,6 +1303,7 @@ export class Workbench {
       "tool.pen": "pen",
       "tool.eraser": "eraser",
       "tool.breakout": "breakout",
+      "tool.sticky": "sticky",
     };
     const tool = tools[action];
     const nextEraseMode = () => {

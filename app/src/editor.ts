@@ -8,6 +8,7 @@ import { addBreakout, moveBreakout, stacked } from "./koma";
 import { INK, drawBalloons, drawLineText, drawPanelBorders, drawPanelFills, drawStroke, drawStrokes, onTipLoaded, tracePath } from "./pagedraw";
 import {
   addLine,
+  addSticky,
   addPanel,
   addStroke,
   assignPanels,
@@ -43,16 +44,21 @@ import {
   type Page,
   type Panel,
   type Point,
+  type Sticky,
+  STICKY_COLORS,
+  STICKY_TEXT_MM,
+  stickyBox,
+  stickyRows,
   type Project,
   type RoughImage,
   type Stroke,
   type StrokePoint,
 } from "./project";
 
-export type Tool = "select" | "cut" | "text" | "pen" | "eraser" | "breakout";
+export type Tool = "select" | "cut" | "text" | "pen" | "eraser" | "breakout" | "sticky";
 
 export interface Selection {
-  kind: "panel" | "line" | "stroke" | "breakout" | "group";
+  kind: "panel" | "line" | "stroke" | "breakout" | "group" | "sticky";
   pageId: string;
   id: string;
   /** 範囲選択 ("group"): the rough lines and dialogue picked together. */
@@ -495,6 +501,7 @@ export class PageEditor {
 
     drawBalloons(ctx, page, m);
     for (const line of page.lines) this.drawLine(project, slot, line);
+    for (const sticky of page.stickies ?? []) this.drawSticky(slot, sticky);
     ctx.restore();
 
     ctx.fillStyle = "#f4f3f0";
@@ -504,6 +511,34 @@ export class PageEditor {
     const memo = page.memo ? `  ${page.memo.split("\n")[0]}` : "";
     const [trimX0, , trimX1] = trimBox(project.pageFormat);
     ctx.fillText(`${slot.index + 1}${memo}`, sx((trimX0 + trimX1) / 2), sy(pageH) + 18);
+  }
+
+  /** 付箋: a coloured note with its text; only here, never in exports. */
+  private drawSticky(slot: Slot, sticky: Sticky): void {
+    const ctx = this.ctx;
+    const [x0, y0, x1, y1] = stickyBox(sticky);
+    const sx = slot.x + x0 * slot.scale;
+    const sy = slot.y + y0 * slot.scale;
+    const w = (x1 - x0) * slot.scale;
+    const h = (y1 - y0) * slot.scale;
+    ctx.save();
+    ctx.shadowColor = "rgba(0, 0, 0, 0.25)";
+    ctx.shadowBlur = 4;
+    ctx.shadowOffsetY = 1;
+    ctx.fillStyle = STICKY_COLORS[sticky.color ?? "yellow"].fill;
+    ctx.fillRect(sx, sy, w, h);
+    ctx.restore();
+    if (this.isSelected(slot.page, "sticky", sticky.id)) {
+      ctx.strokeStyle = ACCENT;
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(sx - 1, sy - 1, w + 2, h + 2);
+    }
+    const size = STICKY_TEXT_MM * slot.scale;
+    ctx.fillStyle = sticky.text ? "#3a3420" : "rgba(58, 52, 32, 0.45)";
+    ctx.font = `${size}px sans-serif`;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    stickyRows(sticky.text).forEach((row, i) => ctx.fillText(row, sx + 2 * slot.scale, sy + 2 * slot.scale + i * size * 1.3));
   }
 
   private drawLine(project: Project, slot: Slot, line: Line): void {
@@ -650,6 +685,10 @@ export class PageEditor {
   private hit(slot: Slot, point: Point): Selection | null {
     const page = slot.page;
     const tolerance = 6 / slot.scale;
+    // 付箋 lie on top of everything.
+    for (const sticky of [...(page.stickies ?? [])].reverse()) {
+      if (insideBox(stickyBox(sticky), point)) return { kind: "sticky", pageId: page.id, id: sticky.id };
+    }
     for (const line of [...page.lines].reverse()) {
       const [x0, y0, x1, y1] = line.box;
       const pad = 1.5;
@@ -730,6 +769,7 @@ export class PageEditor {
       pen: "crosshair",
       eraser: "none",
       breakout: "crosshair",
+      sticky: "copy",
     };
     const eraser = this.eraseMode === "lasso" ? "crosshair" : "none";
     this.canvas.style.cursor = this.spaceHeld ? "grab" : this.tipEraser ? eraser : this.tool === "eraser" ? eraser : cursors[this.tool];
@@ -836,6 +876,22 @@ export class PageEditor {
       case "breakout":
         this.drag = { kind: "lasso", slot, points: [point] };
         return;
+      case "sticky": {
+        // On a note: pick it up to move; elsewhere: a new note there.
+        const hit = this.hit(slot, point);
+        if (hit?.kind === "sticky") {
+          this.select(hit);
+          this.host.begin();
+          this.drag = { kind: "move", slot, last: point, moved: false };
+          return;
+        }
+        this.host.begin();
+        const sticky = addSticky(project, slot.page, point);
+        this.host.commit();
+        this.select({ kind: "sticky", pageId: slot.page.id, id: sticky.id });
+        this.host.status("付箋を貼りました。右の欄に書けます（書き出しには入りません）");
+        return;
+      }
       case "eraser": {
         if (this.eraseMode === "lasso") {
           this.drag = { kind: "eraseLasso", slot, points: [point] };
@@ -1132,6 +1188,9 @@ export class PageEditor {
     } else if (s.kind === "breakout") {
       const breakout = page.breakouts.find((b) => b.id === s.id);
       if (breakout) moveBreakout(breakout, dx, dy);
+    } else if (s.kind === "sticky") {
+      const sticky = page.stickies?.find((n) => n.id === s.id);
+      if (sticky) sticky.at = [sticky.at[0] + dx, sticky.at[1] + dy];
     } else if (s.kind === "group") {
       for (const item of s.items ?? []) {
         if (item.kind === "line") {
