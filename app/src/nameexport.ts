@@ -16,7 +16,19 @@ import {
   loadTips,
   type MmToPx,
 } from "./pagedraw";
-import { KIND_LABELS, MM_PER_PT, basicBox, trimBox, type Brush, type Page, type Project, type RoughImage } from "./project";
+import {
+  KIND_LABELS,
+  MM_PER_PT,
+  basicBox,
+  splitAtX,
+  trimBox,
+  type Brush,
+  type Page,
+  type Project,
+  type RoughImage,
+  type StrokePoint,
+  wantsSpread,
+} from "./project";
 import { sceneSpans } from "./story";
 
 /** The template page as `begin_name_export` reports it (clip-core `TemplateCanvas`). */
@@ -28,10 +40,79 @@ export interface TemplateCanvas {
   basicPx: [number, number, number, number] | null;
 }
 
+/** Where pages go on a CSP 見開き page (clip-core `SpreadLayout`), in template px. */
+export interface SpreadLayout {
+  widthPx: number;
+  heightPx: number;
+  gutterPx: number;
+  leftDx: number;
+  rightDx: number;
+}
+
 /** `begin_name_export`: the canvas, and which parts can be editable layers. */
 export interface NameExportStart extends TemplateCanvas {
   vectorLayers: boolean;
   textLayers: boolean;
+  /** Whether the book's first page is a left page (from the template); null when unknown. */
+  firstPageLeft: boolean | null;
+  spread: SpreadLayout | null;
+  /** Why 見開き pages cannot be written, when they cannot. */
+  spreadProblem: string | null;
+}
+
+/**
+ * The CSP pages to write, each one name page or two (a 見開き, right page
+ * first for a right-bound book). CSP pairs pages by side: a spread starts
+ * on the side that comes first in the book (the right page of a manga), as
+ * the template's own page tells; other pairs are written as single pages.
+ */
+export function exportUnits(
+  project: Project,
+  firstPageLeft: boolean | null,
+  spreadProblem: string | null = null,
+): { units: number[][]; warnings: string[] } {
+  const units: number[][] = [];
+  const warnings: string[] = [];
+  const zeroLeft = firstPageLeft ?? project.binding === "right";
+  const isLeft = (index: number) => zeroLeft === (index % 2 === 0);
+  for (let index = 0; index < project.pages.length; ) {
+    if (wantsSpread(project, index)) {
+      const startsSpread = project.binding === "right" ? !isLeft(index) : isLeft(index);
+      if (spreadProblem) {
+        warnings.push(`${index + 1}–${index + 2} ページを見開きにできませんでした（${spreadProblem}）。別々のページにしました`);
+      } else if (!startsSpread) {
+        warnings.push(
+          `${index + 1}–${index + 2} ページは CSP では見開きにならない並びです（${index + 1} ページが${isLeft(index) ? "左" : "右"}ページ）。別々のページにしました`,
+        );
+      } else {
+        units.push([index, index + 1]);
+        index += 2;
+        continue;
+      }
+    }
+    units.push([index]);
+    index += 1;
+  }
+  return { units, warnings };
+}
+
+function shifted(m: MmToPx, dx: number): MmToPx {
+  return { ...m, x: m.x + dx };
+}
+
+/**
+ * Vector lines cut at the gutter `x`, keeping one page's side (`right`): on
+ * a spread each page ends at its trim, as the editor shows it.
+ */
+export function clipLines(lines: VectorLineMeta[], x: number, right: boolean): VectorLineMeta[] {
+  return lines.flatMap((line) => {
+    const inside = (point: readonly number[]) => (right ? point[0] >= x : point[0] <= x);
+    if (line.points.every(inside)) return [line];
+    const points = line.closed ? [...line.points, line.points[0]] : line.points;
+    return splitAtX(points as StrokePoint[], x)
+      .filter((run) => run.beyond === right)
+      .map((run) => ({ ...line, closed: false, points: run.points as [number, number, number][] }));
+  });
 }
 
 /** Bigger page images are drawn smaller and scaled up on the Rust side. */
@@ -257,6 +338,8 @@ export interface CspExportRequest {
 /** A written file read back (clip-core `verify::FileCheck`). */
 export interface FileCheck {
   path: string;
+  /** The name pages (1-based) in this file: two for a 見開き page. */
+  pages?: number[];
   /** Empty when the file holds what was written. */
   problems: string[];
   layers: number;
@@ -273,13 +356,18 @@ export interface CspExportReport {
   /** 自己確認 of each page, in page order. */
   checks: FileCheck[];
   workCheck: FileCheck | null;
+  /** Pages that could not go as they were asked to (a 見開き written as two pages). */
+  warnings?: string[];
+  /** How many 見開き pages were written. */
+  spreads?: number;
 }
 
 /** The self-check in a few lines: all fine, or what is wrong where. */
 export function checkSummary(report: Pick<CspExportReport, "checks" | "workCheck">): { ok: boolean; lines: string[] } {
   const lines: string[] = [];
   for (const [index, check] of report.checks.entries()) {
-    for (const problem of check.problems) lines.push(`${index + 1} ページ: ${problem}`);
+    const where = check.pages ? (check.pages.length > 1 ? `${check.pages.join("–")} ページ（見開き）` : `${check.pages[0]} ページ`) : `${index + 1} ページ`;
+    for (const problem of check.problems) lines.push(`${where}: ${problem}`);
   }
   for (const problem of report.workCheck?.problems ?? []) lines.push(`作品: ${problem}`);
   if (lines.length) return { ok: false, lines: [`自己確認で ${lines.length} 件の問題が見つかりました:`, ...lines] };
@@ -310,22 +398,42 @@ export async function exportToCsp(
   const text = editable && start.textLayers;
   try {
     const full = projectToTemplate(project, start);
-    const factor = Math.min(1, Math.sqrt(MAX_LAYER_PIXELS / (start.widthPx * start.heightPx)));
-    const width = Math.round(start.widthPx * factor);
-    const height = Math.round(start.heightPx * factor);
-    const m = scaled(full, factor);
+    const { units, warnings } = exportUnits(project, start.firstPageLeft, start.spread ? null : start.spreadProblem);
+    const checks: FileCheck[] = [];
+    // One drawing canvas for the widest page; each page is drawn at its own size.
+    const widest = Math.max(start.widthPx, ...(units.some((unit) => unit.length > 1) && start.spread ? [start.spread.widthPx] : []));
+    const factor = Math.min(1, Math.sqrt(MAX_LAYER_PIXELS / (widest * start.heightPx)));
     const drawing = document.createElement("canvas");
-    drawing.width = width;
-    drawing.height = height;
     const ctx = drawing.getContext("2d")!;
     const overlay = document.createElement("canvas");
-    overlay.width = Math.min(OVERLAY_WIDTH, start.widthPx);
-    overlay.height = Math.round((start.heightPx * overlay.width) / start.widthPx);
-    const small = scaled(full, overlay.width / start.widthPx);
     const overlayCtx = overlay.getContext("2d")!;
-    const checks: FileCheck[] = [];
-    for (const [index, page] of project.pages.entries()) {
-      progress(`${index + 1} / ${project.pages.length} ページを書き出し中…`);
+    for (const [unitIndex, unit] of units.entries()) {
+      progress(`${unitIndex + 1} / ${units.length} ページを書き出し中…`);
+      const spread = unit.length > 1 && start.spread ? start.spread : null;
+      const pageWidth = spread ? spread.widthPx : start.widthPx;
+      // Right binding: the first page of a spread is the right half.
+      const placed = unit.map((index, position) => {
+        const right = (position === 0) === (project.binding === "right");
+        const dx = spread ? (right ? spread.rightDx : spread.leftDx) : 0;
+        return { page: project.pages[index], m: shifted(full, dx), right };
+      });
+      // On a spread each page shows up to the gutter (template px, `scale` of drawing).
+      const clipped = (target: CanvasRenderingContext2D, scale: number, right: boolean, draw: () => void) => {
+        if (!spread) return draw();
+        target.save();
+        target.beginPath();
+        const x = spread.gutterPx * scale;
+        target.rect(right ? x : 0, 0, right ? target.canvas.width - x : x, target.canvas.height);
+        target.clip();
+        draw();
+        target.restore();
+      };
+      const width = Math.round(pageWidth * factor);
+      const height = Math.round(start.heightPx * factor);
+      drawing.width = width;
+      drawing.height = height;
+      overlay.width = Math.min(OVERLAY_WIDTH * unit.length, pageWidth);
+      overlay.height = Math.round((start.heightPx * overlay.width) / pageWidth);
       const layers: LayerMeta[] = [];
       const pngs: Uint8Array[] = [];
       overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
@@ -333,40 +441,55 @@ export async function exportToCsp(
         // Image balloons carry their own paper.
         if (kind === "balloonFills" && !vector) continue;
         if (kind === "text" ? text : vector && canBeVector(kind)) {
-          if (kind === "text") layers.push(...textLayers(page, full, start.resolution));
-          else if (canBeVector(kind)) layers.push({ kind: "vector", name: LAYER_NAMES[kind], lines: vectorLines(page, kind, full, project.brushes) });
-          // CSP draws these itself when the page is opened; the thumbnail does not.
-          drawPart(overlayCtx, page, kind, small, project.brushes);
+          const toOverlay = overlay.width / pageWidth;
+          for (const { page, m, right } of placed) {
+            if (kind === "text") layers.push(...textLayers(page, m, start.resolution));
+            // CSP draws these itself when the page is opened; the thumbnail does not.
+            clipped(overlayCtx, toOverlay, right, () => drawPart(overlayCtx, page, kind, scaled(m, toOverlay), project.brushes));
+          }
+          if (canBeVector(kind)) {
+            const lines = placed.flatMap(({ page, m, right }) => {
+              const own = vectorLines(page, kind, m, project.brushes);
+              return spread ? clipLines(own, spread.gutterPx, right) : own;
+            });
+            layers.push({ kind: "vector", name: LAYER_NAMES[kind], lines });
+          }
           continue;
         }
         // An empty part goes as no bytes; the Rust side makes it a blank layer.
         let png: Uint8Array = new Uint8Array();
-        if (partCount(page, kind)) {
+        if (placed.some(({ page }) => partCount(page, kind))) {
           ctx.clearRect(0, 0, width, height);
-          drawPart(ctx, page, kind, m, project.brushes);
+          for (const { page, m, right } of placed) {
+            clipped(ctx, factor, right, () => drawPart(ctx, page, kind, scaled(m, factor), project.brushes));
+          }
           png = await encode(drawing, "image/png");
         }
         layers.push({ kind: "raster", name: LAYER_NAMES[kind], length: png.length });
         pngs.push(png);
       }
       const overlayPng = vector || text ? await encode(overlay, "image/png") : new Uint8Array();
-      const roughs = page.roughs.map((rough: RoughImage) => ({
-        layerId: rough.layerId,
-        sheetCrop: rough.sheetCrop,
-        target: mapBox(rough.box, full),
-      }));
+      const roughs = placed.flatMap(({ page, m }) =>
+        page.roughs.map((rough: RoughImage) => ({
+          layerId: rough.layerId,
+          sheetCrop: rough.sheetCrop,
+          target: mapBox(rough.box, m),
+        })),
+      );
       const meta = {
         layers,
         sheet: project.source?.path ?? null,
         roughs: project.source ? roughs : [],
         overlayLength: overlayPng.length,
+        spread: spread !== null,
       };
-      checks.push(await invoke<FileCheck>("export_name_page", packBody(meta, [...pngs, overlayPng])));
+      const check = await invoke<FileCheck>("export_name_page", packBody(meta, [...pngs, overlayPng]));
+      checks.push({ ...check, pages: unit.map((index) => index + 1) });
     }
     drawing.width = 0;
     overlay.width = 0;
     const report = await invoke<{ pages: string[]; work: string | null; workCheck: FileCheck | null }>("finish_name_export");
-    return { ...report, vectorLayers: vector, textLayers: text, checks };
+    return { ...report, vectorLayers: vector, textLayers: text, checks, warnings, spreads: units.filter((unit) => unit.length > 1).length };
   } catch (error) {
     await invoke("cancel_name_export").catch(() => undefined);
     throw error;

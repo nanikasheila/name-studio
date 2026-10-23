@@ -23,6 +23,8 @@ import {
   isBled,
   rotatePanel,
   spreadPanel,
+  spreadPair,
+  setSpreadPage,
   spreadTwin,
   unspreadPanel,
   type Side,
@@ -59,6 +61,7 @@ import {
   type Project,
   type RoughImage,
   type TailStyle,
+  wantsSpread,
 } from "./project";
 
 export const PROJECT_EXTENSION = "namestudio";
@@ -861,6 +864,24 @@ export class Workbench {
       this.edit((p) => removePage(p, page.id));
     });
     remove.className = "danger";
+    const pair = spreadPair(project, page, this.editor.firstAlone);
+    const spreadSection: HTMLElement[] = [];
+    if (pair) {
+      const pairIndex = pageIndex(project, pair[0].id);
+      const forced = wantsSpread(project, pairIndex) && !pair[0].joinNext;
+      const box = element("input", { type: "checkbox", checked: wantsSpread(project, pairIndex), disabled: forced });
+      box.addEventListener("change", () => this.edit((p) => setSpreadPage(p, page, this.editor.firstAlone, box.checked)));
+      spreadSection.push(
+        element("h3", { textContent: "見開き" }),
+        element("label", { className: "inline" }, box, `${pairIndex + 1}–${pairIndex + 2} ページを CSP で 1 枚の見開きページにする`),
+        element("p", {
+          className: "hint",
+          textContent: forced
+            ? "ノドをまたぐコマがあるので、見開きページとして書き出します。"
+            : "書き出すと、CSP の見開きページ（幅 2 倍の 1 ファイル）になります。ノドをまたいで線やコマを描けます。",
+        }),
+      );
+    }
     return [
       element("h2", { textContent: `${index + 1} ページ` }),
       element("label", {}, "メモ", memo),
@@ -870,6 +891,7 @@ export class Workbench {
       element("h3", { textContent: "コマ割りの型" }),
       element("div", { className: "row" }, pattern, applyButton),
       patternNote,
+      ...spreadSection,
       element("h3", { textContent: "ページ" }),
       element("div", { className: "row" }, before, after),
       element("div", { className: "row" }, earlier, later),

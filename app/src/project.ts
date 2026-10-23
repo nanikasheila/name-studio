@@ -181,6 +181,8 @@ export interface Page {
   strokes: Stroke[];
   roughs: RoughImage[];
   breakouts: Breakout[];
+  /** 見開きページ: this page and the next (its facing page) go to CSP as one spread page. */
+  joinNext?: boolean;
 }
 
 export interface Character {
@@ -1068,4 +1070,15 @@ export function splitAtX(points: StrokePoint[], x: number): { points: StrokePoin
     runs.push({ points: [crossing.slice() as StrokePoint, point], beyond });
   }
   return runs.filter((run) => run.points.length >= 2);
+}
+
+/** Whether page `index` and the next one should go to CSP as one 見開き page. */
+export function wantsSpread(project: Project, index: number): boolean {
+  const page = project.pages[index];
+  const next = project.pages[index + 1];
+  if (!page || !next) return false;
+  if (page.joinNext) return true;
+  // A panel across the gutter can only be one panel on a spread page.
+  const shared = new Set(next.panels.map((panel) => panel.spread).filter(Boolean));
+  return page.panels.some((panel) => panel.spread && shared.has(panel.spread));
 }

@@ -862,7 +862,7 @@ fn writes_spread_pages() {
             .iter()
             .map(|(_, x0, x1, right)| (*x0, *x1, *right))
             .collect::<Vec<_>>(),
-        vec![(430, 440, false), (360, 370, true)]
+        vec![(430, 440, false), (359, 369, true)]
     );
     let stories: Vec<bool> = story_texts(&spread_path, 1).into_iter().map(|story| story.3).collect();
     assert_eq!(stories, [false, true]);

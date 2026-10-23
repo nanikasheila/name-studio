@@ -359,7 +359,6 @@ fn add_right_story_layers(
             layer_value(&editor.db, layer_id, "ComicStoryInfoType")?,
             Value::Integer(NOMBRE_INFO)
         );
-        let name = text_of(&layer_value(&editor.db, layer_id, "LayerName")?);
         let original: Values = editor.layer_row(layer_id)?;
         let mut keep = |values: &mut Values| -> Result<()> {
             for column in [
@@ -373,11 +372,21 @@ fn add_right_story_layers(
                 }
             }
             set_value(values, FOR_RIGHT_PAGE, Value::Integer(1));
-            set_value(values, "LayerName", Value::Text(format!("{name} 右")));
             Ok(())
         };
-        let right = editor.add_layer(source.database(), &payload, layer_id, Some(&mut keep), None)?;
-        editor.update_layer(layer_id, &[("LayerName", Value::Text(format!("{name} 左")))])?;
+        // Its render offscreens (and thumbnail settings) are the text layer's own.
+        let render_from = match layer_value(&editor.db, layer_id, "LayerRenderMipmap")? {
+            Value::Integer(mipmap) if mipmap != 0 => layer_id,
+            _ => editor.first_raster_layer()?,
+        };
+        let right = editor.add_layer_rendered_like(
+            source.database(),
+            &payload,
+            layer_id,
+            Some(&mut keep),
+            None,
+            render_from,
+        )?;
         // The hidden ノンブル sits at the binding edge: the right edge of a
         // left page, the left edge of a right page.
         for (id, right_page) in [(layer_id, false), (right, true)] {
@@ -385,8 +394,13 @@ fn add_right_story_layers(
             let mirror = nombre && was_left == right_page;
             let dx = round_half_even(if right_page { layout.right_dx } else { layout.left_dx });
             let place = |x0: i64, x1: i64| {
+                // CSP's right-page ノンブル starts where the left page's ends,
+                // one pixel in from the edge.
                 let (x0, x1) = if mirror {
-                    (page_width - (x1 + offset) - offset, page_width - (x0 + offset) - offset)
+                    (
+                        page_width - 1 - (x1 + offset) - offset,
+                        page_width - 1 - (x0 + offset) - offset,
+                    )
                 } else {
                     (x0, x1)
                 };

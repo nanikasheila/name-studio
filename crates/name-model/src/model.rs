@@ -111,6 +111,10 @@ pub struct Page {
     /// of its panel). Panel borders and gutters under them are blanked.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub breakouts: Vec<Breakout>,
+    /// 見開きページ: this page and the next (its facing page) go to CSP as
+    /// one spread page.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub join_next: bool,
 }
 
 /// コマ: a polygon (usually a rectangle) in reading order.

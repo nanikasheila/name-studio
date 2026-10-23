@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LAYER_ORDER, canBeVector, checkSummary, mapBox, packBody, partCount, projectToTemplate, scriptText, textLayers, vectorLines, type LayerMeta } from "./nameexport";
+import { LAYER_ORDER, canBeVector, checkSummary, clipLines, exportUnits, mapBox, packBody, partCount, projectToTemplate, scriptText, textLayers, vectorLines, type LayerMeta } from "./nameexport";
 import { addCharacter, addLine, addScene, basicBox, newProject, rectShape } from "./project";
 
 describe("projectToTemplate", () => {
@@ -157,5 +157,44 @@ describe("checkSummary", () => {
     const summary = checkSummary({ checks: [check(), check(["レイヤー「コマ枠」の線が 0 本"])], workCheck: check(["ない"]) });
     expect(summary.ok).toBe(false);
     expect(summary.lines).toEqual(["自己確認で 2 件の問題が見つかりました:", "2 ページ: レイヤー「コマ枠」の線が 0 本", "作品: ない"]);
+  });
+});
+
+describe("見開きページの書き出し", () => {
+  const project = () => newProject("見開き", 6);
+
+  it("pairs a joined page with the next when it starts a spread on the template's side", () => {
+    const p = project();
+    p.pages[1].joinNext = true; // pages 2-3: page 2 is a right page (page 1 is left)
+    p.pages[2].joinNext = true; // already in the spread
+    expect(exportUnits(p, true)).toEqual({ units: [[0], [1, 2], [3], [4], [5]], warnings: [] });
+  });
+
+  it("writes pages that cannot be a CSP spread separately, saying why", () => {
+    const p = project();
+    p.pages[2].joinNext = true; // pages 3-4: page 3 is a left page
+    const { units, warnings } = exportUnits(p, true);
+    expect(units).toEqual([[0], [1], [2], [3], [4], [5]]);
+    expect(warnings).toEqual(["3–4 ページは CSP では見開きにならない並びです（3 ページが左ページ）。別々のページにしました"]);
+    p.pages[2].joinNext = false;
+    p.pages[1].joinNext = true;
+    expect(exportUnits(p, true, "ひな形に仕上がり枠がありません").warnings[0]).toContain("2–3 ページを見開きにできませんでした");
+  });
+
+  it("makes pages sharing a panel across the gutter a spread", () => {
+    const p = project();
+    p.pages[3].panels.push({ id: "a", shape: rectShape([0, 0, 10, 10]), order: 1, spread: "s1" });
+    p.pages[4].panels.push({ id: "b", shape: rectShape([0, 0, 10, 10]), order: 1, spread: "s1" });
+    expect(exportUnits(p, true).units).toEqual([[0], [1], [2], [3, 4], [5]]);
+  });
+
+  it("cuts vector lines at the gutter, keeping each page's side", () => {
+    const line = { points: [[90, 0, 1], [110, 0, 1]] as [number, number, number][], closed: false, widthPx: 2 };
+    expect(clipLines([line], 100, false)[0].points).toEqual([[90, 0, 1], [100, 0, 1]]);
+    expect(clipLines([line], 100, true)[0].points).toEqual([[100, 0, 1], [110, 0, 1]]);
+    const box = { points: [[90, 0, 1], [110, 0, 1], [110, 10, 1], [90, 10, 1]] as [number, number, number][], closed: true, widthPx: 2 };
+    const left = clipLines([box], 100, false);
+    expect(left.every((part) => !part.closed && part.points.every(([x]) => x <= 100))).toBe(true);
+    expect(clipLines([line], 200, false)).toEqual([line]);
   });
 });

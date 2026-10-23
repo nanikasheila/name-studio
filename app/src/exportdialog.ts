@@ -150,8 +150,10 @@ export class ExportDialog {
           this.editable,
           progress,
         );
-        const lines = [`${report.pages.length} ページを書き出しました（${seconds()} 秒）`];
+        const spreads = report.spreads ? `（うち見開きページ ${report.spreads} 枚）` : "";
+        const lines = [`${report.pages.length} 枚のページを書き出しました${spreads}（${seconds()} 秒）`];
         if (report.work) lines.push(`作品ファイル: ${report.work}`);
+        lines.push(...(report.warnings ?? []));
         if (this.editable) {
           const missing = [!report.vectorLayers && "ベクター線", !report.textLayers && "テキスト"].filter(Boolean);
           if (missing.length) {
@@ -166,7 +168,7 @@ export class ExportDialog {
         this.message(lines.join("\n"), !check.ok);
         this.host.status(
           check.ok
-            ? `${report.pages.length} ページを ${this.form.outDir} に書き出しました（自己確認 OK）`
+            ? `${report.pages.length} 枚のページを ${this.form.outDir} に書き出しました（自己確認 OK）`
             : `書き出したページに問題があります: ${check.lines[1]}`,
         );
       } else {

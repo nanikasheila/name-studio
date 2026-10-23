@@ -30,6 +30,7 @@ import {
   simplify,
   sortLines,
   splitAtX,
+  wantsSpread,
   strokeHit,
   trimBox,
   type Brush,
@@ -319,7 +320,24 @@ export class PageEditor {
     if (!project) return;
     this.slots = this.layout(project);
     for (const slot of this.slots) this.drawPage(project, slot);
+    this.drawSpreadMark(project);
     this.drawOverlay();
+  }
+
+  /** 見開きページ: a mark under the gutter when the two pages go to CSP as one. */
+  private drawSpreadMark(project: Project): void {
+    if (this.slots.length < 2) return;
+    const first = Math.min(...this.slots.map((slot) => slot.index));
+    if (!wantsSpread(project, first)) return;
+    const [left, right] = [...this.slots].sort((a, b) => a.x - b.x);
+    const gutter = left.x + left.shown[1] * left.scale;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.fillStyle = "#3a6fd8";
+    ctx.font = "12px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("見開きページ", gutter, right.y + project.pageFormat.canvasMm[1] * right.scale + 18);
+    ctx.restore();
   }
 
   private drawPage(project: Project, slot: Slot): void {
