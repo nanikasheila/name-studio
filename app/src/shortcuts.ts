@@ -20,6 +20,7 @@ export type ActionId =
   | "tool.text"
   | "tool.pen"
   | "tool.eraser"
+  | "tool.fill"
   | "tool.breakout"
   | "tool.sticky"
   | "eraser.next"
@@ -63,6 +64,7 @@ export const ACTIONS: readonly ActionInfo[] = [
   { id: "tool.text", label: "セリフ", group: "道具", keys: ["T"] },
   { id: "tool.pen", label: "ペン", group: "道具", keys: ["P"] },
   { id: "tool.eraser", label: "消しゴム（もう一度で消し方を切り替え）", group: "道具", keys: ["E"] },
+  { id: "tool.fill", label: "投げなわ塗り（ベタ・グレー・白）", group: "道具", keys: ["G"] },
   { id: "tool.breakout", label: "はみ出し", group: "道具", keys: ["B"] },
   { id: "tool.sticky", label: "付箋", group: "道具", keys: ["M"] },
   { id: "eraser.next", label: "消し方を切り替える", group: "道具", keys: [] },

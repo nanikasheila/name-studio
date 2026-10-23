@@ -200,6 +200,21 @@ function stampStroke(
 const EFFECT_INK = "rgba(27, 26, 24, 0.45)";
 const FILLS: Record<string, string> = { white: "#ffffff", black: INK, gray: "#b9b6b0" };
 
+/** 投げなわ塗り: the page's filled areas, in the order they were made. */
+export function drawPageFills(ctx: CanvasRenderingContext2D, page: Page, m: MmToPx, outline?: (id: string) => string | null): void {
+  for (const fill of page.fills ?? []) {
+    tracePath(ctx, fill.shape, m, true);
+    ctx.fillStyle = FILLS[fill.tone ?? "black"];
+    ctx.fill();
+    const color = outline?.(fill.id);
+    if (color) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  }
+}
+
 /**
  * Panel fills and background effects, bottom panel first, then the はみ出し
  * areas blanked white. Borders are drawn separately (drawPanelBorders).

@@ -9,6 +9,7 @@ import {
   sortLines,
   type BoxMm,
   type Breakout,
+  type Fill,
   type Line,
   type Page,
   type Panel,
@@ -115,10 +116,11 @@ export interface Clip {
   panels: Panel[];
   breakouts: Breakout[];
   stickies: Sticky[];
+  fills?: Fill[];
 }
 
 export interface CopySource {
-  kind: "panel" | "line" | "stroke" | "breakout" | "group" | "sticky";
+  kind: "panel" | "line" | "stroke" | "breakout" | "group" | "sticky" | "fill";
   pageId: string;
   id: string;
   items?: ItemRef[];
@@ -167,8 +169,13 @@ export function copySelection(page: Page, selection: CopySource, contents?: { st
       if (sticky) clip.stickies.push(clone(sticky));
       break;
     }
+    case "fill": {
+      const fill = page.fills?.find((f) => f.id === selection.id);
+      if (fill) clip.fills = [clone(fill)];
+      break;
+    }
   }
-  const empty = !clip.strokes.length && !clip.lines.length && !clip.panels.length && !clip.breakouts.length && !clip.stickies.length;
+  const empty = !clip.strokes.length && !clip.lines.length && !clip.panels.length && !clip.breakouts.length && !clip.stickies.length && !clip.fills?.length;
   return empty ? null : clip;
 }
 
@@ -179,6 +186,7 @@ export interface Pasted {
   lines: string[];
   breakouts: string[];
   stickies: string[];
+  fills: string[];
 }
 
 /**
@@ -189,7 +197,14 @@ export interface Pasted {
 export function pasteClip(project: Project, page: Page, clip: Clip, offset: Point = [0, 0]): Pasted {
   const [dx, dy] = offset;
   const move = ([x, y]: readonly number[]): Point => [x + dx, y + dy];
-  const pasted: Pasted = { panels: [], strokes: [], lines: [], breakouts: [], stickies: [] };
+  const pasted: Pasted = { panels: [], strokes: [], lines: [], breakouts: [], stickies: [], fills: [] };
+  for (const source of clip.fills ?? []) {
+    const fill = clone(source);
+    fill.id = newId(project, "fill");
+    fill.shape = fill.shape.map(move);
+    page.fills = [...(page.fills ?? []), fill];
+    pasted.fills.push(fill.id);
+  }
   for (const source of clip.panels) {
     const panel = clone(source);
     panel.id = newId(project, "panel");

@@ -49,6 +49,7 @@ import { joinPanels, joinedShape, neighbours } from "./komaedit";
 import { Overview, type OverviewKind } from "./overview";
 import {
   KIND_LABELS,
+  TONE_LABELS,
   addCharacter,
   addPanel,
   assignPanels,
@@ -73,6 +74,7 @@ import {
   type Brush,
   type BalloonShape,
   type Line,
+  type FillTone,
   type LineKind,
   type Alternatives,
   type Page,
@@ -413,7 +415,7 @@ export class Workbench {
   private findSelected(s: Selection): boolean {
     const page = this.state.project?.pages.find((p) => p.id === s.pageId);
     if (!page) return false;
-    const lists = { panel: page.panels, line: page.lines, stroke: page.strokes, breakout: page.breakouts, sticky: page.stickies ?? [] };
+    const lists = { panel: page.panels, line: page.lines, stroke: page.strokes, breakout: page.breakouts, sticky: page.stickies ?? [], fill: page.fills ?? [] };
     if (s.kind === "group") return !!s.items?.every((item) => lists[item.kind].some((x: { id: string }) => x.id === item.id));
     return lists[s.kind].some((item: { id: string }) => item.id === s.id);
   }
@@ -665,6 +667,17 @@ export class Workbench {
           copy,
           remove,
         ];
+      case "fill": {
+        const fill = page.fills?.find((f) => f.id === selection.id);
+        if (!fill) return [];
+        const tone = choice(TONE_LABELS, fill.tone ?? "black", (value: FillTone) =>
+          this.edit(() => {
+            if (value === "black") delete fill.tone;
+            else fill.tone = value;
+          }),
+        );
+        return [tone, copy, remove];
+      }
       default:
         return [copy, remove];
     }
@@ -694,6 +707,25 @@ export class Workbench {
     if (s?.kind === "sticky") {
       const sticky = page.stickies?.find((n) => n.id === s.id);
       if (sticky) return panel.replaceChildren(...this.stickyInspector(sticky));
+    }
+    if (s?.kind === "fill") {
+      const fill = page.fills?.find((f) => f.id === s.id);
+      if (fill) {
+        const tone = choice(TONE_LABELS, fill.tone ?? "black", (value: FillTone) =>
+          this.edit(() => {
+            if (value === "black") delete fill.tone;
+            else fill.tone = value;
+          }),
+        );
+        const remove = element("button", { className: "danger", textContent: "この塗りを消す" });
+        remove.addEventListener("click", () => this.deleteSelection());
+        return panel.replaceChildren(
+          element("h2", { textContent: "塗り" }),
+          element("label", {}, "色", tone),
+          element("p", { className: "hint", textContent: "ドラッグや矢印キーで動かせます。コマを動かすと一緒に動きます。CSP には「コマの塗り・効果」の画像レイヤーで書き出します。" }),
+          remove,
+        );
+      }
     }
     if (s?.kind === "group") {
       const strokes = s.items?.filter((item) => item.kind === "stroke").length ?? 0;
@@ -1211,6 +1243,7 @@ export class Workbench {
       if (s.kind === "stroke") page.strokes = page.strokes.filter((stroke) => stroke.id !== s.id);
       if (s.kind === "breakout") page.breakouts = page.breakouts.filter((breakout) => breakout.id !== s.id);
       if (s.kind === "sticky") removeSticky(page, s.id);
+      if (s.kind === "fill" && page.fills) page.fills = page.fills.filter((fill) => fill.id !== s.id);
       if (s.kind === "group") {
         const ids = new Set(s.items?.map((item) => item.id));
         page.strokes = page.strokes.filter((stroke) => !ids.has(stroke.id));
@@ -1229,10 +1262,19 @@ export class Workbench {
 
   setTool(tool: Tool): void {
     this.editor.setTool(tool);
-    for (const name of ["select", "cut", "text", "pen", "eraser", "breakout", "sticky"] as const) {
+    for (const name of ["select", "cut", "text", "pen", "eraser", "fill", "breakout", "sticky"] as const) {
       $(`tool-${name}`).classList.toggle("active", name === tool);
     }
+    $("fill-tones").hidden = tool !== "fill";
     this.renderBrushBar();
+  }
+
+  /** 投げなわ塗り: what the fill tool fills with. */
+  private setFillTone(tone: FillTone): void {
+    this.editor.fillTone = tone;
+    for (const name of ["black", "gray", "white"] as const) $(`fill-${name}`).classList.toggle("active", name === tone);
+    if (this.editor.tool !== "fill") this.setTool("fill");
+    this.setStatus(`塗り: ${TONE_LABELS[tone]}`);
   }
 
   // --- pens and erasers -------------------------------------------------------------------
@@ -1317,7 +1359,10 @@ export class Workbench {
   }
 
   private bindControls(): void {
-    for (const name of ["select", "cut", "text", "pen", "eraser", "breakout", "sticky"] as const) {
+    for (const tone of ["black", "gray", "white"] as const) {
+      $(`fill-${tone}`).addEventListener("click", () => this.setFillTone(tone));
+    }
+    for (const name of ["select", "cut", "text", "pen", "eraser", "fill", "breakout", "sticky"] as const) {
       $(`tool-${name}`).addEventListener("click", () => this.setTool(name));
     }
     $("undo").addEventListener("click", () => this.undo());
@@ -1441,6 +1486,7 @@ export class Workbench {
       "tool.text": "text",
       "tool.pen": "pen",
       "tool.eraser": "eraser",
+      "tool.fill": "fill",
       "tool.breakout": "breakout",
       "tool.sticky": "sticky",
     };

@@ -21,8 +21,9 @@ import {
   type ItemRef,
   type TransformBase,
 } from "./transform";
-import { INK, drawBalloons, drawLineText, drawPanelBorders, drawPanelFills, drawStroke, drawStrokes, onTipLoaded, tracePath } from "./pagedraw";
+import { INK, drawBalloons, drawLineText, drawPageFills, drawPanelBorders, drawPanelFills, drawStroke, drawStrokes, onTipLoaded, tracePath } from "./pagedraw";
 import {
+  addFill,
   addLine,
   addSticky,
   addPanel,
@@ -62,6 +63,7 @@ import {
   type BoxMm,
   type Brush,
   type EraseMode,
+  type FillTone,
   type Line,
   type Page,
   type Panel,
@@ -77,10 +79,10 @@ import {
   type StrokePoint,
 } from "./project";
 
-export type Tool = "select" | "cut" | "text" | "pen" | "eraser" | "breakout" | "sticky";
+export type Tool = "select" | "cut" | "text" | "pen" | "eraser" | "fill" | "breakout" | "sticky";
 
 export interface Selection {
-  kind: "panel" | "line" | "stroke" | "breakout" | "group" | "sticky";
+  kind: "panel" | "line" | "stroke" | "breakout" | "group" | "sticky" | "fill";
   pageId: string;
   id: string;
   /** 範囲選択 ("group"): the rough lines and dialogue picked together. */
@@ -135,6 +137,7 @@ type Drag =
   | { kind: "pen"; slot: Slot; points: StrokePoint[]; last: StrokePoint; motion: boolean; time: number; speed: number; straight: boolean }
   | { kind: "tail"; slot: Slot; lineId: string; index: number; moved: boolean }
   | { kind: "lasso"; slot: Slot; points: Point[] }
+  | { kind: "fill"; slot: Slot; points: Point[] }
   | { kind: "pick"; slot: Slot; points: Point[] }
   | { kind: "eraseLasso"; slot: Slot; points: Point[] }
   | { kind: "erase"; slot: Slot; erased: number }
@@ -194,6 +197,8 @@ export class PageEditor {
   penBrush: string | null = null;
   eraserBrush: string | null = null;
   eraserSizeMm = 2;
+  /** 投げなわ塗り: the tone the fill tool fills with. */
+  fillTone: FillTone = "black";
   /** The eraser's way of erasing; the pen's eraser end uses it too. */
   eraseMode: EditorEraseMode = "whole";
   /** The pen's eraser end is down or hovering: erase whatever the tool. */
@@ -405,6 +410,9 @@ export class PageEditor {
     } else if (s.kind === "sticky") {
       const sticky = page.stickies?.find((n) => n.id === s.id);
       if (sticky) box = stickyBox(sticky);
+    } else if (s.kind === "fill") {
+      const fill = page.fills?.find((f) => f.id === s.id);
+      if (fill) box = bounds(fill.shape);
     } else {
       box = baseBounds(transformBase(page, this.selectedItems()));
     }
@@ -675,6 +683,7 @@ export class PageEditor {
     const strokeColor = (stroke: Stroke) => (this.isSelected(page, "stroke", stroke.id) ? ACCENT : "#3a3834");
     drawStrokes(ctx, page, m, false, strokeColor, 0.7, brushes);
     drawPanelFills(ctx, page, m);
+    drawPageFills(ctx, page, m, (id) => (this.isSelected(page, "fill", id) ? ACCENT : null));
     const selectedPanel = page.panels.find((panel) => this.isSelected(page, "panel", panel.id));
     if (selectedPanel) {
       tracePath(ctx, selectedPanel.shape, m, true);
@@ -927,6 +936,16 @@ export class PageEditor {
       }
       ctx.setLineDash([]);
     }
+    if (drag?.kind === "fill" && drag.points.length > 2) {
+      // The area as it will be filled, while it is drawn round.
+      const { slot } = drag;
+      tracePath(ctx, drag.points, { scale: slot.scale, x: slot.x, y: slot.y }, true);
+      ctx.fillStyle = this.fillTone === "black" ? "rgba(40, 38, 34, 0.55)" : this.fillTone === "gray" ? "rgba(150, 146, 140, 0.55)" : "rgba(255, 255, 255, 0.8)";
+      ctx.fill();
+      ctx.strokeStyle = ACCENT;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
     if ((drag?.kind === "lasso" || drag?.kind === "pick" || drag?.kind === "eraseLasso") && drag.points.length > 1) {
       const { slot } = drag;
       ctx.strokeStyle = drag.kind === "lasso" ? "rgba(214, 120, 40, 0.9)" : drag.kind === "pick" ? ACCENT : "rgba(192, 57, 43, 0.9)";
@@ -1099,7 +1118,7 @@ export class PageEditor {
     if (!clip) return false;
     this.clip = clip;
     this.pastes = 0;
-    const count = clip.panels.length + clip.strokes.length + clip.lines.length + clip.breakouts.length + clip.stickies.length;
+    const count = clip.panels.length + clip.strokes.length + clip.lines.length + clip.breakouts.length + clip.stickies.length + (clip.fills?.length ?? 0);
     this.host.status(`${clip.panels.length ? "コマと中身" : `${count} 個`}をコピーしました。Ctrl+V で、ポインターのあるページに貼り付けます`);
     return true;
   }
@@ -1132,6 +1151,7 @@ export class PageEditor {
     else if (items.length) this.select({ kind: items[0].kind, pageId: page.id, id: items[0].id });
     else if (pasted.breakouts.length) this.select({ kind: "breakout", pageId: page.id, id: pasted.breakouts[0] });
     else if (pasted.stickies.length) this.select({ kind: "sticky", pageId: page.id, id: pasted.stickies[0] });
+    else if (pasted.fills.length) this.select({ kind: "fill", pageId: page.id, id: pasted.fills[0] });
     this.host.status(`${slot.index + 1} ページに貼り付けました`);
     return true;
   }
@@ -1209,6 +1229,9 @@ export class PageEditor {
     for (const stroke of [...page.strokes].reverse()) {
       if (strokeHit(stroke, point, tolerance)) return { kind: "stroke", pageId: page.id, id: stroke.id };
     }
+    for (const fill of [...(page.fills ?? [])].reverse()) {
+      if (insidePolygon(fill.shape, point)) return { kind: "fill", pageId: page.id, id: fill.id };
+    }
     for (const breakout of [...page.breakouts].reverse()) {
       if (insidePolygon(breakout.shape, point)) return { kind: "breakout", pageId: page.id, id: breakout.id };
     }
@@ -1277,6 +1300,7 @@ export class PageEditor {
       text: "text",
       pen: "crosshair",
       eraser: "none",
+      fill: "crosshair",
       breakout: "crosshair",
       sticky: "copy",
     };
@@ -1447,6 +1471,9 @@ export class PageEditor {
       case "breakout":
         this.drag = { kind: "lasso", slot, points: [point] };
         return;
+      case "fill":
+        this.drag = { kind: "fill", slot, points: [point] };
+        return;
       case "sticky": {
         // On a note: pick it up to move; elsewhere: a new note there.
         const hit = this.hit(slot, point);
@@ -1588,6 +1615,7 @@ export class PageEditor {
         break;
       }
       case "lasso":
+      case "fill":
       case "pick":
       case "eraseLasso":
         drag.points.push(point);
@@ -1676,6 +1704,21 @@ export class PageEditor {
         if (drag.moved) this.host.commit();
         else this.host.cancel();
         break;
+      case "fill": {
+        const shape = simplify(
+          drag.points.map(([x, y]) => [x, y, 1] as [number, number, number]),
+          0.4,
+        ).map(([x, y]) => [x, y] as Point);
+        const box = bounds(shape);
+        if (shape.length < 3 || box[2] - box[0] < 1 || box[3] - box[1] < 1) {
+          this.host.status("塗る所を囲むようにドラッグしてください");
+          break;
+        }
+        this.host.begin();
+        addFill(project, drag.slot.page, shape, this.fillTone);
+        this.host.commit();
+        break;
+      }
       case "lasso": {
         const shape = simplify(
           drag.points.map(([x, y]) => [x, y, 1] as [number, number, number]),
@@ -1847,6 +1890,9 @@ export class PageEditor {
     } else if (s.kind === "sticky") {
       const sticky = page.stickies?.find((n) => n.id === s.id);
       if (sticky) sticky.at = [sticky.at[0] + dx, sticky.at[1] + dy];
+    } else if (s.kind === "fill") {
+      const fill = page.fills?.find((f) => f.id === s.id);
+      if (fill) fill.shape = fill.shape.map(([x, y]) => [x + dx, y + dy]);
     } else if (s.kind === "group") {
       for (const item of s.items ?? []) {
         if (item.kind === "line") {

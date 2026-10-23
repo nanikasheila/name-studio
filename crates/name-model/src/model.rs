@@ -147,6 +147,20 @@ pub struct Page {
     /// 付箋: notes stuck on the page while working (never exported).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stickies: Vec<Sticky>,
+    /// 投げなわ塗り: areas filled with one tone (ベタ and the like).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fills: Vec<Fill>,
+}
+
+/// 投げなわ塗り: an outline filled with one tone.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Fill {
+    pub id: String,
+    pub shape: Vec<Point>,
+    /// "gray" or "white"; none is black (ベタ).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tone: Option<String>,
 }
 
 /// 付箋: a note on the page, at its top-left corner in millimetres.

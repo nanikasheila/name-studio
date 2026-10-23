@@ -44,8 +44,14 @@
           <button id="tool-text" title="クリックでセリフを置く（T）">セリフ</button>
           <button id="tool-pen" title="ラフを描く（P）">ペン</button>
           <button id="tool-eraser" title="ラフの線を消す（E）">消しゴム</button>
+          <button id="tool-fill" title="囲んだ所を塗る。ベタ・グレー・白（G）">塗り</button>
           <button id="tool-breakout" title="コマを突き抜ける所を囲む。中に描いた線はコマ枠の上に（B）">はみ出し</button>
           <button id="tool-sticky" title="付箋を貼る。作業用のメモで、書き出しには入りません（M）">付箋</button>
+        </div>
+        <div class="segmented edit-only" id="fill-tones" role="group" aria-label="塗りの色" hidden>
+          <button id="fill-black" class="active" title="黒（ベタ）">黒</button>
+          <button id="fill-gray" title="グレー（トーンの代わり）">グレー</button>
+          <button id="fill-white" title="白（ホワイトで消す）">白</button>
         </div>
         <div class="brush-bar edit-only" id="brush-bar">
           <select id="brush-select" title="ペン・消しゴムの種類"></select>

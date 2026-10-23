@@ -101,3 +101,23 @@ describe("straight lines", () => {
     expect(points[2][2]).toBeCloseTo(0.6);
   });
 });
+
+describe("fills", () => {
+  it("are made, erased by the lasso eraser, follow their panel and paste", async () => {
+    const { addFill, carryContents, eraseInside, followPanel, movePanel } = await import("./project");
+    const { project, page, panel } = sample();
+    const fill = addFill(project, page, rectShape([30, 60, 40, 70]), "gray");
+    expect(fill.tone).toBe("gray");
+    expect(addFill(project, page, rectShape([60, 60, 70, 70]), "black").tone).toBeUndefined();
+    const carried = carryContents(page, panel);
+    movePanel(panel, 10, 0);
+    followPanel(page, panel, carried);
+    expect(bounds(page.fills![0].shape)[0]).toBeCloseTo(40);
+    const clip = copySelection(page, { kind: "fill", pageId: page.id, id: fill.id })!;
+    const pasted = pasteClip(project, project.pages[1], clip);
+    expect(project.pages[1].fills).toHaveLength(1);
+    expect(pasted.fills).toHaveLength(1);
+    expect(eraseInside(project, page, rectShape([35, 55, 60, 75]))).toBeGreaterThanOrEqual(1);
+    expect(page.fills!.map((f) => f.id)).not.toContain(fill.id);
+  });
+});
