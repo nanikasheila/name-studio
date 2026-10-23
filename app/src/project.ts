@@ -5,6 +5,7 @@
 
 import { storedOutline } from "./balloon";
 import { inheritOpenEdges } from "./koma";
+import { wrapDialogue } from "./wrap";
 
 export type Point = [number, number];
 /** `[x0, y0, x1, y1]` in millimetres. */
@@ -823,6 +824,27 @@ export function fitLine(line: Line): void {
   const balloon = storedOutline(line);
   if (balloon) line.balloon = balloon;
   else delete line.balloon;
+}
+
+/**
+ * New text for a line, its reading start kept where it is: the top right of
+ * vertical text (its first column), the top left of horizontal text. The
+ * balloon grows away from there, and the tails keep pointing where they did.
+ */
+export function setLineText(line: Line, text: string): void {
+  const [x0, y0, x1] = line.box;
+  line.text = text;
+  fitLine(line);
+  moveLine(line, line.vertical ? x1 - line.box[2] : x0 - line.box[0], y0 - line.box[1]);
+}
+
+/** A long line typed in one go, broken the way a letterer would (one already broken by hand is left as it is). */
+export function wrapTypedLine(line: Line): boolean {
+  if (line.kind === "sfx" || line.text.includes("\n")) return false;
+  const wrapped = wrapDialogue(line.text);
+  if (wrapped === line.text) return false;
+  setLineText(line, wrapped);
+  return true;
 }
 
 export function addLine(project: Project, page: Page, center: Point, text = "セリフ", kind: LineKind = "speech"): Line {

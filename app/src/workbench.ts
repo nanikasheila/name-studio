@@ -64,7 +64,9 @@ import {
   basicBox,
   fitLine,
   setDefaultShape,
+  setLineText,
   setLineKind,
+  wrapTypedLine,
   insertPage,
   movePage,
   movePagesTo,
@@ -1026,10 +1028,14 @@ export class Workbench {
 
   private lineInspector(project: Project, page: Page, line: Line): HTMLElement[] {
     const text = element("textarea", { value: line.text, spellcheck: false });
-    this.liveText(text, (value) => {
-      line.text = value;
-      fitLine(line);
-    });
+    this.liveText(text, (value) => setLineText(line, value));
+    // Done typing a long line in one go: broken into short lines (before the change is recorded).
+    text.addEventListener("change", () => {
+      if (wrapTypedLine(line)) {
+        text.value = line.text;
+        this.editor.draw();
+      }
+    }, { capture: true });
     const kind = element("select");
     for (const [value, label] of Object.entries(KIND_LABELS)) kind.append(element("option", { value, textContent: label }));
     kind.value = line.kind;
@@ -1057,7 +1063,7 @@ export class Workbench {
       this.edit(() => {
         const value = Number(size.value);
         if (value > 0) line.fontSizePt = value;
-        fitLine(line);
+        setLineText(line, line.text);
       }),
     );
     const vertical = element("input", { type: "checkbox", checked: line.vertical });
