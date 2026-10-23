@@ -3,7 +3,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { checkSummary, exportToCsp } from "./nameexport";
-import type { Project } from "./project";
+import { normalize, type Project } from "./project";
 
 export interface BatchExport {
   project: string;
@@ -39,7 +39,8 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
     status(`${task.project} を書き出し中…`);
     // Not asked here (no one to ask): what was overwritten goes in the report.
     const overwrite = await invoke("check_export_target", { outDir: task.outDir }).catch(() => null);
-    const project = await invoke<Project>("load_project", { path: task.project });
+    // As when the window opens a file: empty lists are left out of the saved JSON.
+    const project = normalize(await invoke<Project>("load_project", { path: task.project }));
     const report = await exportToCsp(
       project,
       {
