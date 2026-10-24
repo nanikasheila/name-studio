@@ -46,6 +46,13 @@ jobs:
           npm run build
           npm test
 
+      - name: Browser walk-through (open, draw, undo, errors undone, autosave, 連続)
+        if: runner.os == 'Linux'
+        working-directory: app
+        run: |
+          npx playwright install --with-deps chromium
+          npm run e2e
+
       - name: Check formatting
         run: cargo fmt --check
 

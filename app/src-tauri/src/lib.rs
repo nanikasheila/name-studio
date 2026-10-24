@@ -8,6 +8,7 @@
 //! is saved.
 
 pub mod batch;
+pub mod errorlog;
 pub mod sheet;
 
 use std::path::{Path, PathBuf};
@@ -263,8 +264,11 @@ async fn blocking<T: Send + 'static>(
 /// the text is saved as it is, so it travels as bytes rather than as an
 /// argument to parse and write again.
 fn project_body<T: serde::de::DeserializeOwned>(request: &tauri::ipc::Request<'_>) -> Result<(T, String), String> {
-    let body = raw_body(request)?;
-    let (meta, rest) = split_body::<T>(&body)?;
+    split_project_body(&raw_body(request)?)
+}
+
+fn split_project_body<T: serde::de::DeserializeOwned>(body: &[u8]) -> Result<(T, String), String> {
+    let (meta, rest) = split_body::<T>(body)?;
     let text = String::from_utf8(rest.to_vec()).map_err(|error| error.to_string())?;
     Ok((meta, text))
 }
@@ -362,6 +366,12 @@ async fn autosave_project(app: tauri::AppHandle, request: tauri::ipc::Request<'_
         })
     })
     .await
+}
+
+/// Note an error the front end met (see [`errorlog`]).
+#[tauri::command]
+fn log_error(message: String) {
+    errorlog::append(&message);
 }
 
 /// Versions of the project at `path` (or of the unsaved one), newest first.
@@ -1065,7 +1075,14 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(AppState::default())
+        .setup(|app| {
+            if let Ok(root) = app.path().app_local_data_dir() {
+                errorlog::init(&root, app.package_info().version.to_string());
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
+            log_error,
             open_sheet,
             layer_overview,
             layer_region,
@@ -1099,4 +1116,23 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Name Studio");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn project_body_is_meta_then_text() {
+        let meta = br#"{"path":"a.namestudio","toFile":true}"#;
+        let text = "{\"title\":\"第4話\"}";
+        let mut body = (meta.len() as u32).to_le_bytes().to_vec();
+        body.extend_from_slice(meta);
+        body.extend_from_slice(text.as_bytes());
+        let (parsed, rest) = split_project_body::<AutosaveMeta>(&body).unwrap();
+        assert_eq!(parsed.path.as_deref(), Some("a.namestudio"));
+        assert!(parsed.to_file);
+        assert_eq!(rest, text);
+        assert!(split_project_body::<AutosaveMeta>(&body[..3]).is_err());
+    }
 }

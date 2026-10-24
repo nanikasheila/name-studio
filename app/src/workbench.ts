@@ -37,7 +37,10 @@ import {
 import { SHAPE_LABELS, TAIL_LABELS, defaultTailStyle, resolvedShape } from "./balloon";
 import { ExportDialog } from "./exportdialog";
 import { History } from "./history";
+import { clearAlert, showAlert } from "./alerts";
+import { logError } from "./errorlog";
 import { projectBody } from "./projectjson";
+import { repair } from "./repair";
 import { type Snapshot, Snapshotter, sameSnapshot } from "./snapshot";
 import { VersionDialog, type VersionInfo } from "./versiondialog";
 import {
@@ -404,7 +407,9 @@ export class Workbench {
   /** A project kept by autosave that was not saved, opened as unsaved changes. */
   showRecovered(project: Project, path: string | null, timeMs: number): void {
     const name = path?.split(/[\\/]/).pop() ?? "未保存のネーム";
-    this.show(project, path, `${name} を ${formatTime(timeMs)} の自動保存から復元しました。保存すると確定します`);
+    const mended = repair(normalize(project));
+    const note = mended.length ? `（${mended.length} か所の問題を直しました）` : "";
+    this.show(project, path, `${name} を ${formatTime(timeMs)} の自動保存から復元しました${note}。保存すると確定します`);
     this.markDirty();
     this.updateTitle();
   }
@@ -422,6 +427,11 @@ export class Workbench {
       if (!picked) return false;
       path = picked.toLowerCase().endsWith(`.${PROJECT_EXTENSION}`) ? picked : `${picked}.${PROJECT_EXTENSION}`;
     }
+    // Loose ends the save check would refuse are mended first, as a step that can be undone.
+    this.begin();
+    const mended = repair(project);
+    if (mended.length) this.commit();
+    else this.state.pending = null;
     const revision = this.state.revision;
     try {
       await invoke("save_project", projectBody({ path, previousPath: this.state.path }, project));
@@ -431,10 +441,15 @@ export class Workbench {
         this.autosaver.reset();
       }
       this.updateTitle();
-      this.setStatus(`保存しました: ${path}`);
+      clearAlert("save");
+      if (mended.length) clearAlert("autosave");
+      const note = mended.length ? `（保存の前に ${mended.length} か所直しました: ${mended.slice(0, 2).join("／")}${mended.length > 2 ? " ほか" : ""}。元に戻すは Ctrl+Z）` : "";
+      this.setStatus(`保存しました: ${path}${note}`);
       return true;
     } catch (error) {
       this.setStatus(`保存できませんでした: ${error}`);
+      showAlert("save", `保存できませんでした。\n${error}`, "error");
+      void logError(`save: ${error}`);
       return false;
     }
   }
@@ -454,8 +469,20 @@ export class Workbench {
         this.state.dirty = false;
         this.updateTitle();
       }
+      if (result.problems?.length) {
+        const list = result.problems.slice(0, 3).join("\n");
+        showAlert(
+          "autosave",
+          `自動保存: ${path && autosaveToFile() ? "ファイルに書けない" : ""}問題があるので、控えだけに残しています。保存（Ctrl+S）すると直してから保存します。\n${list}`,
+          "warning",
+        );
+      } else {
+        clearAlert("autosave");
+      }
     } catch (error) {
       this.setStatus(`自動保存できませんでした: ${error}`);
+      showAlert("autosave", `自動保存できませんでした（次の変更でもう一度試します）。\n${error}`, "error");
+      void logError(`autosave: ${error}`);
       throw error;
     }
   }
@@ -500,13 +527,47 @@ export class Workbench {
     this.changed();
   }
 
-  /** Run `change` as one undoable step. */
+  /** Run `change` as one undoable step; a change that fails is undone. */
   edit(change: (project: Project) => void): void {
     const project = this.state.project;
     if (!project) return;
     this.begin();
-    change(project);
+    try {
+      change(project);
+    } catch (error) {
+      this.failed(error);
+      return;
+    }
     this.commit();
+  }
+
+  /**
+   * Something went wrong: the change under way (begun, not yet committed) is
+   * undone so the name is never left half changed, the person is told, and a
+   * note goes to the log.
+   */
+  failed(error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error);
+    const undone = this.rollBack();
+    showAlert(
+      "failure",
+      undone ? `問題が起きたので、途中の操作を取り消しました（ほかの作業はそのままです）。\n${message}` : `問題が起きました: ${message}`,
+      "error",
+      undone ? undefined : 15,
+    );
+    void logError(error);
+  }
+
+  private rollBack(): boolean {
+    const pending = this.state.pending;
+    if (pending === null) return false;
+    this.state.pending = null;
+    this.state.project = this.history.revert(pending);
+    this.editor.dropDrag();
+    const s = this.editor.selection;
+    if (s && !this.findSelected(s)) this.editor.selection = null;
+    this.renderAll();
+    return true;
   }
 
   private changed(): void {

@@ -30,6 +30,10 @@ pub const UNTITLED: &str = "untitled";
 const KEEP_SAVED: usize = 100;
 const KEEP_AUTO: usize = 40;
 const KEEP_BEFORE_RESTORE: usize = 20;
+/// At most this much on disk per project; older versions go first.
+const KEEP_BYTES: u64 = 300 * 1024 * 1024;
+/// The newest saved versions kept whatever their size.
+const KEEP_SAVED_ALWAYS: usize = 10;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -266,6 +270,48 @@ impl VersionStore {
                 true
             }
         });
+        self.keep_within(index, KEEP_BYTES);
+    }
+
+    /// A drawn name makes large versions: past `budget` bytes on disk the
+    /// oldest go, autosaved ones before saved ones, but the newest
+    /// [`KEEP_SAVED_ALWAYS`] saved versions always stay.
+    fn keep_within(&self, index: &mut Index, budget: u64) {
+        let mut total: u64 = index.versions.iter().map(|v| v.bytes).sum();
+        if total <= budget {
+            return;
+        }
+        let saved = index.versions.iter().filter(|v| v.kind == VersionKind::Saved).count();
+        let protected: Vec<String> = index
+            .versions
+            .iter()
+            .filter(|v| v.kind == VersionKind::Saved)
+            .skip(saved.saturating_sub(KEEP_SAVED_ALWAYS))
+            .map(|v| v.id.clone())
+            .collect();
+        let newest = index.versions.last().map(|v| v.id.clone());
+        let order: Vec<String> = index
+            .versions
+            .iter()
+            .filter(|v| v.kind != VersionKind::Saved)
+            .chain(index.versions.iter().filter(|v| v.kind == VersionKind::Saved))
+            .map(|v| v.id.clone())
+            .collect();
+        let mut removed = std::collections::HashSet::new();
+        for id in order {
+            if total <= budget {
+                break;
+            }
+            if protected.contains(&id) || newest.as_ref() == Some(&id) {
+                continue;
+            }
+            if let Some(version) = index.versions.iter().find(|v| v.id == id) {
+                total -= version.bytes;
+                let _ = std::fs::remove_file(self.dir.join(&version.id));
+                removed.insert(id);
+            }
+        }
+        index.versions.retain(|v| !removed.contains(&v.id));
     }
 
     pub fn load(&self, id: &str) -> Result<Project, ProjectError> {
@@ -449,6 +495,39 @@ mod tests {
         assert_eq!(listed[0].title, format!("auto {}", KEEP_AUTO + 4));
         let files = std::fs::read_dir(store.dir()).unwrap().count();
         assert_eq!(files, KEEP_AUTO + 1 + 1); // versions + index
+    }
+
+    #[test]
+    fn large_versions_stay_within_the_budget() {
+        let root = tempfile::tempdir().unwrap();
+        let store = VersionStore::open(root.path(), None);
+        for i in 0..14 {
+            store
+                .record(&project(&format!("saved {i}"), 1), VersionKind::Saved, i)
+                .unwrap();
+            store
+                .record(&project(&format!("auto {i}"), 1), VersionKind::Auto, 100 + i)
+                .unwrap();
+        }
+        let mut index = store.read_index().unwrap();
+        let per = index.versions[0].bytes;
+        store.keep_within(&mut index, per * 12);
+        let saved: Vec<&VersionInfo> = index.versions.iter().filter(|v| v.kind == VersionKind::Saved).collect();
+        // Autosaved ones go first (the newest version stays), then the oldest saved ones.
+        assert!(index.versions.iter().filter(|v| v.kind == VersionKind::Auto).count() <= 1);
+        assert!(saved.len() >= KEEP_SAVED_ALWAYS);
+        assert_eq!(saved.last().unwrap().title, "saved 13");
+        assert!(index.versions.iter().map(|v| v.bytes).sum::<u64>() <= per * 12 + per / 2);
+        // Over the budget, the newest saved ones still stay.
+        store.keep_within(&mut index, 0);
+        assert_eq!(
+            index.versions.iter().filter(|v| v.kind == VersionKind::Saved).count(),
+            KEEP_SAVED_ALWAYS
+        );
+        assert_eq!(
+            std::fs::read_dir(store.dir()).unwrap().count(),
+            index.versions.len() + 1
+        );
     }
 
     #[test]

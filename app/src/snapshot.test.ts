@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { History } from "./history";
 import { addStroke, moveStroke, newProject, type Project } from "./project";
-import { projectJson } from "./projectjson";
+import { projectBody, projectJson } from "./projectjson";
 import { sameSnapshot, Snapshotter } from "./snapshot";
 
 function drawn(pages = 3): Project {
@@ -97,5 +97,14 @@ describe("projectJson", () => {
     const project = newProject("x", 1);
     project.pages[0].strokes.push({ id: "s", points: [[NaN, 1, Infinity]], widthMm: 1, closed: false });
     expect(JSON.parse(projectJson(project)).pages[0].strokes[0].points).toEqual([[0, 1, 0]]);
+  });
+
+  it("packs a request body as length, meta and the project text", () => {
+    const project = drawn(1);
+    const body = projectBody({ path: "a.namestudio" }, project);
+    const length = new DataView(body.buffer).getUint32(0, true);
+    const decoder = new TextDecoder();
+    expect(JSON.parse(decoder.decode(body.slice(4, 4 + length)))).toEqual({ path: "a.namestudio" });
+    expect(decoder.decode(body.slice(4 + length))).toBe(projectJson(project));
   });
 });

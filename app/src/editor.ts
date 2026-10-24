@@ -2258,6 +2258,15 @@ export class PageEditor {
     this.requestDraw();
   }
 
+  /** After an error: forget the drag in progress without finishing it (the change it made was undone). */
+  dropDrag(): void {
+    this.drag = null;
+    this.base = null;
+    this.afterUp = null;
+    this.dragPointer = null;
+    this.dragPointerType = "";
+  }
+
   /** Give up the drag in progress: a line not yet drawn goes; a change already made stays. */
   private abandonDrag(): void {
     const drag = this.drag;

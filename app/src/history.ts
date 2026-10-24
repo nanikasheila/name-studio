@@ -27,6 +27,11 @@ export class History<T, S = string> {
     return this.codec.take(current);
   }
 
+  /** The value a snapshot was taken of. */
+  revert(snapshot: S): T {
+    return this.codec.restore(snapshot);
+  }
+
   /** Remember `current` before it changes. */
   record(current: T): void {
     this.recordSnapshot(this.codec.take(current));
