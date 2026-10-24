@@ -314,7 +314,7 @@ dialog.pen-settings { width: min(720px, calc(100vw - 32px)); max-height: calc(10
 .action-bar button.active { border-color: var(--accent); color: var(--accent); background: rgb(47 111 219 / 0.08); }
 
 /* Tab: the pages take the whole width. */
-body.focus-mode #editor > .sidebar, body.focus-mode #editor > .inspector { display: none; }
+body.focus-mode #editor > .dock { display: none; }
 
 /* 話の型の色分け (page lists) */
 .page-item.tinted { box-shadow: inset 4px 0 0 var(--part); }
@@ -616,21 +616,55 @@ button.with-icon, .page-nav .segmented button { display: inline-flex; align-item
 .emotion-fold summary { cursor: pointer; }
 .emotion-fold .insp-row { margin-top: 4px; }
 
-/* Left column: icon tabs; folded, only the icons stay. */
-#editor .side-tabs { display: grid; grid-template-columns: repeat(6, 1fr) auto; gap: 2px; padding: 6px 4px; }
-#editor .side-tabs button {
-  display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 4px 0 3px; font-size: 10.5px; line-height: 1.2;
-  border-color: transparent; background: transparent; color: var(--muted);
+/* 欄（パレット）: two columns of palettes, as CSP's; folded, a column keeps only its icons. */
+.dock {
+  position: relative; flex: none; display: flex; flex-direction: column; min-height: 0; min-width: 0;
+  background: var(--panel);
 }
-#editor .side-tabs button .icon { width: 19px; height: 19px; }
-#editor .side-tabs button.active { background: color-mix(in srgb, var(--accent) 14%, var(--panel)); border-color: var(--accent); color: var(--text); }
-#editor .side-tabs .side-collapse { padding: 4px 3px; align-self: center; }
-#editor-side.collapsed { width: 52px; }
-#editor-side.collapsed .side-tabs { grid-template-columns: 1fr; border-bottom: none; }
-#editor-side.collapsed .side-tabs button span { display: none; }
-#editor-side.collapsed .side-tabs button.active { background: transparent; border-color: transparent; color: var(--muted); }
-#editor-side.collapsed .side-collapse .icon { transform: rotate(180deg); }
-#editor-side.collapsed .panel { display: none !important; }
+.dock.left { border-right: 1px solid var(--line); }
+.dock.right { border-left: 1px solid var(--line); }
+.dock.narrow { width: 52px; }
+.dock-rail { display: flex; flex-wrap: wrap; gap: 2px; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+.dock-rail button {
+  flex: 1 1 38px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 4px 0 3px; font-size: 10.5px;
+  line-height: 1.2; border-color: transparent; background: transparent; color: var(--muted); min-width: 0;
+}
+.dock-rail button .icon { width: 19px; height: 19px; }
+.dock-rail button.active { background: color-mix(in srgb, var(--accent) 14%, var(--panel)); border-color: var(--accent); color: var(--text); }
+.dock-rail .dock-collapse { flex: 0 0 auto; padding: 4px 3px; align-self: center; }
+.dock.right .dock-collapse .icon { transform: rotate(180deg); }
+.dock.narrow .dock-rail { flex-direction: column; flex-wrap: nowrap; border-bottom: none; }
+.dock.narrow .dock-rail button { flex: none; }
+.dock.narrow .dock-rail button span { display: none; }
+.dock.narrow .dock-collapse .icon { transform: rotate(180deg); }
+.dock.right.narrow .dock-collapse .icon { transform: none; }
+.dock-stack { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.dock.narrow .dock-stack { flex: 1; }
+.palette { display: flex; flex-direction: column; min-height: 0; border-bottom: 1px solid var(--line); }
+.palette.folded { flex: 0 0 auto; }
+.palette > header {
+  display: flex; align-items: center; gap: 6px; padding: 2px 4px 2px 8px; min-height: 26px; flex: none; cursor: grab; user-select: none;
+  font-size: 12px; color: var(--muted); background: color-mix(in srgb, var(--text) 5%, var(--panel)); border-bottom: 1px solid var(--line);
+}
+.palette > header .icon { width: 15px; height: 15px; }
+.palette > header .palette-title { flex: 1; color: var(--text); font-weight: 600; }
+.palette > header button.icon-button { padding: 1px 4px; border-color: transparent; background: transparent; color: var(--muted); min-height: 0; }
+.palette > header button.icon-button:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.palette.folded .palette-fold .icon { transform: rotate(-90deg); }
+.palette-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.palette-body > .panel, .palette-body > .inspector { flex: 1; min-height: 0; overflow: auto; }
+.palette-body > .inspector { width: auto; border-left: none; }
+.dock-splitter { flex: none; height: 5px; margin: -2px 0; position: relative; z-index: 3; cursor: row-resize; }
+.dock-splitter:hover { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+.dock-resize { position: absolute; top: 0; bottom: 0; width: 7px; z-index: 6; cursor: col-resize; }
+.dock.left .dock-resize { right: -4px; }
+.dock.right .dock-resize { left: -4px; }
+.dock-resize:hover { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+.dock.palette-dragging { outline: 2px dashed color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: -3px; }
+.dock.palette-dragging.narrow { width: 120px; }
+.dock.drop-target { outline-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--panel)); }
+.palette.drop-before { box-shadow: inset 0 3px 0 var(--accent); }
+.dock-stack.drop-end::after { content: ""; display: block; height: 3px; flex: none; background: var(--accent); }
 /* The pages stay in sight at the bottom of a short strip; the lanes scroll behind them. */
 .board-pages { position: sticky; bottom: 0; z-index: 1; border-top: 1px solid var(--line); }
 .board-label.pages-label { position: sticky; bottom: 0; z-index: 1; background: var(--panel); border-top: 1px solid var(--line); }
