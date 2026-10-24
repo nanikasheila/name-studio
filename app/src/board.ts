@@ -1127,7 +1127,7 @@ export class Board {
             const pa = a?.panels.find((pn) => pn.id === panel.id);
             const pb = b?.panels.find((pn) => pn.id === toPanel);
             if (!a || !b || !pa || !pb) return;
-            swapPanelContents(a, pa, b, pb);
+            swapPanelContents(a, pa, b, pb, p.binding);
             message = `${pageIndex(p, a.id) + 1} ページのコマ ${pa.order} と ${pageIndex(p, b.id) + 1} ページのコマ ${pb.order} の中身を入れ替えました（元に戻すは Ctrl+Z）`;
           });
           if (message) this.host.status?.(message);

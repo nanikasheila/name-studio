@@ -604,7 +604,7 @@ export class Inspector {
             joined = joinPanels(target, first, second, p.binding);
             if (joined) {
               assignPanels(target);
-              sortLines(target);
+              sortLines(target, p.binding);
               this.host.editor.selection = { kind: "panel", pageId: page.id, id: first.id };
             }
           });
@@ -664,7 +664,7 @@ export class Inspector {
       this.host.edit((p) => {
         orderPanels(page, p.binding);
         assignPanels(page);
-        sortLines(page);
+        sortLines(page, p.binding);
       }),
     );
     const pattern = element("select");
@@ -683,7 +683,7 @@ export class Inspector {
       this.host.edit((p) => {
         const wanted = Number(count.value);
         applyPattern(p, page, pattern.value, wanted >= 1 ? Math.min(12, Math.round(wanted)) : undefined);
-        sortLines(page);
+        sortLines(page, p.binding);
       });
     });
     // A page added inside a 別案 belongs to that option (another ページ配分).

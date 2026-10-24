@@ -627,6 +627,10 @@ export class Workbench {
     $("editor-page-label").textContent = this.state.project
       ? `${pages.join("–") || "-"} / ${this.state.project.pages.length}`
       : "-";
+    const leftIsNext = this.leftward() === 1;
+    $("editor-next").title = leftIsNext ? "次へ（←）" : "前へ（←）";
+    $("editor-prev").title = leftIsNext ? "前へ（→）" : "次へ（→）";
+    $("first-alone-label").title = `見開きの組み方: 1 ページ目を${leftIsNext ? "左" : "右"}ページだけで始める`;
     // 保留: the held panels meant for around these pages, a click away.
     const badge = $("held-badge");
     const near = this.state.project && pages.length ? heldNear(this.state.project, pages[0] - 1, pages[pages.length - 1] - 1).length : 0;
@@ -699,7 +703,7 @@ export class Workbench {
     if (ref.kind === "panel") {
       const source = from.panels.find((p) => p.id === ref.id);
       if (!source || source === panel) return;
-      this.edit(() => swapPanelContents(from, source, page, panel));
+      this.edit((project) => swapPanelContents(from, source, page, panel, project.binding));
       this.setStatus(`コマ ${source.order} とコマ ${panel.order} の中身を入れ替えました`);
       return;
     }
@@ -708,7 +712,7 @@ export class Workbench {
       moved = moveIntoPanel(from, ref, page, panel);
       for (const p of new Set([from, page])) {
         assignPanels(p);
-        sortLines(p);
+        sortLines(p, this.state.project?.binding);
       }
     });
     if (moved) this.setStatus(`コマ ${panel.order} へ移しました（元に戻すは Ctrl+Z）`);
@@ -1091,7 +1095,7 @@ export class Workbench {
   private addTails(pageId?: string): number {
     let added = 0;
     this.edit((p) => {
-      for (const page of p.pages) if (!pageId || page.id === pageId) added += addAutoTails(page);
+      for (const page of p.pages) if (!pageId || page.id === pageId) added += addAutoTails(page, p.binding);
     });
     this.setStatus(added ? `しっぽ ${added} 本を話者（コマのラフ）へ向けて付けました。丸い先をドラッグで直せます（元に戻すは Ctrl+Z）` : "しっぽのないセリフはありません");
     return added;
@@ -1523,8 +1527,9 @@ export class Workbench {
     $("shortcuts").addEventListener("click", () => this.shortcutDialog.open());
     $("pen-settings").addEventListener("click", () => this.penDialog.open());
     $("redo").addEventListener("click", () => this.redo());
-    $("editor-next").addEventListener("click", () => this.flip(1));
-    $("editor-prev").addEventListener("click", () => this.flip(-1));
+    // The buttons point the way the pages lie: left is next in a right-bound book.
+    $("editor-next").addEventListener("click", () => this.flip(this.leftward()));
+    $("editor-prev").addEventListener("click", () => this.flip(-this.leftward()));
     const showNotes = $<HTMLInputElement>("show-notes");
     showNotes.checked = this.editor.showNotes;
     showNotes.addEventListener("change", () => {
@@ -1583,6 +1588,11 @@ export class Workbench {
       const where = this.editor.pageAtClient(event.clientX, event.clientY);
       if (where) this.putHeld(id, where.page, where.point, where.panel);
     });
+  }
+
+  /** The step that goes one spread to the left: on in a right-bound book, back in a left-bound one. */
+  private leftward(): number {
+    return this.state.project?.binding === "left" ? -1 : 1;
   }
 
   private flip(step: number): void {
@@ -1730,8 +1740,8 @@ export class Workbench {
         return true;
       case "page.next":
       case "page.previous":
-        // Right-bound book: the next spread is to the left.
-        this.flip(action === "page.next" ? 1 : -1);
+        // 左へ・右へ: the next spread is to the left in a right-bound book, to the right in a left-bound one.
+        this.flip(action === "page.next" ? this.leftward() : -this.leftward());
         return true;
       case "option.make": {
         const [first] = this.editor.currentPages();

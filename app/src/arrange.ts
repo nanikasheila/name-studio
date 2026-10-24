@@ -1,9 +1,10 @@
 // セリフの並べ直し: the dialogue of a panel laid out again in reading order,
 // right to left from the top right, wrapping down; long lines broken into
 // short ones first, as narrow as it takes to fit the panel's height, and
-// clear of the faces drawn in the rough.
+// clear of the faces drawn in the rough. A left-bound book reads from the
+// top left: the same layouts run on the page seen in a mirror.
 import { figures } from "./autotail";
-import { balloonExtent } from "./balloon";
+import { balloonExtent, resolvedShape, storedOutline } from "./balloon";
 import {
   assignPanels,
   basicBox,
@@ -14,6 +15,7 @@ import {
   insidePolygon,
   moveLine,
   sortLines,
+  type Binding,
   type BoxMm,
   type Line,
   type Page,
@@ -22,6 +24,48 @@ import {
   type Project,
 } from "./project";
 import { wrapDialogue } from "./wrap";
+
+/** A page seen in a mirror (x → -x) or as it is: what is not mirrored in place goes through it. */
+export interface ReadingFlip {
+  box(box: BoxMm): BoxMm;
+  shape(shape: readonly Point[]): Point[];
+}
+
+const AS_IT_IS: ReadingFlip = { box: (box) => box, shape: (shape) => [...shape] };
+const MIRROR: ReadingFlip = {
+  box: ([x0, y0, x1, y1]) => [-x1, y0, -x0, y1],
+  shape: (shape) => shape.map(([x, y]): Point => [-x, y]),
+};
+
+function mirrorLine(line: Line): void {
+  line.box = MIRROR.box(line.box);
+  if (line.balloon) line.balloon = MIRROR.shape(line.balloon);
+  if (line.tails) line.tails = line.tails.map((tail) => ({ ...tail, tip: [-tail.tip[0], tail.tip[1]], ...(tail.bend !== undefined ? { bend: -tail.bend } : {}) }));
+}
+
+/**
+ * Run `lay` (a layout that reads right to left from the top right) for a
+ * book bound on `binding`: as it is for a manga, and for a left-bound book
+ * with `lines` mirrored (x → -x) so that it reads from the top left. What
+ * `lay` takes besides the lines (boxes, outlines, faces worked out before)
+ * goes through the flip it is given. The lines are mirrored back after and
+ * their balloons drawn again the right way round.
+ */
+export function inReadingDirection<T>(binding: Binding, lines: readonly Line[], lay: (flip: ReadingFlip) => T): T {
+  if (binding === "right") return lay(AS_IT_IS);
+  for (const line of lines) mirrorLine(line);
+  try {
+    return lay(MIRROR);
+  } finally {
+    for (const line of lines) {
+      mirrorLine(line);
+      if (resolvedShape(line) === "custom") continue;
+      const outline = storedOutline(line);
+      if (outline) line.balloon = outline;
+      else delete line.balloon;
+    }
+  }
+}
 
 const MARGIN = 3;
 const GAP = 2;
@@ -273,8 +317,8 @@ export function clearFaces(project: Project): number {
       found += covering.length;
       const box = placingBox(project, panel);
       for (const line of covering) {
-        const others = page.lines.filter((other) => other !== line && other.panel === panel.id).map(balloonExtent);
-        moveClear(line, box, [...faces(page, panel), ...others]);
+        const avoid = [...faces(page, panel), ...page.lines.filter((other) => other !== line && other.panel === panel.id).map(balloonExtent)];
+        inReadingDirection(project.binding, [line], (flip) => moveClear(line, flip.box(box), avoid.map(flip.box)));
       }
       if (covering.some((line) => onFace(page, line))) arrangePanel(project, page, panel);
     }
@@ -284,12 +328,13 @@ export function clearFaces(project: Project): number {
 
 /** このコマのセリフを並べ直す: the panel's dialogue in its reading order. Returns how many lines moved. */
 export function arrangePanel(project: Project, page: Page, panel: Panel): number {
-  sortLines(page);
+  sortLines(page, project.binding);
   const lines = page.lines.filter((line) => line.panel === panel.id);
   if (!lines.length) return 0;
-  layOut(lines, placingBox(project, panel), panel.shape, true, faces(page, panel));
+  const [box, avoid] = [placingBox(project, panel), faces(page, panel)];
+  inReadingDirection(project.binding, lines, (flip) => layOut(lines, flip.box(box), flip.shape(panel.shape), true, avoid.map(flip.box)));
   assignPanels(page);
-  sortLines(page);
+  sortLines(page, project.binding);
   return lines.length;
 }
 

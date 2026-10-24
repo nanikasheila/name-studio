@@ -3,7 +3,7 @@
 // patterns taken from the manuscripts. Everything here works in page mm.
 import { arrangePanel } from "./arrange";
 import { seeded } from "./balloon";
-import { spreads } from "./pages";
+import { onLeftHand, spreads } from "./pages";
 import {
   gutters,
   area,
@@ -180,8 +180,9 @@ export function addInset(project: Project, page: Page, parent: Panel): Panel {
   const w = Math.max((x1 - x0) * 0.36, 20);
   const h = Math.max((y1 - y0) * 0.36, 20);
   const out = 3;
-  // Bottom left: the corner read last in a right-bound book.
-  const shape = rectShape([x0 - out, y1 - h + out, x0 - out + w, y1 + out]);
+  // The bottom corner read last: the left one in a right-bound book, the right one in a left-bound book.
+  const shape =
+    project.binding === "right" ? rectShape([x0 - out, y1 - h + out, x0 - out + w, y1 + out]) : rectShape([x1 + out - w, y1 - h + out, x1 + out, y1 + out]);
   const panel: Panel = { id: newId(project, "panel"), shape, order: 0, fill: "white", z: (parent.z ?? 0) + 1 };
   page.panels.push(panel);
   orderPanels(page, project.binding);
@@ -242,8 +243,9 @@ export function facingPage(project: Project, page: Page, firstAlone: boolean): {
   const number = pageIndex(project, page.id) + 1;
   const pair = spreads(project.pages.length, firstAlone).find((p) => p.includes(number));
   if (!pair || pair[0] === null || pair[1] === null) return null;
-  const right = pair[0] === number;
-  return { page: project.pages[(right ? pair[1] : pair[0]) - 1], gutter: right ? "left" : "right" };
+  const left = onLeftHand(pair, number, project.binding);
+  const other = pair[0] === number ? pair[1] : pair[0];
+  return { page: project.pages[other - 1], gutter: left ? "right" : "left" };
 }
 
 /** The two facing pages `page` is on, in page order, or null when it faces none. */
@@ -412,7 +414,8 @@ export interface Pattern {
 
 /**
  * Page patterns seen in ユメノストラ 1–3 (and common in manga generally).
- * Rows run top to bottom; cells right to left (right-bound books).
+ * Rows run top to bottom; cells right to left (right-bound books; a
+ * left-bound book gets them mirrored).
  */
 export const PATTERNS: Pattern[] = [
   {
@@ -618,11 +621,15 @@ export function patternPanels(project: Project, patternId: string, gaps = gutter
       right = left - gaps.across;
     });
   });
+  // A left-bound book reads from the left: the pattern mirrored, its first cell top left.
+  const mirrored = project.binding === "left";
+  if (mirrored) for (const panel of panels) panel.shape = panel.shape.map(([x, y]): Point => [bx0 + bx1 - x, y]).reverse();
+  const sideOf = (side: Side): Side => (!mirrored ? side : side === "left" ? "right" : side === "right" ? "left" : side);
   const firstRow = panels.slice(0, pattern.rows[0].cells.length);
   const lastRow = panels.slice(panels.length - pattern.rows[pattern.rows.length - 1].cells.length);
   const bleedAll = (list: Panel[], sides: Side[] | undefined) => {
     for (const panel of list) {
-      for (const side of sides ?? []) {
+      for (const side of (sides ?? []).map(sideOf)) {
         // Only cells that touch that side of the frame run off the page.
         const [x0, y0, x1, y1] = bounds(panel.shape);
         const touches = { top: Math.abs(y0 - by0) < 1, bottom: Math.abs(y1 - by1) < 1, left: Math.abs(x0 - bx0) < 1, right: Math.abs(x1 - bx1) < 1 }[side];
@@ -641,8 +648,8 @@ export function patternPanels(project: Project, patternId: string, gaps = gutter
     const [px0, py0, px1, py1] = bounds(parent.shape);
     const w = (px1 - px0) * 0.36;
     const h = (py1 - py0) * 0.3;
-    // Inside the frame even when the parent bleeds.
-    const left = Math.max(x0, bx0) + 4;
+    // Inside the frame even when the parent bleeds; over the corner read last.
+    const left = mirrored ? Math.min(px1, bx1) - 4 - w : Math.max(x0, bx0) + 4;
     const bottom = Math.min(y1, fy1) - 4;
     panels.push({ id: newId(project, "panel"), shape: rectShape([left, bottom - h, left + w, bottom]), order: 0, fill: "white", z: 1 });
   }
@@ -671,7 +678,7 @@ export function applyPattern(project: Project, page: Page, patternId: string, co
   assignPanels(page);
   // Several panels' dialogue in one: laid out again so it does not pile up.
   for (const [panel, count] of shared) if (count > 1) arrangePanel(project, page, panel);
-  sortLines(page);
+  sortLines(page, project.binding);
 }
 
 // --- what is drawn of the borders -----------------------------------------------

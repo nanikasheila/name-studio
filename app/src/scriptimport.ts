@@ -17,7 +17,7 @@
 //   「…！！」                       a shout (トゲ) unless a tag says otherwise
 //   型：導入 / 型: opening           the page's コマ割りの型 (fitted to its panels)
 // List markers (- * + 1.), quotes (>) and **bold** are ignored.
-import { faces, layOut, moveClear, placingBox, wrapToFit } from "./arrange";
+import { faces, inReadingDirection, layOut, moveClear, placingBox, wrapToFit } from "./arrange";
 import { balloonExtent } from "./balloon";
 import { PATTERNS, patternPanels } from "./koma";
 import {
@@ -38,6 +38,7 @@ import {
   setLineKind,
   sortLines,
   type BalloonShape,
+  type Binding,
   type BoxMm,
   type Line,
   type LineKind,
@@ -309,7 +310,7 @@ export interface ScriptImportReport {
 }
 
 /** Panels for `count` script panels over the basic frame: tiers, two side by side past four. */
-export function panelBoxes(box: BoxMm, count: number, gaps = DEFAULT_GUTTERS): BoxMm[] {
+export function panelBoxes(box: BoxMm, count: number, gaps = DEFAULT_GUTTERS, binding: Binding = "right"): BoxMm[] {
   const [x0, y0, x1, y1] = box;
   const rows = count <= 4 ? count : Math.ceil(count / 2);
   const height = (y1 - y0 - gaps.down * (rows - 1)) / rows;
@@ -320,8 +321,9 @@ export function panelBoxes(box: BoxMm, count: number, gaps = DEFAULT_GUTTERS): B
     left -= across;
     const top = y0 + row * (height + gaps.down);
     const width = (x1 - x0 - gaps.across * (across - 1)) / across;
-    // Right binding reads right to left: the first panel of a row on the right.
-    for (let col = across - 1; col >= 0; col--) {
+    // Right binding reads right to left: the first panel of a row on the right (left binding: on the left).
+    for (let k = 0; k < across; k++) {
+      const col = binding === "right" ? across - 1 - k : k;
       const x = x0 + col * (width + gaps.across);
       boxes.push([x, top, x + width, top + height]);
     }
@@ -329,7 +331,7 @@ export function panelBoxes(box: BoxMm, count: number, gaps = DEFAULT_GUTTERS): B
   return boxes;
 }
 
-/** Deal the lines of a panel out over its box: right to left, wrapping down, broken into short lines and kept in the panel. */
+/** Deal the lines of a panel out over its box in reading order (right to left in a manga), wrapping down, broken into short lines and kept in the panel. */
 function placeLines(project: Project, page: Page, panel: Panel | undefined, lines: ScriptLine[], speakers: Map<string, string>): void {
   const placed = lines.map((said) => {
     const line = addLine(project, page, [0, 0], said.text || "…", said.kind);
@@ -337,7 +339,8 @@ function placeLines(project: Project, page: Page, panel: Panel | undefined, line
     if (said.shape) line.balloonShape = said.shape;
     return line;
   });
-  layOut(placed, placingBox(project, panel), panel?.shape);
+  const box = placingBox(project, panel);
+  inReadingDirection(project.binding, placed, (flip) => layOut(placed, flip.box(box), panel && flip.shape(panel.shape)));
 }
 
 /** How much a page's dialogue reads like a script page's: the mean, over the script's lines, of the most alike line on the page. */
@@ -437,19 +440,19 @@ function pairLines(old: readonly Line[], said: readonly ScriptLine[], speakerOf:
   return pairs;
 }
 
-/** New text for a line, broken again to fit its panel, its top right (where reading starts) kept where it was. */
+/** New text for a line, broken again to fit its panel, where reading starts kept where it was (the top right of vertical text, the top left of horizontal). */
 function retext(project: Project, line: Line, text: string, panel: Panel | undefined): void {
-  const [, top, right] = line.box;
+  const [left, top, right] = line.box;
   line.text = text;
   const box = placingBox(project, panel);
   wrapToFit(line, box[3] - box[1] - 6);
   fitLine(line);
-  moveLine(line, right - line.box[2], top - line.box[1]);
+  moveLine(line, line.vertical ? right - line.box[2] : left - line.box[0], top - line.box[1]);
 }
 
 /** Bring a page's dialogue in line with the script's panels (see `ScriptImportOptions.update`). */
 function updatePage(project: Project, page: Page, used: ScriptPanel[], speakers: Map<string, string>, report: ScriptImportReport): void {
-  sortLines(page);
+  sortLines(page, project.binding);
   const panels = [...page.panels].sort((a, b) => a.order - b.order);
   // Script panels past the page's last panel go into its last one, as when first taken in.
   const wanted = new Map<Panel | undefined, ScriptLine[]>();
@@ -500,7 +503,7 @@ function updatePage(project: Project, page: Page, used: ScriptPanel[], speakers:
       if (changed) report.changed++;
       else report.kept++;
     });
-    // New lines: just after the line before them in the script (to its left, the next to be read), or at the panel's top right.
+    // New lines: just after the line before them in the script (to its left in a manga, the next to be read), or where the panel's reading starts.
     let previous: Line | undefined;
     said.forEach((s, j) => {
       const i = pairedNew.get(j);
@@ -515,13 +518,17 @@ function updatePage(project: Project, page: Page, used: ScriptPanel[], speakers:
       const box = placingBox(project, panel);
       wrapToFit(line, box[3] - box[1] - 6);
       fitLine(line);
-      const [right, top] = previous ? [balloonExtent(previous)[0] - 2, balloonExtent(previous)[1]] : [box[2] - 3, box[1] + 3];
-      const [x0, y0, x1] = balloonExtent(line);
-      moveLine(line, Math.max(box[0] + 3 - x0, right - x1), top - y0);
+      const before = previous;
+      inReadingDirection(project.binding, before ? [line, before] : [line], (flip) => {
+        const area = flip.box(box);
+        const [right, top] = before ? [balloonExtent(before)[0] - 2, balloonExtent(before)[1]] : [area[2] - 3, area[1] + 3];
+        const [x0, y0, x1] = balloonExtent(line);
+        moveLine(line, Math.max(area[0] + 3 - x0, right - x1), top - y0);
+      });
       if (panel) {
         // Off the faces in the rough and the panel's other balloons, as little as it takes.
-        const others = page.lines.filter((other) => other !== line && other.panel === panel.id && !gone.has(other)).map(balloonExtent);
-        moveClear(line, box, [...faces(page, panel), ...others]);
+        const avoid = [...faces(page, panel), ...page.lines.filter((other) => other !== line && other.panel === panel.id && !gone.has(other)).map(balloonExtent)];
+        inReadingDirection(project.binding, [line], (flip) => moveClear(line, flip.box(box), avoid.map(flip.box)));
         line.panel = panel.id;
       }
       previous = line;
@@ -535,7 +542,7 @@ function updatePage(project: Project, page: Page, used: ScriptPanel[], speakers:
     report.removed += gone.size;
   }
   assignPanels(page);
-  sortLines(page);
+  sortLines(page, project.binding);
 }
 
 /** Put a script onto the name. */
@@ -588,7 +595,7 @@ export function applyScript(project: Project, doc: ScriptDoc, options: ScriptImp
         page.panels = patternPanels(project, pattern, gutters(project), used.length);
         orderPanels(page, project.binding);
       } else {
-        for (const box of panelBoxes(basicBox(project.pageFormat), used.length, gutters(project))) addPanel(project, page, rectShape(box));
+        for (const box of panelBoxes(basicBox(project.pageFormat), used.length, gutters(project), project.binding)) addPanel(project, page, rectShape(box));
       }
       report.panels += page.panels.length;
     }
@@ -601,7 +608,7 @@ export function applyScript(project: Project, doc: ScriptDoc, options: ScriptImp
       report.lines += scriptPanel.lines.length;
     });
     assignPanels(page);
-    sortLines(page);
+    sortLines(page, project.binding);
     if (scriptPage.scene) sceneStarts.push({ title: scriptPage.scene, first: page.id, last: page.id });
     else if (sceneStarts.length) sceneStarts[sceneStarts.length - 1].last = page.id;
   });
