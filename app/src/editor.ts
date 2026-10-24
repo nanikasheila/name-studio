@@ -835,6 +835,112 @@ export class PageEditor {
     return facing.x > slot.x ? slot.shown[1] : slot.shown[0];
   }
 
+  /** The other page that a point (mm on `slot`) is over, if it is over another one. */
+  private otherPageUnder(project: Project, slot: Slot, [x, y]: Point): Slot | null {
+    const there = this.slotAt(slot.x + x * slot.scale, slot.y + y * slot.scale, project);
+    if (there) return there.index === slot.index ? null : there;
+    // Past the gutter, even beyond the facing page: the facing page.
+    const facing = this.facingSlot(slot);
+    const across = facing && (facing.x > slot.x ? x > slot.shown[1] : x < slot.shown[0]);
+    return across ? facing : null;
+  }
+
+  /**
+   * While something is dragged: what is dragged, drawn over the other pages
+   * and the room between them too (its own page cuts it off at its edge), and
+   * the page it goes to when let go, framed.
+   */
+  private drawDragged(project: Project): void {
+    const drag = this.drag;
+    const s = this.selection;
+    if (drag?.kind !== "move" || !drag.moved || !s) return;
+    const slot = this.slots.find((x) => x.index === drag.slot.index);
+    if (!slot) return;
+    const page = slot.page;
+    const ids = (kind: ItemRef["kind"]) => new Set((drag.items ?? []).filter((item) => item.kind === kind).map((item) => item.id));
+    const panels = ids("panel");
+    const lines = ids("line");
+    const strokes = ids("stroke");
+    const fills = ids("fill");
+    const breakouts = ids("breakout");
+    if (!drag.items) {
+      const own = { panel: panels, line: lines, stroke: strokes, fill: fills, breakout: breakouts } as Record<string, Set<string>>;
+      own[s.kind]?.add(s.id);
+      for (const line of drag.carried?.lines ?? []) lines.add(line.id);
+      for (const stroke of drag.carried?.strokes ?? []) strokes.add(stroke.id);
+      for (const fill of drag.carried?.fills ?? []) fills.add(fill.id);
+    }
+    const dragged: Page = {
+      ...page,
+      panels: page.panels.filter((x) => panels.has(x.id)),
+      lines: page.lines.filter((x) => lines.has(x.id)),
+      strokes: page.strokes.filter((x) => strokes.has(x.id)),
+      breakouts: page.breakouts.filter((x) => breakouts.has(x.id)),
+      fills: (page.fills ?? []).filter((x) => fills.has(x.id)),
+      stickies: [],
+    };
+    const [, pageH] = project.pageFormat.canvasMm;
+    const m = { scale: slot.scale, x: slot.x, y: slot.y };
+    const ctx = this.ctx;
+    ctx.save();
+    // Everywhere but its own page, where it is drawn already.
+    ctx.beginPath();
+    ctx.rect(-1e5, -1e5, 2e5, 2e5);
+    ctx.rect(slot.x + slot.shown[0] * slot.scale, slot.y, (slot.shown[1] - slot.shown[0]) * slot.scale, pageH * slot.scale);
+    ctx.clip("evenodd");
+    ctx.globalAlpha = 0.9;
+    for (const panel of dragged.panels) {
+      // Lifted off the paper: the pages under it show through a little.
+      tracePath(ctx, panel.shape, m, true);
+      ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+      ctx.fill();
+    }
+    const brushes = project.brushes ?? [];
+    drawStrokes(ctx, dragged, m, false, () => ACCENT, 0.7, brushes);
+    drawPanelFills(ctx, dragged, m);
+    drawPageFills(ctx, dragged, m);
+    drawPanelBorders(ctx, dragged, m, () => ACCENT);
+    drawStrokes(ctx, dragged, m, true, () => ACCENT, 0.7, brushes);
+    drawBalloons(ctx, dragged, m);
+    for (const line of dragged.lines) drawLineText(ctx, line, m);
+    ctx.restore();
+
+    // Where it goes: a panel on its own (not half of a 見開き panel), dialogue and rough lines.
+    const panel = s.kind === "panel" && !drag.items ? dragged.panels[0] : undefined;
+    const going = panel
+      ? panel.spread
+        ? []
+        : [bounds(panel.shape)]
+      : [...dragged.lines.map((line) => line.box), ...dragged.strokes.map((stroke) => bounds(stroke.points.map(([x, y]) => [x, y] as Point)))];
+    if (!going.length) return;
+    const box = bounds(going.flatMap(([x0, y0, x1, y1]) => [[x0, y0], [x1, y1]] as Point[]));
+    const to = this.otherPageUnder(project, slot, [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2]);
+    if (!to) return;
+    const [tx0, ty0, tx1, ty1] = trimBox(project.pageFormat);
+    const left = to.x + Math.max(tx0, to.shown[0]) * to.scale;
+    const right = to.x + Math.min(tx1, to.shown[1]) * to.scale;
+    ctx.save();
+    ctx.strokeStyle = ACCENT;
+    ctx.lineWidth = 3;
+    ctx.setLineDash([8, 5]);
+    ctx.strokeRect(left - 3, to.y + ty0 * to.scale - 3, right - left + 6, (ty1 - ty0) * to.scale + 6);
+    ctx.setLineDash([]);
+    const label = `${to.index + 1} ページへ${panel ? "（中身ごと）" : ""}`;
+    ctx.font = "bold 13px system-ui, sans-serif";
+    const w = ctx.measureText(label).width + 16;
+    const lx = (left + right) / 2 - w / 2;
+    const ly = to.y + ty0 * to.scale - 30;
+    ctx.fillStyle = ACCENT;
+    ctx.beginPath();
+    ctx.roundRect(lx, ly, w, 22, 11);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, lx + w / 2, ly + 11);
+    ctx.restore();
+  }
+
   /** The page settings follow the page worked on; 連続: its spread is the one worked on. */
   private focusOn(slot: Slot): void {
     this.focusedPageId = slot.page.id;
@@ -853,15 +959,7 @@ export class PageEditor {
   private carryToPageUnder(project: Project, slot: Slot): void {
     const s = this.selection;
     if (!s || s.pageId !== slot.page.id) return;
-    const facing = this.facingSlot(slot);
-    // The page that a point (mm on `slot`) is now over.
-    const under = ([x, y]: Point): Slot | null => {
-      const there = this.slotAt(slot.x + x * slot.scale, slot.y + y * slot.scale, project);
-      if (there) return there.index === slot.index ? null : there;
-      // Past the gutter, even beyond the facing page: the facing page.
-      const across = facing && (facing.x > slot.x ? x > slot.shown[1] : x < slot.shown[0]);
-      return across ? facing : null;
-    };
+    const under = (point: Point) => this.otherPageUnder(project, slot, point);
     const centre = (box: BoxMm): Point => [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2];
     if (s.kind === "panel") {
       const panel = slot.page.panels.find((p) => p.id === s.id);
@@ -959,6 +1057,7 @@ export class PageEditor {
     this.slots = this.slid(this.layout(project));
     for (const slot of this.slots) if (this.onCanvas(project, slot)) this.drawPage(project, slot);
     this.drawSpreadMarks(project);
+    this.drawDragged(project);
     this.keepCache();
     this.inline?.place();
     this.placeBar();

@@ -54,23 +54,7 @@
       </section>
     </main>
     <main id="editor" class="workspace" hidden>
-      <aside class="sidebar" id="editor-side">
-        <div class="tabs side-tabs" role="tablist">
-          <button id="tab-pages" class="active" role="tab" title="ページの一覧（ドラッグで並べ替え）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="2.5" width="12" height="15" rx="1"/><path d="M4 9h12M10 9v8.5"/></svg><span>ページ</span></button>
-          <button id="tab-script" role="tab" title="全ページのセリフを台本の形で。台本・プロットの取り込みも"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.5h10v15H5z"/><path d="M8 6.5h4M8 9.5h4M8 12.5h2.5"/></svg><span>台本</span></button>
-          <button id="tab-cast" role="tab" title="登場人物（名前・色・口調）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="6.5" r="3"/><path d="M4 17c0-3.3 2.7-5.2 6-5.2s6 1.9 6 5.2"/></svg><span>人物</span></button>
-          <button id="tab-notes" role="tab" title="全ページの付箋（未決のこと）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 3h13v9l-5 5h-8z"/><path d="M11.5 17v-5h5"/></svg><span>付箋</span></button>
-          <button id="tab-held" role="tab" title="置き場所の決まっていないコマ（保留）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="3.5" y="3.5" width="13" height="13" rx="1" stroke-dasharray="2.2 2"/><path d="M10 7v6M7 10h6"/></svg><span>保留</span></button>
-          <button id="tab-layers-edit" role="tab" title="見開きのコマと、その中のセリフ・ラフ線・塗り（CSP のコマ枠フォルダのように）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3l7 3.8-7 3.8-7-3.8z"/><path d="M3 10.5l7 3.8 7-3.8M3 14l7 3.8 7-3.8"/></svg><span>レイヤー</span></button>
-          <button id="side-collapse" class="side-collapse" title="左の欄をたたむ・広げる"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4l-6 6 6 6"/></svg></button>
-        </div>
-        <div id="side-pages" class="panel"></div>
-        <div id="side-script" class="panel" hidden></div>
-        <div id="side-cast" class="panel" hidden></div>
-        <div id="side-notes" class="panel" hidden></div>
-        <div id="side-held" class="panel" hidden></div>
-        <div id="side-layers" class="panel layer-list" hidden></div>
-      </aside>
+      <aside class="dock left" id="dock-left" aria-label="左の欄"></aside>
       <nav class="tool-rail" id="editor-tools" aria-label="道具">
           <button id="tool-select" class="active" title="選ぶ・動かす（V）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.5l10 8-4.5 1 2.5 5-2 1-2.5-5L5 16z" class="fill"/></svg><span>選択</span></button>
           <button id="tool-cut" title="コマを割る。コマの外をドラッグすると新しいコマ（K）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="2.5" width="15" height="15" rx="1"/><path d="M2.5 8.5l15 2.5M10 9.8V17.5"/></svg><span>コマ割り</span></button>
@@ -128,7 +112,16 @@
         </div>
         <section id="story" class="story" aria-label="物語の帯"></section>
       </section>
-      <aside id="inspector" class="inspector"></aside>
+      <aside class="dock right" id="dock-right" aria-label="右の欄"></aside>
+      <div id="palette-bodies" hidden>
+        <div id="side-pages" class="panel"></div>
+        <div id="side-script" class="panel"></div>
+        <div id="side-cast" class="panel"></div>
+        <div id="side-notes" class="panel"></div>
+        <div id="side-held" class="panel"></div>
+        <div id="side-layers" class="panel layer-list"></div>
+        <div id="inspector" class="inspector"></div>
+      </div>
     </main>
     <footer id="status" class="status"></footer>
     <dialog id="export-dialog" class="export">

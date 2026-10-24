@@ -16,6 +16,7 @@ import { arrangePage, arrangePanel, clearFaces, fitSpills } from "./arrange";
 import { LayerView, moveIntoPanel, type LayerRef } from "./layers";
 import { penPreferences } from "./pen";
 import { comboOf, Shortcuts, type ActionId } from "./shortcuts";
+import { Docks, type PaletteDef, type PaletteId } from "./dock";
 import { alternativesOf, joinAlternative, makeAlternative, useAlternative } from "./alternatives";
 import {
   ERASE_MODE_LABELS,
@@ -153,6 +154,14 @@ interface WorkbenchState {
 /** What a held panel is carried as when dragged from the 保留 list. */
 const HELD_TYPE = "application/x-name-studio-held";
 const SIDE_FOLDED_KEY = "namestudio.sideFolded";
+/** The palettes' icons. */
+const PAGES_ICON = '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="2.5" width="12" height="15" rx="1"/><path d="M4 9h12M10 9v8.5"/></svg>';
+const SCRIPT_ICON = '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.5h10v15H5z"/><path d="M8 6.5h4M8 9.5h4M8 12.5h2.5"/></svg>';
+const CAST_ICON = '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="6.5" r="3"/><path d="M4 17c0-3.3 2.7-5.2 6-5.2s6 1.9 6 5.2"/></svg>';
+const NOTES_ICON = '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 3h13v9l-5 5h-8z"/><path d="M11.5 17v-5h5"/></svg>';
+const HELD_ICON = '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="3.5" y="3.5" width="13" height="13" rx="1" stroke-dasharray="2.2 2"/><path d="M10 7v6M7 10h6"/></svg>';
+const LAYERS_ICON = '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3l7 3.8-7 3.8-7-3.8z"/><path d="M3 10.5l7 3.8 7-3.8M3 14l7 3.8 7-3.8"/></svg>';
+const INSPECTOR_ICON = '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5.5h8M15 5.5h2M3 10h3M10 10h7M3 14.5h7M14 14.5h3"/><circle cx="13" cy="5.5" r="2"/><circle cx="8" cy="10" r="2"/><circle cx="12" cy="14.5" r="2"/></svg>';
 
 /** The page icon for the inspector's title when nothing is selected. */
 function pageIcon(): SVGSVGElement {
@@ -182,7 +191,8 @@ export class Workbench {
   private readonly state: WorkbenchState = { project: null, path: null, dirty: false, revision: 0, pending: null, roughs: new Map() };
   /** Characters whose lines are listed in the 人物 tab. */
   private openCast = new Set<string>();
-  private sideTab: "pages" | "script" | "cast" | "notes" | "held" | "layers" = "pages";
+  /** The palettes beside the pages (left or right, several at once). */
+  private docks!: Docks;
   private readonly layerView = new LayerView({
     selected: (ref) => this.layerSelected(ref),
     select: (ref) => this.selectLayer(ref),
@@ -601,30 +611,24 @@ export class Workbench {
     this.onTitle(`${this.state.dirty ? "● " : ""}${name} — ${project.title}`);
   }
 
+  /** What the open palettes hold (those folded or hidden wait until they open). */
   private renderSide(): void {
-    $("side-pages").hidden = this.sideTab !== "pages";
-    $("side-script").hidden = this.sideTab !== "script";
-    $("side-cast").hidden = this.sideTab !== "cast";
-    $("side-notes").hidden = this.sideTab !== "notes";
-    $("side-held").hidden = this.sideTab !== "held";
-    $("side-layers").hidden = this.sideTab !== "layers";
-    for (const tab of ["pages", "script", "cast", "notes", "held"] as const) $(`tab-${tab}`).classList.toggle("active", this.sideTab === tab);
-    $("tab-layers-edit").classList.toggle("active", this.sideTab === "layers");
     const project = this.state.project;
-    if (!project) return;
-    if (this.sideTab === "pages") this.renderPages(project);
-    if (this.sideTab === "script") this.renderScript(project);
-    if (this.sideTab === "cast") this.renderCast(project);
-    if (this.sideTab === "notes") this.renderNotes(project);
-    if (this.sideTab === "held") this.renderHeld(project);
-    if (this.sideTab === "layers") this.renderLayers();
+    if (!project || !this.docks) return;
+    const open = (id: PaletteId) => this.docks.isOpen(id);
+    if (open("pages")) this.renderPages(project);
+    if (open("script")) this.renderScript(project);
+    if (open("cast")) this.renderCast(project);
+    if (open("notes")) this.renderNotes(project);
+    if (open("held")) this.renderHeld(project);
+    if (open("layers")) this.renderLayers();
   }
 
   // --- レイヤー（コマ枠フォルダ） ----------------------------------------------------------
 
   private renderLayers(): void {
     const project = this.state.project;
-    if (!project || this.sideTab !== "layers") return;
+    if (!project || !this.docks.isOpen("layers")) return;
     const pages = this.editor
       .currentPages()
       .sort((a, b) => a - b)
@@ -2037,26 +2041,32 @@ export class Workbench {
       this.editor.spreadIndex = 0;
       this.renderAll();
     });
-    // The left column: a tab opens its panel; the open tab again (or «) folds it to its icons.
-    const side = $("editor-side");
-    // On a narrow screen the strip under the page lists the pages: the column starts folded.
-    side.classList.toggle("collapsed", readFlag(SIDE_FOLDED_KEY, window.innerWidth < 1500));
-    const fold = (folded: boolean) => {
-      side.classList.toggle("collapsed", folded);
-      writeFlag(SIDE_FOLDED_KEY, folded);
-    };
-    const open = (tab: typeof this.sideTab, toggle: boolean) => {
-      const folded = side.classList.contains("collapsed");
-      if (toggle && !folded && this.sideTab === tab) return fold(true);
-      if (folded) fold(false);
-      this.sideTab = tab;
-      this.renderSide();
-    };
-    $("side-collapse").addEventListener("click", () => fold(!side.classList.contains("collapsed")));
-    for (const tab of ["pages", "script", "cast", "notes", "held"] as const) {
-      $(`tab-${tab}`).addEventListener("click", () => open(tab, true));
-    }
-    $("held-badge").addEventListener("click", () => open("held", false));
+    // The palettes: left or right, several at once, as CSP's.
+    const palette = (id: PaletteId, title: string, tip: string, icon: string, tabId = `tab-${id}`): PaletteDef => ({
+      id,
+      title,
+      tip,
+      icon,
+      tabId,
+      body: $(id === "inspector" ? "inspector" : `side-${id}`),
+    });
+    this.docks = new Docks(
+      { left: $("dock-left"), right: $("dock-right") },
+      [
+        palette("pages", "ページ", "ページの一覧（ドラッグで並べ替え）", PAGES_ICON),
+        palette("script", "台本", "全ページのセリフを台本の形で。台本・プロットの取り込みも", SCRIPT_ICON),
+        palette("cast", "人物", "登場人物（名前・色・口調）", CAST_ICON),
+        palette("notes", "付箋", "全ページの付箋（未決のこと）", NOTES_ICON),
+        palette("held", "保留", "置き場所の決まっていないコマ（保留）", HELD_ICON),
+        palette("layers", "レイヤー", "見開きのコマと、その中のセリフ・ラフ線・塗り（CSP のコマ枠フォルダのように）", LAYERS_ICON, "tab-layers-edit"),
+        palette("inspector", "詳細", "選んだもの（ページ・コマ・セリフ・付箋など）の設定", INSPECTOR_ICON),
+      ],
+      () => this.renderSide(),
+      undefined,
+      // On a narrow screen the strip under the page lists the pages: the left column starts folded.
+      readFlag(SIDE_FOLDED_KEY, window.innerWidth < 1500),
+    );
+    $("held-badge").addEventListener("click", () => this.docks.open("held"));
     // A held panel dropped on a page: into the panel there, else where it is dropped.
     const canvas = $("editor-canvas");
     canvas.addEventListener("dragover", (event) => {
@@ -2071,7 +2081,6 @@ export class Workbench {
       const where = this.editor.pageAtClient(event.clientX, event.clientY);
       if (where) this.putHeld(id, where.page, where.point, where.panel);
     });
-    $("tab-layers-edit").addEventListener("click", () => open("layers", true));
   }
 
   private flip(step: number): void {
