@@ -81,6 +81,7 @@ import {
   removePage,
   removeSticky,
   STICKY_COLORS,
+  linkLabel,
   removePanel,
   sceneOf,
   sortLines,
@@ -814,7 +815,9 @@ export class Workbench {
         const swatch = element("span", { className: "swatch" });
         swatch.style.background = STICKY_COLORS[sticky.color ?? "yellow"].fill;
         const text = element("span", { className: "note-text", textContent: sticky.text.trim() || "（空の付箋）" });
-        const where = element("span", { className: "count", textContent: `${index + 1}` });
+        const about = linkLabel(page, sticky);
+        const where = element("span", { className: "count", textContent: `${index + 1}`, title: about ? `${index + 1} ページの${about}` : `${index + 1} ページ` });
+        if (about) text.append(element("small", { className: "note-link", textContent: ` → ${about}` }));
         const row = element("div", { className: "note-item", title: "この付箋へ" }, swatch, where, text);
         row.addEventListener("click", () => this.goTo(page.id, "sticky", sticky.id));
         const done = element("button", { className: "small", textContent: "済み", title: "決まったので付箋を外す（元に戻すで戻せます）" });
@@ -902,7 +905,13 @@ export class Workbench {
           }),
         );
         tail.disabled = resolvedShape(line) === "none";
-        return [button("書く", "その場で書き直す（ダブルクリックでも）", () => this.editor.editInPlace(page.id, "line", line.id)), kind, tail, transform, copy, remove];
+        const mask = button(
+          "マスク",
+          "コマ枠でマスク: コマの外に出た所を隠す（もう一度押すと戻す）",
+          () => this.edit(() => (line.mask ? delete line.mask : (line.mask = true))),
+          line.mask ? "active" : "",
+        );
+        return [button("書く", "その場で書き直す（ダブルクリックでも）", () => this.editor.editInPlace(page.id, "line", line.id)), kind, tail, ...(line.panel ? [mask] : []), transform, copy, remove];
       }
       case "stroke":
       case "group":
@@ -962,7 +971,7 @@ export class Workbench {
     }
     if (s?.kind === "sticky") {
       const sticky = page.stickies?.find((n) => n.id === s.id);
-      if (sticky) return panel.replaceChildren(...this.stickyInspector(sticky));
+      if (sticky) return panel.replaceChildren(...this.stickyInspector(page, sticky));
     }
     if (s?.kind === "fill") {
       const fill = page.fills?.find((f) => f.id === s.id);
@@ -1208,6 +1217,11 @@ export class Workbench {
     };
     const inverted = flag("白抜き", !!line.inverted, (on) => (on ? (line.inverted = true) : delete line.inverted));
     const emphasis = flag("太字（強調）", !!line.emphasis, (on) => (on ? (line.emphasis = true) : delete line.emphasis));
+    const mask = flag("コマ枠でマスク（枠の外を隠す）", !!line.mask, (on) => (on ? (line.mask = true) : delete line.mask));
+    if (!line.panel) {
+      mask.title = "コマの中にないセリフはマスクできません";
+      mask.querySelector("input")!.disabled = !line.mask;
+    }
     const hasBalloon = resolvedShape(line) !== "none";
     const tails = line.tails ?? [];
     const addTail = element("button", { textContent: "しっぽを足す", disabled: !hasBalloon });
@@ -1266,6 +1280,7 @@ export class Workbench {
       element("h3", { textContent: "フキダシ" }),
       element("label", {}, "形", shape),
       makeDefault,
+      mask,
       element("div", { className: "row" }, addTail, removeTail),
       element("label", {}, `しっぽ（${tails.length} 本）`, tailStyle),
       element("label", {}, "つなぐ（連結フキダシ）", link),
@@ -1331,7 +1346,8 @@ export class Workbench {
     });
     return [
       element("h2", { textContent: `${pageIndex(project, page.id) + 1} ページ ${order} コマ目` }),
-      element("label", {}, "メモ（ページの上にも出ます。コマをダブルクリックでその場で書けます）", note),
+      element("label", {}, "メモ（ページの上にも出ます。コマをダブルクリックでその場で書けます。札はドラッグで好きな所へ）", note),
+      ...(panel.noteAt ? [this.plainButton("メモの札をコマの角に戻す", () => this.edit(() => delete panel.noteAt))] : []),
       element("div", { className: "row" }, element("label", {}, "枠線", border), element("label", {}, "塗り", fill)),
       element("label", {}, "背景の効果", effect),
       element("h3", { textContent: "裁ち切り（ページの外まで）" }),
@@ -1428,7 +1444,13 @@ export class Workbench {
     return [element("h3", { textContent: "つなげる" }), element("div", { className: "row" }, ...buttons)];
   }
 
-  private stickyInspector(sticky: Sticky): HTMLElement[] {
+  private plainButton(label: string, action: () => void): HTMLButtonElement {
+    const b = element("button", { textContent: label });
+    b.addEventListener("click", action);
+    return b;
+  }
+
+  private stickyInspector(page: Page, sticky: Sticky): HTMLElement[] {
     const text = element("textarea", { value: sticky.text, placeholder: "気づいたこと、直したいこと" });
     this.liveText(text, (value) => (sticky.text = value));
     const colors = (Object.keys(STICKY_COLORS) as StickyColor[]).map((color) => {
@@ -1450,7 +1472,11 @@ export class Workbench {
       element("h2", { textContent: "付箋" }),
       element("label", {}, "メモ", text),
       element("div", { className: "row sticky-colors" }, ...colors),
-      element("p", { className: "hint", textContent: "付箋は作業用のメモで、CSP・PDF には書き出しません。ドラッグで動かせます。" }),
+      element("h3", { textContent: "紐づけ" }),
+      linkLabel(page, sticky)
+        ? element("div", { className: "row link-row" }, element("span", { className: "link-target", textContent: `→ ${linkLabel(page, sticky)}` }), this.plainButton("外す", () => this.edit(() => delete sticky.link)))
+        : element("p", { className: "hint", textContent: "どこにも紐づいていません。付箋の左下の丸を、コマかセリフの上へドラッグすると紐づきます。" }),
+      element("p", { className: "hint", textContent: "付箋は作業用のメモで、CSP・PDF には書き出しません。ドラッグで好きな所へ動かせ、紐づけた先とは線でつながったままです（コマやセリフを動かすと付いてきます）。" }),
       remove,
     ];
   }

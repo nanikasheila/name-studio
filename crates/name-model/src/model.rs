@@ -176,6 +176,21 @@ pub struct Sticky {
     pub at: [f64; 2],
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
+    /// 紐づけ: the panel or line the note is about; it points there wherever
+    /// the note is put.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link: Option<StickyLink>,
+}
+
+/// A panel or a line a 付箋 is about, and the point on it the note points to
+/// (from the top left of the panel's bounds or the line's box, in mm).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StickyLink {
+    /// "panel" or "line".
+    pub kind: String,
+    pub id: String,
+    pub at: [f64; 2],
 }
 
 /// 構成補助: what the name is aimed at, to compare the page split with.
@@ -251,6 +266,10 @@ pub struct Panel {
     /// 演出メモ: camera, timing or what the panel is for.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub note: String,
+    /// Where the memo's tag was moved to: its top left from the top left of
+    /// the panel's bounds (mm); none: in the panel's corner. Screen only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note_at: Option<[f64; 2]>,
     /// 見開き: shared by the two halves of a panel across the gutter, one on
     /// each page of the spread.
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -445,6 +464,9 @@ pub struct Line {
     /// 強調: bold type.
     #[serde(default, skip_serializing_if = "is_default")]
     pub emphasis: bool,
+    /// コマ枠でマスク: the balloon is cut off at the border of its panel.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub mask: bool,
 }
 
 /// A rough line (ラフ).

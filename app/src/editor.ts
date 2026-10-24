@@ -2,6 +2,7 @@
 // into edits (select and move, cut panels, place lines, draw and erase).
 // Coordinates on a page are millimetres; each page of the spread has its own
 // mm → screen mapping.
+import { maskShape } from "./mask";
 import { FULL_SPEED_MM, followFactor, postCorrect, tiltOf as penTilt, usesMotion } from "./brush";
 import { adjustPressure, penPreferences } from "./pen";
 import { balloonExtent, defaultTailStyle, insideBalloon, resolvedShape, tailGeometry } from "./balloon";
@@ -31,6 +32,8 @@ import {
   addFill,
   addLine,
   addSticky,
+  linkSticky,
+  stickyAnchor,
   addPanel,
   addStroke,
   assignPanels,
@@ -154,6 +157,8 @@ type Drag =
   | { kind: "eraseLasso"; slot: Slot; points: Point[] }
   | { kind: "erase"; slot: Slot; erased: number }
   | { kind: "swap"; slot: Slot; panelId: string; at: [number, number]; to: { slot: Slot; panelId: string } | null }
+  | { kind: "note"; slot: Slot; panelId: string; start: [number, number]; origin: Point; moved: boolean }
+  | { kind: "stickyLink"; slot: Slot; stickyId: string; to: Selection | null }
   | { kind: "seam"; slot: Slot; seam: Seam; base: Map<string, Point[]>; start: Point; moved: boolean; carried: Map<string, CarriedContents> }
   | { kind: "scale"; slot: Slot; handle: number; base: TransformBase; box: BoxMm; moved: boolean }
   /** 自由変形 (Ctrl + a corner): the corners of the frame, each where it was dragged. */
@@ -182,6 +187,8 @@ type Hover =
 
 const ACCENT = "#2f6fdb";
 const MARGIN = 28;
+/** Radius of a 付箋's link handle (px). */
+const LINK_HANDLE = 5;
 /** Room under the pages for their number and memo. */
 const CAPTION = 36;
 const HANDLE = 5;
@@ -836,7 +843,20 @@ export class PageEditor {
     }
 
     drawBalloons(ctx, page, m);
-    for (const line of page.lines) this.drawLine(project, slot, line);
+    for (const line of page.lines) {
+      // コマ枠でマスク: the words go no further than the balloon does.
+      const panel = line.mask ? page.panels.find((p) => p.id === line.panel) : undefined;
+      const clip = panel && maskShape(panel);
+      if (!clip) {
+        this.drawLine(project, slot, line);
+        continue;
+      }
+      ctx.save();
+      tracePath(ctx, clip, m, true);
+      ctx.clip();
+      this.drawLine(project, slot, line);
+      ctx.restore();
+    }
     if (this.showNotes) for (const panel of page.panels) if (panel.note) this.drawNote(slot, panel);
     for (const sticky of page.stickies ?? []) this.drawSticky(slot, sticky);
     ctx.restore();
@@ -882,6 +902,8 @@ export class PageEditor {
         return [slot.x + bx0 * slot.scale, slot.y + by0 * slot.scale, slot.x + bx1 * slot.scale, slot.y + by1 * slot.scale];
       });
     const clear = ([x, y]: [number, number]) => balloons.every(([bx0, by0, bx1, by1]) => x + w < bx0 || x > bx1 || y + h < by0 || y > by1);
+    // Moved by hand: where it was put, wherever the panel goes.
+    if (panel.noteAt) return { x: slot.x + (x0 + panel.noteAt[0]) * slot.scale, y: slot.y + (y0 + panel.noteAt[1]) * slot.scale, w, h, rows };
     const [x, y] = corners.find(clear) ?? corners[0];
     return { x, y, w, h, rows };
   }
@@ -891,6 +913,14 @@ export class PageEditor {
     const ctx = this.ctx;
     const { x, y, w, h, rows } = this.noteBox(slot, panel);
     ctx.save();
+    if (panel.noteAt) {
+      // Moved away from its panel: a line back to it, as a comment points at its cell.
+      const [x0, y0, x1, y1] = bounds(panel.shape);
+      const inset = 3;
+      const ax = Math.min(Math.max(x + w / 2, slot.x + (x0 + inset) * slot.scale), slot.x + (x1 - inset) * slot.scale);
+      const ay = Math.min(Math.max(y + h / 2, slot.y + (y0 + inset) * slot.scale), slot.y + (y1 - inset) * slot.scale);
+      this.leader(ax, ay, [x, y, x + w, y + h], "rgba(170, 140, 40, 0.85)");
+    }
     ctx.fillStyle = "rgba(255, 246, 194, 0.92)";
     ctx.strokeStyle = "rgba(170, 140, 40, 0.6)";
     ctx.lineWidth = 1;
@@ -922,6 +952,8 @@ export class PageEditor {
     const sy = slot.y + y0 * slot.scale;
     const w = (x1 - x0) * slot.scale;
     const h = (y1 - y0) * slot.scale;
+    const anchor = stickyAnchor(slot.page, sticky);
+    if (anchor) this.leader(slot.x + anchor[0] * slot.scale, slot.y + anchor[1] * slot.scale, [sx, sy, sx + w, sy + h], "rgba(120, 96, 20, 0.9)", STICKY_COLORS[sticky.color ?? "yellow"].fill);
     ctx.save();
     ctx.shadowColor = "rgba(0, 0, 0, 0.25)";
     ctx.shadowBlur = 4;
@@ -940,6 +972,70 @@ export class PageEditor {
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
     stickyRows(sticky.text).forEach((row, i) => ctx.fillText(row, sx + 2 * slot.scale, sy + 2 * slot.scale + i * size * 1.3));
+    if (this.isSelected(slot.page, "sticky", sticky.id) && (this.tool === "select" || this.tool === "sticky")) {
+      // The handle to tie it to a panel or a line: drag it there.
+      const [hx, hy] = this.stickyHandle(slot, sticky);
+      ctx.beginPath();
+      ctx.arc(hx, hy, LINK_HANDLE, 0, Math.PI * 2);
+      ctx.fillStyle = anchor ? ACCENT : "#ffffff";
+      ctx.fill();
+      ctx.strokeStyle = ACCENT;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  }
+
+  /** A line from a point on the page to the nearest edge of a box (screen px), with a dot at the point. */
+  private leader(ax: number, ay: number, [x0, y0, x1, y1]: BoxMm, color: string, dot = "#fff6c2"): void {
+    const ctx = this.ctx;
+    const nx = Math.min(Math.max(ax, x0), x1);
+    const ny = Math.min(Math.max(ay, y0), y1);
+    ctx.save();
+    if (Math.hypot(nx - ax, ny - ay) > 2) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(nx, ny);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.arc(ax, ay, 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = dot;
+    ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** Where a 付箋's link handle is on screen: the point it is tied to, else its bottom left corner. */
+  private stickyHandle(slot: Slot, sticky: Sticky): Point {
+    const anchor = stickyAnchor(slot.page, sticky);
+    if (anchor) return [slot.x + anchor[0] * slot.scale, slot.y + anchor[1] * slot.scale];
+    const [x0, , , y1] = stickyBox(sticky);
+    return [slot.x + x0 * slot.scale, slot.y + y1 * slot.scale];
+  }
+
+  /** On the selected 付箋's link handle: start dragging it to what the note is about. */
+  private startStickyLink(slot: Slot, sx: number, sy: number): boolean {
+    const s = this.selection;
+    if (s?.kind !== "sticky" || s.pageId !== slot.page.id) return false;
+    const sticky = slot.page.stickies?.find((n) => n.id === s.id);
+    if (!sticky) return false;
+    const [hx, hy] = this.stickyHandle(slot, sticky);
+    if (Math.hypot(hx - sx, hy - sy) > LINK_HANDLE + 4) return false;
+    this.drag = { kind: "stickyLink", slot, stickyId: sticky.id, to: null };
+    return true;
+  }
+
+  /** The line or panel at a point, to tie a 付箋 to. */
+  private linkTarget(slot: Slot, point: Point): Selection | null {
+    const page = this.visiblePage(slot.page);
+    const line = this.linesAt(slot, point)[0];
+    if (line) return { kind: "line", pageId: page.id, id: line };
+    const panel = this.panelAt(page, point);
+    return panel ? { kind: "panel", pageId: page.id, id: panel.id } : null;
   }
 
   private drawLine(project: Project, slot: Slot, line: Line): void {
@@ -1065,6 +1161,28 @@ export class PageEditor {
       tracePath(ctx, drag.points, { scale: slot.scale, x: slot.x, y: slot.y }, true);
       ctx.stroke();
       ctx.setLineDash([]);
+    }
+    if (drag?.kind === "stickyLink" && this.pointer) {
+      const { slot } = drag;
+      const sticky = slot.page.stickies?.find((n) => n.id === drag.stickyId);
+      if (sticky) {
+        const [x0, y0, x1, y1] = stickyBox(sticky);
+        const [px, py] = this.pointer;
+        if (drag.to) {
+          const box = drag.to.kind === "panel" ? slot.page.panels.find((p) => p.id === drag.to!.id)?.shape : null;
+          if (box) {
+            tracePath(ctx, box, { scale: slot.scale, x: slot.x, y: slot.y }, true);
+            ctx.fillStyle = "rgba(201, 154, 18, 0.18)";
+            ctx.fill();
+          }
+        }
+        this.leader(px, py, [slot.x + x0 * slot.scale, slot.y + y0 * slot.scale, slot.x + x1 * slot.scale, slot.y + y1 * slot.scale], ACCENT);
+        ctx.fillStyle = ACCENT;
+        ctx.font = "12px sans-serif";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "bottom";
+        ctx.fillText(drag.to ? (drag.to.kind === "panel" ? "このコマに紐づける" : "このセリフに紐づける") : sticky.link ? "ここで離すと紐づけを外す" : "コマかセリフの上で離す", px + 10, py - 6);
+      }
     }
     if (drag?.kind === "swap" && this.pointer) {
       // An arrow from the panel's number to where its contents go.
@@ -1786,11 +1904,14 @@ export class PageEditor {
           }
           return;
         }
-        // A panel's memo tag: write in it right there.
+        if (this.startStickyLink(slot, sx, sy)) return;
+        // A panel's memo tag: write in it right there, or drag it out of the way.
         const noted = this.noteAt(slot, sx, sy);
         if (noted) {
           this.select({ kind: "panel", pageId: slot.page.id, id: noted.id });
-          this.afterUp = () => this.editInPlace(slot.page.id, "note", noted.id);
+          const { x, y } = this.noteBox(slot, noted);
+          const [x0, y0] = bounds(noted.shape);
+          this.drag = { kind: "note", slot, panelId: noted.id, start: [sx, sy], origin: [(x - slot.x) / slot.scale - x0, (y - slot.y) / slot.scale - y0], moved: false };
           return;
         }
         // Alt + drag from a balloon: pull out a new tail.
@@ -1926,7 +2047,8 @@ export class PageEditor {
         this.drag = { kind: "fill", slot, points: [point] };
         return;
       case "sticky": {
-        // On a note: pick it up to move; elsewhere: a new note there.
+        if (this.startStickyLink(slot, sx, sy)) return;
+        // On a note: pick it up to move; elsewhere: a new note there, tied to the panel or line clicked.
         const hit = this.hit(slot, point);
         if (hit?.kind === "sticky") {
           this.select(hit);
@@ -1935,10 +2057,17 @@ export class PageEditor {
           return;
         }
         this.host.begin();
-        const sticky = addSticky(project, slot.page, point);
+        const about = this.linkTarget(slot, point);
+        // Tied to something: the note beside it, pointing back (as a comment in a spreadsheet).
+        const sticky = addSticky(project, slot.page, about ? [point[0] + 10, point[1] - 14] : point);
+        if (about) linkSticky(slot.page, sticky, about.kind as "panel" | "line", about.id, point);
         this.host.commit();
         this.select({ kind: "sticky", pageId: slot.page.id, id: sticky.id });
-        this.host.status("付箋を貼りました。右の欄に書けます（書き出しには入りません）");
+        this.host.status(
+          about
+            ? "付箋を貼りました。クリックした所に紐づいています。付箋は好きな所へ動かせます（丸をドラッグで付け替え）"
+            : "付箋を貼りました。右の欄に書けます（書き出しには入りません）。丸をコマやセリフへドラッグすると紐づきます",
+        );
         return;
       }
       case "eraser": {
@@ -2014,6 +2143,23 @@ export class PageEditor {
     const point = this.toPage(drag.slot, ex, ey);
     const project = this.host.project()!;
     switch (drag.kind) {
+      case "note": {
+        const panel = drag.slot.page.panels.find((p) => p.id === drag.panelId);
+        if (!panel) return;
+        if (!drag.moved) {
+          if (Math.hypot(ex - drag.start[0], ey - drag.start[1]) < 4) return;
+          this.host.begin();
+          drag.moved = true;
+        }
+        const [ox, oy] = drag.origin;
+        panel.noteAt = [ox + (ex - drag.start[0]) / drag.slot.scale, oy + (ey - drag.start[1]) / drag.slot.scale];
+        break;
+      }
+      case "stickyLink": {
+        drag.to = this.linkTarget(drag.slot, point);
+        this.requestOverlay();
+        return;
+      }
       case "swap": {
         // The panel under the pointer, on this page or the facing one.
         const under = this.slotAt(ex, ey, project);
@@ -2381,6 +2527,28 @@ export class PageEditor {
         if (drag.erased) this.host.commit();
         else this.host.cancel();
         break;
+      case "note": {
+        if (!drag.moved) {
+          this.editInPlace(drag.slot.page.id, "note", drag.panelId);
+          break;
+        }
+        this.host.commit();
+        this.host.status("コマのメモを動かしました。線でコマとつながっています（右の欄で元の位置に戻せます）");
+        break;
+      }
+      case "stickyLink": {
+        const sticky = drag.slot.page.stickies?.find((n) => n.id === drag.stickyId);
+        if (!sticky || !this.pointer) break;
+        const point = this.toPage(drag.slot, this.pointer[0], this.pointer[1]);
+        const to = this.linkTarget(drag.slot, point);
+        if (!to && !sticky.link) break;
+        this.host.begin();
+        if (to) linkSticky(drag.slot.page, sticky, to.kind as "panel" | "line", to.id, point);
+        else delete sticky.link;
+        this.host.commit();
+        this.host.status(to ? `付箋を${to.kind === "panel" ? "コマ" : "セリフ"}に紐づけました` : "付箋の紐づけを外しました");
+        break;
+      }
       case "swap": {
         const from = drag.slot.page.panels.find((panel) => panel.id === drag.panelId);
         const to = drag.to;

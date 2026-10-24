@@ -604,3 +604,7 @@ button.with-icon, .segmented.views button, .page-nav .segmented button { display
 .page-glyph .sticky { fill: #f3d34a; stroke: #b8961c; stroke-width: 2; }
 .page-item .count { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
 .sticky-count { font-size: 10px; min-width: 15px; text-align: center; padding: 0 3px; border-radius: 3px; background: #f3d34a; color: #4a3f12; }
+.note-link { color: var(--muted); font-size: 11px; }
+.link-row { align-items: center; }
+.link-row .link-target { flex: 1; font-size: 13px; color: var(--text); }
+.inspector .row.link-row > button { flex: none; }

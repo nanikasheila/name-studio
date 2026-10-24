@@ -9,7 +9,7 @@ import {
   BALLOON_LINE_MM,
   drawBalloonFills,
   drawBalloons,
-  drawLineText,
+  drawPageTexts,
   drawPanelBorders,
   drawPageFills,
   drawPanelFills,
@@ -222,7 +222,7 @@ export function drawPart(ctx: CanvasRenderingContext2D, page: Page, kind: LayerK
       drawBalloons(ctx, page, m, 1);
       break;
     case "text":
-      for (const line of page.lines) drawLineText(ctx, line, m);
+      drawPageTexts(ctx, page, m);
       break;
   }
 }
