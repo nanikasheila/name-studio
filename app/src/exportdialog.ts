@@ -1,7 +1,7 @@
 // The dialog that writes the name data out (CSP pages and work, PDF, script).
-import { invoke } from "@tauri-apps/api/core";
+import { call } from "./backend";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
-import { buildRequest, folderOf, overwriteWarning, type ExportForm, type OverwriteCheck } from "./export";
+import { buildRequest, folderOf, overwriteWarning, type ExportForm } from "./export";
 import {
   checkSummary,
   dialogueUpdateSummary,
@@ -269,7 +269,7 @@ export class ExportDialog {
           return;
         }
         // 上書きの知らせ: pages there may have been drawn on in CSP since.
-        const target = await invoke<OverwriteCheck>("check_export_target", { outDir: request.outDir }).catch(() => null);
+        const target = await call("check_export_target", { outDir: request.outDir }).catch(() => null);
         const warning = target && overwriteWarning(target);
         if (warning && !(await ask(warning, { title: "Name Studio", kind: "warning", okLabel: "上書きする", cancelLabel: "やめる" }))) {
           this.message("書き出しをやめました。CSP の作業を残すには、別のフォルダーを選んでください。");
@@ -343,7 +343,7 @@ export class ExportDialog {
             progress,
           );
         } else {
-          await invoke("write_text_file", { path, text: scriptText(project) });
+          await call("write_text_file", { path, text: scriptText(project) });
         }
         this.message(`書き出しました（${seconds()} 秒）: ${path}`);
         this.host.status(`書き出しました: ${path}`);
@@ -366,7 +366,7 @@ export class ExportDialog {
       this.message(request, true);
       return;
     }
-    const target = await invoke<OverwriteCheck>("check_export_target", { outDir: request.outDir }).catch(() => null);
+    const target = await call("check_export_target", { outDir: request.outDir }).catch(() => null);
     if (!target?.existing.some((name) => name.toLowerCase().endsWith(".clip"))) {
       this.message("書き出し先に CSP のページがありません。前に書き出したフォルダーを選んでください", true);
       return;
@@ -424,7 +424,7 @@ export class ExportDialog {
       this.message(request, true);
       return;
     }
-    const target = await invoke<OverwriteCheck>("check_export_target", { outDir: request.outDir }).catch(() => null);
+    const target = await call("check_export_target", { outDir: request.outDir }).catch(() => null);
     if (!target?.existing.some((name) => name.toLowerCase().endsWith(".clip"))) {
       this.message("書き出し先に CSP のページがありません。前に書き出したフォルダーを選んでください", true);
       return;
@@ -465,7 +465,7 @@ export class ExportDialog {
       }
       this.host.edit((p) => applyTakeBack(p, plan));
       // From now on these texts count as the name's: セリフだけ反映 leaves them as they are.
-      await invoke("adopt_name_dialogue", { paths: plan.paths });
+      await call("adopt_name_dialogue", { paths: plan.paths });
       const done = `CSP のセリフを読み戻しました（直した ${plan.retyped.length}・足した ${plan.added.length}・消した ${plan.removed.length}）。元に戻すは Ctrl+Z`;
       this.message([done, ...summary.filter((line) => !/^CSP で(直した|足した|消した)/.test(line))].join("\n"));
       this.host.status(done);

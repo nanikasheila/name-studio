@@ -1,7 +1,8 @@
 // Writing the name data out: CSP pages (a layer per kind of part, editable
 // vector lines and texts where CSP-made layers to copy are found, plus the
 // work .cmc), a PDF to read or share, and the script as text.
-import { invoke } from "@tauri-apps/api/core";
+import { call, type CspExportRequest, type DialogueUpdateReport, type FileCheck, type SpreadLayout, type TemplateCanvas } from "./backend";
+export type { CspExportRequest, DialogueUpdateReport, FileCheck, NameExportStart, SpreadLayout, TemplateCanvas } from "./backend";
 import { balloonExtent, pageBalloons } from "./balloon";
 import { widthFactors } from "./brush";
 import { borderLines, borderWidthMm, dashes, framePanels, type Side } from "./koma";
@@ -35,37 +36,6 @@ import {
 import { decodePicture, opacityOf, usedImages } from "./references";
 import { sceneSpans } from "./story";
 import type { ReadUnit } from "./readback";
-
-/** The template page as `begin_name_export` reports it (clip-core `TemplateCanvas`). */
-export interface TemplateCanvas {
-  widthPx: number;
-  heightPx: number;
-  resolution: number;
-  trimPx: [number, number, number, number] | null;
-  basicPx: [number, number, number, number] | null;
-}
-
-/** Where pages go on a CSP 見開き page (clip-core `SpreadLayout`), in template px. */
-export interface SpreadLayout {
-  widthPx: number;
-  heightPx: number;
-  gutterPx: number;
-  leftDx: number;
-  rightDx: number;
-}
-
-/** `begin_name_export`: the canvas, and which parts can be editable layers. */
-export interface NameExportStart extends TemplateCanvas {
-  vectorLayers: boolean;
-  textLayers: boolean;
-  /** Whether a コマ枠フォルダー was found to copy (only looked for when asked). */
-  frameFolders: boolean;
-  /** Whether the book's first page is a left page (from the template); null when unknown. */
-  firstPageLeft: boolean | null;
-  spread: SpreadLayout | null;
-  /** Why 見開き pages cannot be written, when they cannot. */
-  spreadProblem: string | null;
-}
 
 /**
  * The CSP pages to write, each one name page or two (a 見開き, right page
@@ -455,35 +425,6 @@ async function encode(canvas: HTMLCanvasElement, type: "image/png" | "image/jpeg
   return new Uint8Array(await blob.arrayBuffer());
 }
 
-export interface CspExportRequest {
-  template: string;
-  outDir: string;
-  workTemplate: string | null;
-  workName: string | null;
-  storyIndex: number | null;
-  inputs: string[];
-  /** .clip files (the name sheet) to copy CSP's vector / text layers from. */
-  donors: string[];
-  /** Layers (by name) written as 下描き layers at half opacity: `ROUGH_LAYERS` to ink over the rough. */
-  draftLayers?: string[];
-  /** Panels as a コマ枠フォルダー (copied from a finished page among the donors), with an empty layer in it to ink on. */
-  frameFolders?: boolean;
-  /** The name's memos as a 下描き image layer on top (on unless false). */
-  notes?: boolean;
-}
-
-/** A written file read back (clip-core `verify::FileCheck`). */
-export interface FileCheck {
-  path: string;
-  /** The name pages (1-based) in this file: two for a 見開き page. */
-  pages?: number[];
-  /** Empty when the file holds what was written. */
-  problems: string[];
-  layers: number;
-  vectorLines: number;
-  texts: number;
-}
-
 export interface CspExportReport {
   pages: string[];
   work: string | null;
@@ -536,6 +477,32 @@ export function checkSummary(report: Pick<CspExportReport, "checks" | "workCheck
  * sheet has such a CSP-made layer to copy; otherwise each kind of part is
  * one image layer.
  */
+/** A page of an export unit, with where it goes on the CSP page. */
+export interface PlacedPage {
+  page: Page;
+  m: MmToPx;
+  /** The right half of a spread (always true off a spread with right binding). */
+  right: boolean;
+}
+
+/** Places the pages of one export unit (one page, or the two of a spread). */
+export function placeUnit(project: Project, unit: number[], full: MmToPx, spread: SpreadLayout | null): PlacedPage[] {
+  // Right binding: the first page of a spread is the right half.
+  return unit.map((index, position) => {
+    const right = (position === 0) === (project.binding === "right");
+    const dx = spread ? (right ? spread.rightDx : spread.leftDx) : 0;
+    return { page: project.pages[index], m: shifted(full, dx), right };
+  });
+}
+
+/** How a kind of part goes to CSP: as vector lines, as text layers, as a picture, or not at all. */
+export function layerForm(kind: LayerKind, vector: boolean, text: boolean): "vector" | "text" | "raster" | "none" {
+  // Image balloons carry their own paper.
+  if (kind === "balloonFills" && !vector) return "none";
+  if (kind === "text") return text ? "text" : "raster";
+  return vector && canBeVector(kind) ? "vector" : "raster";
+}
+
 export async function exportToCsp(
   project: Project,
   request: CspExportRequest,
@@ -548,7 +515,7 @@ export async function exportToCsp(
   if (notes) request = { ...request, draftLayers: [...(request.draftLayers ?? []), NOTES_LAYER_NAME] };
   const pictures = await decodeReferences(project);
   if (pictures.size) request = { ...request, draftLayers: [...(request.draftLayers ?? []), REFERENCE_LAYER_NAME] };
-  const start = await invoke<NameExportStart>("begin_name_export", { request });
+  const start = await call("begin_name_export", { request });
   const vector = editable && start.vectorLayers;
   const text = editable && start.textLayers;
   const frames = vector && !!request.frameFolders && start.frameFolders;
@@ -556,7 +523,7 @@ export async function exportToCsp(
     // Asked before anything is written: lines and dialogue CSP cannot edit stop the pen work.
     const missing = editable ? missingEditable(start) : [];
     if (missing.length && confirmImages && !(await confirmImages(missing))) {
-      await invoke("cancel_name_export");
+      await call("cancel_name_export");
       return null;
     }
     const full = projectToTemplate(project, start);
@@ -574,12 +541,7 @@ export async function exportToCsp(
       progress(`${unitIndex + 1} / ${units.length} ページを書き出し中…`);
       const spread = unit.length > 1 && start.spread ? start.spread : null;
       const pageWidth = spread ? spread.widthPx : start.widthPx;
-      // Right binding: the first page of a spread is the right half.
-      const placed = unit.map((index, position) => {
-        const right = (position === 0) === (project.binding === "right");
-        const dx = spread ? (right ? spread.rightDx : spread.leftDx) : 0;
-        return { page: project.pages[index], m: shifted(full, dx), right };
-      });
+      const placed = placeUnit(project, unit, full, spread);
       // On a spread each page shows up to the gutter (template px, `scale` of drawing).
       const clipped = (target: CanvasRenderingContext2D, scale: number, right: boolean, draw: () => void) => {
         if (!spread) return draw();
@@ -611,9 +573,9 @@ export async function exportToCsp(
         pngs.push(png);
       }
       for (const kind of LAYER_ORDER) {
-        // Image balloons carry their own paper.
-        if (kind === "balloonFills" && !vector) continue;
-        if (kind === "text" ? text : vector && canBeVector(kind)) {
+        const form = layerForm(kind, vector, text);
+        if (form === "none") continue;
+        if (form !== "raster") {
           const toOverlay = overlay.width / pageWidth;
           for (const { page, m, right } of placed) {
             if (kind === "text") layers.push(...textLayers(page, m, start.resolution));
@@ -675,16 +637,16 @@ export async function exportToCsp(
         overlayLength: overlayPng.length,
         spread: spread !== null,
       };
-      const check = await invoke<FileCheck>("export_name_page", packBody(meta, [...pngs, overlayPng]));
+      const check = await call("export_name_page", packBody(meta, [...pngs, overlayPng]));
       checks.push({ ...check, pages: unit.map((index) => index + 1) });
     }
     drawing.width = 0;
     overlay.width = 0;
     for (const picture of pictures.values()) picture.close();
-    const report = await invoke<{ pages: string[]; work: string | null; workCheck: FileCheck | null }>("finish_name_export");
+    const report = await call("finish_name_export");
     return { ...report, vectorLayers: vector, textLayers: text, checks, warnings, spreads: units.filter((unit) => unit.length > 1).length };
   } catch (error) {
-    await invoke("cancel_name_export").catch(() => undefined);
+    await call("cancel_name_export").catch(() => undefined);
     throw error;
   }
 }
@@ -714,24 +676,6 @@ function drawReferences(ctx: CanvasRenderingContext2D, page: Page, pictures: Map
   ctx.globalAlpha = 1;
 }
 
-/** One page brought up to date (clip-core `update::DialogueUpdateReport`). */
-export interface DialogueUpdateReport {
-  path: string;
-  backup: string | null;
-  kept: number;
-  retired: string[];
-  added: string[];
-  foreign: number;
-  leftAsInCsp: number;
-  replaced: string[];
-  notFound: string[];
-  /** Swapped layers that had been changed in CSP too. */
-  conflicts: string[];
-  /** Whether the memos layer was redrawn. */
-  notes: boolean;
-  problems: string[];
-}
-
 export interface DialogueUpdateSummary {
   pages: (DialogueUpdateReport & { pages: number[] })[];
   /** Pages whose dialogue changed (and were written). */
@@ -759,7 +703,7 @@ export async function updateCspDialogue(
 ): Promise<DialogueUpdateSummary> {
   await loadTips(project.brushes);
   const notes = request.notes !== false;
-  const start = await invoke<NameExportStart>("begin_name_export", { request: { ...request, frameFolders: false, notes: false } });
+  const start = await call("begin_name_export", { request: { ...request, frameFolders: false, notes: false } });
   try {
     if (!start.textLayers) throw new Error("テキストのレイヤーの見本が見つかりません。書き出しと同じひな形・見本のページを選んでください");
     const vector = start.vectorLayers;
@@ -840,13 +784,13 @@ export async function updateCspDialogue(
         pngs.push(png);
       }
       const meta = { texts, balloons, notes: memos, spread: spread !== null, backup };
-      const report = await invoke<DialogueUpdateReport>("update_name_dialogue", packBody(meta, pngs));
+      const report = await call("update_name_dialogue", packBody(meta, pngs));
       pages.push({ ...report, pages: unit.map((index) => index + 1) });
     }
     drawing.width = 0;
     return { pages, changed: pages.filter((page) => page.backup).length, warnings };
   } finally {
-    await invoke("cancel_name_export").catch(() => undefined);
+    await call("cancel_name_export").catch(() => undefined);
   }
 }
 
@@ -855,7 +799,7 @@ export async function updateCspDialogue(
  * CSP has it now), each text on its page of the name in mm.
  */
 export async function readCspDialogue(project: Project, request: CspExportRequest, progress: (message: string) => void): Promise<ReadUnit[]> {
-  const start = await invoke<NameExportStart>("begin_name_export", { request: { ...request, frameFolders: false, notes: false } });
+  const start = await call("begin_name_export", { request: { ...request, frameFolders: false, notes: false } });
   try {
     const full = projectToTemplate(project, start);
     const { units } = exportUnits(project, start.firstPageLeft, start.spread ? null : start.spreadProblem);
@@ -867,7 +811,7 @@ export async function readCspDialogue(project: Project, request: CspExportReques
         const right = (position === 0) === (project.binding === "right");
         return { index, m: shifted(full, spread ? (right ? spread.rightDx : spread.leftDx) : 0), right };
       });
-      const page = await invoke<{ path: string; dialogue: { texts: { text: string; bbox: number[] | null }[]; written: string[] | null } | null }>("read_name_dialogue", { spread: spread !== null });
+      const page = await call("read_name_dialogue", { spread: spread !== null });
       const texts = (page.dialogue?.texts ?? []).map(({ text, bbox }) => {
         // On a 見開き page, the page whose side of the gutter it is on.
         const x = bbox ? (bbox[0] + bbox[2]) / 2 : 0;
@@ -879,7 +823,7 @@ export async function readCspDialogue(project: Project, request: CspExportReques
     }
     return read;
   } finally {
-    await invoke("cancel_name_export").catch(() => undefined);
+    await call("cancel_name_export").catch(() => undefined);
   }
 }
 
@@ -969,7 +913,7 @@ export async function exportPdf(
       length: jpeg.length,
     })),
   };
-  await invoke("write_pdf", packBody(meta, images));
+  await call("write_pdf", packBody(meta, images));
 }
 
 /** The dialogue as a script: page by page, panel by panel, with speakers. */

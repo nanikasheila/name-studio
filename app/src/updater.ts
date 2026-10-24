@@ -1,7 +1,7 @@
 // 自動更新: a released build looks for a newer release when it starts. With
 // nothing open yet it installs it and starts again at once; with a name open
 // it waits for the user to press the update button (after autosave).
-import { invoke } from "@tauri-apps/api/core";
+import { call } from "./backend";
 import { getVersion } from "@tauri-apps/api/app";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
@@ -27,7 +27,7 @@ export async function appVersion(): Promise<string> {
 /** Check once; returns the update found, if any. Never throws. */
 export async function checkForUpdate(host: UpdateHost): Promise<Update | null> {
   try {
-    if (!(await invoke<boolean>("is_release_build"))) return null;
+    if (!(await call("is_release_build"))) return null;
   } catch {
     return null;
   }

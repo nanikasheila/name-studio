@@ -1,13 +1,13 @@
 /// <reference types="vite/client" />
 // Name Studio front end: open a name sheet and look at it whole or spread by
 // spread, or edit name data (see workbench.ts).
-import { invoke } from "@tauri-apps/api/core";
+import { call, type Recovery } from "./backend";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask, open } from "@tauri-apps/plugin-dialog";
 import { formatTime } from "./autosave";
 import { batchExportTask, runBatchExport } from "./batch";
 import { appVersion, checkForUpdate } from "./updater";
-import { buildRequest, folderOf, summarize, type ExportForm, type ExportReport, type Fit } from "./export";
+import { buildRequest, folderOf, summarize, type ExportForm, type Fit } from "./export";
 import { dialogueByPage, effectiveVisibility, initiallyHidden, spreads } from "./pages";
 import { drawSheet, type PlacedImage, type Transform } from "./render";
 import { newProject, STRUCTURES, type Project } from "./project";
@@ -86,7 +86,7 @@ async function openSheet(path: string): Promise<void> {
   setStatus("読み込み中…");
   try {
     const started = performance.now();
-    const sheet = await invoke<SheetView>("open_sheet", { path });
+    const sheet = await call("open_sheet", { path });
     state.sheet = sheet;
     state.sheetPath = path;
     state.hidden = initiallyHidden(sheet.layers);
@@ -117,7 +117,7 @@ async function loadOverview(sheet: SheetView): Promise<void> {
     sheet.layers
       .filter((layer) => layer.hasPixels)
       .map(async (layer) => {
-        const bytes = await invoke<ArrayBuffer>("layer_overview", { layerId: layer.id, factor });
+        const bytes = await call("layer_overview", { layerId: layer.id, factor });
         const image = await pngToImage(bytes);
         if (!image || state.sheet !== sheet) return;
         const [x, y] = layer.pixelOrigin;
@@ -137,7 +137,7 @@ function requestRegion(layer: LayerView, cell: PageCell): void {
   const box = cell.rect;
   const region = [Math.floor(box.x0), Math.floor(box.y0), Math.ceil(box.x1), Math.ceil(box.y1)];
   const sheet = state.sheet;
-  invoke<ArrayBuffer>("layer_region", { layerId: layer.id, region })
+  call("layer_region", { layerId: layer.id, region })
     .then(pngToImage)
     .then((image) => {
       if (!image || state.sheet !== sheet) return;
@@ -469,7 +469,7 @@ function exportMessage(text: string, error = false): void {
 async function openExport(): Promise<void> {
   if (!state.sheet) return;
   try {
-    const defaults = await invoke<{ workTemplate: string | null; workName: string }>("export_defaults");
+    const defaults = await call("export_defaults");
     if (!exportForm.workTemplate && defaults.workTemplate) exportForm.workTemplate = defaults.workTemplate;
     exportForm.workName ||= defaults.workName;
   } catch (error) {
@@ -513,7 +513,7 @@ async function runExport(): Promise<void> {
   exportMessage("書き出し中…");
   const started = performance.now();
   try {
-    const report = await invoke<ExportReport>("export_pages", { request });
+    const report = await call("export_pages", { request });
     const seconds = ((performance.now() - started) / 1000).toFixed(1);
     exportMessage(summarize(report).join("\n"));
     setStatus(`${report.pages.length} ページを ${exportForm.outDir} に書き出しました（${seconds} 秒）`);
@@ -601,19 +601,11 @@ void getCurrentWindow().onCloseRequested(async (event) => {
   if (!(await workbench.confirmDiscard())) event.preventDefault();
 });
 
-interface Recovery {
-  path: string | null;
-  timeMs: number;
-  project: Project;
-  /** What the save check found wrong with it (mended when it is brought back). */
-  problems?: string[];
-}
-
 /** Offer back a project autosave kept when the app stopped before it was saved. */
 async function offerRecovery(): Promise<void> {
   let recoveries: Recovery[];
   try {
-    recoveries = await invoke<Recovery[]>("pending_recoveries");
+    recoveries = await call("pending_recoveries");
   } catch {
     return;
   }
@@ -628,7 +620,7 @@ async function offerRecovery(): Promise<void> {
     showWorkspace("editor");
     workbench.showRecovered(recovery.project, recovery.path, recovery.timeMs);
   } else {
-    await invoke("discard_recovery", { path: recovery.path }).catch(() => undefined);
+    await call("discard_recovery", { path: recovery.path }).catch(() => undefined);
   }
 }
 

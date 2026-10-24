@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LAYER_ORDER, canBeVector, checkSummary, clipLines, dialogueUpdateSummary, imagesNote, missingEditable, exportUnits, frameMetas, hasNotes, mapBox, packBody, partCount, projectToTemplate, scriptText, textLayers, vectorLines, type DialogueUpdateReport, type LayerMeta } from "./nameexport";
+import { LAYER_ORDER, canBeVector, layerForm, placeUnit, checkSummary, clipLines, dialogueUpdateSummary, imagesNote, missingEditable, exportUnits, frameMetas, hasNotes, mapBox, packBody, partCount, projectToTemplate, scriptText, textLayers, vectorLines, type DialogueUpdateReport, type LayerMeta } from "./nameexport";
 import { addCharacter, addLine, addScene, basicBox, newProject, rectShape } from "./project";
 
 describe("projectToTemplate", () => {
@@ -279,5 +279,41 @@ describe("parts that go as images", () => {
     expect(missing).toHaveLength(2);
     expect(missing[1]).toContain("テキスト");
     expect(imagesNote(missing)).toContain("見本のページ");
+  });
+});
+
+describe("the layer plan of a page", () => {
+  const spread = { widthPx: 2000, heightPx: 1400, gutterPx: 1000, leftDx: 0, rightDx: 1000 };
+  const full = { scale: 1, x: 0, y: 0 };
+
+  it("puts the first page of a spread on the right with right binding", () => {
+    const project = newProject("t", 2);
+    project.binding = "right";
+    const placed = placeUnit(project, [0, 1], full, spread);
+    expect(placed.map(({ page, right, m }) => [page.id, right, m.x])).toEqual([
+      [project.pages[0].id, true, 1000],
+      [project.pages[1].id, false, 0],
+    ]);
+  });
+
+  it("puts the first page of a spread on the left with left binding", () => {
+    const project = newProject("t", 2);
+    project.binding = "left";
+    expect(placeUnit(project, [0, 1], full, spread).map(({ right, m }) => [right, m.x])).toEqual([
+      [false, 0],
+      [true, 1000],
+    ]);
+  });
+
+  it("does not move a single page", () => {
+    const project = newProject("t", 1);
+    expect(placeUnit(project, [0], full, null).map(({ m }) => m.x)).toEqual([0]);
+  });
+
+  it("sends each part as lines, text or a picture as CSP allows", () => {
+    const forms = (vector: boolean, text: boolean) => LAYER_ORDER.map((kind) => layerForm(kind, vector, text));
+    expect(forms(true, true)).toEqual(["vector", "raster", "vector", "vector", "raster", "vector", "text"]);
+    expect(forms(false, false)).toEqual(["raster", "raster", "raster", "raster", "none", "raster", "raster"]);
+    expect(forms(true, false)).toEqual(["vector", "raster", "vector", "vector", "raster", "vector", "raster"]);
   });
 });
