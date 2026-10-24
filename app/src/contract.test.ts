@@ -116,6 +116,7 @@ function fullPage(id: string): Full<Project["pages"][number]> {
         tone: "gray",
       },
     ],
+    references: [{ id: `${id}-reference1`, image: "image1", box: [10, 20, 110, 95], opacity: 0.35 }],
   };
 }
 
@@ -196,6 +197,7 @@ export const FULL_PROJECT: Full<Project> = {
   },
   lineShapes: { speech: "rounded", thought: "polygon", narration: "box", sfx: "none", aside: "dashed" },
   held: [held],
+  images: [{ id: "image1", name: "駅.jpg", mime: "image/jpeg", dataBase64: "/9j/4AAQ", widthPx: 400, heightPx: 300 }],
   nextId: 42,
 };
 

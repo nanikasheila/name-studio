@@ -214,6 +214,19 @@
           ],
           "tone": "gray"
         }
+      ],
+      "references": [
+        {
+          "id": "page1-reference1",
+          "image": "image1",
+          "box": [
+            10,
+            20,
+            110,
+            95
+          ],
+          "opacity": 0.35
+        }
       ]
     }
   ],
@@ -557,6 +570,19 @@
                   ],
                   "tone": "gray"
                 }
+              ],
+              "references": [
+                {
+                  "id": "page9-reference1",
+                  "image": "image1",
+                  "box": [
+                    10,
+                    20,
+                    110,
+                    95
+                  ],
+                  "opacity": 0.35
+                }
               ]
             }
           ]
@@ -746,6 +772,16 @@
       ],
       "near": "page1",
       "from": "page2"
+    }
+  ],
+  "images": [
+    {
+      "id": "image1",
+      "name": "駅.jpg",
+      "mime": "image/jpeg",
+      "dataBase64": "/9j/4AAQ",
+      "widthPx": 400,
+      "heightPx": 300
     }
   ],
   "nextId": 42
