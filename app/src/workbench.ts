@@ -25,6 +25,7 @@ import {
   PageEditor,
   isTyping,
   pickedSummary,
+  readFlag,
   writeFlag,
   type EditorEraseMode,
   type Selection,
@@ -56,7 +57,7 @@ import {
 } from "./koma";
 import { joinPanels, joinedShape, neighbours } from "./komaedit";
 import { addAutoTails, wantsTail } from "./autotail";
-import { Overview, type OverviewKind } from "./overview";
+import { Board, type LaneId } from "./board";
 import { pageParts } from "./shapes";
 import {
   KIND_LABELS,
@@ -149,6 +150,17 @@ interface WorkbenchState {
 
 /** What a held panel is carried as when dragged from the 保留 list. */
 const HELD_TYPE = "application/x-name-studio-held";
+const SIDE_FOLDED_KEY = "namestudio.sideFolded";
+
+/** The page icon for the inspector's title when nothing is selected. */
+function pageIcon(): SVGSVGElement {
+  const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  icon.setAttribute("viewBox", "0 0 20 20");
+  icon.setAttribute("class", "icon");
+  icon.setAttribute("aria-hidden", "true");
+  icon.innerHTML = '<rect x="4" y="2.5" width="12" height="15" rx="1"/><path d="M4 9h12M10 9v8.5"/>';
+  return icon;
+}
 
 /** One line under the tool's name in the options row. */
 const TOOL_HINTS: Record<Tool, string> = {
@@ -190,7 +202,7 @@ export class Workbench {
       return text.length > 14 ? `${text.slice(0, 14)}…` : text || "（空）";
     },
   });
-  readonly overview: Overview;
+  readonly board: Board;
   private readonly exportDialog: ExportDialog;
   private readonly altDialog: AltDialog;
   private readonly scriptDialog: ScriptDialog;
@@ -203,7 +215,6 @@ export class Workbench {
     () => this.autosave(),
     () => this.state.pending !== null,
   );
-  private view: "edit" | OverviewKind = "edit";
 
   constructor(private readonly setStatus: (message: string) => void, private readonly onTitle: (title: string) => void) {
     this.editor = new PageEditor($<HTMLCanvasElement>("editor-canvas"), {
@@ -211,32 +222,38 @@ export class Workbench {
       begin: () => this.begin(),
       commit: () => this.commit(),
       cancel: () => (this.state.pending = null),
-      selectionChanged: () => this.renderInspector(),
+      selectionChanged: () => {
+        this.board.deselect();
+        this.renderInspector();
+      },
       rough: (rough) => this.rough(rough),
       status: (message) => this.setStatus(message),
       actions: (selection) => this.actions(selection),
       run: (action) => this.run(action),
     });
-    this.overview = new Overview($("overview"), {
+    this.board = new Board($("story"), $("story-handle"), {
       project: () => this.state.project,
       edit: (change) => this.edit(change),
       openPage: (pageNumber) => {
-        this.setView("edit");
+        this.board.deselect();
         this.editor.selection = null;
         this.editor.showPage(pageNumber);
         this.renderAll();
       },
+      selectPanel: (pageId, panelId) => this.goTo(pageId, "panel", panelId),
       movePages: (first, last, target) => this.movePages(first, last, target),
       makeOption: (first, last) => this.makeOption(first, last),
+      currentPages: () => this.editor.currentPages(),
+      inspect: () => this.renderInspector(),
       status: (message) => this.setStatus(message),
-      importText: () => this.scriptDialog.open(),
     });
+    // The page takes whatever room the strip and the side panels leave.
+    new ResizeObserver(() => this.editor.resize()).observe($("editor-canvas").parentElement!);
     this.scriptDialog = new ScriptDialog({
       project: () => this.state.project,
       firstAlone: () => this.editor.firstAlone,
       edit: (change) => this.edit(change),
       done: (report, firstPage) => {
-        if (this.view !== "edit") this.setView("edit");
         this.editor.selection = null;
         this.editor.showPage(firstPage);
         this.renderAll();
@@ -249,8 +266,8 @@ export class Workbench {
         this.setStatus(`台本を ${report.pages} ページに入れました（セリフ ${report.lines}、作ったコマ ${report.panels}${who}${scenes}）${update}。元に戻すは Ctrl+Z`);
       },
       plotDone: (report) => {
-        // The plot is about the whole: show it on the board.
-        this.setView("board");
+        // The plot is about the whole: the strip shows it large.
+        if (!this.board.expanded) this.board.toggleWide(true);
         const added = report.addedPages ? `、ページを ${report.addedPages} 枚足しました` : "";
         this.setStatus(`プロットを取り込みました: ページのメモ ${report.memos}・シーン ${report.scenes}・付箋 ${report.stickies}${added}。元に戻すは Ctrl+Z`);
       },
@@ -298,18 +315,6 @@ export class Workbench {
     this.bindControls();
     this.showSingle();
     this.setTool(this.editor.tool);
-  }
-
-  setView(view: "edit" | OverviewKind): void {
-    this.view = view;
-    for (const name of ["edit", "board", "structure", "emotion", "timeline"] as const) {
-      $(`view-${name}`).classList.toggle("active", name === view);
-    }
-    for (const node of document.querySelectorAll<HTMLElement>(".edit-only")) node.hidden = view !== "edit";
-    $("overview").hidden = view === "edit";
-    if (view === "edit") this.editor.resize();
-    else this.overview.kind = view;
-    this.renderAll();
   }
 
   get project(): Project | null {
@@ -565,8 +570,8 @@ export class Workbench {
 
   renderAll(): void {
     this.renderBrushBar();
-    if (this.view === "edit") this.editor.draw();
-    else this.overview.render();
+    this.editor.draw();
+    this.board.update(this.state.revision);
     this.renderSide();
     this.renderInspector();
     this.updateTitle();
@@ -705,7 +710,7 @@ export class Workbench {
       );
       if (part) item.style.setProperty("--part", part.color);
       item.addEventListener("click", () => {
-        if (this.view !== "edit") this.setView("edit");
+        this.board.deselect();
         this.editor.selection = null;
         this.editor.showPage(index + 1);
         this.renderAll();
@@ -760,8 +765,7 @@ export class Workbench {
           element("span", { className: "text", textContent: line.text.replace(/\s+/g, " ") }),
         );
         row.addEventListener("click", () => {
-          if (this.view !== "edit") this.setView("edit");
-          this.editor.showPage(index + 1);
+            this.editor.showPage(index + 1);
           this.editor.select({ kind: "line", pageId: page.id, id: line.id });
           this.renderAll();
         });
@@ -956,11 +960,10 @@ export class Workbench {
   }
 
   /** Show a page in the editor with one of its things selected. */
-  private goTo(pageId: string, kind: "line" | "sticky", id: string): void {
+  private goTo(pageId: string, kind: "line" | "sticky" | "panel", id: string): void {
     const index = this.state.project?.pages.findIndex((p) => p.id === pageId) ?? -1;
     if (index < 0) return;
-    if (this.view !== "edit") this.setView("edit");
-    if (this.editor.tool !== "select") this.setTool("select");
+    if (this.editor.tool !== "select" && !(kind === "panel" && this.editor.tool === "cut")) this.setTool("select");
     this.editor.showPage(index + 1);
     this.editor.select({ kind, pageId, id });
     this.renderAll();
@@ -1089,6 +1092,9 @@ export class Workbench {
       panel.replaceChildren();
       return;
     }
+    // A scene or the story shape picked in the strip under the page.
+    const story = this.board.inspector();
+    if (story) return panel.replaceChildren(...story);
     const s = this.editor.selection;
     const page = s ? project.pages.find((p) => p.id === s.pageId) : this.editor.focusPage();
     if (!page) {
@@ -1191,12 +1197,12 @@ export class Workbench {
    */
   private dressInspector(): void {
     const panel = $("inspector");
-    const kind = this.editor.selection?.kind ?? "page";
+    const kind = this.board.selected ? "story" : (this.editor.selection?.kind ?? "page");
     panel.dataset.kind = kind;
-    const tool = { panel: "tool-cut", line: "tool-text", sticky: "tool-sticky", fill: "tool-fill", stroke: "tool-pen", breakout: "tool-breakout", group: "tool-select" }[kind as string] ?? "view-edit";
-    const icon = document.getElementById(tool)?.querySelector("svg");
+    const tool = { panel: "tool-cut", line: "tool-text", sticky: "tool-sticky", fill: "tool-fill", stroke: "tool-pen", breakout: "tool-breakout", group: "tool-select" }[kind as string];
+    const icon = tool ? document.getElementById(tool)?.querySelector("svg") : kind === "page" ? pageIcon() : null;
     const title = panel.querySelector("h2");
-    if (icon && title) title.prepend(icon.cloneNode(true));
+    if (icon && title && !title.querySelector("svg")) title.prepend(icon.cloneNode(true));
     for (const hint of panel.querySelectorAll<HTMLElement>("p.hint")) {
       const text = hint.textContent ?? "";
       const cut = text.indexOf("。") + 1;
@@ -1716,6 +1722,7 @@ export class Workbench {
     return [
       element("h2", { textContent: `${index + 1} ページ` }),
       element("label", {}, "メモ", memo),
+      ...this.board.pageStory(project, page.id),
       element("h3", { textContent: "コマ" }),
       element("div", { className: "row" }, frame, reorder),
       button("このページのセリフを並べ直す", () => this.arrange(page.id), !page.lines.length),
@@ -1768,7 +1775,6 @@ export class Workbench {
     if (!project) return;
     const index = pageIndex(project, set.pageIds[0]);
     if (index < 0) return;
-    if (this.view !== "edit") this.setView("edit");
     this.editor.selection = null;
     this.editor.showPage(index + 1);
     this.renderAll();
@@ -1995,19 +2001,26 @@ export class Workbench {
       this.editor.spreadIndex = 0;
       this.renderAll();
     });
-    for (const name of ["edit", "board", "structure", "emotion", "timeline"] as const) {
-      $(`view-${name}`).addEventListener("click", () => this.setView(name));
-    }
-    for (const tab of ["pages", "script", "cast", "notes", "held"] as const) {
-      $(`tab-${tab}`).addEventListener("click", () => {
-        this.sideTab = tab;
-        this.renderSide();
-      });
-    }
-    $("held-badge").addEventListener("click", () => {
-      this.sideTab = "held";
+    // The left column: a tab opens its panel; the open tab again (or «) folds it to its icons.
+    const side = $("editor-side");
+    // On a narrow screen the strip under the page lists the pages: the column starts folded.
+    side.classList.toggle("collapsed", readFlag(SIDE_FOLDED_KEY, window.innerWidth < 1500));
+    const fold = (folded: boolean) => {
+      side.classList.toggle("collapsed", folded);
+      writeFlag(SIDE_FOLDED_KEY, folded);
+    };
+    const open = (tab: typeof this.sideTab, toggle: boolean) => {
+      const folded = side.classList.contains("collapsed");
+      if (toggle && !folded && this.sideTab === tab) return fold(true);
+      if (folded) fold(false);
+      this.sideTab = tab;
       this.renderSide();
-    });
+    };
+    $("side-collapse").addEventListener("click", () => fold(!side.classList.contains("collapsed")));
+    for (const tab of ["pages", "script", "cast", "notes", "held"] as const) {
+      $(`tab-${tab}`).addEventListener("click", () => open(tab, true));
+    }
+    $("held-badge").addEventListener("click", () => open("held", false));
     // A held panel dropped on a page: into the panel there, else where it is dropped.
     const canvas = $("editor-canvas");
     canvas.addEventListener("dragover", (event) => {
@@ -2022,13 +2035,11 @@ export class Workbench {
       const where = this.editor.pageAtClient(event.clientX, event.clientY);
       if (where) this.putHeld(id, where.page, where.point, where.panel);
     });
-    $("tab-layers-edit").addEventListener("click", () => {
-      this.sideTab = "layers";
-      this.renderSide();
-    });
+    $("tab-layers-edit").addEventListener("click", () => open("layers", true));
   }
 
   private flip(step: number): void {
+    this.board.deselect();
     this.editor.selection = null;
     this.editor.flip(step);
     this.renderAll();
@@ -2054,7 +2065,7 @@ export class Workbench {
       ArrowDown: [0, step],
     };
     const arrow = arrows[event.key];
-    if (arrow && this.view === "edit" && this.editor.selection && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    if (arrow && this.editor.selection && !event.ctrlKey && !event.metaKey && !event.altKey) {
       return this.editor.nudge(...arrow);
     }
     return action ? this.run(action) : false;
@@ -2062,20 +2073,22 @@ export class Workbench {
 
   /** Run a shortcut's action; false when it does not apply now. */
   run(action: ActionId): boolean {
-    const views: Partial<Record<ActionId, "edit" | OverviewKind>> = {
-      "view.edit": "edit",
-      "view.board": "board",
-      "view.structure": "structure",
-      "view.emotion": "emotion",
-      "view.timeline": "timeline",
+    // The strip under the page: F6 makes it large, F1 brings it back; F2–F4 show its lanes.
+    if (action === "view.board" || action === "view.edit") {
+      this.board.toggleWide(action === "view.board" ? undefined : false);
+      return true;
+    }
+    const lanes: Partial<Record<ActionId, LaneId[]>> = {
+      "view.structure": ["scene", "text"],
+      "view.emotion": ["emotion"],
+      "view.timeline": ["time"],
     };
-    const view = views[action];
-    if (view) {
-      this.setView(view);
+    const shown = lanes[action];
+    if (shown) {
+      for (const lane of shown) this.board.toggleLane(lane, true);
       return true;
     }
     if (action === "view.fit" || action === "view.rotateLeft" || action === "view.rotateRight") {
-      if (this.view !== "edit") return false;
       if (action === "view.fit") this.editor.fitView();
       else this.editor.rotateView(action === "view.rotateLeft" ? -15 : 15);
       return true;
@@ -2089,7 +2102,6 @@ export class Workbench {
     }
     if (action === "undo") this.undo();
     else if (action === "redo") this.redo();
-    else if (this.view !== "edit") return false;
     if (action === "undo" || action === "redo") return true;
     const tools: Partial<Record<ActionId, Tool>> = {
       "tool.select": "select",
