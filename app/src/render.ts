@@ -95,6 +95,7 @@ export function drawText(ctx: CanvasRenderingContext2D, text: TextView, t: Trans
   const lines = text.text.replace(/\r\n?/g, "\n").split("\n");
   const pitch = size * 1.15;
   if (!text.vertical) {
+    ctx.textAlign = "left";
     ctx.textBaseline = "top";
     lines.forEach((line, index) => ctx.fillText(line, left, top + index * pitch));
     return;

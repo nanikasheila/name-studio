@@ -13,6 +13,8 @@ export const GRID_GAP_MM = 12;
 export const GRID_GAP_PX = 14;
 /** The most room between the spreads that can be set (mm). */
 export const MAX_PAGE_GAP_MM = 100;
+/** 縦スクロール: room left of the strip for the pieces' numbers (px). */
+export const STRIP_SIDE = 36;
 
 /** A page as laid out on screen. */
 export interface Slot {
@@ -35,7 +37,7 @@ export interface Arrangement {
   single: boolean;
   /** 連続: every spread on one canvas. */
   continuous: boolean;
-  /** 連続: how many rows the spreads are in. */
+  /** 連続: how many rows the spreads are in (縦スクロール: how many columns the strip is cut into). */
   rows: number;
   zoom: number;
   pan: [number, number];
@@ -86,13 +88,13 @@ export function spreadSlots(project: Project, pair: Pair, left: number, top: num
  * middle; or, 連続, every spread of `list`.
  */
 export function layoutPages(project: Project, list: Pair[], current: number, view: Arrangement): Slot[] {
-  if (view.continuous) return continuousLayout(project, list, view);
+  if (view.continuous) return project.scroll ? stripLayout(project, list, view) : continuousLayout(project, list, view);
   const pair = list[current];
   if (!pair) return [];
   const { width, height } = view;
   const [pageW, pageH] = project.pageFormat.canvasMm;
-  if (view.single) {
-    // 単独: the whole page in the middle.
+  if (view.single || project.scroll) {
+    // 単独 (and a piece of a 縦スクロール strip): the whole page in the middle.
     const page = pair[0] ?? pair[1];
     if (page === null) return [];
     const scale = Math.min((width - 2 * MARGIN) / pageW, (height - 2 * MARGIN - CAPTION) / pageH) * view.zoom;
@@ -127,6 +129,28 @@ function continuousLayout(project: Project, list: Pair[], view: Arrangement): Sl
   return list.flatMap((pair, i) => spreadSlots(project, pair, left + step * (i % columns) * pitchX, top + Math.floor(i / columns) * pitchY, scale));
 }
 
+/**
+ * 連続 for 縦スクロール: the pieces one under the other with nothing between
+ * them, as the strip is read. With more than one column (`rows`) the strip
+ * is cut into that many, left to right, to see more of it at once. At zoom 1
+ * a piece fills the height.
+ */
+function stripLayout(project: Project, list: Pair[], view: Arrangement): Slot[] {
+  const [pageW, pageH] = project.pageFormat.canvasMm;
+  const scale = Math.min((view.width - 2 * MARGIN - STRIP_SIDE) / pageW, (view.height - 2 * MARGIN) / pageH) * view.zoom;
+  const perColumn = Math.ceil(list.length / rowCount(view.rows, list.length));
+  const pitchX = pageW * scale + STRIP_SIDE + pageGapPx(view.gapMm ?? GRID_GAP_MM, scale);
+  const left = MARGIN + STRIP_SIDE + view.pan[0];
+  const top = MARGIN + view.pan[1];
+  return list.flatMap((pair, i): Slot[] => {
+    const number = pair[0] ?? pair[1];
+    const page = number === null ? undefined : project.pages[number - 1];
+    if (!page || number === null) return [];
+    const x = left + Math.floor(i / perColumn) * pitchX;
+    return [{ page, index: number - 1, x, y: top + (i % perColumn) * pageH * scale, scale, shown: [0, pageW] }];
+  });
+}
+
 /** 連続: the room between spreads on screen (px): `gapMm` at the scale, a little more while it is small, none for 0. */
 export function pageGapPx(gapMm: number, scale: number): number {
   const gap = Math.max(0, gapMm);
@@ -159,9 +183,15 @@ export function toPage(slot: Slot, sx: number, sy: number): Point {
   return [(sx - slot.x) / slot.scale, (sy - slot.y) / slot.scale];
 }
 
-/** The page at a point of the screen: a little room outside a page, but not across the gutter. */
+/** The page at a point of the screen: the one it is on, else one with a little room outside it, but not across the gutter. */
 export function slotAt(slots: Slot[], sx: number, sy: number, format: PageFormat): Slot | null {
   const [pageW, pageH] = format.canvasMm;
+  // Pieces of a strip touch: the one the point is on before the room around another.
+  const on = slots.find((slot) => {
+    const [x, y] = toPage(slot, sx, sy);
+    return x >= slot.shown[0] && x < slot.shown[1] && y >= 0 && y < pageH;
+  });
+  if (on) return on;
   return (
     slots.find((slot) => {
       const [x, y] = toPage(slot, sx, sy);

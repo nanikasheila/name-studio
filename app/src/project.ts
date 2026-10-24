@@ -207,7 +207,9 @@ export const DEFAULT_FONT_PT = 13;
 /** Gap between panels side by side (左右) and one above the other (上下). */
 export const DEFAULT_GUTTERS: Gutters = { across: 2, down: 6 };
 /** The widest コマ間 that can be set (mm). */
-export const MAX_GUTTER_SETTING_MM = 12;
+export const MAX_GUTTER_SETTING_MM = 40;
+/** 縦スクロール: panels one above the other are far apart, as the strip is read scrolling. */
+export const SCROLL_GUTTERS: Gutters = { across: 3, down: 24 };
 
 /** The コマ間 new panels of the project get. */
 export function gutters(project: Project): Gutters {
@@ -236,13 +238,29 @@ export function defaultPageFormat(): PageFormat {
   return { canvasMm: [297, 420], trimMm: [257, 364], basicMm: [180, 270], basicOffsetMm: [0, 0] };
 }
 
-export function newProject(title: string, pageCount: number): Project {
+/**
+ * 縦スクロール (Webtoon): one piece (区切り) of the strip, about two phone
+ * screens tall. The strip is not cut, so the trim is the whole piece; the
+ * basic frame keeps panels off its sides and apart across the pieces.
+ */
+export function scrollPageFormat(): PageFormat {
+  return { canvasMm: [120, 240], trimMm: [120, 240], basicMm: [108, 228], basicOffsetMm: [0, 0] };
+}
+
+/** What kind of name it is: a right-bound (manga) or left-bound book, or a 縦スクロール strip (read top to bottom, left-bound otherwise). */
+export type NameKind = Binding | "scroll";
+
+export function nameKind(project: Project): NameKind {
+  return project.scroll ? "scroll" : project.binding;
+}
+
+export function newProject(title: string, pageCount: number, kind: NameKind = "right"): Project {
   const project: Project = {
     formatVersion: FORMAT_VERSION,
     title,
     author: "",
-    binding: "right",
-    pageFormat: defaultPageFormat(),
+    binding: kind === "right" ? "right" : "left",
+    pageFormat: kind === "scroll" ? scrollPageFormat() : defaultPageFormat(),
     pages: [],
     characters: [],
     scenes: [],
@@ -250,6 +268,10 @@ export function newProject(title: string, pageCount: number): Project {
     brushes: [],
     nextId: 1,
   };
+  if (kind === "scroll") {
+    project.scroll = true;
+    project.gutters = { ...SCROLL_GUTTERS };
+  }
   for (let i = 0; i < pageCount; i++) project.pages.push(emptyPage(newId(project, "page")));
   return project;
 }
@@ -515,11 +537,23 @@ export function assignPanels(page: Page): void {
 /** Line pitch as a multiple of the font size. */
 export const LINE_PITCH = 1.15;
 
+const HALF_WIDTH = /[\u0020-\u007e\uff61-\uff9f]/;
+/** How wide a half-width letter is, in full-width ones (for sans-serif Latin, a little over half). */
+const HALF_WIDTH_EM = 0.6;
+
+/** Text written mostly in half-width letters (English and the like). */
+export function mostlyHalfWidth(text: string): boolean {
+  const chars = [...text];
+  return chars.filter((char) => HALF_WIDTH.test(char)).length * 2 > chars.length;
+}
+
 /** Size of a text block, in mm: vertical columns right to left, or horizontal rows. */
 export function textSize(text: string, fontSizePt: number, vertical: boolean): [number, number] {
   const size = fontSizePt * MM_PER_PT;
   const rows = text.replace(/\r\n?/g, "\n").split("\n");
-  const longest = Math.max(1, ...rows.map((row) => [...row].length));
+  // Across, half-width letters (Latin, digits, ｱ) take about half a full-width one; down a column every character takes a whole cell.
+  const length = (row: string) => (vertical ? [...row].length : [...row].reduce((sum, char) => sum + (HALF_WIDTH.test(char) ? HALF_WIDTH_EM : 1), 0));
+  const longest = Math.max(1, ...rows.map(length));
   const across = size * (1 + (rows.length - 1) * LINE_PITCH);
   return vertical ? [across, longest * size] : [longest * size, across];
 }
@@ -560,7 +594,8 @@ export function setLineText(line: Line, text: string): void {
 /** A long line typed in one go, broken the way a letterer would (one already broken by hand is left as it is). */
 export function wrapTypedLine(line: Line): boolean {
   if (line.kind === "sfx" || line.text.includes("\n")) return false;
-  const wrapped = wrapDialogue(line.text);
+  // Lines across hold more than columns down, and Latin letters are narrow.
+  const wrapped = wrapDialogue(line.text, line.vertical ? 8 : mostlyHalfWidth(line.text) ? 20 : 12);
   if (wrapped === line.text) return false;
   setLineText(line, wrapped);
   return true;
@@ -1179,6 +1214,8 @@ export function splitOverPages<K>(
 
 /** Whether page `index` and the next one should go to CSP as one 見開き page. */
 export function wantsSpread(project: Project, index: number): boolean {
+  // 縦スクロール: no spreads; each piece is a page of its own.
+  if (project.scroll) return false;
   const page = project.pages[index];
   const next = project.pages[index + 1];
   if (!page || !next) return false;

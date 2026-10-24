@@ -564,6 +564,10 @@ $("new-project").addEventListener("click", async () => {
   shape.replaceChildren(new Option("なし（あとで選べる）", ""));
   for (const s of [...Object.values(STRUCTURES), ...libraryShapes()]) shape.append(new Option(s.label, s.id));
   dialog.returnValue = "";
+  const kind = $<HTMLSelectElement>("nn-binding");
+  const showKind = () => ($("nn-scroll-hint").hidden = kind.value !== "scroll");
+  kind.onchange = showKind;
+  showKind();
   dialog.showModal();
   dialog.addEventListener(
     "close",
@@ -571,8 +575,8 @@ $("new-project").addEventListener("click", async () => {
       if (dialog.returnValue !== "ok") return;
       const pages = Math.max(1, Math.min(400, Number.parseInt($<HTMLInputElement>("nn-pages").value, 10) || 16));
       const title = $<HTMLInputElement>("nn-title").value.trim() || "新しいネーム";
-      const project = newProject(title, pages);
-      project.binding = $<HTMLSelectElement>("nn-binding").value === "left" ? "left" : "right";
+      const kind = $<HTMLSelectElement>("nn-binding").value;
+      const project = newProject(title, pages, kind === "left" || kind === "scroll" ? kind : "right");
       if ($<HTMLInputElement>("nn-target").checked) project.plan = { targetPages: pages };
       const kept = libraryShapes().find((s) => s.id === shape.value);
       if (kept) adoptShape(project, kept);

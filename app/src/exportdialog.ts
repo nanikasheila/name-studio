@@ -193,8 +193,13 @@ export class ExportDialog {
     $<HTMLInputElement>("ne-notes").checked = this.notes;
     $<HTMLInputElement>("ne-make-work").checked = this.form.makeWork;
     $("ne-work-fields").hidden = !this.form.makeWork;
-    const left = this.host.project()?.binding === "left";
-    $("ne-binding-hint").hidden = !left || !this.form.makeWork;
+    const project = this.host.project();
+    const left = project?.binding === "left";
+    const hint = $("ne-binding-hint");
+    hint.hidden = !left;
+    hint.textContent = project?.scroll
+      ? "このネームは縦スクロールです。区切りごとに CSP のページになり、ページはひな形の基本枠に合わせて置かれます。区切りと同じ縦横比（幅 120 × 高さ 240 mm など）で作った CSP のページをひな形にしてください。作品（.cmc）は区切りを順に並べたものになります。"
+      : "このネームは左綴じです。作品の綴じ方はひな形の作品のままになるので、CSP で左綴じにして保存した作品をひな形に選んでください（ページの中身は左から右へ読む並びで書き出します）。";
     $("ne-pdf-binding").textContent = left ? "左綴じ" : "右綴じ";
     $<HTMLInputElement>("ne-work-name").value = this.form.workName;
     $<HTMLInputElement>("ne-story-index").value = this.form.storyIndex;

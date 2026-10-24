@@ -13,6 +13,7 @@ import {
   centroid,
   fitLine,
   insidePolygon,
+  mostlyHalfWidth,
   moveLine,
   sortLines,
   type Binding,
@@ -71,6 +72,20 @@ const MARGIN = 3;
 const GAP = 2;
 /** Characters per line tried, widest first. */
 const WIDTHS = [8, 7, 6, 5, 4, 3];
+/** Across, the lines are longer, and wider ones make a lower balloon (Latin letters are narrow). */
+const ACROSS_WIDTHS = [12, 14, 16, 10, 8];
+const LATIN_WIDTHS = [20, 24, 28, 16, 12];
+
+/** The line lengths (characters) to try for `line`, the usual first. */
+function widthsFor(line: Line, text: string): number[] {
+  if (line.vertical) return WIDTHS;
+  return mostlyHalfWidth(text) ? LATIN_WIDTHS : ACROSS_WIDTHS;
+}
+
+/** A line's text without the breaks the app put in (words written in Latin letters keep their spaces). */
+function unbroken(text: string): string {
+  return text.replace(/\n/g, mostlyHalfWidth(text) ? " " : "");
+}
 
 /** Where dialogue may go in a panel: its box, kept inside the basic frame (a 裁ち切り panel reaches past it). */
 export function placingBox(project: Project, panel: Panel | undefined): BoxMm {
@@ -97,7 +112,7 @@ export function wrapToFit(line: Line, height: number): void {
   let best: { text: string; pt: number; height: number } | null = null;
   for (let pt = size; pt >= size - SMALLER_PT; pt--) {
     line.fontSizePt = pt;
-    for (const width of WIDTHS) {
+    for (const width of widthsFor(line, original)) {
       line.text = wrapDialogue(original, width);
       fitLine(line);
       const [, y0, , y1] = balloonExtent(line);
@@ -197,8 +212,8 @@ const COVER_COST = 10;
  */
 function rewraps(line: Line, height: number): string[] {
   if (line.kind === "sfx") return [];
-  const joined = line.text.replace(/\n/g, "");
-  const own = [...WIDTHS, 9, 10, 12].map((width) => wrapDialogue(joined, width));
+  const joined = unbroken(line.text);
+  const own = [...widthsFor(line, joined), ...(line.vertical ? [9, 10, 12] : [])].map((width) => wrapDialogue(joined, width));
   if (line.text.includes("\n") && !own.includes(line.text)) return [];
   const original = line.text;
   const fits = [...new Set(own)].filter((text) => {

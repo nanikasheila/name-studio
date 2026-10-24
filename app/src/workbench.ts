@@ -129,6 +129,9 @@ const PANEL_HINTS: Record<PanelMode, string> = {
   polygon: "クリックで角を置く。最初の角・ダブルクリック・Enter で閉じてコマに。Backspace で 1 つ戻す、Esc でやめる",
 };
 
+const CONTINUOUS_TITLE = "全ページを一枚のキャンバスに並べ、どのページにもそのまま描く（F7）";
+const ROWS_TITLE = "見開きを何行に並べるか。1 で全ページを横一列に（Alt+↑ / Alt+↓）";
+
 export class Workbench {
   readonly editor: PageEditor;
   private readonly history = new History<Project, Snapshot>(new Snapshotter<Project>());
@@ -343,6 +346,7 @@ export class Workbench {
     this.editor.spreadIndex = 0;
     this.editor.resetView();
     this.editor.resize();
+    this.showViewMode();
     this.renderAll();
     this.setStatus(message);
   }
@@ -1228,10 +1232,17 @@ export class Workbench {
   }
 
   private showViewMode(): void {
-    const { single, continuous } = this.editor;
+    const { continuous } = this.editor;
+    // 縦スクロール: no spreads; a piece at a time or the strip.
+    const scroll = !!this.state.project?.scroll;
+    const single = this.editor.single || scroll;
+    $("spread-mode").hidden = scroll;
+    $("first-alone-label").hidden = scroll;
     $("spread-mode").classList.toggle("active", !single && !continuous);
     $("single-mode").classList.toggle("active", single && !continuous);
     $("continuous-mode").classList.toggle("active", continuous);
+    $("single-mode").title = scroll ? "区切りを 1 つずつ大きく見る" : "1 ページずつ大きく見る";
+    $("continuous-mode").title = scroll ? "縦に続く帯として見る（F7）" : CONTINUOUS_TITLE;
     const alone = single && !continuous;
     $<HTMLInputElement>("editor-first-alone").disabled = alone;
     $("first-alone-label").setAttribute("aria-disabled", String(alone));
@@ -1245,7 +1256,9 @@ export class Workbench {
     range.max = String(Math.max(1, this.editor.spreadList().length));
     const rows = this.editor.rowCount();
     range.value = String(rows);
-    $("rows-value").textContent = `${rows} 行`;
+    const scroll = !!this.state.project?.scroll;
+    $("rows-value").textContent = scroll ? `${rows} 列` : `${rows} 行`;
+    range.parentElement!.title = scroll ? "縦の帯を何列に分けて並べるか。1 で一本の帯に（Alt+↑ / Alt+↓）" : ROWS_TITLE;
   }
 
   /** 見開き, 単独 or 連続 (all pages on one canvas): keeps the page in view. */
@@ -1263,7 +1276,8 @@ export class Workbench {
     this.editor.resetView(this.editor.continuous ? 0.5 : 1);
     if (index >= 0) this.editor.showPage(index + 1);
     this.renderAll();
-    if (this.editor.continuous) this.setStatus("全ページを一枚に並べました。行数は下のつまみ（Alt+↑↓）、全体は Ctrl+Alt+0、横へは Shift+ホイール");
+    if (this.editor.continuous && project?.scroll) this.setStatus("区切りを縦の帯に並べました。ホイールで上下、Ctrl+ホイールで拡大縮小、列数は下のつまみ（Alt+↑↓）");
+    else if (this.editor.continuous) this.setStatus("全ページを一枚に並べました。行数は下のつまみ（Alt+↑↓）、全体は Ctrl+Alt+0、横へは Shift+ホイール");
   }
 
   /** 連続: the spreads in `rows` rows. */

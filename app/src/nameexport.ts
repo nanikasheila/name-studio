@@ -905,6 +905,7 @@ export async function exportPdf(
     path,
     title: project.title,
     rightToLeft: project.binding === "right",
+    scroll: !!project.scroll,
     pages: images.map((jpeg) => ({
       widthMm: area[2] - area[0],
       heightMm: area[3] - area[1],

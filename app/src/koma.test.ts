@@ -324,8 +324,8 @@ describe("コマ間の設定", () => {
     const project = newProject("t", 1);
     setGutters(project, { across: 2, down: 6 });
     expect(project.gutters).toBeUndefined();
-    setGutters(project, { across: -3, down: 40 });
-    expect(project.gutters).toEqual({ across: 0, down: 12 });
-    expect(gutters(project)).toEqual({ across: 0, down: 12 });
+    setGutters(project, { across: -3, down: 90 });
+    expect(project.gutters).toEqual({ across: 0, down: 40 });
+    expect(gutters(project)).toEqual({ across: 0, down: 40 });
   });
 });
