@@ -37,6 +37,11 @@ import {
 import { SHAPE_LABELS, TAIL_LABELS, defaultTailStyle, resolvedShape } from "./balloon";
 import { ExportDialog } from "./exportdialog";
 import { History } from "./history";
+import { clearAlert, showAlert } from "./alerts";
+import { logError } from "./errorlog";
+import { projectBody } from "./projectjson";
+import { repair } from "./repair";
+import { type Snapshot, Snapshotter, sameSnapshot } from "./snapshot";
 import { VersionDialog, type VersionInfo } from "./versiondialog";
 import {
   BORDER_LABELS,
@@ -147,7 +152,7 @@ interface WorkbenchState {
   /** Counts changes, so a save knows whether more came while it ran. */
   revision: number;
   /** Snapshot taken by `begin`, pushed to history by `commit`. */
-  pending: string | null;
+  pending: Snapshot | null;
   roughs: Map<string, ImageBitmap | "loading" | "failed">;
 }
 
@@ -187,7 +192,7 @@ const TOOL_HINTS: Record<Tool, string> = {
 
 export class Workbench {
   readonly editor: PageEditor;
-  private readonly history = new History<Project>();
+  private readonly history = new History<Project, Snapshot>(new Snapshotter<Project>());
   private readonly state: WorkbenchState = { project: null, path: null, dirty: false, revision: 0, pending: null, roughs: new Map() };
   /** Characters whose lines are listed in the 人物 tab. */
   private openCast = new Set<string>();
@@ -402,7 +407,9 @@ export class Workbench {
   /** A project kept by autosave that was not saved, opened as unsaved changes. */
   showRecovered(project: Project, path: string | null, timeMs: number): void {
     const name = path?.split(/[\\/]/).pop() ?? "未保存のネーム";
-    this.show(project, path, `${name} を ${formatTime(timeMs)} の自動保存から復元しました。保存すると確定します`);
+    const mended = repair(normalize(project));
+    const note = mended.length ? `（${mended.length} か所の問題を直しました）` : "";
+    this.show(project, path, `${name} を ${formatTime(timeMs)} の自動保存から復元しました${note}。保存すると確定します`);
     this.markDirty();
     this.updateTitle();
   }
@@ -420,19 +427,29 @@ export class Workbench {
       if (!picked) return false;
       path = picked.toLowerCase().endsWith(`.${PROJECT_EXTENSION}`) ? picked : `${picked}.${PROJECT_EXTENSION}`;
     }
+    // Loose ends the save check would refuse are mended first, as a step that can be undone.
+    this.begin();
+    const mended = repair(project);
+    if (mended.length) this.commit();
+    else this.state.pending = null;
     const revision = this.state.revision;
     try {
-      await invoke("save_project", { path, project, previousPath: this.state.path });
+      await invoke("save_project", projectBody({ path, previousPath: this.state.path }, project));
       this.state.path = path;
       if (this.state.revision === revision) {
         this.state.dirty = false;
         this.autosaver.reset();
       }
       this.updateTitle();
-      this.setStatus(`保存しました: ${path}`);
+      clearAlert("save");
+      if (mended.length) clearAlert("autosave");
+      const note = mended.length ? `（保存の前に ${mended.length} か所直しました: ${mended.slice(0, 2).join("／")}${mended.length > 2 ? " ほか" : ""}。元に戻すは Ctrl+Z）` : "";
+      this.setStatus(`保存しました: ${path}${note}`);
       return true;
     } catch (error) {
       this.setStatus(`保存できませんでした: ${error}`);
+      showAlert("save", `保存できませんでした。\n${error}`, "error");
+      void logError(`save: ${error}`);
       return false;
     }
   }
@@ -444,17 +461,28 @@ export class Workbench {
     const path = this.state.path;
     const revision = this.state.revision;
     try {
-      const result = await invoke<{ savedToFile: boolean; version: VersionInfo | null }>("autosave_project", {
-        path,
-        project,
-        toFile: autosaveToFile(),
-      });
+      const result = await invoke<{ savedToFile: boolean; version: VersionInfo | null; problems: string[] }>(
+        "autosave_project",
+        projectBody({ path, toFile: autosaveToFile() }, project),
+      );
       if (result.savedToFile && this.state.path === path && this.state.revision === revision) {
         this.state.dirty = false;
         this.updateTitle();
       }
+      if (result.problems?.length) {
+        const list = result.problems.slice(0, 3).join("\n");
+        showAlert(
+          "autosave",
+          `自動保存: ${path && autosaveToFile() ? "ファイルに書けない" : ""}問題があるので、控えだけに残しています。保存（Ctrl+S）すると直してから保存します。\n${list}`,
+          "warning",
+        );
+      } else {
+        clearAlert("autosave");
+      }
     } catch (error) {
       this.setStatus(`自動保存できませんでした: ${error}`);
+      showAlert("autosave", `自動保存できませんでした（次の変更でもう一度試します）。\n${error}`, "error");
+      void logError(`autosave: ${error}`);
       throw error;
     }
   }
@@ -470,7 +498,7 @@ export class Workbench {
     if (!current) return;
     const path = this.state.path;
     const older = await invoke<Project>("load_version", { path, id: version.id });
-    await invoke("record_version", { path, project: current, kind: "beforeRestore" });
+    await invoke("record_version", projectBody({ path, kind: "beforeRestore" }, current));
     this.history.record(current);
     this.state.project = normalize(older);
     this.editor.selection = null;
@@ -489,7 +517,7 @@ export class Workbench {
   }
 
   private begin(): void {
-    if (this.state.project) this.state.pending = JSON.stringify(this.state.project);
+    if (this.state.project) this.state.pending = this.history.snapshot(this.state.project);
   }
 
   private commit(): void {
@@ -499,13 +527,47 @@ export class Workbench {
     this.changed();
   }
 
-  /** Run `change` as one undoable step. */
+  /** Run `change` as one undoable step; a change that fails is undone. */
   edit(change: (project: Project) => void): void {
     const project = this.state.project;
     if (!project) return;
     this.begin();
-    change(project);
+    try {
+      change(project);
+    } catch (error) {
+      this.failed(error);
+      return;
+    }
     this.commit();
+  }
+
+  /**
+   * Something went wrong: the change under way (begun, not yet committed) is
+   * undone so the name is never left half changed, the person is told, and a
+   * note goes to the log.
+   */
+  failed(error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error);
+    const undone = this.rollBack();
+    showAlert(
+      "failure",
+      undone ? `問題が起きたので、途中の操作を取り消しました（ほかの作業はそのままです）。\n${message}` : `問題が起きました: ${message}`,
+      "error",
+      undone ? undefined : 15,
+    );
+    void logError(error);
+  }
+
+  private rollBack(): boolean {
+    const pending = this.state.pending;
+    if (pending === null) return false;
+    this.state.pending = null;
+    this.state.project = this.history.revert(pending);
+    this.editor.dropDrag();
+    const s = this.editor.selection;
+    if (s && !this.findSelected(s)) this.editor.selection = null;
+    this.renderAll();
+    return true;
   }
 
   private changed(): void {
@@ -1225,8 +1287,9 @@ export class Workbench {
 
   /** A text field edited live; the whole edit becomes one undo step. */
   private liveText(field: HTMLInputElement | HTMLTextAreaElement, apply: (value: string) => void): void {
-    let snapshot: string | null = null;
-    field.addEventListener("focus", () => (snapshot = JSON.stringify(this.state.project)));
+    let snapshot: Snapshot | null = null;
+    const take = () => (this.state.project ? this.history.snapshot(this.state.project) : null);
+    field.addEventListener("focus", () => (snapshot = take()));
     field.addEventListener("input", () => {
       apply(field.value);
       this.markDirty();
@@ -1234,8 +1297,9 @@ export class Workbench {
       this.updateTitle();
     });
     field.addEventListener("change", () => {
-      if (snapshot !== null && snapshot !== JSON.stringify(this.state.project)) this.history.recordSnapshot(snapshot);
-      snapshot = JSON.stringify(this.state.project);
+      const now = take();
+      if (snapshot !== null && now !== null && !sameSnapshot(snapshot, now)) this.history.recordSnapshot(snapshot);
+      snapshot = now;
       this.renderSide();
       $<HTMLButtonElement>("undo").disabled = !this.history.canUndo;
     });
@@ -1248,18 +1312,20 @@ export class Workbench {
    * wheel can go on turning.
    */
   private liveNumber(field: HTMLInputElement, apply: (value: number) => void): void {
-    let snapshot: string | null = null;
+    let snapshot: Snapshot | null = null;
     let timer: number | undefined;
+    const take = () => (this.state.project ? this.history.snapshot(this.state.project) : null);
     const record = () => {
       window.clearTimeout(timer);
       timer = undefined;
-      if (snapshot !== null && snapshot !== JSON.stringify(this.state.project)) this.history.recordSnapshot(snapshot);
+      const now = take();
+      if (snapshot !== null && now !== null && !sameSnapshot(snapshot, now)) this.history.recordSnapshot(snapshot);
       snapshot = null;
       $<HTMLButtonElement>("undo").disabled = !this.history.canUndo;
     };
     const set = (value: number) => {
       if (!Number.isFinite(value) || value <= 0) return;
-      snapshot ??= JSON.stringify(this.state.project);
+      snapshot ??= take();
       apply(value);
       this.markDirty();
       this.editor.draw();

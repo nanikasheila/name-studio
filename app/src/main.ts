@@ -605,6 +605,8 @@ interface Recovery {
   path: string | null;
   timeMs: number;
   project: Project;
+  /** What the save check found wrong with it (mended when it is brought back). */
+  problems?: string[];
 }
 
 /** Offer back a project autosave kept when the app stopped before it was saved. */
@@ -619,7 +621,7 @@ async function offerRecovery(): Promise<void> {
   if (!recovery) return;
   const where = recovery.path ?? "（まだ保存していないネーム）";
   const restore = await ask(
-    `前回、保存しないまま終わったネームがあります。\n\n${recovery.project.title}（${recovery.project.pages.length} ページ、${formatTime(recovery.timeMs)} の自動保存）\n${where}\n\n復元しますか？「いいえ」で控えを消します。`,
+    `前回、保存しないまま終わったネームがあります。\n\n${recovery.project.title}（${recovery.project.pages.length} ページ、${formatTime(recovery.timeMs)} の自動保存）\n${where}${recovery.problems?.length ? `\n（直せる問題が ${recovery.problems.length} か所あります。復元すると直します）` : ""}\n\n復元しますか？「いいえ」で控えを消します。`,
     { title: "Name Studio", kind: "warning" },
   );
   if (restore) {
@@ -639,13 +641,19 @@ async function start(): Promise<void> {
     await runBatchExport(batch, setStatus);
     return;
   }
+  // Work left unsaved comes first: the update check can wait on the network.
+  await offerRecovery();
   await checkForUpdate({
     status: setStatus,
     busy: () => workbench.project !== null,
     prepare: () => workbench.confirmDiscard(),
   });
-  await offerRecovery();
 }
+
+// An error nothing caught: the change under way is undone (never half done),
+// the person is told, and the log keeps it.
+window.addEventListener("error", (event) => workbench.failed(event.error ?? event.message));
+window.addEventListener("unhandledrejection", (event) => workbench.failed(event.reason));
 
 void start();
 

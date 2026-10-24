@@ -252,11 +252,11 @@ fn keeps_panel_and_balloon_styles() {
     assert_eq!(page.fills[1].tone.as_deref(), Some("gray"));
     let json = project.to_json().unwrap();
     assert!(
-        json.contains("\"openEdges\"") && json.contains("\"balloonShape\": \"spike\""),
+        json.contains("\"openEdges\"") && json.contains("\"balloonShape\":\"spike\""),
         "{json}"
     );
     // Defaults are left out, so panels and lines without styles look as before.
-    assert!(!json.contains("\"border\": \"solid\""));
+    assert!(!json.contains("\"border\":\"solid\""));
     assert_eq!(Project::from_json(&json).unwrap(), project);
 
     let mut broken = project.clone();
@@ -419,7 +419,7 @@ fn keeps_links_masks_and_held_panels() {
     assert_eq!(project.held[0].near.as_deref(), Some("page1"));
     let json = project.to_json().unwrap();
     assert!(
-        json.contains("\"noteAt\"") && json.contains("\"mask\": true") && json.contains("\"held\""),
+        json.contains("\"noteAt\"") && json.contains("\"mask\":true") && json.contains("\"held\""),
         "{json}"
     );
     assert_eq!(Project::from_json(&json).unwrap(), project);

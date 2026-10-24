@@ -1002,6 +1002,9 @@ export function addStroke(
 ): Stroke | null {
   if (points.length < 2) return null;
   const stroke: Stroke = { id: newId(project, "stroke"), points: simplify(points, 0.15), widthMm, closed: false };
+  // Point lists are shared by undo and saving (snapshot.ts, projectjson.ts) and
+  // never changed in place; in development a change in place fails loudly.
+  if (import.meta.env.DEV) for (const point of Object.freeze(stroke.points)) Object.freeze(point);
   if (brush) stroke.brush = brush;
   page.strokes.push(stroke);
   return stroke;

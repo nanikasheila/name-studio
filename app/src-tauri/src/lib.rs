@@ -8,6 +8,7 @@
 //! is saved.
 
 pub mod batch;
+pub mod errorlog;
 pub mod sheet;
 
 use std::path::{Path, PathBuf};
@@ -31,6 +32,7 @@ use clip_core::write::{manifest, update};
 use name_model::versions::{self, Recovery, VersionInfo, VersionKind, VersionStore};
 use name_model::{PageFormat, Project};
 use serde::{Deserialize, Serialize};
+use serde_json::value::RawValue;
 use tauri::Manager;
 use tauri::ipc::Response;
 
@@ -223,9 +225,14 @@ async fn import_project(path: String, state: tauri::State<'_, AppState>) -> Resu
     Ok(ImportResult { project, warnings })
 }
 
+/// The project file's text, checked; fields only the app knows stay as they are.
 #[tauri::command]
-async fn load_project(path: String) -> Result<Project, String> {
-    Project::load(&path).map_err(|error| error.to_string())
+async fn load_project(path: String) -> Result<Box<RawValue>, String> {
+    blocking(move || Project::load_text(&path).and_then(raw_project)).await
+}
+
+fn raw_project(text: String) -> Result<Box<RawValue>, name_model::ProjectError> {
+    RawValue::from_string(text).map_err(name_model::ProjectError::Json)
 }
 
 // --- saving, autosave and versions ---------------------------------------------
@@ -253,22 +260,38 @@ async fn blocking<T: Send + 'static>(
         .map_err(|error| error.to_string())
 }
 
+/// A request whose body is the project as the app wrote it (see [`split_body`]):
+/// the text is saved as it is, so it travels as bytes rather than as an
+/// argument to parse and write again.
+fn project_body<T: serde::de::DeserializeOwned>(request: &tauri::ipc::Request<'_>) -> Result<(T, String), String> {
+    split_project_body(&raw_body(request)?)
+}
+
+fn split_project_body<T: serde::de::DeserializeOwned>(body: &[u8]) -> Result<(T, String), String> {
+    let (meta, rest) = split_body::<T>(body)?;
+    let text = String::from_utf8(rest.to_vec()).map_err(|error| error.to_string())?;
+    Ok((meta, text))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SaveMeta {
+    path: String,
+    /// Where the project was saved before (none when it never was, whose
+    /// history then moves to `path`).
+    previous_path: Option<String>,
+}
+
 /// Check and save the name data; nothing is written when it has problems.
 /// The saved state is kept as a version, and the autosave copy is dropped.
-/// `previous_path` is where the project was saved before (none when it never
-/// was, whose history then moves to `path`).
 #[tauri::command]
-async fn save_project(
-    app: tauri::AppHandle,
-    path: String,
-    project: Project,
-    previous_path: Option<String>,
-) -> Result<Option<VersionInfo>, String> {
+async fn save_project(app: tauri::AppHandle, request: tauri::ipc::Request<'_>) -> Result<Option<VersionInfo>, String> {
+    let (meta, text) = project_body::<SaveMeta>(&request)?;
     let root = data_root(&app)?;
     blocking(move || {
-        project.save(&path)?;
-        let path = Path::new(&path);
-        let previous = previous_path.as_deref().map(Path::new);
+        let project = Project::save_text(&meta.path, &text)?;
+        let path = Path::new(&meta.path);
+        let previous = meta.previous_path.as_deref().map(Path::new);
         let store = if previous.is_none() {
             VersionStore::adopt(&root, None, path)?
         } else {
@@ -276,9 +299,16 @@ async fn save_project(
         };
         versions::clear_recovery(&root, Some(path))?;
         versions::clear_recovery(&root, previous)?;
-        store.record(&project, VersionKind::Saved, now_ms())
+        store.record_text(&text, &project, VersionKind::Saved, now_ms())
     })
     .await
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AutosaveMeta {
+    path: Option<String>,
+    to_file: bool,
 }
 
 #[derive(Serialize)]
@@ -287,37 +317,61 @@ struct AutosaveResult {
     /// The project file itself was written (otherwise only the autosave copy).
     saved_to_file: bool,
     version: Option<VersionInfo>,
+    /// What the check found wrong: the copy was kept anyway, the file was not written.
+    problems: Vec<String>,
 }
 
 /// Autosave: write the project file when it has one and `to_file` is on,
 /// otherwise a copy that is offered back after a crash; keep a version now
-/// and then.
+/// and then. A project the check finds problems with still gets its copy
+/// (with the problems noted), so work is never left unkept.
 #[tauri::command]
-async fn autosave_project(
-    app: tauri::AppHandle,
-    path: Option<String>,
-    project: Project,
-    to_file: bool,
-) -> Result<AutosaveResult, String> {
+async fn autosave_project(app: tauri::AppHandle, request: tauri::ipc::Request<'_>) -> Result<AutosaveResult, String> {
+    let (meta, text) = project_body::<AutosaveMeta>(&request)?;
     let root = data_root(&app)?;
     blocking(move || {
-        let path = path.as_deref().map(Path::new);
+        let path = meta.path.as_deref().map(Path::new);
         let time = now_ms();
-        let saved_to_file = match path {
-            Some(path) if to_file => {
-                project.save(path)?;
-                versions::clear_recovery(&root, Some(path))?;
-                true
+        if let Some(file) = path.filter(|_| meta.to_file) {
+            match Project::save_text(file, &text) {
+                Ok(project) => {
+                    versions::clear_recovery(&root, Some(file))?;
+                    let version = VersionStore::open(&root, path).record_auto_text(
+                        &text,
+                        &project,
+                        time,
+                        AUTO_VERSION_INTERVAL_MS,
+                    )?;
+                    return Ok(AutosaveResult {
+                        saved_to_file: true,
+                        version,
+                        problems: Vec::new(),
+                    });
+                }
+                Err(name_model::ProjectError::Invalid(_)) => {}
+                Err(error) => return Err(error),
             }
-            _ => {
-                versions::write_recovery(&root, path, &project, time)?;
-                false
-            }
+        }
+        let problems = versions::write_recovery_text(&root, path, &text, time)?;
+        let version = if problems.is_empty() {
+            let project = Project::from_json(&text)?;
+            VersionStore::open(&root, path).record_auto_text(&text, &project, time, AUTO_VERSION_INTERVAL_MS)?
+        } else {
+            None
         };
-        let version = VersionStore::open(&root, path).record_auto(&project, time, AUTO_VERSION_INTERVAL_MS)?;
-        Ok(AutosaveResult { saved_to_file, version })
+        Ok(AutosaveResult {
+            saved_to_file: false,
+            version,
+            problems,
+        })
     })
     .await
+}
+
+/// Note an error the front end met (see [`errorlog`]).
+#[tauri::command]
+fn log_error(message: String) {
+    errorlog::append(&message);
 }
 
 /// Versions of the project at `path` (or of the unsaved one), newest first.
@@ -328,21 +382,36 @@ async fn list_versions(app: tauri::AppHandle, path: Option<String>) -> Result<Ve
 }
 
 #[tauri::command]
-async fn load_version(app: tauri::AppHandle, path: Option<String>, id: String) -> Result<Project, String> {
+async fn load_version(app: tauri::AppHandle, path: Option<String>, id: String) -> Result<Box<RawValue>, String> {
     let root = data_root(&app)?;
-    blocking(move || VersionStore::open(&root, path.as_deref().map(Path::new)).load(&id)).await
+    blocking(move || {
+        VersionStore::open(&root, path.as_deref().map(Path::new))
+            .load_text(&id)
+            .and_then(raw_project)
+    })
+    .await
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RecordMeta {
+    path: Option<String>,
+    kind: VersionKind,
 }
 
 /// Keep the current state as a version (before an older one replaces it).
 #[tauri::command]
 async fn record_version(
     app: tauri::AppHandle,
-    path: Option<String>,
-    project: Project,
-    kind: VersionKind,
+    request: tauri::ipc::Request<'_>,
 ) -> Result<Option<VersionInfo>, String> {
+    let (meta, text) = project_body::<RecordMeta>(&request)?;
     let root = data_root(&app)?;
-    blocking(move || VersionStore::open(&root, path.as_deref().map(Path::new)).record(&project, kind, now_ms())).await
+    blocking(move || {
+        let project = Project::from_json(&text)?;
+        VersionStore::open(&root, meta.path.as_deref().map(Path::new)).record_text(&text, &project, meta.kind, now_ms())
+    })
+    .await
 }
 
 /// Projects autosave kept that were never saved, newest first.
@@ -1006,7 +1075,14 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(AppState::default())
+        .setup(|app| {
+            if let Ok(root) = app.path().app_local_data_dir() {
+                errorlog::init(&root, app.package_info().version.to_string());
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
+            log_error,
             open_sheet,
             layer_overview,
             layer_region,
@@ -1040,4 +1116,23 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Name Studio");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn project_body_is_meta_then_text() {
+        let meta = br#"{"path":"a.namestudio","toFile":true}"#;
+        let text = "{\"title\":\"第4話\"}";
+        let mut body = (meta.len() as u32).to_le_bytes().to_vec();
+        body.extend_from_slice(meta);
+        body.extend_from_slice(text.as_bytes());
+        let (parsed, rest) = split_project_body::<AutosaveMeta>(&body).unwrap();
+        assert_eq!(parsed.path.as_deref(), Some("a.namestudio"));
+        assert!(parsed.to_file);
+        assert_eq!(rest, text);
+        assert!(split_project_body::<AutosaveMeta>(&body[..3]).is_err());
+    }
 }
