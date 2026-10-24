@@ -1,4 +1,4 @@
-// Story structure derived from the name data for the overview views:
+// Story structure derived from the name data for the story strip:
 // scenes over pages, per-page amounts, emotion curves and story time.
 import { pageIndex, textAmount, type Project, type Scene } from "./project";
 import { beatPage, currentShape, shapeSpans } from "./shapes";

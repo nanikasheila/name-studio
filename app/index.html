@@ -33,13 +33,6 @@
         <button id="export" disabled>ページに書き出す…</button>
       </div>
       <div class="editor-only toolbar-group app-bar" hidden>
-        <div class="segmented views" role="group" aria-label="画面">
-          <button id="view-edit" class="active" title="ページを編集する（F1）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="2.5" width="12" height="15" rx="1"/><path d="M4 9h12M10 9v8.5"/></svg><span>編集</span></button>
-          <button id="view-board" title="話の型・シーン・時系列・感情曲線・ページとコマを一画面で見て直す（F6）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M2.5 4.5h15M2.5 10h15M2.5 15.5h15"/><rect x="4" y="3" width="5" height="3" rx="1" class="fill"/><rect x="9" y="8.5" width="6" height="3" rx="1" class="fill"/><rect x="6" y="14" width="4" height="3" rx="1" class="fill"/></svg><span>全体</span></button>
-          <button id="view-structure" title="シーンと各ページの字数、ページ一覧（F2）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="11" width="3" height="6"/><rect x="8.5" y="6" width="3" height="11"/><rect x="14" y="3" width="3" height="14"/></svg><span>構成</span></button>
-          <button id="view-emotion" title="登場人物の感情の移り変わり（F3）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M2.5 14c3 0 3-9 6-9s3 10 6 10 2-6 3-6"/></svg><span>感情曲線</span></button>
-          <button id="view-timeline" title="ページの順と物語の時間（F4）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M2.5 10h15"/><circle cx="5" cy="10" r="2" class="fill"/><circle cx="10.5" cy="10" r="2" class="fill"/><circle cx="16" cy="10" r="2" class="fill"/></svg><span>時系列</span></button>
-        </div>
         <div class="spacer"></div>
         <button id="undo" class="icon-button" title="元に戻す（Ctrl+Z）" disabled><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M7 4L3 8l4 4"/><path d="M3 8h9a5 5 0 0 1 0 10H8"/></svg></button>
         <button id="redo" class="icon-button" title="やり直す（Ctrl+Shift+Z）" disabled><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M13 4l4 4-4 4"/><path d="M17 8H8a5 5 0 0 0 0 10h4"/></svg></button>
@@ -61,14 +54,15 @@
       </section>
     </main>
     <main id="editor" class="workspace" hidden>
-      <aside class="sidebar">
-        <div class="tabs" role="tablist">
-          <button id="tab-pages" class="active" role="tab">ページ</button>
-          <button id="tab-script" role="tab">台本</button>
-          <button id="tab-cast" role="tab">人物</button>
-          <button id="tab-notes" role="tab" title="全ページの付箋（未決のこと）">付箋</button>
-          <button id="tab-held" role="tab" title="置き場所の決まっていないコマ（保留）">保留</button>
-          <button id="tab-layers-edit" role="tab" title="見開きのコマと、その中のセリフ・ラフ線・塗り（CSP のコマ枠フォルダのように）">レイヤー</button>
+      <aside class="sidebar" id="editor-side">
+        <div class="tabs side-tabs" role="tablist">
+          <button id="tab-pages" class="active" role="tab" title="ページの一覧（ドラッグで並べ替え）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="2.5" width="12" height="15" rx="1"/><path d="M4 9h12M10 9v8.5"/></svg><span>ページ</span></button>
+          <button id="tab-script" role="tab" title="全ページのセリフを台本の形で。台本・プロットの取り込みも"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.5h10v15H5z"/><path d="M8 6.5h4M8 9.5h4M8 12.5h2.5"/></svg><span>台本</span></button>
+          <button id="tab-cast" role="tab" title="登場人物（名前・色・口調）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="6.5" r="3"/><path d="M4 17c0-3.3 2.7-5.2 6-5.2s6 1.9 6 5.2"/></svg><span>人物</span></button>
+          <button id="tab-notes" role="tab" title="全ページの付箋（未決のこと）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 3h13v9l-5 5h-8z"/><path d="M11.5 17v-5h5"/></svg><span>付箋</span></button>
+          <button id="tab-held" role="tab" title="置き場所の決まっていないコマ（保留）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="3.5" y="3.5" width="13" height="13" rx="1" stroke-dasharray="2.2 2"/><path d="M10 7v6M7 10h6"/></svg><span>保留</span></button>
+          <button id="tab-layers-edit" role="tab" title="見開きのコマと、その中のセリフ・ラフ線・塗り（CSP のコマ枠フォルダのように）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3l7 3.8-7 3.8-7-3.8z"/><path d="M3 10.5l7 3.8 7-3.8M3 14l7 3.8 7-3.8"/></svg><span>レイヤー</span></button>
+          <button id="side-collapse" class="side-collapse" title="左の欄をたたむ・広げる"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4l-6 6 6 6"/></svg></button>
         </div>
         <div id="side-pages" class="panel"></div>
         <div id="side-script" class="panel" hidden></div>
@@ -77,7 +71,7 @@
         <div id="side-held" class="panel" hidden></div>
         <div id="side-layers" class="panel layer-list" hidden></div>
       </aside>
-      <nav class="tool-rail edit-only" id="editor-tools" aria-label="道具">
+      <nav class="tool-rail" id="editor-tools" aria-label="道具">
           <button id="tool-select" class="active" title="選ぶ・動かす（V）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.5l10 8-4.5 1 2.5 5-2 1-2.5-5L5 16z" class="fill"/></svg><span>選択</span></button>
           <button id="tool-cut" title="コマを割る。コマの外をドラッグすると新しいコマ（K）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="2.5" width="15" height="15" rx="1"/><path d="M2.5 8.5l15 2.5M10 9.8V17.5"/></svg><span>コマ割り</span></button>
           <button id="tool-text" title="クリックでセリフを置く（T）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3c4.4 0 7.5 2.5 7.5 5.6S14.4 14 10 14c-.8 0-1.5 0-2.2-.2L4 17l1-3.8C3.4 12.2 2.5 10.5 2.5 8.6 2.5 5.5 5.6 3 10 3z"/></svg><span>セリフ</span></button>
@@ -87,7 +81,7 @@
           <button id="tool-breakout" title="コマを突き抜ける所を囲む。中に描いた線はコマ枠の上に（B）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="6.5" width="11" height="11" rx="1"/><path d="M8 12l9-9.5M12.5 2.5H17V7"/></svg><span>はみ出し</span></button>
           <button id="tool-sticky" title="付箋を貼る。作業用のメモで、書き出しには入りません（M）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 3h13v9l-5 5h-8z"/><path d="M11.5 17v-5h5"/></svg><span>付箋</span></button>
       </nav>
-      <section class="stage-column edit-only">
+      <section class="stage-column">
         <div class="tool-options" id="tool-options">
           <span class="tool-name" id="tool-name"></span>
           <div class="segmented" id="fill-tones" role="group" aria-label="塗りの色" hidden>
@@ -112,6 +106,7 @@
         <div class="stage">
           <canvas id="editor-canvas"></canvas>
         </div>
+        <div id="story-handle" class="story-handle" title="ドラッグで下の帯の高さを変える（ダブルクリックで大きく・戻す）"></div>
         <div class="page-nav" id="page-nav">
           <div class="pager">
             <button id="editor-next" class="icon-button" title="次へ（←）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4l-6 6 6 6"/></svg></button>
@@ -126,9 +121,9 @@
           <label class="check" title="コマのメモをページの上に出す（画面だけ。書き出しには入りません）"><input type="checkbox" id="show-notes" checked /> コマのメモ</label>
           <button id="held-badge" class="held-badge" title="このあたりのページに入れたい保留のコマ" hidden></button>
         </div>
+        <section id="story" class="story" aria-label="物語の帯"></section>
       </section>
-      <aside id="inspector" class="inspector edit-only"></aside>
-      <section id="overview" class="overview" hidden></section>
+      <aside id="inspector" class="inspector"></aside>
     </main>
     <footer id="status" class="status"></footer>
     <dialog id="export-dialog" class="export">
