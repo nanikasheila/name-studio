@@ -2,6 +2,7 @@
 import { optionPages, removeAlternative, useAlternative } from "./alternatives";
 import { drawBalloons, drawPageTexts, drawPanelBorders, drawPanelFills, drawStrokes } from "./pagedraw";
 import { trimBox, type Alternatives, type Page, type Project } from "./project";
+import { $ } from "./dom";
 
 export interface AltDialogHost {
   project(): Project | null;
@@ -10,8 +11,6 @@ export interface AltDialogHost {
   /** Show the pages of the option now in use. */
   shown(set: Alternatives): void;
 }
-
-const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const THUMB_WIDTH = 150;
 
 /** A small picture of a page as it reads: panels, rough lines, balloons and text, cut at the trim. */

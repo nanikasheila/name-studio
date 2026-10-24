@@ -1,6 +1,7 @@
 // 話の型: the built-in story shapes (起承転結, Save the Cat and the like) and
 // the ones made for a name (オリジナルの型), laid over its pages.
 import { STRUCTURES, type Project, type ShapePart, type StoryShape } from "./project";
+import { readJson, writeJson } from "./settings";
 
 /** Colours of the parts, in turn; used wherever pages are shown by part. */
 export const PART_COLORS = ["#4f86d9", "#e0884a", "#3fae84", "#c9a227", "#d97aa6", "#7d6bd6", "#5aa9c9", "#c25b5b"];
@@ -190,29 +191,18 @@ const LIBRARY_KEY = "namestudio.storyShapes";
 
 /** Own shapes kept on this computer, to use in other names. */
 export function libraryShapes(): StoryShape[] {
-  try {
-    const value = JSON.parse(localStorage.getItem(LIBRARY_KEY) ?? "[]");
-    return Array.isArray(value) ? value.filter((shape) => shape && typeof shape.id === "string" && Array.isArray(shape.parts)) : [];
-  } catch {
-    return [];
-  }
+  const value = readJson(LIBRARY_KEY, []);
+  return Array.isArray(value) ? value.filter((shape) => shape && typeof shape.id === "string" && Array.isArray(shape.parts)) : [];
 }
 
 /** Keep (or update) an own shape on this computer. */
 export function keepShape(shape: StoryShape): void {
-  try {
-    const kept = libraryShapes().filter((s) => s.id !== shape.id);
-    kept.push(structuredClone(shape));
-    localStorage.setItem(LIBRARY_KEY, JSON.stringify(kept));
-  } catch {
-    // Storage may be off; the shape still lives in the name.
-  }
+  // Storage may be off; the shape still lives in the name.
+  const kept = libraryShapes().filter((s) => s.id !== shape.id);
+  kept.push(structuredClone(shape));
+  writeJson(LIBRARY_KEY, kept);
 }
 
 export function forgetShape(id: string): void {
-  try {
-    localStorage.setItem(LIBRARY_KEY, JSON.stringify(libraryShapes().filter((s) => s.id !== id)));
-  } catch {
-    // Nothing kept.
-  }
+  writeJson(LIBRARY_KEY, libraryShapes().filter((s) => s.id !== id));
 }

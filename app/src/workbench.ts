@@ -28,8 +28,6 @@ import {
   ROWS_KEY,
   PageEditor,
   isTyping,
-  readFlag,
-  writeFlag,
   type EditorEraseMode,
   type Selection,
   type Tool,
@@ -80,6 +78,7 @@ import {
   type StoredImage,
   newId,
 } from "./project";
+import { readFlag, writeCount, writeFlag } from "./settings";
 
 export const PROJECT_EXTENSION = "namestudio";
 const ROUGH_MAX_HEIGHT = 1600;
@@ -1232,11 +1231,7 @@ export class Workbench {
   private setRows(rows: number): void {
     if (!this.editor.continuous) return;
     this.editor.setRows(rows);
-    try {
-      localStorage.setItem(ROWS_KEY, String(this.editor.rows));
-    } catch {
-      // Not kept for the next start; the rows still hold now.
-    }
+    writeCount(ROWS_KEY, this.editor.rows);
     this.showRows();
   }
 

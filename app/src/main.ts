@@ -14,11 +14,10 @@ import { newProject, STRUCTURES, type Project } from "./project";
 import { adoptShape, libraryShapes } from "./shapes";
 import type { LayerView, PageCell, SheetView } from "./types";
 import { PROJECT_EXTENSION, Workbench } from "./workbench";
+import { $ } from "./dom";
 
 const OVERVIEW_MAX_WIDTH = 4096;
 const MARGIN = 24;
-
-const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>("canvas");
 const ctx = canvas.getContext("2d")!;
 

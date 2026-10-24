@@ -146,10 +146,14 @@ cargo test
 (cd app && npm test)
 # 画面の通しテスト（ブラウザで開く・描く・元に戻す・失敗の取り消し・自動保存・連続表示と速さ）
 (cd app && npx playwright install chromium && npm run e2e)
+# 実アプリで書き出す（WebView・CSP・Rust 側との通信まで。Linux は xvfb-run を前に付ける）
+(cd app && npx tauri build --no-bundle)
+cargo run -p clip-core --features fixtures --example fixture_page -- /tmp/app-check/page.clip
+(cd app && node e2e/realapp.mjs /tmp/app-check)
 # Python 版との突き合わせ（実ファイルを引数に足せる）
 CSP_NAME_SPLITTER=../csp-name-splitter python tools/compare_with_python.py [作品のファイル...]
 ```
 
 作品のファイルはリポジトリに入れません。テストは合成したファイルだけを使います。
 
-ネームデータの型は Rust（`crates/name-model/src/model.rs`）と画面（`app/src/model.ts`）の 2 か所にあります。項目や選択肢を足すときは両方に足し、`app/src/contract.test.ts` の全項目の見本にも足して `(cd app && npx vitest run -u src/contract.test.ts)` で `crates/name-model/tests/fixtures` を書き直してください。片方に足し忘れると、型チェックか `cargo test`（`tests/contract.rs`）が落ちます。
+ネームデータの型は Rust（`crates/name-model/src/model.rs`）と画面（`app/src/model.ts`）の 2 か所にあります。項目や選択肢を足すときは両方に足し、`app/src/contract.test.ts` の全項目の見本にも足して `(cd app && npx vitest run -u src/contract.test.ts)` で `crates/name-model/tests/fixtures` を書き直してください。片方に足し忘れると、型チェックか `cargo test`（`tests/contract.rs`）が落ちます。Rust 側にコマンドを足したら `app/src/backend.ts` の `Commands` にも書いてください（`backend.test.ts` が `lib.rs` と突き合わせます）。

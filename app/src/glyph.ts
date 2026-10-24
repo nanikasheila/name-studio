@@ -5,14 +5,9 @@
 import type { HeldPanel } from "./model";
 import { drawBalloons, drawPageFills, drawPageTexts, drawPanelBorders, drawPanelFills, drawStrokes } from "./pagedraw";
 import { bounds, trimBox, type Page, type Project } from "./project";
+import { svg } from "./dom";
 
-const SVG = "http://www.w3.org/2000/svg";
 
-function svg<K extends keyof SVGElementTagNameMap>(tag: K, attributes: Record<string, string | number> = {}): SVGElementTagNameMap[K] {
-  const node = document.createElementNS(SVG, tag);
-  for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, String(value));
-  return node;
-}
 
 /** Characters of dialogue in each panel of `page` (lines not in a panel are left out). */
 export function textByPanel(page: Page): Map<string, number> {

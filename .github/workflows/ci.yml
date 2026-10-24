@@ -82,3 +82,47 @@ jobs:
         run: |
           pip install -e reference
           python tools/compare_with_python.py
+
+  app:
+    name: Built app writes a name out (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install WebView dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev xvfb
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Build the app (release, as installed)
+        working-directory: app
+        run: |
+          npm ci
+          npx tauri build --no-bundle
+
+      - name: A template page
+        run: cargo run -p clip-core --features fixtures --example fixture_page -- "${{ runner.temp }}/app-check/page.clip"
+
+      # The real window (WebView, Content-Security-Policy, calls to Rust) writes the pages.
+      - name: Export a name for CSP with the built app
+        working-directory: app
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            xvfb-run -a node e2e/realapp.mjs "$RUNNER_TEMP/app-check"
+          else
+            node e2e/realapp.mjs "$RUNNER_TEMP/app-check"
+          fi

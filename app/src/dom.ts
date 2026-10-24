@@ -32,3 +32,13 @@ export function plainButton(label: string, action: () => void): HTMLButtonElemen
   b.addEventListener("click", action);
   return b;
 }
+
+const SVG = "http://www.w3.org/2000/svg";
+
+/** A new SVG element with these attributes and children. */
+export function svg<K extends keyof SVGElementTagNameMap>(tag: K, attributes: Record<string, string | number> = {}, ...children: (Node | string)[]): SVGElementTagNameMap[K] {
+  const node = document.createElementNS(SVG, tag);
+  for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, String(value));
+  node.append(...children);
+  return node;
+}

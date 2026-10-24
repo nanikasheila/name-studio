@@ -1,6 +1,7 @@
 // Autosave: a short while after the last change, write the project (or a
 // copy kept for after a crash). Kept apart from the workbench so the timing
 // can be tested without the app.
+import { readText, writeText } from "./settings";
 
 /** Seconds of quiet after a change before autosave writes. */
 export const AUTOSAVE_DELAY_MS = 3000;
@@ -103,19 +104,11 @@ export class Autosaver {
 
 /** Whether autosave writes the project file itself (on unless turned off). */
 export function autosaveToFile(): boolean {
-  try {
-    return localStorage.getItem(SETTING_KEY) !== "off";
-  } catch {
-    return true;
-  }
+  return readText(SETTING_KEY) !== "off";
 }
 
 export function setAutosaveToFile(on: boolean): void {
-  try {
-    localStorage.setItem(SETTING_KEY, on ? "on" : "off");
-  } catch {
-    // Not remembered; the default applies next time.
-  }
+  writeText(SETTING_KEY, on ? "on" : "off");
 }
 
 /** "10/23 09:05" style local time for a version list. */

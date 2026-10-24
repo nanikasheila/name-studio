@@ -17,6 +17,8 @@ import {
 import { applyTakeBack, planTakeBack, takeBackSummary } from "./readback";
 import { ISSUE_LABELS, checkName, issueSummary } from "./namecheck";
 import type { Project, RoughImage } from "./project";
+import { $ } from "./dom";
+import { readText, writeText } from "./settings";
 
 export interface ExportDialogHost {
   project(): Project | null;
@@ -42,15 +44,9 @@ type Kind = "csp" | "pdf" | "text";
 const DONOR_KEY = "namestudio.exportDonor";
 
 function readDonor(): string {
-  try {
-    return localStorage.getItem(DONOR_KEY) ?? "";
-  } catch {
-    return "";
-  }
+  return readText(DONOR_KEY) ?? "";
 }
 
-
-const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 export class ExportDialog {
   private kind: Kind = "csp";
@@ -234,12 +230,7 @@ export class ExportDialog {
 
   private setDonor(path: string): void {
     this.donor = path;
-    try {
-      if (path) localStorage.setItem(DONOR_KEY, path);
-      else localStorage.removeItem(DONOR_KEY);
-    } catch {
-      // Not kept for the next start.
-    }
+    writeText(DONOR_KEY, path || null);
     this.show();
   }
 

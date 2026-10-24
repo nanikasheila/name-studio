@@ -11,6 +11,7 @@ import {
   type CspSubTool,
 } from "./brush";
 import type { Brush, Project } from "./project";
+import { $ } from "./dom";
 
 export interface BrushDialogHost {
   project(): Project | null;
@@ -21,8 +22,6 @@ export interface BrushDialogHost {
 }
 
 const ERASE_LABELS = { touched: "触れた部分", intersection: "交点まで", whole: "線全体" } as const;
-
-const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 export class BrushDialog {
   private tools: CspSubTool[] = [];
