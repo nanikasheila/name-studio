@@ -1,4 +1,5 @@
 // Page logic that does not touch the screen: spreads, visibility, dialogue.
+import type { Binding } from "./model";
 import type { LayerView, PageCell, SheetView, TextView } from "./types";
 
 /**
@@ -18,6 +19,15 @@ export function spreads(pageCount: number, firstAlone: boolean): [number | null,
     result.push([page, page + 1 <= pageCount ? page + 1 : null]);
   }
   return result;
+}
+
+/**
+ * Whether page `number` of a spread from {@link spreads} is the left-hand
+ * page: the second of the pair in a manga (right binding), the first in a
+ * left-bound book.
+ */
+export function onLeftHand(pair: [number | null, number | null], number: number, binding: Binding): boolean {
+  return (pair[1] === number) === (binding === "right");
 }
 
 /** A layer is shown when it and all its folders are visible. */

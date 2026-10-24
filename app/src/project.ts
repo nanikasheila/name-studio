@@ -566,6 +566,34 @@ export function wrapTypedLine(line: Line): boolean {
   return true;
 }
 
+/** New dialogue is written top to bottom in a manga (right binding), across in a left-bound book. */
+export function writesVertically(project: Project): boolean {
+  return project.binding === "right";
+}
+
+/**
+ * 右綴じ・左綴じ: the way the book reads. The panels and lines on every page
+ * are numbered again in the new order; with `turnText` the lines written the
+ * old way's usual direction (縦書き in a right-bound book) take the new one's.
+ */
+export function setBinding(project: Project, binding: Binding, turnText = true): void {
+  if (project.binding === binding) return;
+  const wasVertical = writesVertically(project);
+  project.binding = binding;
+  const nowVertical = writesVertically(project);
+  for (const page of project.pages) {
+    if (turnText && wasVertical !== nowVertical) {
+      for (const line of page.lines) {
+        if (line.vertical !== wasVertical) continue;
+        line.vertical = nowVertical;
+        fitLine(line);
+      }
+    }
+    orderPanels(page, binding);
+    sortLines(page, binding);
+  }
+}
+
 export function addLine(project: Project, page: Page, center: Point, text = "セリフ", kind: LineKind = "speech"): Line {
   const line: Line = {
     id: newId(project, "line"),
@@ -573,14 +601,14 @@ export function addLine(project: Project, page: Page, center: Point, text = "セ
     kind,
     box: [center[0], center[1], center[0], center[1]],
     fontSizePt: kind === "narration" ? DEFAULT_FONT_PT - 1 : DEFAULT_FONT_PT,
-    vertical: true,
+    vertical: writesVertically(project),
   };
   const shape = project.lineShapes?.[kind];
   if (shape && shape !== "auto") line.balloonShape = shape;
   fitLine(line);
   page.lines.push(line);
   assignPanels(page);
-  sortLines(page);
+  sortLines(page, project.binding);
   return line;
 }
 
@@ -627,12 +655,15 @@ export function moveLine(line: Line, dx: number, dy: number): void {
   if (line.balloon) line.balloon = line.balloon.map(([x, y]) => [x + dx, y + dy]);
 }
 
-/** Manga reading order: by panel, then from the top right towards the bottom left. */
-export function sortLines(page: Page): void {
+/**
+ * Reading order: by panel, then from the top right towards the bottom left
+ * (manga, right binding) or from the top left towards the bottom right (left binding).
+ */
+export function sortLines(page: Page, binding: Binding = "right"): void {
   const order = new Map(page.panels.map((panel) => [panel.id, panel.order]));
   const key = (line: Line) => {
     const [cx, cy] = boxCenter(line.box);
-    return { panel: line.panel ? order.get(line.panel) ?? Infinity : Infinity, diagonal: cy - cx };
+    return { panel: line.panel ? order.get(line.panel) ?? Infinity : Infinity, diagonal: binding === "right" ? cy - cx : cy + cx };
   };
   page.lines.sort((a, b) => {
     const ka = key(a);
@@ -1308,7 +1339,7 @@ export function moveScene(project: Project, sceneId: string, target: number): bo
  * is reshaped.
  * The panels may be on different pages.
  */
-export function swapPanelContents(pageA: Page, panelA: Panel, pageB: Page, panelB: Panel): void {
+export function swapPanelContents(pageA: Page, panelA: Panel, pageB: Page, panelB: Panel, binding: Binding = "right"): void {
   if (panelA === panelB) return;
   const carriedA = carryContents(pageA, panelA);
   const carriedB = carryContents(pageB, panelB);
@@ -1340,7 +1371,7 @@ export function swapPanelContents(pageA: Page, panelA: Panel, pageB: Page, panel
   else delete panelB.note;
   for (const page of new Set([pageA, pageB])) {
     assignPanels(page);
-    sortLines(page);
+    sortLines(page, binding);
   }
 }
 

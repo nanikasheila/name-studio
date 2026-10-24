@@ -406,7 +406,7 @@ export function pasteClip(project: Project, page: Page, clip: Clip, offset: Poin
   }
   if (pasted.panels.length) orderPanels(page, project.binding);
   assignPanels(page);
-  sortLines(page);
+  sortLines(page, project.binding);
   return pasted;
 }
 

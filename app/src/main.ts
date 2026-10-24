@@ -572,6 +572,7 @@ $("new-project").addEventListener("click", async () => {
       const pages = Math.max(1, Math.min(400, Number.parseInt($<HTMLInputElement>("nn-pages").value, 10) || 16));
       const title = $<HTMLInputElement>("nn-title").value.trim() || "新しいネーム";
       const project = newProject(title, pages);
+      project.binding = $<HTMLSelectElement>("nn-binding").value === "left" ? "left" : "right";
       if ($<HTMLInputElement>("nn-target").checked) project.plan = { targetPages: pages };
       const kept = libraryShapes().find((s) => s.id === shape.value);
       if (kept) adoptShape(project, kept);

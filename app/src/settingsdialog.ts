@@ -3,7 +3,7 @@
 import { $ } from "./dom";
 import { PAGE_GAP_KEY, type PageEditor } from "./editor";
 import { GRID_GAP_MM } from "./layout";
-import { gutters, setGutters, type Project } from "./project";
+import { gutters, setBinding, setGutters, type Project } from "./project";
 import { writeNumber } from "./settings";
 import { DEFAULT_SNAP, MAX_GRID_MM, MIN_GRID_MM, saveSnap, type SnapSettings } from "./snapping";
 
@@ -37,6 +37,13 @@ export class SettingsDialog {
         if (now) this.host.status(`コマ間を 左右 ${gutters(now).across} mm・上下 ${gutters(now).down} mm にしました（これから割るコマに効きます）`);
       });
     }
+    $<HTMLSelectElement>("st-binding").addEventListener("change", (event) => {
+      const binding = (event.target as HTMLSelectElement).value === "left" ? "left" : "right";
+      const turnText = $<HTMLInputElement>("st-binding-text").checked;
+      this.host.edit((project) => setBinding(project, binding, turnText));
+      this.render();
+      this.host.status(binding === "left" ? "左綴じにしました（左から右へ読みます）" : "右綴じにしました（右から左へ読みます）");
+    });
     number("st-page-gap").addEventListener("input", () => {
       const value = Number(number("st-page-gap").value);
       if (!Number.isFinite(value)) return;
@@ -88,6 +95,9 @@ export class SettingsDialog {
       field.disabled = !gaps;
       if (document.activeElement !== field) field.value = value === undefined ? "" : String(value);
     }
+    const binding = $<HTMLSelectElement>("st-binding");
+    binding.value = project?.binding ?? "right";
+    binding.disabled = !project;
     const gap = $<HTMLInputElement>("st-page-gap");
     if (document.activeElement !== gap) gap.value = String(this.host.editor.pageGapMm);
     const snap = this.host.editor.snapping;

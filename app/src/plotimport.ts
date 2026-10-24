@@ -9,7 +9,7 @@
 //                                                 (headings naming ページ, like ページごとのプロット, are not scenes)
 //   ## any other section                         its list items (or its text) become 付箋, on the page they name
 //                                                 or else the page they are most about (the first page when none stands out)
-import { spreads } from "./pages";
+import { onLeftHand, spreads } from "./pages";
 import { addSticky, insertPage, putScene, stickyBox, STICKY_WIDTH_MM, type Project } from "./project";
 
 export interface PlotPage {
@@ -258,7 +258,7 @@ export function applyPlot(project: Project, doc: PlotDoc, firstAlone = true): Pl
     const index = Math.min(Math.max((note.page ?? 1) - 1, 0), project.pages.length - 1);
     const page = project.pages[index];
     if (!page) continue;
-    const left = spreads(project.pages.length, firstAlone).some(([, l]) => l === index + 1);
+    const left = spreads(project.pages.length, firstAlone).some((pair) => pair.includes(index + 1) && onLeftHand(pair, index + 1, project.binding));
     let [x, y] = next.get(index) ?? [left ? 6 : pageW - STICKY_WIDTH_MM - 6, 6];
     const text = `【${note.section}】${note.text}`;
     // Its height before it goes down, so it never slides up over the one above.

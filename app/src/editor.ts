@@ -72,6 +72,7 @@ import {
   setLineText,
   wrapTypedLine,
   trimBox,
+  type Binding,
   type BoxMm,
   type Brush,
   type EraseMode,
@@ -917,7 +918,7 @@ export class PageEditor {
         moveLine(line, (slot.x - to.x) / slot.scale, (slot.y - to.y) / slot.scale);
         delete line.linkTo;
         to.page.lines.push(line);
-        sortLines(to.page);
+        sortLines(to.page, this.binding());
         targets.add(to);
         moved.push(item);
       } else {
@@ -1712,6 +1713,11 @@ export class PageEditor {
     );
   }
 
+  /** Which way the project's pages and panels read. */
+  private binding(): Binding {
+    return this.host.project()?.binding ?? "right";
+  }
+
   /** 多角形: whether corners are being placed. */
   get placingCorners(): boolean {
     return this.polygon !== null;
@@ -2076,7 +2082,7 @@ export class PageEditor {
     this.host.begin();
     transformItems(page, base, m);
     assignPanels(page);
-    sortLines(page);
+    sortLines(page, this.binding());
     this.host.commit();
     this.draw();
     return true;
@@ -3198,7 +3204,7 @@ export class PageEditor {
         if (drag.kind === "move") this.carryToPageUnder(project, drag.slot);
         for (const slot of this.slots) {
           assignPanels(slot.page);
-          sortLines(slot.page);
+          sortLines(slot.page, this.binding());
         }
         this.host.commit();
         break;
@@ -3208,7 +3214,7 @@ export class PageEditor {
         this.host.begin();
         const created = cutPanels(project, drag.slot.page, drag.a, b);
         if (created.length) {
-          sortLines(drag.slot.page);
+          sortLines(drag.slot.page, this.binding());
           this.host.commit();
           this.host.status(`コマを ${created.length} か所で分けました`);
         } else {
@@ -3304,7 +3310,7 @@ export class PageEditor {
         const target = to && to.slot.page.panels.find((panel) => panel.id === to.panelId);
         if (!from || !to || !target) break;
         this.host.begin();
-        swapPanelContents(drag.slot.page, from, to.slot.page, target);
+        swapPanelContents(drag.slot.page, from, to.slot.page, target, project.binding);
         this.host.commit();
         this.select({ kind: "panel", pageId: to.slot.page.id, id: target.id });
         this.host.status(`コマ ${from.order} とコマ ${target.order} の中身を入れ替えました（元に戻すは Ctrl+Z）`);
@@ -3319,7 +3325,7 @@ export class PageEditor {
         }
         if (drag.base.panels) orderPanels(drag.slot.page, project.binding);
         assignPanels(drag.slot.page);
-        sortLines(drag.slot.page);
+        sortLines(drag.slot.page, this.binding());
         this.host.commit();
         break;
       case "seam": {
@@ -3332,7 +3338,7 @@ export class PageEditor {
         }
         orderPanels(drag.slot.page, project.binding);
         assignPanels(drag.slot.page);
-        sortLines(drag.slot.page);
+        sortLines(drag.slot.page, this.binding());
         this.host.commit();
         this.host.status(drag.seam.between ? "間白を動かしました（両側のコマが一緒に）" : "コマの辺を動かしました");
         break;
@@ -3479,7 +3485,7 @@ export class PageEditor {
       return;
     }
     assignPanels(slot.page);
-    sortLines(slot.page);
+    sortLines(slot.page, this.binding());
     this.host.commit();
     this.hover = null;
     this.select({ kind: "panel", pageId: slot.page.id, id: a.id });
@@ -3603,7 +3609,7 @@ export class PageEditor {
     this.moveSelection(page, dx, dy);
     if (this.selection.kind === "panel" || this.selection.items?.some((item) => item.kind === "panel")) orderPanels(page, this.host.project()!.binding);
     assignPanels(page);
-    sortLines(page);
+    sortLines(page, this.binding());
     this.host.commit();
     this.draw();
     return true;

@@ -98,7 +98,7 @@ export function placeHeld(project: Project, page: Page, held: HeldPanel, at?: Po
   followPanel(page, target, carried);
   orderPanels(page, project.binding);
   assignPanels(page);
-  sortLines(page);
+  sortLines(page, project.binding);
   return target;
 }
 

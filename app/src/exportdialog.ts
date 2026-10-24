@@ -193,6 +193,9 @@ export class ExportDialog {
     $<HTMLInputElement>("ne-notes").checked = this.notes;
     $<HTMLInputElement>("ne-make-work").checked = this.form.makeWork;
     $("ne-work-fields").hidden = !this.form.makeWork;
+    const left = this.host.project()?.binding === "left";
+    $("ne-binding-hint").hidden = !left || !this.form.makeWork;
+    $("ne-pdf-binding").textContent = left ? "左綴じ" : "右綴じ";
     $<HTMLInputElement>("ne-work-name").value = this.form.workName;
     $<HTMLInputElement>("ne-story-index").value = this.form.storyIndex;
   }

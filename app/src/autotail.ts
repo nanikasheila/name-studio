@@ -1,11 +1,11 @@
 // しっぽを付ける: tails for speech that has none, aimed at whoever is
 // speaking. A panel's rough drawing is grouped into figures (strokes whose
 // boxes touch); speakers take figures in reading order (the first to speak
-// is the rightmost figure), and a tail points at the top of its figure, the
+// is the rightmost figure in a manga, the leftmost in a left-bound book), and a tail points at the top of its figure, the
 // head. A speaker who already has a tail in the panel keeps that direction.
 // With nothing drawn, the tail points down into the panel.
 import { balloonExtent, defaultTailStyle, resolvedShape } from "./balloon";
-import { bounds, boxCenter, centroid, insidePolygon, panelContents, type BoxMm, type Line, type Page, type Panel, type Point } from "./project";
+import { bounds, boxCenter, centroid, insidePolygon, panelContents, type Binding, type BoxMm, type Line, type Page, type Panel, type Point } from "./project";
 
 /** How far past the balloon a tail reaches (mm), at most. */
 const REACH = 12;
@@ -107,7 +107,7 @@ function fallbackTarget(line: Line, panel: Panel | undefined): Point {
  * Give every speech line on the page that has no tail one (see the top of
  * the file). Returns how many tails were added.
  */
-export function addAutoTails(page: Page): number {
+export function addAutoTails(page: Page, binding: Binding = "right"): number {
   let added = 0;
   const panels = new Map(page.panels.map((panel) => [panel.id, panel]));
   // Panel by panel, lines in reading order.
@@ -118,7 +118,9 @@ export function addAutoTails(page: Page): number {
   }
   for (const [panelId, lines] of byPanel) {
     const panel = panels.get(panelId);
+    // Figures in reading order: right to left, or from the left in a left-bound book.
     const found = panel ? figures(page, panel) : [];
+    if (binding === "left") found.reverse();
     // Speakers in the order they first speak; no speaker counts as its own.
     const order: (string | undefined)[] = [];
     for (const line of lines) if (line.kind === "speech" && !order.includes(line.speaker)) order.push(line.speaker);
