@@ -7,7 +7,7 @@
 // the snapshot before is that snapshot's page, so the text of unchanged pages
 // is kept once too.
 
-/** One piece written as JSON, its point lists taken out (by index). */
+/** One piece written as JSON, its point lists (and picture data) taken out, by index. */
 export interface Part {
   readonly json: string;
   readonly lists: readonly unknown[][];
@@ -36,6 +36,11 @@ function part(value: unknown): Part {
       lists.push(v);
       return lists.length - 1;
     }
+    // A picture's data (資料画像) is a long string, never changed: kept by reference too.
+    if (key === "dataBase64" && typeof v === "string") {
+      lists.push(v as unknown as unknown[]);
+      return lists.length - 1;
+    }
     return v;
   });
   return { json, lists };
@@ -50,7 +55,7 @@ function samePart(a: Part, b: Part): boolean {
 }
 
 function revive<T>(piece: Part): T {
-  return JSON.parse(piece.json, (key, v: unknown) => (key === "points" && typeof v === "number" ? piece.lists[v] : v)) as T;
+  return JSON.parse(piece.json, (key, v: unknown) => ((key === "points" || key === "dataBase64") && typeof v === "number" ? piece.lists[v] : v)) as T;
 }
 
 interface Paged {
@@ -106,7 +111,11 @@ export function listId(points: object): number {
 
 /** A text that is the same exactly when what `value` holds is (point lists by their number). */
 export function fingerprint(value: unknown): string {
-  return JSON.stringify(value, (key, v: unknown) => (key === "points" && Array.isArray(v) ? listId(v) : v));
+  return JSON.stringify(value, (key, v: unknown) => {
+    if (key === "points" && Array.isArray(v)) return listId(v);
+    if (key === "dataBase64" && typeof v === "string") return v.length;
+    return v;
+  });
 }
 
 export function sameSnapshot(a: Snapshot, b: Snapshot): boolean {

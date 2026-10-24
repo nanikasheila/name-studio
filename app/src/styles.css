@@ -214,6 +214,10 @@ dialog.brushes { width: min(720px, calc(100vw - 32px)); }
 .brush-row .meta { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .brush-row .badge { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
 .brush-bar.off { display: none; }
+.reference-bar { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.reference-bar .size { display: flex; align-items: center; gap: 4px; color: var(--muted); }
+.reference-bar input[type="range"] { width: 7em; }
+.reference-bar.off { display: none; }
 
 /* Versions */
 dialog.versions { width: min(640px, calc(100vw - 32px)); }
@@ -479,6 +483,7 @@ button.with-icon, .page-nav .segmented button { display: inline-flex; align-item
 #tool-fill { --tool: var(--c-fill); }
 #tool-breakout { --tool: var(--c-breakout); }
 #tool-sticky { --tool: var(--c-sticky); }
+#tool-reference { --tool: var(--muted); }
 .stage-column { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .stage-column > .stage { flex: 1; }
 .tool-options {

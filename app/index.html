@@ -64,6 +64,7 @@
           <button id="tool-fill" title="囲んだ所を塗る。ベタ・グレー・白（G）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5c3.2 4.2 5 7 5 9.2a5 5 0 0 1-10 0c0-2.2 1.8-5 5-9.2z" class="fill"/></svg><span>塗り</span></button>
           <button id="tool-breakout" title="コマを突き抜ける所を囲む。中に描いた線はコマ枠の上に（B）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="6.5" width="11" height="11" rx="1"/><path d="M8 12l9-9.5M12.5 2.5H17V7"/></svg><span>はみ出し</span></button>
           <button id="tool-sticky" title="付箋を貼る。作業用のメモで、書き出しには入りません（M）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 3h13v9l-5 5h-8z"/><path d="M11.5 17v-5h5"/></svg><span>付箋</span></button>
+          <button id="tool-reference" title="資料画像を貼る・動かす。写真や背景をページの下に薄く敷きます（I）。Ctrl+V や画像のドロップでも貼れます"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="4" width="15" height="12" rx="1"/><path d="M2.5 13.5l4.5-4.5 4 4 2.5-2.5 4 4"/><circle cx="13.5" cy="7.5" r="1.3"/></svg><span>資料</span></button>
       </nav>
       <section class="stage-column">
         <div class="tool-options" id="tool-options">
@@ -84,6 +85,12 @@
               <button id="erase-whole" title="触れた線を丸ごと消す">線ごと</button>
               <button id="erase-lasso" title="囲んだ中の線を消す">囲む</button>
             </div>
+          </div>
+          <div class="reference-bar off" id="reference-bar">
+            <button id="reference-add" title="画像ファイルを選んで、今のページに貼る">画像を貼る…</button>
+            <input type="file" id="reference-file" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp" multiple hidden />
+            <label class="size" title="選んだ資料画像の濃さ"><span>濃さ</span><input type="range" id="reference-opacity" min="0.1" max="1" step="0.05" value="0.5" disabled /></label>
+            <button id="reference-remove" class="danger" title="選んだ資料画像を外す（Delete）" disabled>外す</button>
           </div>
           <span class="tool-hint" id="tool-hint"></span>
         </div>

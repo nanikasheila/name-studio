@@ -117,6 +117,57 @@ try {
   });
   check(saved?.pages === 24 && saved.strokes === before + 1, `autosave sends the whole name (${JSON.stringify(saved)})`);
 
+  // 資料画像: a picture pasted lies on the page under the pointer, moves, and is saved once.
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.5);
+  await page.evaluate(async () => {
+    const canvas = document.createElement("canvas");
+    [canvas.width, canvas.height] = [640, 480];
+    const ctx = canvas.getContext("2d");
+    const gradient = ctx.createLinearGradient(0, 0, 640, 480);
+    gradient.addColorStop(0, "#3a6");
+    gradient.addColorStop(1, "#236");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 640, 480);
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(200, 150, 240, 180);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+    const data = new DataTransfer();
+    data.items.add(new File([blob], "背景.png", { type: "image/png" }));
+    document.body.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true }));
+  });
+  await page.waitForFunction(() => window.nameStudio.workbench.project.pages.some((p) => p.references?.length), null, { timeout: 5000 });
+  const pasted = await page.evaluate(() => {
+    const wb = window.nameStudio.workbench;
+    const index = wb.project.pages.findIndex((p) => p.references?.length);
+    const reference = wb.project.pages[index].references[0];
+    return { index, box: reference.box, tool: wb.editor.tool, chosen: wb.editor.reference?.id === reference.id, images: wb.project.images.length };
+  });
+  check(pasted.tool === "reference" && pasted.chosen && pasted.images === 1, `a pasted picture lies on page ${pasted.index + 1}, chosen with the 資料 tool`);
+  // Drag it by its middle.
+  const middle = await page.evaluate(({ index }) => {
+    const wb = window.nameStudio.workbench;
+    const [x0, y0, x1, y1] = wb.project.pages[index].references[0].box;
+    return wb.editor.clientOf(wb.project.pages[index].id, [(x0 + x1) / 2, (y0 + y1) / 2]);
+  }, pasted);
+  if (middle) {
+    await page.mouse.move(middle[0], middle[1]);
+    await page.mouse.down();
+    for (let i = 1; i <= 8; i++) await page.mouse.move(middle[0] + i * 5, middle[1] + i * 4);
+    await page.mouse.up();
+  }
+  const moved = await page.evaluate(({ index }) => window.nameStudio.workbench.project.pages[index].references[0].box, pasted);
+  check(!!middle && moved[0] > pasted.box[0] + 1 && moved[1] > pasted.box[1] + 1, "dragging moves the picture");
+  await page.keyboard.press("Control+z");
+  const back = await page.evaluate(({ index }) => window.nameStudio.workbench.project.pages[index].references[0].box, pasted);
+  check(back[0] === pasted.box[0] && back[1] === pasted.box[1], "undo puts it back");
+  await page.keyboard.press("Delete");
+  check(
+    await page.evaluate(({ index }) => !window.nameStudio.workbench.project.pages[index].references, pasted),
+    "Delete takes the chosen picture off",
+  );
+  await page.keyboard.press("Control+z");
+  await page.keyboard.press("v");
+
   // Every page on one canvas: moving about stays smooth.
   await page.keyboard.press("F7");
   await page.waitForTimeout(400);

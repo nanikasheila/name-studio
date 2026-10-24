@@ -33,6 +33,7 @@ export function repair(project: Project): string[] {
 
   for (const character of project.characters) fresh(character, "character", "登場人物");
   const characters = new Set(project.characters.map((c) => c.id));
+  const images = new Set((project.images ?? []).map((image) => image.id));
   project.pages.forEach((page, index) => {
     const number = index + 1;
     fresh(page, "page", "ページ");
@@ -73,6 +74,15 @@ export function repair(project: Project): string[] {
     }
     for (const stroke of page.strokes) fresh(stroke, "stroke", `${number} ページのラフ線`);
     for (const rough of page.roughs) fresh(rough, "rough", `${number} ページのラフ画像`);
+    if (page.references) {
+      for (const reference of page.references) fresh(reference, "reference", `${number} ページの資料画像`);
+      page.references = page.references.filter((reference) => {
+        if (images.has(reference.image)) return true;
+        note(`${number} ページの資料画像 ${reference.id}（画像が見つからない）を外しました`);
+        return false;
+      });
+      if (!page.references.length) delete page.references;
+    }
   });
   for (const brush of project.brushes ?? []) {
     fresh(brush, "brush", "ブラシ");
@@ -81,6 +91,7 @@ export function repair(project: Project): string[] {
       note(`ブラシ「${brush.name}」の大きさを 0.5 mm にしました`);
     }
   }
+  for (const image of project.images ?? []) fresh(image, "image", "資料画像の画像");
   // 見開きのコマ: the halves must be on two facing pages.
   const spreads = new Map<string, number[]>();
   project.pages.forEach((page, index) => {
@@ -122,10 +133,15 @@ export function repair(project: Project): string[] {
 
 /** Every id the save check counts (for the next id number). */
 function allIds(project: Project): string[] {
-  const ids: string[] = [...project.characters.map((c) => c.id), ...(project.brushes ?? []).map((b) => b.id), ...project.scenes.map((s) => s.id)];
+  const ids: string[] = [
+    ...project.characters.map((c) => c.id),
+    ...(project.brushes ?? []).map((b) => b.id),
+    ...project.scenes.map((s) => s.id),
+    ...(project.images ?? []).map((i) => i.id),
+  ];
   for (const page of project.pages) {
     ids.push(page.id);
-    for (const list of [page.panels, page.breakouts, page.lines, page.strokes, page.roughs]) for (const item of list) ids.push(item.id);
+    for (const list of [page.panels, page.breakouts, page.lines, page.strokes, page.roughs, page.references ?? []]) for (const item of list) ids.push(item.id);
   }
   return ids;
 }

@@ -39,6 +39,7 @@ export function copyPages(project: Project, pages: Page[]): Page[] {
     for (const stroke of copy.strokes) stroke.id = fresh(stroke.id, "stroke");
     for (const breakout of copy.breakouts) breakout.id = fresh(breakout.id, "breakout");
     for (const rough of copy.roughs) rough.id = fresh(rough.id, "rough");
+    for (const reference of copy.references ?? []) reference.id = fresh(reference.id, "reference");
     for (const sticky of copy.stickies ?? []) sticky.id = fresh(sticky.id, "sticky");
     return copy;
   });

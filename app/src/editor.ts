@@ -29,6 +29,7 @@ import {
   type TransformBase,
 } from "./transform";
 import { INK, drawBalloons, drawLineText, drawPageFills, drawPanelBorders, drawPanelFills, drawStroke, drawStrokes, onTipLoaded, tracePath } from "./pagedraw";
+import { corners, imageOf, opacityOf, pictureOf, referenceAt, REFERENCE_HANDLE, resizeBox } from "./references";
 import { StrokeCache } from "./strokecache";
 import {
   addFill,
@@ -91,7 +92,7 @@ import {
   type StrokePoint,
 } from "./project";
 
-export type Tool = "select" | "cut" | "text" | "pen" | "eraser" | "fill" | "breakout" | "sticky";
+export type Tool = "select" | "cut" | "text" | "pen" | "eraser" | "fill" | "breakout" | "sticky" | "reference";
 
 export interface Selection {
   kind: "panel" | "line" | "stroke" | "breakout" | "group" | "sticky" | "fill";
@@ -130,6 +131,8 @@ export interface EditorHost {
   run(action: "undo" | "redo"): void;
   /** 連続: the spread worked on changed by touching a page of another one. */
   spreadChanged?(): void;
+  /** 資料: the picture chosen with the 資料 tool changed. */
+  referenceChanged?(): void;
 }
 
 interface Slot {
@@ -167,7 +170,9 @@ type Drag =
   | { kind: "scale"; slot: Slot; handle: number; base: TransformBase; box: BoxMm; moved: boolean }
   /** 自由変形 (Ctrl + a corner): the corners of the frame, each where it was dragged. */
   | { kind: "warp"; slot: Slot; handle: number; base: TransformBase; box: BoxMm; corners: [Point, Point, Point, Point]; moved: boolean }
-  | { kind: "rotate"; slot: Slot; base: TransformBase; centre: Point; start: number; moved: boolean };
+  | { kind: "rotate"; slot: Slot; base: TransformBase; centre: Point; start: number; moved: boolean }
+  /** 資料画像: moved (corner -1) or resized from a corner, the opposite corner staying put. */
+  | { kind: "reference"; slot: Slot; id: string; corner: number; start: Point; box: BoxMm; moved: boolean };
 
 /** Handles of the transform frame: corners from the top left clockwise, then the sides top, right, bottom, left. */
 const FRAME_HANDLES = 8;
@@ -290,6 +295,8 @@ export class PageEditor {
   private frame = 0;
   /** The pages as last drawn, for redrawing only what is over them (hover, eraser ring). */
   private cache: HTMLCanvasElement | null = null;
+  /** 資料: the picture chosen with the 資料 tool. */
+  reference: { pageId: string; id: string } | null = null;
   /** Each page's rough lines as a picture, while they do not change. */
   private readonly strokeCache = new StrokeCache(() => this.requestDraw());
   private overlayFrame = 0;
@@ -812,6 +819,20 @@ export class PageEditor {
   }
 
   /** The page under a point of the window, the point on it (mm) and the panel there. */
+  /** Where a point of a shown page (mm) is in the window (client px), or null when the page is not shown. */
+  clientOf(pageId: string, [x, y]: Point): Point | null {
+    const slot = this.slots.find((s) => s.page.id === pageId);
+    if (!slot) return null;
+    let [sx, sy] = [slot.x + x * slot.scale, slot.y + y * slot.scale];
+    if (this.rotation) {
+      const [cx, cy] = this.centre();
+      const [tx, ty] = this.turn(sx - cx, sy - cy, this.rotation);
+      [sx, sy] = [cx + tx, cy + ty];
+    }
+    const rect = this.canvas.getBoundingClientRect();
+    return [rect.left + sx, rect.top + sy];
+  }
+
   pageAtClient(clientX: number, clientY: number): { page: Page; point: Point; panel?: Panel } | null {
     const project = this.host.project();
     if (!project) return null;
@@ -1203,7 +1224,17 @@ export class PageEditor {
       const [x0, y0, x1, y1] = rough.box;
       ctx.drawImage(image, sx(x0), sy(y0), (x1 - x0) * scale, (y1 - y0) * scale);
     }
+    // 資料画像, faint under the drawing.
+    for (const reference of page.references ?? []) {
+      const stored = imageOf(project, reference);
+      const picture = stored && pictureOf(stored, () => this.requestDraw());
+      if (!picture) continue;
+      const [x0, y0, x1, y1] = reference.box;
+      ctx.globalAlpha = opacityOf(reference);
+      ctx.drawImage(picture, sx(x0), sy(y0), (x1 - x0) * scale, (y1 - y0) * scale);
+    }
     ctx.globalAlpha = 1;
+    if (this.tool === "reference") this.drawReferenceFrames(slot);
 
     const m = { scale, x: slot.x, y: slot.y };
     const brushes = this.host.project()?.brushes ?? [];
@@ -1302,6 +1333,43 @@ export class PageEditor {
     const memo = page.memo && !small ? `  ${page.memo.replace(/\s*\n\s*/g, " ")}` : "";
     const rows = wrapText(ctx, `${slot.index + 1}${memo}`, Math.max(small ? 0 : 80, (trimX1 - trimX0) * scale - 8), 2);
     rows.forEach((row, i) => ctx.fillText(row, sx((trimX0 + trimX1) / 2), sy(pageH) + 18 + i * 16));
+  }
+
+  /** 資料: every picture's outline, the chosen one with corners to drag. */
+  private drawReferenceFrames(slot: Slot): void {
+    const ctx = this.ctx;
+    for (const reference of slot.page.references ?? []) {
+      const chosen = this.reference?.pageId === slot.page.id && this.reference.id === reference.id;
+      const [x0, y0, x1, y1] = reference.box.map((v, i) => (i % 2 ? slot.y : slot.x) + v * slot.scale);
+      ctx.save();
+      ctx.setLineDash(chosen ? [] : [4, 3]);
+      ctx.strokeStyle = chosen ? ACCENT : "rgba(47, 111, 219, 0.55)";
+      ctx.lineWidth = chosen ? 1.5 : 1;
+      ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+      if (chosen) {
+        ctx.setLineDash([]);
+        ctx.fillStyle = "#ffffff";
+        for (const [x, y] of [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]) {
+          ctx.fillRect(x - HANDLE, y - HANDLE, HANDLE * 2, HANDLE * 2);
+          ctx.strokeRect(x - HANDLE, y - HANDLE, HANDLE * 2, HANDLE * 2);
+        }
+      }
+      ctx.restore();
+    }
+  }
+
+  /** 資料: the chosen picture's corner under a screen point (0–3), or -1. */
+  private referenceCornerAt(slot: Slot, sx: number, sy: number): number {
+    const chosen = this.reference?.pageId === slot.page.id ? slot.page.references?.find((r) => r.id === this.reference!.id) : undefined;
+    if (!chosen) return -1;
+    return corners(chosen.box).findIndex(([x, y]) => Math.hypot(slot.x + x * slot.scale - sx, slot.y + y * slot.scale - sy) <= REFERENCE_HANDLE + 2);
+  }
+
+  /** Choose a 資料画像 (or none) with the 資料 tool. */
+  chooseReference(reference: { pageId: string; id: string } | null): void {
+    this.reference = reference;
+    this.host.referenceChanged?.();
+    this.draw();
   }
 
   /** Where a panel's memo sits on screen: inside its top-left corner, as wide as the panel allows. */
@@ -1890,6 +1958,16 @@ export class PageEditor {
    * right page of the spread): where it was on its page, a little lower
    * right each time it goes onto its own page again.
    */
+  /** Where something pasted goes: the page under the pointer (and the point there), else the page worked on. */
+  pasteTarget(): { page: Page; point?: Point } | null {
+    const project = this.host.project();
+    if (!project) return null;
+    const under = this.pointer && this.slotAt(this.pointer[0], this.pointer[1], project);
+    if (under) return { page: under.page, point: this.toPage(under, this.pointer![0], this.pointer![1]) };
+    const page = this.focusPage();
+    return page ? { page } : null;
+  }
+
   paste(): boolean {
     const project = this.host.project();
     if (!project || !this.clip) return false;
@@ -2150,6 +2228,7 @@ export class PageEditor {
       fill: "crosshair",
       breakout: "crosshair",
       sticky: "copy",
+      reference: "default",
     };
     const eraser = this.eraseMode === "lasso" ? "crosshair" : "none";
     const hover =
@@ -2326,6 +2405,18 @@ export class PageEditor {
     if (this.focusedPageId !== slot.page.id) this.focusOn(slot);
     const point = this.toPage(slot, sx, sy);
     switch (this.tipEraser ? "eraser" : this.tool) {
+      case "reference": {
+        // A corner of the chosen picture resizes it; a picture moves; elsewhere nothing is chosen.
+        const corner = this.referenceCornerAt(slot, sx, sy);
+        const hit = corner >= 0 ? slot.page.references?.find((r) => r.id === this.reference?.id) : referenceAt(slot.page, point);
+        if (!hit) {
+          this.chooseReference(null);
+          return;
+        }
+        if (this.reference?.id !== hit.id) this.chooseReference({ pageId: slot.page.id, id: hit.id });
+        this.drag = { kind: "reference", slot, id: hit.id, corner, start: point, box: [...hit.box], moved: false };
+        return;
+      }
       case "select": {
         // The transform frame of the selected rough lines and dialogue.
         const handle = this.frameHandleAt(sx, sy);
@@ -2587,6 +2678,19 @@ export class PageEditor {
     const point = this.toPage(drag.slot, ex, ey);
     const project = this.host.project()!;
     switch (drag.kind) {
+      case "reference": {
+        const reference = drag.slot.page.references?.find((r) => r.id === drag.id);
+        if (!reference) return;
+        if (!drag.moved) {
+          if (Math.hypot(point[0] - drag.start[0], point[1] - drag.start[1]) * drag.slot.scale < 3) return;
+          this.host.begin();
+          drag.moved = true;
+        }
+        const [dx, dy] = [point[0] - drag.start[0], point[1] - drag.start[1]];
+        const [x0, y0, x1, y1] = drag.box;
+        reference.box = drag.corner < 0 ? [x0 + dx, y0 + dy, x1 + dx, y1 + dy] : resizeBox(drag.box, drag.corner, point);
+        break;
+      }
       case "note": {
         const panel = drag.slot.page.panels.find((p) => p.id === drag.panelId);
         if (!panel) return;
@@ -2976,6 +3080,9 @@ export class PageEditor {
       case "erase":
         if (drag.erased) this.host.commit();
         else this.host.cancel();
+        break;
+      case "reference":
+        if (drag.moved) this.host.commit();
         break;
       case "note": {
         if (!drag.moved) {
@@ -3393,7 +3500,7 @@ function distanceToSegment(p: Point, a: Point, b: Point): number {
   return Math.hypot(p[0] - a[0] - dx * t, p[1] - a[1] - dy * t);
 }
 
-export function isTyping(event: KeyboardEvent): boolean {
+export function isTyping(event: Event): boolean {
   const target = event.target as HTMLElement | null;
   return !!target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable);
 }

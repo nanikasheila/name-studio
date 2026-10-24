@@ -199,6 +199,30 @@ export interface Page {
   stickies?: Sticky[];
   /** 塗り: areas filled by lasso (ベタ and the like), drawn with the panel fills. */
   fills?: Fill[];
+  /** 資料画像: pictures laid faintly under the page (photos, backgrounds, earlier panels). */
+  references?: ReferenceImage[];
+}
+
+/** 資料画像 on a page: one of the project's pictures, where it lies and how faint. */
+export interface ReferenceImage {
+  id: string;
+  /** Id of the picture in `Project.images`. */
+  image: string;
+  /** Where it lies on the page (mm). */
+  box: BoxMm;
+  /** 0–1; none is 0.5. */
+  opacity?: number;
+}
+
+/** A picture kept in the project (resized when it was taken in). */
+export interface StoredImage {
+  id: string;
+  /** The file it came from, to show. */
+  name: string;
+  mime: "image/jpeg" | "image/png";
+  dataBase64: string;
+  widthPx: number;
+  heightPx: number;
 }
 
 export type FillTone = "black" | "gray" | "white";
@@ -478,6 +502,8 @@ export interface Project {
   lineShapes?: Partial<Record<LineKind, BalloonShape>>;
   /** 保留コマ: panels taken off the pages until it is decided where they go. */
   held?: HeldPanel[];
+  /** Pictures the pages' 資料画像 show. */
+  images?: StoredImage[];
   nextId: number;
 }
 
@@ -1691,7 +1717,7 @@ export function trailingEmptyPages(project: Project): number {
   let count = 0;
   for (let i = project.pages.length - 1; i >= 0; i--) {
     const page = project.pages[i];
-    const filled = page.panels.length + page.lines.length + page.strokes.length + page.roughs.length + (page.fills?.length ?? 0) > 0 || page.memo.trim() !== "";
+    const filled = page.panels.length + page.lines.length + page.strokes.length + page.roughs.length + (page.fills?.length ?? 0) + (page.references?.length ?? 0) > 0 || page.memo.trim() !== "";
     if (filled) break;
     count++;
   }

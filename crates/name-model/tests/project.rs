@@ -424,3 +424,39 @@ fn keeps_links_masks_and_held_panels() {
     );
     assert_eq!(Project::from_json(&json).unwrap(), project);
 }
+
+/// 資料画像: the pictures and where they lie survive a save; a reference to a
+/// picture that is not kept is refused.
+#[test]
+fn keeps_reference_images() {
+    let text = r##"{
+      "formatVersion": 2, "title": "t", "author": "", "binding": "right",
+      "pageFormat": {"canvasMm": [297, 420], "trimMm": [257, 364], "basicMm": [180, 270], "basicOffsetMm": [0, 0]},
+      "pages": [{
+        "id": "page1", "memo": "", "panels": [], "lines": [], "strokes": [], "roughs": [],
+        "references": [{"id": "reference3", "image": "image2", "box": [10, 20, 110, 95], "opacity": 0.35}]
+      }],
+      "characters": [], "scenes": [], "emotions": [], "nextId": 4,
+      "images": [{"id": "image2", "name": "駅.jpg", "mime": "image/jpeg", "dataBase64": "/9j/4AAQ", "widthPx": 400, "heightPx": 300}]
+    }"##;
+    let project = Project::from_json(text).expect("project");
+    assert!(validate(&project).is_empty(), "{:?}", validate(&project));
+    let reference = &project.pages[0].references[0];
+    assert_eq!(
+        (reference.image.as_str(), reference.box_mm, reference.opacity),
+        ("image2", [10.0, 20.0, 110.0, 95.0], Some(0.35))
+    );
+    assert_eq!(project.images[0].width_px, 400);
+    let json = project.to_json().unwrap();
+    assert!(
+        json.contains("\"dataBase64\":\"/9j/4AAQ\"") && json.contains("\"box\":[10.0,20.0,110.0,95.0]"),
+        "{json}"
+    );
+    assert_eq!(Project::from_json(&json).unwrap(), project);
+
+    let mut broken = project.clone();
+    broken.images.clear();
+    let problems = validate(&broken);
+    assert_eq!(problems.len(), 1, "{problems:?}");
+    assert!(problems[0].contains("資料画像"), "{problems:?}");
+}
