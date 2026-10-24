@@ -182,10 +182,13 @@ type Hover =
 
 const ACCENT = "#2f6fdb";
 const MARGIN = 28;
+/** Room under the pages for their number and memo. */
+const CAPTION = 36;
 const HANDLE = 5;
 
 export const PANEL_CARRIES_KEY = "namestudio.panelCarries";
 export const SHOW_NOTES_KEY = "namestudio.showNotes";
+export const SINGLE_PAGE_KEY = "namestudio.singlePage";
 
 const NOTE_FONT = '12px "Yu Gothic UI", "Yu Gothic", "Hiragino Sans", "Noto Sans JP", sans-serif';
 const NOTE_ROW = 16;
@@ -217,7 +220,7 @@ export class PageEditor {
   private cycleTimer = 0;
   firstAlone = true;
   /** 単独: one page at a time instead of 見開き. */
-  single = false;
+  single = readFlag(SINGLE_PAGE_KEY, false);
   /** コマに中身が付いてくる: moving or reshaping a panel takes its contents along. */
   panelCarries = readFlag(PANEL_CARRIES_KEY, true);
   /** Each panel's memo shown on the page (only on screen, never exported). */
@@ -536,16 +539,16 @@ export class PageEditor {
       // 単独: the whole page in the middle.
       const page = pair[0] ?? pair[1];
       if (page === null) return [];
-      const scale = Math.min((width - 2 * MARGIN) / pageW, (height - 2 * MARGIN) / pageH) * this.zoom;
+      const scale = Math.min((width - 2 * MARGIN) / pageW, (height - 2 * MARGIN - CAPTION) / pageH) * this.zoom;
       const x = (width - pageW * scale) / 2 + this.pan[0];
-      const y = (height - pageH * scale) / 2 + this.pan[1];
+      const y = (height - CAPTION - pageH * scale) / 2 + this.pan[1];
       return [{ page: project.pages[page - 1], index: page - 1, x, y, scale, shown: [0, pageW] }];
     }
     const spreadMm = trimX1 + (pageW - trimX0);
-    const fit = Math.min((width - 2 * MARGIN) / spreadMm, (height - 2 * MARGIN) / pageH);
+    const fit = Math.min((width - 2 * MARGIN) / spreadMm, (height - 2 * MARGIN - CAPTION) / pageH);
     const scale = fit * this.zoom;
     const left = (width - spreadMm * scale) / 2 + this.pan[0];
-    const top = (height - pageH * scale) / 2 + this.pan[1];
+    const top = (height - CAPTION - pageH * scale) / 2 + this.pan[1];
     // Right binding: [right page, left page]; left binding mirrors it.
     const [rightPage, leftPage] = project.binding === "right" ? pair : [pair[1], pair[0]];
     const facing = rightPage !== null && leftPage !== null;

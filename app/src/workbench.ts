@@ -2,6 +2,7 @@
 // page list, the script, the cast and the inspector for the selection.
 import { invoke } from "@tauri-apps/api/core";
 import { ask, save } from "@tauri-apps/plugin-dialog";
+import { pageGlyph } from "./glyph";
 import { Autosaver, autosaveToFile, formatTime } from "./autosave";
 import { addBrushes, loadLibrary } from "./brush";
 import { BrushDialog } from "./brushdialog";
@@ -19,6 +20,7 @@ import {
   ERASE_MODE_LABELS,
   PANEL_CARRIES_KEY,
   SHOW_NOTES_KEY,
+  SINGLE_PAGE_KEY,
   PageEditor,
   isTyping,
   pickedSummary,
@@ -141,6 +143,18 @@ interface WorkbenchState {
   pending: string | null;
   roughs: Map<string, ImageBitmap | "loading" | "failed">;
 }
+
+/** One line under the tool's name in the options row. */
+const TOOL_HINTS: Record<Tool, string> = {
+  select: "クリックで選ぶ・ドラッグで動かす・ダブルクリックで書き込む。Shift で足す、囲んでまとめて選ぶ",
+  cut: "コマを横切るように引くと割れる（Alt で斜め）。コマの外をドラッグで新しいコマ",
+  text: "クリックした所にセリフを置く。選んで Alt+ホイールで文字の大きさ",
+  pen: "",
+  eraser: "",
+  fill: "囲んだ所を塗る",
+  breakout: "コマを突き抜ける所を囲む。中に描いた線はコマ枠の上に",
+  sticky: "クリックで付箋を貼る（書き出しには入りません）",
+};
 
 export class Workbench {
   readonly editor: PageEditor;
@@ -276,6 +290,8 @@ export class Workbench {
       autosaveChanged: () => this.autosaver.notify(),
     });
     this.bindControls();
+    this.showSingle();
+    this.setTool(this.editor.tool);
   }
 
   setView(view: "edit" | OverviewKind): void {
@@ -660,10 +676,16 @@ export class Workbench {
       const item = element(
         "div",
         { className: `page-item${current.has(index + 1) ? " current" : ""}${part ? " tinted" : ""}`, title: part ? `${part.name}` : "" },
+        pageGlyph(project, page),
         element("span", { className: "number", textContent: String(index + 1) }),
         element("span", { className: "memo" }, sceneLabel, page.memo.split("\n")[0] || ""),
         ...this.optionTag(project, page),
-        element("span", { className: "count", textContent: `コマ ${page.panels.length}・字 ${textAmount(page)}${page.stickies?.length ? `・付箋 ${page.stickies.length}` : ""}` }),
+        element(
+          "span",
+          { className: "count", title: `コマ ${page.panels.length}・字 ${textAmount(page)}${page.stickies?.length ? `・付箋 ${page.stickies.length}` : ""}（コマの濃さはセリフの量）` },
+          `${textAmount(page)}字`,
+          ...(page.stickies?.length ? [element("span", { className: "sticky-count", textContent: String(page.stickies.length) })] : []),
+        ),
       );
       if (part) item.style.setProperty("--part", part.color);
       item.addEventListener("click", () => {
@@ -823,6 +845,7 @@ export class Workbench {
 
   renderInspector(): void {
     this.renderInspectorPanel();
+    this.dressInspector();
     this.renderLayers();
     // The bar's buttons hold the objects of the project as it is now.
     this.editor.renderBar();
@@ -1014,6 +1037,33 @@ export class Workbench {
       }
     }
     panel.replaceChildren(...this.pageInspector(project, page));
+  }
+
+  /** Hints folded away once read: the first sentence shows, the rest opens on a click. */
+  private openHints = new Set<string>();
+
+  /**
+   * The inspector in the colour of what is selected, with its tool's icon, and
+   * long how-to hints folded to their first sentence.
+   */
+  private dressInspector(): void {
+    const panel = $("inspector");
+    const kind = this.editor.selection?.kind ?? "page";
+    panel.dataset.kind = kind;
+    const tool = { panel: "tool-cut", line: "tool-text", sticky: "tool-sticky", fill: "tool-fill", stroke: "tool-pen", breakout: "tool-breakout", group: "tool-select" }[kind as string] ?? "view-edit";
+    const icon = document.getElementById(tool)?.querySelector("svg");
+    const title = panel.querySelector("h2");
+    if (icon && title) title.prepend(icon.cloneNode(true));
+    for (const hint of panel.querySelectorAll<HTMLElement>("p.hint")) {
+      const text = hint.textContent ?? "";
+      const cut = text.indexOf("。") + 1;
+      if (cut <= 0 || cut >= text.length - 1 || text.length < 40) continue;
+      const head = cut <= 46 ? text.slice(0, cut) : "使い方";
+      const fold = element("details", { className: "hint-fold" }, element("summary", { textContent: head }), element("p", { textContent: head === "使い方" ? text : text.slice(cut) }));
+      fold.open = this.openHints.has(text);
+      fold.addEventListener("toggle", () => (fold.open ? this.openHints.add(text) : this.openHints.delete(text)));
+      hint.replaceWith(fold);
+    }
   }
 
   /** A text field edited live; the whole edit becomes one undo step. */
@@ -1613,7 +1663,35 @@ export class Workbench {
       $(`tool-${name}`).classList.toggle("active", name === tool);
     }
     $("fill-tones").hidden = tool !== "fill";
+    // The options row names the tool and shows only what it has; nothing else moves.
+    const button = $(`tool-${tool}`);
+    const name = $("tool-name");
+    name.replaceChildren(...[...button.childNodes].map((node) => node.cloneNode(true)));
+    name.style.setProperty("--tool", getComputedStyle(button).getPropertyValue("--tool"));
+    $("tool-hint").textContent = TOOL_HINTS[tool];
     this.renderBrushBar();
+  }
+
+  private showSingle(): void {
+    const single = this.editor.single;
+    $("spread-mode").classList.toggle("active", !single);
+    $("single-mode").classList.toggle("active", single);
+    $<HTMLInputElement>("editor-first-alone").disabled = single;
+    $("first-alone-label").setAttribute("aria-disabled", String(single));
+  }
+
+  /** 見開き or 単独: keeps the page in view. */
+  setSingle(single: boolean): void {
+    const page = this.editor.focusPage();
+    const project = this.state.project;
+    this.editor.single = single;
+    writeFlag(SINGLE_PAGE_KEY, single);
+    this.showSingle();
+    const index = page && project ? project.pages.indexOf(page) : -1;
+    this.editor.spreadIndex = 0;
+    if (index >= 0) this.editor.showPage(index + 1);
+    this.editor.resetView();
+    this.renderAll();
   }
 
   /** 投げなわ塗り: what the fill tool fills with. */
@@ -1750,6 +1828,8 @@ export class Workbench {
       writeFlag(SHOW_NOTES_KEY, showNotes.checked);
       this.editor.draw();
     });
+    $("spread-mode").addEventListener("click", () => this.setSingle(false));
+    $("single-mode").addEventListener("click", () => this.setSingle(true));
     $<HTMLInputElement>("editor-first-alone").addEventListener("change", (event) => {
       this.editor.firstAlone = (event.target as HTMLInputElement).checked;
       this.editor.spreadIndex = 0;

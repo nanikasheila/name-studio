@@ -511,3 +511,96 @@ button.small { padding: 1px 6px; font-size: 12px; }
 .tone-hint { margin-top: -4px; }
 .inspector .page-memo { font-size: 12px; background: var(--panel, #f6f4ee); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; margin-bottom: 8px; max-height: 6.5em; overflow: auto; white-space: pre-wrap; }
 .inspector .page-memo .label { display: block; color: var(--muted); font-size: 11px; }
+
+/* Layout that stays put: the app bar, the tool rail, one row of options for the tool, the page nav. */
+.icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.icon .fill { fill: currentColor; stroke: none; }
+.icon.fill, .icon path.fill { fill: currentColor; }
+button.icon-button { display: inline-flex; align-items: center; justify-content: center; padding: 4px 7px; }
+button.with-icon, .segmented.views button, .page-nav .segmented button { display: inline-flex; align-items: center; gap: 5px; }
+.app-bar { flex-wrap: nowrap; gap: 8px; }
+.tool-rail {
+  width: 64px; flex: none; display: flex; flex-direction: column; gap: 2px; padding: 6px 4px; overflow-y: auto;
+  background: var(--panel); border-right: 1px solid var(--line);
+}
+.tool-rail button {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0 4px; border-color: transparent;
+  background: transparent; font-size: 11px; line-height: 1.2; color: var(--muted);
+}
+.tool-rail button .icon { width: 22px; height: 22px; color: var(--tool, var(--text)); }
+.tool-rail button:hover { background: color-mix(in srgb, var(--tool, var(--accent)) 10%, transparent); }
+.tool-rail button.active { background: color-mix(in srgb, var(--tool, var(--accent)) 16%, var(--panel)); border-color: var(--tool, var(--accent)); color: var(--text); }
+/* Each kind of thing has its colour, here and in the inspector. */
+:root { --c-panel: #2f6fdb; --c-line: #d9772b; --c-pen: #3a8f5c; --c-fill: #6b6760; --c-breakout: #8a4fd0; --c-sticky: #c99a12; --c-page: #6d6a63; }
+@media (prefers-color-scheme: dark) {
+  :root { --c-panel: #6b9cf0; --c-line: #f0a35e; --c-pen: #6cc18e; --c-fill: #b5b0a6; --c-breakout: #b48cf0; --c-sticky: #e8c14a; --c-page: #a19d95; }
+}
+#tool-select { --tool: var(--text); }
+#tool-cut { --tool: var(--c-panel); }
+#tool-text { --tool: var(--c-line); }
+#tool-pen, #tool-eraser { --tool: var(--c-pen); }
+#tool-fill { --tool: var(--c-fill); }
+#tool-breakout { --tool: var(--c-breakout); }
+#tool-sticky { --tool: var(--c-sticky); }
+.stage-column { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.stage-column > .stage { flex: 1; }
+.tool-options {
+  height: 40px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 10px; white-space: nowrap;
+  overflow-x: auto; overflow-y: hidden; background: var(--panel); border-bottom: 1px solid var(--line);
+}
+.tool-options > * { flex-shrink: 0; }
+.tool-name { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--tool, var(--text)); }
+.tool-name span { color: var(--text); }
+.tool-hint { color: var(--muted); font-size: 12px; flex-shrink: 1; overflow: hidden; text-overflow: ellipsis; }
+.tone { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--muted); margin-right: 4px; vertical-align: -1px; }
+.tone.black { background: #111; }
+.tone.gray { background: #9a9a9a; }
+.tone.white { background: #fff; }
+.page-nav {
+  height: 40px; flex: none; display: flex; align-items: center; justify-content: safe center; gap: 14px; padding: 0 10px; white-space: nowrap;
+  overflow-x: auto; background: var(--panel); border-top: 1px solid var(--line);
+}
+.page-nav > * { flex-shrink: 0; }
+.page-nav .pager span { min-width: 6em; }
+.page-nav .check[aria-disabled="true"] { opacity: 0.4; }
+/* In the editor the app bar keeps one row: the file name gives way, then the view names. */
+.toolbar:has(.app-bar:not([hidden])) { flex-wrap: nowrap; }
+.toolbar:has(.app-bar:not([hidden])) .file-name { min-width: 0; }
+@media (max-width: 1380px) {
+  .segmented.views button span, button.with-icon span { display: none; }
+}
+.tool-options .brush-bar .size input { width: 4em; }
+
+/* The inspector in the colour of what is selected. */
+.inspector { --kind: var(--c-page); }
+.inspector[data-kind="panel"] { --kind: var(--c-panel); }
+.inspector[data-kind="line"] { --kind: var(--c-line); }
+.inspector[data-kind="sticky"] { --kind: var(--c-sticky); }
+.inspector[data-kind="fill"] { --kind: var(--c-fill); }
+.inspector[data-kind="stroke"] { --kind: var(--c-pen); }
+.inspector[data-kind="breakout"] { --kind: var(--c-breakout); }
+.inspector { border-top: 3px solid var(--kind); }
+.inspector h2 { display: flex; align-items: center; gap: 6px; color: var(--text); }
+.inspector h2 .icon { color: var(--kind); width: 20px; height: 20px; }
+.inspector h3 {
+  margin: 10px 0 0; padding: 3px 8px; font-size: 12px; font-weight: 600; color: var(--text); border-radius: 4px;
+  background: color-mix(in srgb, var(--kind) 10%, transparent); border-left: 3px solid var(--kind);
+}
+.hint-fold { color: var(--muted); font-size: 12px; margin: 0; }
+.hint-fold summary { cursor: pointer; list-style: none; display: flex; gap: 5px; align-items: baseline; }
+.hint-fold summary::-webkit-details-marker { display: none; }
+.hint-fold summary::before {
+  content: "?"; flex: none; width: 14px; height: 14px; line-height: 14px; text-align: center; border-radius: 50%;
+  font-size: 10px; font-weight: 700; color: var(--panel); background: color-mix(in srgb, var(--muted) 70%, transparent);
+}
+.hint-fold[open] summary::before { background: var(--kind, var(--accent)); }
+.hint-fold p { margin: 4px 0 0 19px; line-height: 1.5; }
+
+/* Page list: the page as blocks of its panels. */
+.page-item { align-items: center; }
+.page-glyph { flex: none; }
+.page-glyph .sheet { fill: #fff; stroke: var(--line); stroke-width: 3; }
+.page-glyph .block { fill: var(--c-panel); stroke: color-mix(in srgb, var(--c-panel) 70%, #000); stroke-width: 2.5; }
+.page-glyph .sticky { fill: #f3d34a; stroke: #b8961c; stroke-width: 2; }
+.page-item .count { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
+.sticky-count { font-size: 10px; min-width: 15px; text-align: center; padding: 0 3px; border-radius: 3px; background: #f3d34a; color: #4a3f12; }
