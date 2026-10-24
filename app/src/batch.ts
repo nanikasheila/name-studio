@@ -1,38 +1,17 @@
 // Writing a name out for CSP from the command line (see src-tauri/src/batch.rs):
 // the window opens, writes the pages and the work, leaves a JSON report and closes.
 
-import { invoke } from "@tauri-apps/api/core";
+import { call, type BatchExport } from "./backend";
+export type { BatchExport } from "./backend";
 import { checkSummary, dialogueUpdateSummary, exportToCsp, imagesNote, missingEditable, readCspDialogue, ROUGH_LAYERS, updateCspDialogue } from "./nameexport";
-import { normalize, type Project } from "./project";
+import { normalize } from "./project";
 import { projectBody } from "./projectjson";
 import { applyTakeBack, planTakeBack, takeBackSummary } from "./readback";
-
-export interface BatchExport {
-  project: string;
-  template: string;
-  outDir: string;
-  workTemplate: string | null;
-  workName: string | null;
-  storyIndex: number | null;
-  /** 見本のページ: .clip files to copy text and vector layers from. */
-  donors?: string[];
-  /** The rough as 下描き layers (on unless --no-draft-rough). */
-  draftRough?: boolean;
-  /** Panels as a コマ枠フォルダー (--frame-folders). */
-  frameFolders?: boolean;
-  /** The name's memos as a 下描き layer (on unless --no-notes). */
-  notes?: boolean;
-  /** Bring the dialogue into the pages there instead (--update-dialogue). */
-  updateDialogue?: boolean;
-  /** Take the dialogue changed in CSP back into the name, and save it (--read-dialogue). */
-  readDialogue?: boolean;
-  report: string;
-}
 
 /** The export the app was started for (or why its arguments are wrong), or null for a normal start. */
 export async function batchExportTask(): Promise<BatchExport | { error: string } | null> {
   try {
-    return await invoke<BatchExport | null>("batch_export_task");
+    return await call("batch_export_task");
   } catch (error) {
     return { error: String(error) };
   }
@@ -43,7 +22,7 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
   if ("error" in task) {
     // No report path to trust: the arguments themselves are wrong.
     status(`書き出せません: ${task.error}`);
-    await invoke("end_batch_export", { code: 2 });
+    await call("end_batch_export", { code: 2 });
     return;
   }
   const started = Date.now();
@@ -52,9 +31,9 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
   try {
     status(`${task.project} を書き出し中…`);
     // Not asked here (no one to ask): what was overwritten goes in the report.
-    const overwrite = await invoke("check_export_target", { outDir: task.outDir }).catch(() => null);
+    const overwrite = await call("check_export_target", { outDir: task.outDir }).catch(() => null);
     // As when the window opens a file: empty lists are left out of the saved JSON.
-    const project = normalize(await invoke<Project>("load_project", { path: task.project }));
+    const project = normalize(await call("load_project", { path: task.project }));
     if (task.readDialogue) {
       const units = await readCspDialogue(
         project,
@@ -73,8 +52,8 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
       const changes = plan.retyped.length + plan.added.length + plan.removed.length;
       if (changes) {
         applyTakeBack(project, plan);
-        await invoke("save_project", projectBody({ path: task.project, previousPath: task.project }, project));
-        await invoke("adopt_name_dialogue", { paths: plan.paths });
+        await call("save_project", projectBody({ path: task.project, previousPath: task.project }, project));
+        await call("adopt_name_dialogue", { paths: plan.paths });
       }
       ok = !plan.missing.length;
       const summary = [changes ? `CSP のセリフを読み戻して ${task.project} に保存しました` : "CSP で直したセリフはありませんでした", ...takeBackSummary(plan)];
@@ -126,6 +105,6 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
   } catch (error) {
     result = { ok, error: String(error) };
   }
-  await invoke("write_text_file", { path: task.report, text: JSON.stringify(result, null, 2) }).catch(() => undefined);
-  await invoke("end_batch_export", { code: ok ? 0 : 1 });
+  await call("write_text_file", { path: task.report, text: JSON.stringify(result, null, 2) }).catch(() => undefined);
+  await call("end_batch_export", { code: ok ? 0 : 1 });
 }

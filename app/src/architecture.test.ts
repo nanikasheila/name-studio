@@ -25,6 +25,13 @@ describe("module structure", () => {
     expect(imports().get("geometry.ts")).toEqual(["model.ts"]);
   });
 
+  it("calls the Rust side only through backend.ts", () => {
+    const callers = Object.entries(sources)
+      .filter(([, source]) => source.includes('"@tauri-apps/api/core"'))
+      .map(([path]) => path.slice(2));
+    expect(callers).toEqual(["backend.ts"]);
+  });
+
   it("has no import cycles", () => {
     const graph = imports();
     const cycles: string[] = [];

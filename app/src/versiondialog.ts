@@ -1,18 +1,8 @@
 // The dialog of earlier versions (版の履歴) and the autosave setting.
-import { invoke } from "@tauri-apps/api/core";
+import { call, type VersionInfo, type VersionKind } from "./backend";
+export type { VersionInfo, VersionKind } from "./backend";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { autosaveToFile, formatTime, setAutosaveToFile } from "./autosave";
-
-export type VersionKind = "saved" | "auto" | "beforeRestore";
-
-export interface VersionInfo {
-  id: string;
-  timeMs: number;
-  kind: VersionKind;
-  title: string;
-  pages: number;
-  bytes: number;
-}
 
 export const KIND_NAMES: Record<VersionKind, string> = {
   saved: "保存",
@@ -53,7 +43,7 @@ export class VersionDialog {
     list.replaceChildren();
     let versions: VersionInfo[];
     try {
-      versions = await invoke<VersionInfo[]>("list_versions", { path });
+      versions = await call("list_versions", { path });
     } catch (error) {
       this.message(`履歴を読めませんでした: ${error}`, true);
       return;

@@ -1,6 +1,6 @@
 // The name editor around the canvas: the open project, saving, undo, the
 // page list, the script, the cast and the inspector for the selection.
-import { invoke } from "@tauri-apps/api/core";
+import { call } from "./backend";
 import { ask, save } from "@tauri-apps/plugin-dialog";
 import { heldThumbnail, pageGlyph } from "./glyph";
 import { heldNear, holdPanel, movePanelToPage, placeHeld } from "./hold";
@@ -365,7 +365,7 @@ export class Workbench {
     const discard = await ask("保存していない変更があります。破棄して続けますか？", { title: "Name Studio", kind: "warning" });
     if (discard) {
       this.autosaver.reset();
-      await invoke("discard_recovery", { path: this.state.path }).catch(() => undefined);
+      await call("discard_recovery", { path: this.state.path }).catch(() => undefined);
     }
     return discard;
   }
@@ -387,13 +387,13 @@ export class Workbench {
   }
 
   async load(path: string): Promise<void> {
-    const project = await invoke<Project>("load_project", { path });
+    const project = await call("load_project", { path });
     this.show(project, path, `${project.pages.length} ページのネームを開きました`);
   }
 
   async importSheet(sheetPath: string): Promise<void> {
     this.setStatus("ネーム用紙から取り込み中…");
-    const result = await invoke<{ project: Project; warnings: string[] }>("import_project", { path: sheetPath });
+    const result = await call("import_project", { path: sheetPath });
     const p = result.project;
     // A sheet often has more page cells than the episode: the empty ones at the end can go.
     const empty = trailingEmptyPages(p);
@@ -443,7 +443,7 @@ export class Workbench {
     else this.state.pending = null;
     const revision = this.state.revision;
     try {
-      await invoke("save_project", projectBody({ path, previousPath: this.state.path }, savedForm(project)));
+      await call("save_project", projectBody({ path, previousPath: this.state.path }, savedForm(project)));
       this.state.path = path;
       if (this.state.revision === revision) {
         this.state.dirty = false;
@@ -470,7 +470,7 @@ export class Workbench {
     const path = this.state.path;
     const revision = this.state.revision;
     try {
-      const result = await invoke<{ savedToFile: boolean; version: VersionInfo | null; problems: string[] }>(
+      const result = await call(
         "autosave_project",
         projectBody({ path, toFile: autosaveToFile() }, savedForm(project)),
       );
@@ -506,8 +506,8 @@ export class Workbench {
     const current = this.state.project;
     if (!current) return;
     const path = this.state.path;
-    const older = await invoke<Project>("load_version", { path, id: version.id });
-    await invoke("record_version", projectBody({ path, kind: "beforeRestore" }, savedForm(current)));
+    const older = await call("load_version", { path, id: version.id });
+    await call("record_version", projectBody({ path, kind: "beforeRestore" }, savedForm(current)));
     this.history.record(current);
     this.state.project = normalize(older);
     this.editor.selection = null;
@@ -634,7 +634,7 @@ export class Workbench {
     const roughs = this.state.roughs;
     roughs.set(key, "loading");
     try {
-      const bytes = await invoke<ArrayBuffer>("rough_image", {
+      const bytes = await call("rough_image", {
         sheet: source.path,
         layerId: rough.layerId,
         crop: rough.sheetCrop,

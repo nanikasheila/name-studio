@@ -1,6 +1,6 @@
 // The dialog that takes pens and erasers over from CLIP STUDIO PAINT: from an
 // exported sub tool (.sut) or from CSP's own tool list on this computer.
-import { invoke } from "@tauri-apps/api/core";
+import { call, type CspToolLocations } from "./backend";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   DEFAULT_BRUSH_DPI,
@@ -18,11 +18,6 @@ export interface BrushDialogHost {
   edit(change: (project: Project) => void): void;
   /** The brushes just added (to choose one for the pen). */
   imported(brushes: Brush[]): void;
-}
-
-interface CspToolLocations {
-  tools: string | null;
-  materials: string | null;
 }
 
 const ERASE_LABELS = { touched: "触れた部分", intersection: "交点まで", whole: "線全体" } as const;
@@ -50,7 +45,7 @@ export class BrushDialog {
     if (!this.host.project()) return;
     $<HTMLDialogElement>("brush-dialog").showModal();
     this.render();
-    this.locations ??= await invoke<CspToolLocations>("csp_tool_locations").catch(() => ({ tools: null, materials: null }));
+    this.locations ??= await call("csp_tool_locations").catch(() => ({ tools: null, materials: null }));
     const button = $<HTMLButtonElement>("bd-read-csp");
     button.disabled = !this.locations.tools;
     button.title = this.locations.tools ?? "この PC では CSP のツールの保存場所が見つかりませんでした";
@@ -72,7 +67,7 @@ export class BrushDialog {
   private async read(path: string, selectAll: boolean): Promise<void> {
     this.message("読み込み中…");
     try {
-      this.tools = await invoke<CspSubTool[]>("read_csp_sub_tools", {
+      this.tools = await call("read_csp_sub_tools", {
         path,
         materials: this.locations?.materials ?? null,
       });
