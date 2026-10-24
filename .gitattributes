@@ -1,0 +1,2 @@
+# Written by app/src/contract.test.ts and compared byte for byte on every OS.
+crates/name-model/tests/fixtures/*.json text eol=lf
