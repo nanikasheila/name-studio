@@ -7,6 +7,7 @@ import { FULL_SPEED_MM, followFactor, postCorrect, tiltOf as penTilt, usesMotion
 import { adjustPressure, penPreferences } from "./pen";
 import { balloonExtent, defaultTailStyle, insideBalloon, resolvedShape, tailGeometry } from "./balloon";
 import { spreads } from "./pages";
+import { MARGIN, extent, layoutPages, onStage, rowCount, slotAt, toPage, type Slot } from "./layout";
 import { holdPanel, placeHeld } from "./hold";
 import { addBreakout, moveBreakout, stacked } from "./koma";
 import { joinPanels, moveSeam, seamAt, seamBase, seamLines, snapSeam, type Seam } from "./komaedit";
@@ -135,17 +136,6 @@ export interface EditorHost {
   referenceChanged?(): void;
 }
 
-interface Slot {
-  page: Page;
-  index: number;
-  x: number;
-  y: number;
-  scale: number;
-  /** Page mm shown, `[x0, x1]`: a page facing another ends at the gutter
-   * (the edge of its trim), so the two read as one spread. */
-  shown: [number, number];
-}
-
 type Drag =
   | { kind: "pan"; x: number; y: number }
   /** Two fingers: `v` is the view point under their middle (independent of zoom), kept under it. */
@@ -195,11 +185,8 @@ type Hover =
   | { kind: "handle"; slot: Slot; handle: number };
 
 const ACCENT = "#2f6fdb";
-const MARGIN = 28;
 /** Radius of a 付箋's link handle (px). */
 const LINK_HANDLE = 5;
-/** Room under the pages for their number and memo. */
-const CAPTION = 36;
 const HANDLE = 5;
 
 export const PANEL_CARRIES_KEY = "namestudio.panelCarries";
@@ -207,9 +194,6 @@ export const SHOW_NOTES_KEY = "namestudio.showNotes";
 export const SINGLE_PAGE_KEY = "namestudio.singlePage";
 export const CONTINUOUS_KEY = "namestudio.continuous";
 export const ROWS_KEY = "namestudio.rows";
-/** 連続: room between the spreads (mm, and px so that they stay apart when small). */
-const GRID_GAP_MM = 12;
-const GRID_GAP_PX = 14;
 /** How long the pages take to slide to a new arrangement (ms). */
 const SLIDE_MS = 220;
 /** Pages narrower than this (px) show their drawing without panel numbers or memos. */
@@ -419,7 +403,7 @@ export class PageEditor {
 
   /** 連続: how many rows the spreads are in (1 to one spread a row). */
   rowCount(): number {
-    return Math.min(Math.max(1, this.rows), Math.max(1, this.spreadList().length));
+    return rowCount(this.rows, this.spreadList().length);
   }
 
   /** 連続: lay the spreads out in `rows` rows, the spread worked on staying where it is on screen. */
@@ -505,14 +489,7 @@ export class PageEditor {
 
   /** The screen box (px) of the pages in `slots`, with the room for their page numbers. */
   private extent(slots: Slot[]): BoxMm | null {
-    const pageH = this.host.project()?.pageFormat.canvasMm[1] ?? 0;
-    if (!slots.length) return null;
-    return [
-      Math.min(...slots.map((slot) => slot.x + slot.shown[0] * slot.scale)),
-      Math.min(...slots.map((slot) => slot.y)),
-      Math.max(...slots.map((slot) => slot.x + slot.shown[1] * slot.scale)),
-      Math.max(...slots.map((slot) => slot.y + pageH * slot.scale + CAPTION)),
-    ];
+    return extent(slots, this.host.project()?.pageFormat.canvasMm[1] ?? 0);
   }
 
   resetView(zoom = 1): void {
@@ -698,79 +675,9 @@ export class PageEditor {
   }
 
   private layout(project: Project): Slot[] {
-    if (this.continuous) return this.continuousLayout(project);
-    const pair = this.spreadList()[this.spreadIndex];
-    if (!pair) return [];
     const { width, height } = this.canvas.getBoundingClientRect();
-    const [pageW, pageH] = project.pageFormat.canvasMm;
-    if (this.single) {
-      // 単独: the whole page in the middle.
-      const page = pair[0] ?? pair[1];
-      if (page === null) return [];
-      const scale = Math.min((width - 2 * MARGIN) / pageW, (height - 2 * MARGIN - CAPTION) / pageH) * this.zoom;
-      const x = (width - pageW * scale) / 2 + this.pan[0];
-      const y = (height - CAPTION - pageH * scale) / 2 + this.pan[1];
-      return [{ page: project.pages[page - 1], index: page - 1, x, y, scale, shown: [0, pageW] }];
-    }
-    const spreadMm = this.spreadWidth(project);
-    const scale = this.spreadFit(project) * this.zoom;
-    const left = (width - spreadMm * scale) / 2 + this.pan[0];
-    const top = (height - CAPTION - pageH * scale) / 2 + this.pan[1];
-    return this.spreadSlots(project, pair, left, top, scale);
-  }
-
-  /** A spread's width (mm): the trims of its two pages meet at the gutter, as in the book. */
-  private spreadWidth(project: Project): number {
-    const [pageW] = project.pageFormat.canvasMm;
-    const [trimX0, , trimX1] = trimBox(project.pageFormat);
-    return trimX1 + (pageW - trimX0);
-  }
-
-  /** px per mm with a whole spread on screen (zoom 1). */
-  private spreadFit(project: Project): number {
-    const { width, height } = this.canvas.getBoundingClientRect();
-    const [, pageH] = project.pageFormat.canvasMm;
-    return Math.min((width - 2 * MARGIN) / this.spreadWidth(project), (height - 2 * MARGIN - CAPTION) / pageH);
-  }
-
-  /** The pages of a spread whose left edge is at `left`, top at `top`. */
-  private spreadSlots(project: Project, pair: [number | null, number | null], left: number, top: number, scale: number): Slot[] {
-    const [pageW] = project.pageFormat.canvasMm;
-    const [trimX0, , trimX1] = trimBox(project.pageFormat);
-    // Right binding: [right page, left page]; left binding mirrors it.
-    const [rightPage, leftPage] = project.binding === "right" ? pair : [pair[1], pair[0]];
-    const facing = rightPage !== null && leftPage !== null;
-    const slots: Slot[] = [];
-    const place = (pageNumber: number | null, x: number, shown: [number, number]) => {
-      if (pageNumber === null || !project.pages[pageNumber - 1]) return;
-      slots.push({ page: project.pages[pageNumber - 1], index: pageNumber - 1, x, y: top, scale, shown });
-    };
-    place(leftPage, left, facing ? [0, trimX1] : [0, pageW]);
-    place(rightPage, left + (trimX1 - trimX0) * scale, facing ? [trimX0, pageW] : [0, pageW]);
-    return slots;
-  }
-
-  /**
-   * 連続: every spread on one canvas, as the pages of a name sheet: in reading
-   * order along each row (right to left for right binding), the rows going
-   * down. At zoom 1 a spread is as big as on its own; the first one starts
-   * at the top corner where reading starts (the view's pan moves over the rest).
-   */
-  private continuousLayout(project: Project): Slot[] {
-    const list = this.spreadList();
-    const { width } = this.canvas.getBoundingClientRect();
-    const [, pageH] = project.pageFormat.canvasMm;
-    const spreadMm = this.spreadWidth(project);
-    const scale = this.spreadFit(project) * this.zoom;
-    const columns = Math.ceil(list.length / this.rowCount());
-    const pitchX = (spreadMm + GRID_GAP_MM) * scale + GRID_GAP_PX;
-    const pitchY = (pageH + GRID_GAP_MM) * scale + CAPTION + GRID_GAP_PX;
-    const step = project.binding === "right" ? -1 : 1;
-    const left = (step < 0 ? width - MARGIN - spreadMm * scale : MARGIN) + this.pan[0];
-    const top = MARGIN + this.pan[1];
-    return list.flatMap((pair, i) =>
-      this.spreadSlots(project, pair, left + step * (i % columns) * pitchX, top + Math.floor(i / columns) * pitchY, scale),
-    );
+    const view = { single: this.single, continuous: this.continuous, rows: this.rows, zoom: this.zoom, pan: this.pan, width, height };
+    return layoutPages(project, this.spreadList(), this.spreadIndex, view);
   }
 
   /** While sliding: each page part of the way from where it was. */
@@ -793,29 +700,11 @@ export class PageEditor {
   /** Whether any of a page (and its number) is on screen. */
   private onCanvas(project: Project, slot: Slot): boolean {
     const { width, height } = this.canvas.getBoundingClientRect();
-    // A turned view shows what lies beyond the edges: room for any turn.
-    const room = this.rotation ? Math.max(width, height) / 2 : 0;
-    const x0 = slot.x + slot.shown[0] * slot.scale;
-    const x1 = slot.x + slot.shown[1] * slot.scale;
-    const y1 = slot.y + project.pageFormat.canvasMm[1] * slot.scale + CAPTION;
-    return x1 >= -room && x0 <= width + room && y1 >= -room && slot.y <= height + room;
-  }
-
-  private toPage(slot: Slot, sx: number, sy: number): Point {
-    return [(sx - slot.x) / slot.scale, (sy - slot.y) / slot.scale];
+    return onStage(slot, project.pageFormat.canvasMm[1], width, height, this.rotation);
   }
 
   private slotAt(sx: number, sy: number, project: Project): Slot | null {
-    const [pageW, pageH] = project.pageFormat.canvasMm;
-    return (
-      this.slots.find((slot) => {
-        const [x, y] = this.toPage(slot, sx, sy);
-        // A little room outside the page, but not across the gutter.
-        const x0 = slot.shown[0] > 0 ? slot.shown[0] : -10;
-        const x1 = slot.shown[1] < pageW ? slot.shown[1] : pageW + 10;
-        return x >= x0 && x < x1 && y >= -10 && y <= pageH + 10;
-      }) ?? null
-    );
+    return slotAt(this.slots, sx, sy, project.pageFormat);
   }
 
   /** The page under a point of the window, the point on it (mm) and the panel there. */
@@ -845,7 +734,7 @@ export class PageEditor {
     }
     const slot = this.slotAt(sx, sy, project);
     if (!slot) return null;
-    const point = this.toPage(slot, sx, sy);
+    const point = toPage(slot, sx, sy);
     return { page: slot.page, point, panel: this.panelAt(slot.page, point) };
   }
 
@@ -994,7 +883,7 @@ export class PageEditor {
       const to = panel && !panel.spread ? under(centre(bounds(panel.shape))) : null;
       if (!panel || !to) return;
       const [cx, cy] = centre(bounds(panel.shape));
-      const at = this.toPage(to, slot.x + cx * slot.scale, slot.y + cy * slot.scale);
+      const at = toPage(to, slot.x + cx * slot.scale, slot.y + cy * slot.scale);
       const moved = placeHeld(project, to.page, holdPanel(project, slot.page, panel, to.page.id), at);
       this.selection = { kind: "panel", pageId: to.page.id, id: moved.id };
       this.focusOn(to);
@@ -1963,7 +1852,7 @@ export class PageEditor {
     const project = this.host.project();
     if (!project) return null;
     const under = this.pointer && this.slotAt(this.pointer[0], this.pointer[1], project);
-    if (under) return { page: under.page, point: this.toPage(under, this.pointer![0], this.pointer![1]) };
+    if (under) return { page: under.page, point: toPage(under, this.pointer![0], this.pointer![1]) };
     const page = this.focusPage();
     return page ? { page } : null;
   }
@@ -2156,7 +2045,7 @@ export class PageEditor {
   private tailAt(slot: Slot, sx: number, sy: number): TailHit | null {
     const s = this.selection;
     const near = (p: Point, extra = 3) => Math.hypot(slot.x + p[0] * slot.scale - sx, slot.y + p[1] * slot.scale - sy) <= HANDLE + extra;
-    const point = this.toPage(slot, sx, sy);
+    const point = toPage(slot, sx, sy);
     const shown = new Set<string>();
     if (s?.kind === "line" && s.pageId === slot.page.id) shown.add(s.id);
     if (this.hover?.kind === "item" && this.hover.target.kind === "line") shown.add(this.hover.target.id);
@@ -2403,7 +2292,7 @@ export class PageEditor {
     }
     // The page settings follow the page worked on (the left page of a spread too).
     if (this.focusedPageId !== slot.page.id) this.focusOn(slot);
-    const point = this.toPage(slot, sx, sy);
+    const point = toPage(slot, sx, sy);
     switch (this.tipEraser ? "eraser" : this.tool) {
       case "reference": {
         // A corner of the chosen picture resizes it; a picture moves; elsewhere nothing is chosen.
@@ -2675,7 +2564,7 @@ export class PageEditor {
       return;
     }
     if (drag.kind === "pinch") return;
-    const point = this.toPage(drag.slot, ex, ey);
+    const point = toPage(drag.slot, ex, ey);
     const project = this.host.project()!;
     switch (drag.kind) {
       case "reference": {
@@ -2711,7 +2600,7 @@ export class PageEditor {
       case "swap": {
         // The panel under the pointer, on this page or the facing one.
         const under = this.slotAt(ex, ey, project);
-        const target = under && this.panelAt(under.page, this.toPage(under, ex, ey));
+        const target = under && this.panelAt(under.page, toPage(under, ex, ey));
         drag.to = under && target && !(under.page === drag.slot.page && target.id === drag.panelId) ? { slot: under, panelId: target.id } : null;
         break;
       }
@@ -2817,7 +2706,7 @@ export class PageEditor {
         const brush = this.brush("pen");
         const events = event.getCoalescedEvents?.() ?? [event];
         for (const e of events.length ? events : [event]) {
-          const [x, y] = this.toPage(drag.slot, ...this.at(e));
+          const [x, y] = toPage(drag.slot, ...this.at(e));
           const seconds = (e.timeStamp - drag.time) / 1000;
           if (seconds > 0) {
             const speed = Math.hypot(x - drag.last[0], y - drag.last[1]) / seconds / FULL_SPEED_MM;
@@ -2838,7 +2727,7 @@ export class PageEditor {
       case "erase": {
         // The eraser goes on across the gutter onto the facing page.
         const under = this.slotAt(ex, ey, project) ?? drag.slot;
-        this.erase(under, this.toPage(under, ex, ey));
+        this.erase(under, toPage(under, ex, ey));
         break;
       }
     }
@@ -3096,7 +2985,7 @@ export class PageEditor {
       case "stickyLink": {
         const sticky = drag.slot.page.stickies?.find((n) => n.id === drag.stickyId);
         if (!sticky || !this.pointer) break;
-        const point = this.toPage(drag.slot, this.pointer[0], this.pointer[1]);
+        const point = toPage(drag.slot, this.pointer[0], this.pointer[1]);
         const to = this.linkTarget(drag.slot, point);
         if (!to && !sticky.link) break;
         this.host.begin();
@@ -3217,7 +3106,7 @@ export class PageEditor {
       const frameHandle = this.frameHandleAt(sx, sy);
       if (frameHandle >= 0 && slot) hover = { kind: "handle", slot, handle: frameHandle };
       else if (slot) {
-        const point = this.toPage(slot, sx, sy);
+        const point = toPage(slot, sx, sy);
         const tail = this.tailAt(slot, sx, sy);
         if (tail) hover = { kind: "tail", slot, hit: tail };
         const onHandle = !!tail || this.vertexAt(slot, sx, sy) >= 0 || !!this.badgeAt(slot, sx, sy, project.pageFormat.canvasMm[0]);
@@ -3252,7 +3141,7 @@ export class PageEditor {
     const [ex, ey] = this.at(event);
     const slot = this.slotAt(ex, ey, project);
     if (!slot) return;
-    const point = this.toPage(slot, ex, ey);
+    const point = toPage(slot, ex, ey);
     const target = this.hit(slot, point);
     // Dialogue: write it right there.
     if (target?.kind === "line") {
@@ -3462,7 +3351,7 @@ export class PageEditor {
     const away = (slot: Slot) =>
       Math.hypot(ex - (slot.x + ((slot.shown[0] + slot.shown[1]) / 2) * slot.scale), ey - (slot.y + (pageH / 2) * slot.scale));
     const anchor = this.slotAt(ex, ey, project) ?? [...this.slots].sort((a, b) => away(a) - away(b))[0];
-    const point = anchor && this.toPage(anchor, ex, ey);
+    const point = anchor && toPage(anchor, ex, ey);
     this.pan[0] += (ex - cx) * (1 - applied);
     this.pan[1] += (ey - cy) * (1 - applied);
     this.zoom = zoom;
