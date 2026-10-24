@@ -1,7 +1,6 @@
 // The dialog for changing keyboard shortcuts (R16).
 import { ACTIONS, comboOf, type ActionId, type Shortcuts } from "./shortcuts";
-
-const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+import { $ } from "./dom";
 
 export class ShortcutDialog {
   /** The action waiting for a key press, if any. */

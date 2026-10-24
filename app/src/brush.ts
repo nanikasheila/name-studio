@@ -2,6 +2,7 @@
 // (crates/clip-core/src/subtool.rs reads the files), and how a brush turns
 // pen pressure and the stroke's length into width and opacity.
 import { newId, type Brush, type PressureCurve, type Project, type Stroke, type StrokePoint } from "./project";
+import { readJson, writeJson } from "./settings";
 
 /** What the Rust side reads from a .sut or CSP's tool database. */
 export interface CspLength {
@@ -299,13 +300,8 @@ const LIBRARY_KEY = "name-studio.brushes";
 
 /** Brushes taken from CSP before, in any project (this computer only). */
 export function loadLibrary(): Brush[] {
-  try {
-    const text = localStorage.getItem(LIBRARY_KEY);
-    const brushes = text ? (JSON.parse(text) as Brush[]) : [];
-    return Array.isArray(brushes) ? brushes : [];
-  } catch {
-    return [];
-  }
+  const brushes = readJson(LIBRARY_KEY, []);
+  return Array.isArray(brushes) ? (brushes as Brush[]) : [];
 }
 
 export function saveToLibrary(brushes: Brush[]): void {
@@ -315,9 +311,6 @@ export function saveToLibrary(brushes: Brush[]): void {
     if (index >= 0) library[index] = brush;
     else library.push(brush);
   }
-  try {
-    localStorage.setItem(LIBRARY_KEY, JSON.stringify(library));
-  } catch {
-    // Storage full or blocked: the brushes still live in the project.
-  }
+  // Storage full or blocked: the brushes still live in the project.
+  writeJson(LIBRARY_KEY, library);
 }

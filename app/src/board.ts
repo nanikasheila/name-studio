@@ -55,6 +55,8 @@ import {
   uncoveredRunAt,
   type SceneSpan,
 } from "./story";
+import { element as html, svg } from "./dom";
+import { readJson, writeJson } from "./settings";
 
 export interface StoryHost {
   project(): Project | null;
@@ -74,26 +76,6 @@ export interface StoryHost {
   inspect(): void;
   /** Say what was done in the status bar. */
   status?(message: string): void;
-}
-
-const SVG = "http://www.w3.org/2000/svg";
-
-function svg<K extends keyof SVGElementTagNameMap>(tag: K, attributes: Record<string, string | number> = {}, ...children: (Node | string)[]): SVGElementTagNameMap[K] {
-  const node = document.createElementNS(SVG, tag);
-  for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, String(value));
-  node.append(...children);
-  return node;
-}
-
-function html<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  props: Partial<HTMLElementTagNameMap[K]> & { className?: string } = {},
-  ...children: (Node | string)[]
-): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  Object.assign(node, props);
-  node.append(...children);
-  return node;
 }
 
 /** What the strip itself selects; pages and panels are selected on the canvas. */
@@ -147,29 +129,15 @@ export const MIN_COLUMN = 24;
 export const MAX_COLUMN = 240;
 
 function icon(name: keyof typeof ICONS): SVGSVGElement {
-  const node = document.createElementNS(SVG, "svg");
-  node.setAttribute("viewBox", "0 0 20 20");
-  node.setAttribute("class", "icon");
-  node.setAttribute("aria-hidden", "true");
+  const node = svg("svg", { viewBox: "0 0 20 20", class: "icon", "aria-hidden": "true" });
   node.innerHTML = ICONS[name];
   return node;
 }
 
-function readJson<T>(key: string, fallback: T): T {
-  try {
-    const text = localStorage.getItem(key);
-    return text ? { ...fallback, ...JSON.parse(text) } : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function writeJson(key: string, value: unknown): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // Not kept for the next start; the setting still holds now.
-  }
+/** A saved setting over its defaults. */
+function readSaved<T>(key: string, fallback: T): T {
+  const saved = readJson(key, null);
+  return saved && typeof saved === "object" ? { ...fallback, ...saved } : fallback;
 }
 
 /** Follow a press until it is let go; `moved` turns true past a few pixels. */
@@ -206,8 +174,8 @@ export class Board {
   private columns: Record<Mode, number> = { strip: 0, wide: 0 };
   private column = 0;
   private mode: Mode = "strip";
-  private shown: Record<Mode, LaneId[]> = readJson(LANES_KEY, DEFAULT_LANES);
-  private heights: Record<Mode, number> = readJson(HEIGHT_KEY, DEFAULT_HEIGHT);
+  private shown: Record<Mode, LaneId[]> = readSaved(LANES_KEY, DEFAULT_LANES);
+  private heights: Record<Mode, number> = readSaved(HEIGHT_KEY, DEFAULT_HEIGHT);
   private selection: BoardSelection | null = null;
   /** Character whose emotion values the curve lane changes. */
   private character: string | null = null;

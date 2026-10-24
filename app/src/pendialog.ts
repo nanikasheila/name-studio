@@ -11,8 +11,7 @@ import {
   type PenPreferences,
   type PenSettings,
 } from "./pen";
-
-const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+import { $ } from "./dom";
 
 const PRESETS: Record<string, [number, number][]> = {
   soft: [

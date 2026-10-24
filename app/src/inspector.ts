@@ -6,8 +6,9 @@ import { alternativesOf, joinAlternative } from "./alternatives";
 import { wantsTail } from "./autotail";
 import { SHAPE_LABELS, TAIL_LABELS, defaultTailStyle, resolvedShape } from "./balloon";
 import type { Board } from "./board";
-import { $, choice, element, plainButton } from "./dom";
-import { PANEL_CARRIES_KEY, pickedSummary, writeFlag, type PageEditor, type Selection } from "./editor";
+import { $, choice, element, plainButton, svg } from "./dom";
+import { PANEL_CARRIES_KEY, pickedSummary, type PageEditor, type Selection } from "./editor";
+import { writeFlag } from "./settings";
 import {
   BORDER_LABELS,
   EFFECT_LABELS,
@@ -776,10 +777,7 @@ export class Inspector {
 
 /** The page icon for the inspector's title when nothing is selected. */
 function pageIcon(): SVGSVGElement {
-  const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  icon.setAttribute("viewBox", "0 0 20 20");
-  icon.setAttribute("class", "icon");
-  icon.setAttribute("aria-hidden", "true");
+  const icon = svg("svg", { viewBox: "0 0 20 20", class: "icon", "aria-hidden": "true" });
   icon.innerHTML = '<rect x="4" y="2.5" width="12" height="15" rx="1"/><path d="M4 9h12M10 9v8.5"/>';
   return icon;
 }

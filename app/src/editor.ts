@@ -92,6 +92,7 @@ import {
   type Stroke,
   type StrokePoint,
 } from "./project";
+import { readCount, readFlag } from "./settings";
 
 export type Tool = "select" | "cut" | "text" | "pen" | "eraser" | "fill" | "breakout" | "sticky" | "reference";
 
@@ -201,32 +202,6 @@ const SMALL_PAGE_PX = 170;
 
 const NOTE_FONT = '12px "Yu Gothic UI", "Yu Gothic", "Hiragino Sans", "Noto Sans JP", sans-serif';
 const NOTE_ROW = 16;
-
-export function readFlag(key: string, fallback: boolean): boolean {
-  try {
-    const value = localStorage.getItem(key);
-    return value === null ? fallback : value === "1";
-  } catch {
-    return fallback;
-  }
-}
-
-export function readCount(key: string, fallback: number): number {
-  try {
-    const value = Number(localStorage.getItem(key));
-    return Number.isInteger(value) && value > 0 ? value : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-export function writeFlag(key: string, value: boolean): void {
-  try {
-    localStorage.setItem(key, value ? "1" : "0");
-  } catch {
-    // Not kept for the next start; the setting still holds now.
-  }
-}
 
 export class PageEditor {
   tool: Tool = "select";

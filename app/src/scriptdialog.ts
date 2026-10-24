@@ -4,6 +4,7 @@ import { applyPlot, looksLikePlot, parsePlot, type PlotDoc, type PlotImportRepor
 import { applyScript, parseScript, type ScriptDoc, type ScriptImportReport } from "./scriptimport";
 import { PATTERNS } from "./koma";
 import type { Project } from "./project";
+import { $ } from "./dom";
 
 export interface ScriptDialogHost {
   project(): Project | null;
@@ -16,8 +17,6 @@ export interface ScriptDialogHost {
   /** The plot went onto the name. */
   plotDone(report: PlotImportReport): void;
 }
-
-const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 /** Text of a file: UTF-8, or Shift_JIS (common for Japanese text on Windows). */
 export async function readTextFile(file: Blob): Promise<string> {

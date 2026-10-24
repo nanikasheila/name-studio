@@ -3,6 +3,7 @@ import { call, type VersionInfo, type VersionKind } from "./backend";
 export type { VersionInfo, VersionKind } from "./backend";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { autosaveToFile, formatTime, setAutosaveToFile } from "./autosave";
+import { $ } from "./dom";
 
 export const KIND_NAMES: Record<VersionKind, string> = {
   saved: "保存",
@@ -17,8 +18,6 @@ export interface VersionDialogHost {
   /** The autosave setting was changed. */
   autosaveChanged(): void;
 }
-
-const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 export class VersionDialog {
   constructor(private readonly host: VersionDialogHost) {
