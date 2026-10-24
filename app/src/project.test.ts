@@ -27,6 +27,7 @@ import {
   orderPanels,
   pickInside,
   splitAtX,
+  splitOverPages,
   rectShape,
   setLineText,
   wrapTypedLine,
@@ -406,5 +407,31 @@ describe("ネーム用紙の空のページ", () => {
     expect(trailingEmptyPages(project)).toBe(4);
     project.pages[4].memo = "余白: 引用";
     expect(trailingEmptyPages(project)).toBe(1);
+  });
+});
+
+describe("連続のキャンバスでページをまたぐ線", () => {
+  // Pages "a" | "b" side by side (gutter at x 100), page "c" under "a" (y over 200).
+  const pageOf = ([x, y]: number[]) => (y > 240 ? null : y > 200 ? "c" : x > 100 ? "b" : x >= 0 ? "a" : null);
+  const gutter = (from: string, to: string) => ((from === "a" && to === "b") || (from === "b" && to === "a") ? 100 : null);
+
+  it("cuts exactly at the gutter of a spread", () => {
+    const runs = splitOverPages<string>([[80, 10, 1], [120, 30, 1]], "a", pageOf, gutter);
+    expect(runs.map((run) => run.page)).toEqual(["a", "b"]);
+    expect(runs[0].points.at(-1)).toEqual([100, 20, 1]);
+    expect(runs[1].points[0]).toEqual([100, 20, 1]);
+  });
+
+  it("carries a line down onto the page below, both runs reaching the page edges", () => {
+    const runs = splitOverPages<string>([[50, 150, 1], [50, 190, 1], [50, 215, 1], [50, 230, 1]], "a", pageOf, gutter);
+    expect(runs.map((run) => run.page)).toEqual(["a", "c"]);
+    expect(runs[0].points.at(-1)).toEqual([50, 215, 1]);
+    expect(runs[1].points[0]).toEqual([50, 190, 1]);
+  });
+
+  it("keeps points off every page with the page before", () => {
+    const runs = splitOverPages<string>([[50, 10, 1], [-20, 10, 1], [-30, 20, 1]], "a", pageOf, gutter);
+    expect(runs).toHaveLength(1);
+    expect(runs[0].points).toHaveLength(3);
   });
 });

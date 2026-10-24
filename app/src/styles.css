@@ -489,11 +489,18 @@ button.with-icon, .page-nav .segmented button { display: inline-flex; align-item
 .page-nav > * { flex-shrink: 0; }
 .page-nav .pager span { min-width: 6em; }
 .page-nav .check[aria-disabled="true"] { opacity: 0.4; }
+.rows-control { display: inline-flex; align-items: center; gap: 6px; }
+.rows-control[hidden] { display: none; }
+.rows-control label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.rows-control input[type="range"] { width: 120px; accent-color: var(--accent); }
+.rows-control output { min-width: 3.2em; color: var(--text); font-variant-numeric: tabular-nums; }
 /* In the editor the app bar keeps one row: the file name gives way, then the view names. */
 .toolbar:has(.app-bar:not([hidden])) { flex-wrap: nowrap; }
 .toolbar:has(.app-bar:not([hidden])) .file-name { min-width: 0; }
 @media (max-width: 1380px) {
   button.with-icon span { display: none; }
+  .page-nav .segmented button span { display: none; }
+  .rows-control input[type="range"] { width: 80px; }
 }
 .tool-options .brush-bar .size input { width: 4em; }
 

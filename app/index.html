@@ -116,6 +116,11 @@
           <div class="segmented" role="group" aria-label="ページの見せ方">
             <button id="spread-mode" class="active" title="2 ページを見開きで並べる"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="4" width="8" height="12"/><rect x="10" y="4" width="8" height="12"/></svg><span>見開き</span></button>
             <button id="single-mode" title="1 ページずつ大きく見る"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="5.5" y="3" width="9" height="14"/></svg><span>単独</span></button>
+            <button id="continuous-mode" title="全ページを一枚のキャンバスに並べ、どのページにもそのまま描く（F7）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="1.5" y="3" width="4" height="6"/><rect x="5.5" y="3" width="4" height="6"/><rect x="10.5" y="3" width="4" height="6"/><rect x="14.5" y="3" width="4" height="6"/><rect x="1.5" y="11" width="4" height="6"/><rect x="5.5" y="11" width="4" height="6"/><rect x="10.5" y="11" width="4" height="6"/><rect x="14.5" y="11" width="4" height="6"/></svg><span>連続</span></button>
+          </div>
+          <div class="rows-control" id="rows-control" hidden>
+            <label title="見開きを何行に並べるか。1 で全ページを横一列に（Alt+↑ / Alt+↓）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg><input type="range" id="rows-range" min="1" max="1" step="1" value="1" /><output id="rows-value">1 行</output></label>
+            <button id="fit-all" class="icon-button" title="全ページを画面に収める（Ctrl+Alt+0）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg></button>
           </div>
           <label class="check" id="first-alone-label" title="見開きの組み方: 1 ページ目を左ページだけで始める"><input type="checkbox" id="editor-first-alone" checked /> 1ページ目を単独</label>
           <label class="check" title="コマのメモをページの上に出す（画面だけ。書き出しには入りません）"><input type="checkbox" id="show-notes" checked /> コマのメモ</label>
