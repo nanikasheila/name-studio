@@ -37,6 +37,8 @@ import {
 import { SHAPE_LABELS, TAIL_LABELS, defaultTailStyle, resolvedShape } from "./balloon";
 import { ExportDialog } from "./exportdialog";
 import { History } from "./history";
+import { projectBody } from "./projectjson";
+import { type Snapshot, Snapshotter, sameSnapshot } from "./snapshot";
 import { VersionDialog, type VersionInfo } from "./versiondialog";
 import {
   BORDER_LABELS,
@@ -147,7 +149,7 @@ interface WorkbenchState {
   /** Counts changes, so a save knows whether more came while it ran. */
   revision: number;
   /** Snapshot taken by `begin`, pushed to history by `commit`. */
-  pending: string | null;
+  pending: Snapshot | null;
   roughs: Map<string, ImageBitmap | "loading" | "failed">;
 }
 
@@ -187,7 +189,7 @@ const TOOL_HINTS: Record<Tool, string> = {
 
 export class Workbench {
   readonly editor: PageEditor;
-  private readonly history = new History<Project>();
+  private readonly history = new History<Project, Snapshot>(new Snapshotter<Project>());
   private readonly state: WorkbenchState = { project: null, path: null, dirty: false, revision: 0, pending: null, roughs: new Map() };
   /** Characters whose lines are listed in the 人物 tab. */
   private openCast = new Set<string>();
@@ -422,7 +424,7 @@ export class Workbench {
     }
     const revision = this.state.revision;
     try {
-      await invoke("save_project", { path, project, previousPath: this.state.path });
+      await invoke("save_project", projectBody({ path, previousPath: this.state.path }, project));
       this.state.path = path;
       if (this.state.revision === revision) {
         this.state.dirty = false;
@@ -444,11 +446,10 @@ export class Workbench {
     const path = this.state.path;
     const revision = this.state.revision;
     try {
-      const result = await invoke<{ savedToFile: boolean; version: VersionInfo | null }>("autosave_project", {
-        path,
-        project,
-        toFile: autosaveToFile(),
-      });
+      const result = await invoke<{ savedToFile: boolean; version: VersionInfo | null; problems: string[] }>(
+        "autosave_project",
+        projectBody({ path, toFile: autosaveToFile() }, project),
+      );
       if (result.savedToFile && this.state.path === path && this.state.revision === revision) {
         this.state.dirty = false;
         this.updateTitle();
@@ -470,7 +471,7 @@ export class Workbench {
     if (!current) return;
     const path = this.state.path;
     const older = await invoke<Project>("load_version", { path, id: version.id });
-    await invoke("record_version", { path, project: current, kind: "beforeRestore" });
+    await invoke("record_version", projectBody({ path, kind: "beforeRestore" }, current));
     this.history.record(current);
     this.state.project = normalize(older);
     this.editor.selection = null;
@@ -489,7 +490,7 @@ export class Workbench {
   }
 
   private begin(): void {
-    if (this.state.project) this.state.pending = JSON.stringify(this.state.project);
+    if (this.state.project) this.state.pending = this.history.snapshot(this.state.project);
   }
 
   private commit(): void {
@@ -1225,8 +1226,9 @@ export class Workbench {
 
   /** A text field edited live; the whole edit becomes one undo step. */
   private liveText(field: HTMLInputElement | HTMLTextAreaElement, apply: (value: string) => void): void {
-    let snapshot: string | null = null;
-    field.addEventListener("focus", () => (snapshot = JSON.stringify(this.state.project)));
+    let snapshot: Snapshot | null = null;
+    const take = () => (this.state.project ? this.history.snapshot(this.state.project) : null);
+    field.addEventListener("focus", () => (snapshot = take()));
     field.addEventListener("input", () => {
       apply(field.value);
       this.markDirty();
@@ -1234,8 +1236,9 @@ export class Workbench {
       this.updateTitle();
     });
     field.addEventListener("change", () => {
-      if (snapshot !== null && snapshot !== JSON.stringify(this.state.project)) this.history.recordSnapshot(snapshot);
-      snapshot = JSON.stringify(this.state.project);
+      const now = take();
+      if (snapshot !== null && now !== null && !sameSnapshot(snapshot, now)) this.history.recordSnapshot(snapshot);
+      snapshot = now;
       this.renderSide();
       $<HTMLButtonElement>("undo").disabled = !this.history.canUndo;
     });
@@ -1248,18 +1251,20 @@ export class Workbench {
    * wheel can go on turning.
    */
   private liveNumber(field: HTMLInputElement, apply: (value: number) => void): void {
-    let snapshot: string | null = null;
+    let snapshot: Snapshot | null = null;
     let timer: number | undefined;
+    const take = () => (this.state.project ? this.history.snapshot(this.state.project) : null);
     const record = () => {
       window.clearTimeout(timer);
       timer = undefined;
-      if (snapshot !== null && snapshot !== JSON.stringify(this.state.project)) this.history.recordSnapshot(snapshot);
+      const now = take();
+      if (snapshot !== null && now !== null && !sameSnapshot(snapshot, now)) this.history.recordSnapshot(snapshot);
       snapshot = null;
       $<HTMLButtonElement>("undo").disabled = !this.history.canUndo;
     };
     const set = (value: number) => {
       if (!Number.isFinite(value) || value <= 0) return;
-      snapshot ??= JSON.stringify(this.state.project);
+      snapshot ??= take();
       apply(value);
       this.markDirty();
       this.editor.draw();

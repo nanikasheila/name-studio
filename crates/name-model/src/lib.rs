@@ -55,19 +55,39 @@ impl Project {
         if !problems.is_empty() {
             return Err(ProjectError::Invalid(problems));
         }
-        serde_json::to_string_pretty(self).map_err(ProjectError::Json)
+        serde_json::to_string(self).map_err(ProjectError::Json)
     }
 
     pub fn load(path: impl AsRef<Path>) -> Result<Self, ProjectError> {
         Self::from_json(&std::fs::read_to_string(path).map_err(ProjectError::Io)?)
     }
 
+    /// The text of a project file, checked like [`Project::load`] but kept as
+    /// it is: fields this side does not know (added by the app) stay.
+    pub fn load_text(path: impl AsRef<Path>) -> Result<String, ProjectError> {
+        let text = std::fs::read_to_string(path).map_err(ProjectError::Io)?;
+        Self::from_json(&text)?;
+        Ok(text)
+    }
+
+    /// Save `text` (the project as the app wrote it) after checking it like a
+    /// loaded file; nothing is written when it has problems. The parsed project
+    /// is returned for its title and pages.
+    pub fn save_text(path: impl AsRef<Path>, text: &str) -> Result<Self, ProjectError> {
+        let project = Self::from_json(text)?;
+        write_through_temporary(path.as_ref(), text)?;
+        Ok(project)
+    }
+
     /// Save through a temporary file so a crash never leaves half a project.
     pub fn save(&self, path: impl AsRef<Path>) -> Result<(), ProjectError> {
         let path = path.as_ref();
-        let text = self.to_json()?;
-        let temporary = path.with_extension(format!("{EXTENSION}.tmp"));
-        std::fs::write(&temporary, text).map_err(ProjectError::Io)?;
-        std::fs::rename(&temporary, path).map_err(ProjectError::Io)
+        write_through_temporary(path, &self.to_json()?)
     }
+}
+
+fn write_through_temporary(path: &Path, text: &str) -> Result<(), ProjectError> {
+    let temporary = path.with_extension(format!("{EXTENSION}.tmp"));
+    std::fs::write(&temporary, text).map_err(ProjectError::Io)?;
+    std::fs::rename(&temporary, path).map_err(ProjectError::Io)
 }

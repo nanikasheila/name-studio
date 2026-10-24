@@ -19,6 +19,7 @@ use flate2::Compression;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use serde::{Deserialize, Serialize};
+use serde_json::value::RawValue;
 
 use crate::{Project, ProjectError};
 
@@ -83,13 +84,25 @@ struct Index {
 }
 
 /// A project kept by autosave that may not have been saved to its file.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Recovery {
     /// The project's file, or none for a project never saved.
     pub path: Option<String>,
     pub time_ms: u64,
-    pub project: Project,
+    /// The project as the app wrote it (kept as it is).
+    pub project: Box<RawValue>,
+    /// What the check found wrong with it: kept anyway, so the work is not
+    /// lost, for the app to mend when it is brought back.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub problems: Vec<String>,
+}
+
+impl Recovery {
+    /// The kept project, parsed.
+    pub fn parsed(&self) -> Result<Project, ProjectError> {
+        serde_json::from_str(self.project.get()).map_err(ProjectError::Json)
+    }
 }
 
 /// The folder name for a project file: case-insensitive on Windows paths,
@@ -167,7 +180,18 @@ impl VersionStore {
         kind: VersionKind,
         time_ms: u64,
     ) -> Result<Option<VersionInfo>, ProjectError> {
-        let json = project.to_json()?;
+        self.record_text(&project.to_json()?, project, kind, time_ms)
+    }
+
+    /// Keep `json` (the text of `project`, as the app wrote it) as a version,
+    /// unless it is the same as the newest one.
+    pub fn record_text(
+        &self,
+        json: &str,
+        project: &Project,
+        kind: VersionKind,
+        time_ms: u64,
+    ) -> Result<Option<VersionInfo>, ProjectError> {
         let hash = format!("{:016x}", fnv1a(json.as_bytes()));
         let mut index = self.read_index()?;
         if index.versions.last().is_some_and(|newest| newest.hash == hash) {
@@ -208,6 +232,17 @@ impl VersionStore {
         time_ms: u64,
         interval_ms: u64,
     ) -> Result<Option<VersionInfo>, ProjectError> {
+        self.record_auto_text(&project.to_json()?, project, time_ms, interval_ms)
+    }
+
+    /// [`VersionStore::record_auto`] for the text the app wrote.
+    pub fn record_auto_text(
+        &self,
+        json: &str,
+        project: &Project,
+        time_ms: u64,
+        interval_ms: u64,
+    ) -> Result<Option<VersionInfo>, ProjectError> {
         let index = self.read_index()?;
         if index
             .versions
@@ -216,7 +251,7 @@ impl VersionStore {
         {
             return Ok(None);
         }
-        self.record(project, VersionKind::Auto, time_ms)
+        self.record_text(json, project, VersionKind::Auto, time_ms)
     }
 
     fn prune(&self, index: &mut Index, kind: VersionKind) {
@@ -234,6 +269,11 @@ impl VersionStore {
     }
 
     pub fn load(&self, id: &str) -> Result<Project, ProjectError> {
+        Project::from_json(&self.load_text(id)?)
+    }
+
+    /// The text of a version, checked like a loaded file.
+    pub fn load_text(&self, id: &str) -> Result<String, ProjectError> {
         if id.contains(['/', '\\']) || id.starts_with('.') {
             return Err(ProjectError::Invalid(vec![format!("版の名前が正しくありません: {id}")]));
         }
@@ -242,7 +282,8 @@ impl VersionStore {
         GzDecoder::new(file)
             .read_to_string(&mut json)
             .map_err(ProjectError::Io)?;
-        Project::from_json(&json)
+        Project::from_json(&json)?;
+        Ok(json)
     }
 
     /// Move the history of a project that had no file to the file it was
@@ -270,17 +311,33 @@ fn recovery_path(root: &Path, path: Option<&Path>) -> PathBuf {
 
 /// Keep `project` so it can be brought back if the app stops before it is saved.
 pub fn write_recovery(root: &Path, path: Option<&Path>, project: &Project, time_ms: u64) -> Result<(), ProjectError> {
+    let text = serde_json::to_string(project).map_err(ProjectError::Json)?;
+    write_recovery_text(root, path, &text, time_ms).map(|_| ())
+}
+
+/// Keep the project text the app wrote so it can be brought back. It is kept
+/// even when the check finds problems (they are noted with it, and returned):
+/// a copy that needs mending is better than work lost. Text that is not a
+/// project at all is refused.
+pub fn write_recovery_text(
+    root: &Path,
+    path: Option<&Path>,
+    text: &str,
+    time_ms: u64,
+) -> Result<Vec<String>, ProjectError> {
+    let project: Project = serde_json::from_str(text).map_err(ProjectError::Json)?;
+    let problems = crate::validate(&project);
     let recovery = Recovery {
         path: path.map(|path| path.display().to_string()),
         time_ms,
-        project: project.clone(),
+        project: RawValue::from_string(text.to_owned()).map_err(ProjectError::Json)?,
+        problems: problems.clone(),
     };
-    // Checked like a saved project, so a broken one is never offered back.
-    project.to_json()?;
     let text = serde_json::to_string(&recovery).map_err(ProjectError::Json)?;
     let file = recovery_path(root, path);
     std::fs::create_dir_all(file.parent().expect("recovery folder")).map_err(ProjectError::Io)?;
-    write_atomic(&file, text.as_bytes())
+    write_atomic(&file, text.as_bytes())?;
+    Ok(problems)
 }
 
 pub fn clear_recovery(root: &Path, path: Option<&Path>) -> Result<(), ProjectError> {
@@ -301,7 +358,7 @@ pub fn recoveries(root: &Path) -> Vec<Recovery> {
         .filter(|entry| entry.path().extension().is_some_and(|extension| extension == "json"))
         .filter_map(|entry| std::fs::read_to_string(entry.path()).ok())
         .filter_map(|text| serde_json::from_str::<Recovery>(&text).ok())
-        .filter(|recovery| crate::validate(&recovery.project).is_empty())
+        .filter(|recovery| recovery.parsed().is_ok())
         .collect();
     found.sort_by_key(|recovery| std::cmp::Reverse(recovery.time_ms));
     found
@@ -413,7 +470,7 @@ mod tests {
         write_recovery(root.path(), Some(path), &project("保存済み", 1), 20).unwrap();
         let found = recoveries(root.path());
         assert_eq!(found.len(), 2);
-        assert_eq!(found[0].project.title, "保存済み");
+        assert_eq!(found[0].parsed().unwrap().title, "保存済み");
         assert_eq!(found[0].path.as_deref(), Some("b.namestudio"));
         clear_recovery(root.path(), Some(path)).unwrap();
         clear_recovery(root.path(), Some(path)).unwrap();

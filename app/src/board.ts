@@ -6,6 +6,7 @@
 // what they hold. A click on a page or panel shows it on the canvas; the
 // pages on the canvas are framed here.
 import { drawBalloons, drawPageTexts, drawPageFills, drawPanelBorders, drawPanelFills, drawStrokes, type MmToPx } from "./pagedraw";
+import { fingerprint } from "./snapshot";
 import {
   addScene,
   moveScene,
@@ -225,6 +226,8 @@ export class Board {
   private queued = false;
   /** Height of the lanes drawn last, px. */
   private contentHeight = 240;
+  /** Page pictures by page id, with what they were drawn from. */
+  private readonly thumbs = new Map<string, { key: string; canvas: HTMLCanvasElement }>();
   private readonly tip: BoardTip;
   private readonly tipNode: HTMLDivElement;
   /** The strip's own row of buttons, above its lanes. */
@@ -1038,7 +1041,25 @@ export class Board {
 
   // ページ・コマ ------------------------------------------------------------------------
 
+  /** A page's picture, drawn again only when the page (or its size) changed: drawing every line of every page on each change is slow. */
+  private thumb(project: Project, page: Project["pages"][number], thumbWidth: number, thumbHeight: number, ratio: number): HTMLCanvasElement {
+    const key = `${thumbWidth}|${thumbHeight}|${ratio}|${fingerprint(project.pageFormat)}|${fingerprint(page)}`;
+    const kept = this.thumbs.get(page.id);
+    if (kept?.key === key) return kept.canvas;
+    const canvas = html("canvas", { width: Math.round(thumbWidth * ratio), height: Math.round(thumbHeight * ratio) });
+    canvas.style.width = `${thumbWidth}px`;
+    canvas.style.height = `${thumbHeight}px`;
+    const scale = (thumbWidth / project.pageFormat.canvasMm[0]) * ratio;
+    const ctx = canvas.getContext("2d");
+    if (ctx) drawThumb(ctx, project, page, { scale, x: 0, y: 0 }, thumbWidth >= 110);
+    this.thumbs.set(page.id, { key, canvas });
+    return canvas;
+  }
+
   private pageLane(project: Project, thumbWidth: number, thumbHeight: number, showMemo: boolean): HTMLElement {
+    // Pages no longer in the name drop their pictures.
+    const ids = new Set(project.pages.map((page) => page.id));
+    for (const id of this.thumbs.keys()) if (!ids.has(id)) this.thumbs.delete(id);
     const row = html("div", { className: "board-pages" });
     const [pageW, pageH] = project.pageFormat.canvasMm;
     const parts = currentShape(project) ? shapeSpans(currentShape(project)!, project.pages.length) : [];
@@ -1060,12 +1081,7 @@ export class Board {
       }
       if (page.joinNext) head.append(html("span", { className: "spread-tag", textContent: "見開き" }));
       if (scene && thumbWidth >= 60) head.append(html("span", { className: "head-scene", textContent: scene.scene.title }));
-      const canvas = html("canvas", { width: Math.round(thumbWidth * ratio), height: Math.round(thumbHeight * ratio) });
-      canvas.style.width = `${thumbWidth}px`;
-      canvas.style.height = `${thumbHeight}px`;
-      const scale = (thumbWidth / pageW) * ratio;
-      const ctx = canvas.getContext("2d");
-      if (ctx) drawThumb(ctx, project, page, { scale, x: 0, y: 0 }, thumbWidth >= 110);
+      const canvas = this.thumb(project, page, thumbWidth, thumbHeight, ratio);
       const overlay = svg("svg", { class: "board-panels", viewBox: `0 0 ${pageW} ${pageH}`, width: thumbWidth, height: thumbHeight });
       for (const panel of page.panels) overlay.append(this.panelShape(project, index, panel));
       const sheet = html("div", { className: "board-sheet" }, canvas, overlay);

@@ -15,7 +15,7 @@ tauri-build = { version = "2", features = [] }
 clip-core = { path = "../../crates/clip-core" }
 name-model = { path = "../../crates/name-model" }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["raw_value"] }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-process = "2"

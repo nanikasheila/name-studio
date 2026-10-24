@@ -29,6 +29,7 @@ import {
   type TransformBase,
 } from "./transform";
 import { INK, drawBalloons, drawLineText, drawPageFills, drawPanelBorders, drawPanelFills, drawStroke, drawStrokes, onTipLoaded, tracePath } from "./pagedraw";
+import { StrokeCache } from "./strokecache";
 import {
   addFill,
   addLine,
@@ -289,6 +290,8 @@ export class PageEditor {
   private frame = 0;
   /** The pages as last drawn, for redrawing only what is over them (hover, eraser ring). */
   private cache: HTMLCanvasElement | null = null;
+  /** Each page's rough lines as a picture, while they do not change. */
+  private readonly strokeCache = new StrokeCache(() => this.requestDraw());
   private overlayFrame = 0;
   private hover: Hover | null = null;
   private hoverAt: Point | null = null;
@@ -318,7 +321,10 @@ export class PageEditor {
     this.ctx = canvas.getContext("2d", { desynchronized: true })!;
     // A pen held still or its barrel button must not open the context menu.
     canvas.addEventListener("contextmenu", (event) => event.preventDefault());
-    onTipLoaded(() => this.draw());
+    onTipLoaded(() => {
+      this.strokeCache.tipsChanged();
+      this.draw();
+    });
     penPreferences.onChange(() => {
       this.updateCursor();
       this.requestOverlay();
@@ -1055,7 +1061,13 @@ export class PageEditor {
     const project = this.host.project();
     if (!project) return;
     this.slots = this.slid(this.layout(project));
-    for (const slot of this.slots) if (this.onCanvas(project, slot)) this.drawPage(project, slot);
+    const drawn = new Set<string>();
+    for (const slot of this.slots) {
+      if (!this.onCanvas(project, slot)) continue;
+      this.drawPage(project, slot);
+      drawn.add(slot.page.id);
+    }
+    this.strokeCache.forget(drawn);
     this.drawSpreadMarks(project);
     this.drawDragged(project);
     this.keepCache();
@@ -1196,7 +1208,8 @@ export class PageEditor {
     const m = { scale, x: slot.x, y: slot.y };
     const brushes = this.host.project()?.brushes ?? [];
     const strokeColor = (stroke: Stroke) => (this.isSelected(page, "stroke", stroke.id) ? ACCENT : "#3a3834");
-    drawStrokes(ctx, page, m, false, strokeColor, 0.7, brushes);
+    const style = { color: strokeColor, minWidthPx: 0.7, brushes };
+    this.strokeCache.draw(ctx, page, project.pageFormat.canvasMm, m, false, style);
     drawPanelFills(ctx, page, m);
     drawPageFills(ctx, page, m, (id) => (this.isSelected(page, "fill", id) ? ACCENT : null));
     const selectedPanels = page.panels.filter((panel) => this.isSelected(page, "panel", panel.id));
@@ -1206,7 +1219,7 @@ export class PageEditor {
       ctx.fill();
     }
     drawPanelBorders(ctx, page, m, (panel) => (selectedPanels.includes(panel) ? ACCENT : INK));
-    drawStrokes(ctx, page, m, true, strokeColor, 0.7, brushes);
+    this.strokeCache.draw(ctx, page, project.pageFormat.canvasMm, m, true, style);
 
     // はみ出し: shown by a dashed outline (only here, not in exports).
     for (const breakout of page.breakouts) {

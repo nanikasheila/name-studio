@@ -4,6 +4,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { checkSummary, dialogueUpdateSummary, exportToCsp, imagesNote, missingEditable, readCspDialogue, ROUGH_LAYERS, updateCspDialogue } from "./nameexport";
 import { normalize, type Project } from "./project";
+import { projectBody } from "./projectjson";
 import { applyTakeBack, planTakeBack, takeBackSummary } from "./readback";
 
 export interface BatchExport {
@@ -72,7 +73,7 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
       const changes = plan.retyped.length + plan.added.length + plan.removed.length;
       if (changes) {
         applyTakeBack(project, plan);
-        await invoke("save_project", { path: task.project, project, previousPath: task.project });
+        await invoke("save_project", projectBody({ path: task.project, previousPath: task.project }, project));
         await invoke("adopt_name_dialogue", { paths: plan.paths });
       }
       ok = !plan.missing.length;
