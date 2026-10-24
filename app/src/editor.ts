@@ -2293,7 +2293,8 @@ export class PageEditor {
     // The page settings follow the page worked on (the left page of a spread too).
     if (this.focusedPageId !== slot.page.id) this.focusOn(slot);
     const point = toPage(slot, sx, sy);
-    switch (this.tipEraser ? "eraser" : this.tool) {
+    const tool = this.tipEraser ? "eraser" : this.tool;
+    switch (tool) {
       case "reference": {
         // A corner of the chosen picture resizes it; a picture moves; elsewhere nothing is chosen.
         const corner = this.referenceCornerAt(slot, sx, sy);
@@ -2504,6 +2505,9 @@ export class PageEditor {
         this.erase(slot, point);
         return;
       }
+      default:
+        // A new tool must say here what a press does with it.
+        tool satisfies never;
     }
   }
 
@@ -2730,6 +2734,8 @@ export class PageEditor {
         this.erase(under, toPage(under, ex, ey));
         break;
       }
+      default:
+        drag satisfies never;
     }
     this.requestDraw();
   }
@@ -3038,6 +3044,9 @@ export class PageEditor {
       case "turn":
       case "pinch":
         break;
+      default:
+        // A new kind of drag must say here how it ends.
+        drag satisfies never;
     }
   }
 
