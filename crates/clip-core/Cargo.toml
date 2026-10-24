@@ -19,3 +19,7 @@ fixtures = []
 
 [dev-dependencies]
 tempfile = "3.27.0"
+
+[[example]]
+name = "fixture_page"
+required-features = ["fixtures"]
