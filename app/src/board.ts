@@ -3,7 +3,7 @@
 // shown: drag the parts of the shape, the ends of a scene, a scene up or down
 // in story time, the emotion curve, a page to another place, or a panel onto
 // another panel (on any page) to swap what they hold.
-import { drawBalloons, drawLineText, drawPageFills, drawPanelBorders, drawPanelFills, drawStrokes, type MmToPx } from "./pagedraw";
+import { drawBalloons, drawPageTexts, drawPageFills, drawPanelBorders, drawPanelFills, drawStrokes, type MmToPx } from "./pagedraw";
 import {
   addCharacter,
   addScene,
@@ -1312,7 +1312,7 @@ export function drawThumb(ctx: CanvasRenderingContext2D, project: Project, page:
   drawPanelBorders(ctx, page, m, undefined, 0.8);
   drawStrokes(ctx, page, m, true, ink, 0.5);
   drawBalloons(ctx, page, m, 0.6);
-  if (text) for (const line of page.lines) drawLineText(ctx, line, m);
+  if (text) drawPageTexts(ctx, page, m);
   else {
     ctx.fillStyle = "rgba(27, 26, 24, 0.3)";
     for (const line of page.lines) {

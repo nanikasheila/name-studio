@@ -320,6 +320,11 @@ export function copySelection(page: Page, selection: CopySource, contents?: { st
       break;
     }
   }
+  // 付箋 about what is copied come along with it.
+  const copied = new Set([...clip.panels.map((p) => p.id), ...clip.lines.map((l) => l.id)]);
+  for (const sticky of page.stickies ?? []) {
+    if (sticky.link && copied.has(sticky.link.id) && !clip.stickies.some((n) => n.id === sticky.id)) clip.stickies.push(clone(sticky));
+  }
   const empty = !clip.strokes.length && !clip.lines.length && !clip.panels.length && !clip.breakouts.length && !clip.stickies.length && !clip.fills?.length;
   return empty ? null : clip;
 }
@@ -350,9 +355,11 @@ export function pasteClip(project: Project, page: Page, clip: Clip, offset: Poin
     page.fills = [...(page.fills ?? []), fill];
     pasted.fills.push(fill.id);
   }
+  const panelIds = new Map<string, string>();
   for (const source of clip.panels) {
     const panel = clone(source);
     panel.id = newId(project, "panel");
+    panelIds.set(source.id, panel.id);
     panel.shape = panel.shape.map(move);
     delete panel.spread;
     page.panels.push(panel);
@@ -390,6 +397,10 @@ export function pasteClip(project: Project, page: Page, clip: Clip, offset: Poin
     const sticky = clone(source);
     sticky.id = newId(project, "sticky");
     sticky.at = move(sticky.at);
+    // Still tied to what it was about when that came along or is on this page; otherwise loose.
+    const tied = sticky.link && (sticky.link.kind === "panel" ? panelIds : lineIds).get(sticky.link.id);
+    if (sticky.link && tied) sticky.link.id = tied;
+    else if (clip.pageId !== page.id) delete sticky.link;
     page.stickies = [...(page.stickies ?? []), sticky];
     pasted.stickies.push(sticky.id);
   }

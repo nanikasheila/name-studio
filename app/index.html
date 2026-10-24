@@ -32,51 +32,18 @@
         <button id="import-project" title="このネーム用紙からネームデータを作って編集する" disabled>編集する</button>
         <button id="export" disabled>ページに書き出す…</button>
       </div>
-      <div class="editor-only toolbar-group" hidden>
-        <div class="segmented" role="group" aria-label="画面">
-          <button id="view-edit" class="active" title="ページを編集する（F1）">編集</button>
-          <button id="view-board" title="話の型・シーン・時系列・感情曲線・ページとコマを一画面で見て直す（F6）">全体</button>
-          <button id="view-structure" title="シーンと各ページの字数、ページ一覧（F2）">構成</button>
-          <button id="view-emotion" title="登場人物の感情の移り変わり（F3）">感情曲線</button>
-          <button id="view-timeline" title="ページの順と物語の時間（F4）">時系列</button>
+      <div class="editor-only toolbar-group app-bar" hidden>
+        <div class="segmented views" role="group" aria-label="画面">
+          <button id="view-edit" class="active" title="ページを編集する（F1）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="2.5" width="12" height="15" rx="1"/><path d="M4 9h12M10 9v8.5"/></svg><span>編集</span></button>
+          <button id="view-board" title="話の型・シーン・時系列・感情曲線・ページとコマを一画面で見て直す（F6）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M2.5 4.5h15M2.5 10h15M2.5 15.5h15"/><rect x="4" y="3" width="5" height="3" rx="1" class="fill"/><rect x="9" y="8.5" width="6" height="3" rx="1" class="fill"/><rect x="6" y="14" width="4" height="3" rx="1" class="fill"/></svg><span>全体</span></button>
+          <button id="view-structure" title="シーンと各ページの字数、ページ一覧（F2）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="11" width="3" height="6"/><rect x="8.5" y="6" width="3" height="11"/><rect x="14" y="3" width="3" height="14"/></svg><span>構成</span></button>
+          <button id="view-emotion" title="登場人物の感情の移り変わり（F3）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M2.5 14c3 0 3-9 6-9s3 10 6 10 2-6 3-6"/></svg><span>感情曲線</span></button>
+          <button id="view-timeline" title="ページの順と物語の時間（F4）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M2.5 10h15"/><circle cx="5" cy="10" r="2" class="fill"/><circle cx="10.5" cy="10" r="2" class="fill"/><circle cx="16" cy="10" r="2" class="fill"/></svg><span>時系列</span></button>
         </div>
-        <div class="segmented edit-only" role="group" aria-label="道具">
-          <button id="tool-select" class="active" title="選ぶ・動かす（V）">選択</button>
-          <button id="tool-cut" title="コマを割る。コマの外をドラッグすると新しいコマ（K）">コマ割り</button>
-          <button id="tool-text" title="クリックでセリフを置く（T）">セリフ</button>
-          <button id="tool-pen" title="ラフを描く（P）">ペン</button>
-          <button id="tool-eraser" title="ラフの線を消す（E）">消しゴム</button>
-          <button id="tool-fill" title="囲んだ所を塗る。ベタ・グレー・白（G）">塗り</button>
-          <button id="tool-breakout" title="コマを突き抜ける所を囲む。中に描いた線はコマ枠の上に（B）">はみ出し</button>
-          <button id="tool-sticky" title="付箋を貼る。作業用のメモで、書き出しには入りません（M）">付箋</button>
-        </div>
-        <div class="segmented edit-only" id="fill-tones" role="group" aria-label="塗りの色" hidden>
-          <button id="fill-black" class="active" title="黒（ベタ）">黒</button>
-          <button id="fill-gray" title="グレー（トーンの代わり）">グレー</button>
-          <button id="fill-white" title="白（ホワイトで消す）">白</button>
-        </div>
-        <div class="brush-bar edit-only" id="brush-bar">
-          <select id="brush-select" title="ペン・消しゴムの種類"></select>
-          <label class="size" title="太さ（mm）"><input id="brush-size" type="number" min="0.05" max="30" step="0.05" /> mm</label>
-          <label class="check" id="brush-tip-label" title="CSP の素材のサムネイルから作った先端の形で描く"><input type="checkbox" id="brush-tip" /> 先端</label>
-          <button id="brush-import" title="CLIP STUDIO PAINT のペン・消しゴムを取り込む">取り込み…</button>
-          <div class="segmented erase-modes" id="erase-modes" title="消し方（消しゴムで E を押すたびに切り替え）。ペンの消しゴム側でも同じ消し方になります">
-            <button id="erase-touched" title="触れた部分だけ消す">触れた部分</button>
-            <button id="erase-intersection" title="触れた線を、ほかの線との交点まで消す">交点まで</button>
-            <button id="erase-whole" title="触れた線を丸ごと消す">線全体</button>
-            <button id="erase-lasso" title="囲んだ中の線を消す">囲って消す</button>
-          </div>
-        </div>
-        <button id="undo" title="元に戻す（Ctrl+Z）" disabled>↶</button>
-        <button id="redo" title="やり直す（Ctrl+Shift+Z）" disabled>↷</button>
-        <div class="pager edit-only">
-          <button id="editor-next" title="次の見開き（←）">◀</button>
-          <span id="editor-page-label">-</span>
-          <button id="editor-prev" title="前の見開き（→）">▶</button>
-        </div>
-        <label class="check edit-only"><input type="checkbox" id="editor-first-alone" checked /> 1ページ目を単独</label>
-        <label class="check edit-only" title="コマのメモをページの上に出す（画面だけ。書き出しには入りません）"><input type="checkbox" id="show-notes" checked /> コマのメモ</label>
-        <button id="name-export" title="CSP のページと作品、PDF、台本に書き出す">書き出す…</button>
+        <div class="spacer"></div>
+        <button id="undo" class="icon-button" title="元に戻す（Ctrl+Z）" disabled><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M7 4L3 8l4 4"/><path d="M3 8h9a5 5 0 0 1 0 10H8"/></svg></button>
+        <button id="redo" class="icon-button" title="やり直す（Ctrl+Shift+Z）" disabled><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M13 4l4 4-4 4"/><path d="M17 8H8a5 5 0 0 0 0 10h4"/></svg></button>
+        <button id="name-export" class="with-icon" title="CSP のページと作品、PDF、台本に書き出す"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5v10M6 8.5l4 4 4-4"/><path d="M3 13.5v3.5h14v-3.5"/></svg><span>書き出す…</span></button>
       </div>
     </header>
     <main id="viewer" class="workspace">
@@ -100,16 +67,65 @@
           <button id="tab-script" role="tab">台本</button>
           <button id="tab-cast" role="tab">人物</button>
           <button id="tab-notes" role="tab" title="全ページの付箋（未決のこと）">付箋</button>
+          <button id="tab-held" role="tab" title="置き場所の決まっていないコマ（保留）">保留</button>
           <button id="tab-layers-edit" role="tab" title="見開きのコマと、その中のセリフ・ラフ線・塗り（CSP のコマ枠フォルダのように）">レイヤー</button>
         </div>
         <div id="side-pages" class="panel"></div>
         <div id="side-script" class="panel" hidden></div>
         <div id="side-cast" class="panel" hidden></div>
         <div id="side-notes" class="panel" hidden></div>
+        <div id="side-held" class="panel" hidden></div>
         <div id="side-layers" class="panel layer-list" hidden></div>
       </aside>
-      <section class="stage edit-only">
-        <canvas id="editor-canvas"></canvas>
+      <nav class="tool-rail edit-only" id="editor-tools" aria-label="道具">
+          <button id="tool-select" class="active" title="選ぶ・動かす（V）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.5l10 8-4.5 1 2.5 5-2 1-2.5-5L5 16z" class="fill"/></svg><span>選択</span></button>
+          <button id="tool-cut" title="コマを割る。コマの外をドラッグすると新しいコマ（K）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="2.5" width="15" height="15" rx="1"/><path d="M2.5 8.5l15 2.5M10 9.8V17.5"/></svg><span>コマ割り</span></button>
+          <button id="tool-text" title="クリックでセリフを置く（T）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3c4.4 0 7.5 2.5 7.5 5.6S14.4 14 10 14c-.8 0-1.5 0-2.2-.2L4 17l1-3.8C3.4 12.2 2.5 10.5 2.5 8.6 2.5 5.5 5.6 3 10 3z"/></svg><span>セリフ</span></button>
+          <button id="tool-pen" title="ラフを描く（P）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 16.5l1-4 9-9 3 3-9 9z"/><path d="M12 5l3 3"/></svg><span>ペン</span></button>
+          <button id="tool-eraser" title="ラフの線を消す（E）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M2.8 12.6l7.8-7.8 5.6 5.6-5.4 5.4H7z"/><path d="M6.6 8.8l5.6 5.6M8 17.5h9.5"/></svg><span>消しゴム</span></button>
+          <button id="tool-fill" title="囲んだ所を塗る。ベタ・グレー・白（G）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5c3.2 4.2 5 7 5 9.2a5 5 0 0 1-10 0c0-2.2 1.8-5 5-9.2z" class="fill"/></svg><span>塗り</span></button>
+          <button id="tool-breakout" title="コマを突き抜ける所を囲む。中に描いた線はコマ枠の上に（B）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="6.5" width="11" height="11" rx="1"/><path d="M8 12l9-9.5M12.5 2.5H17V7"/></svg><span>はみ出し</span></button>
+          <button id="tool-sticky" title="付箋を貼る。作業用のメモで、書き出しには入りません（M）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 3h13v9l-5 5h-8z"/><path d="M11.5 17v-5h5"/></svg><span>付箋</span></button>
+      </nav>
+      <section class="stage-column edit-only">
+        <div class="tool-options" id="tool-options">
+          <span class="tool-name" id="tool-name"></span>
+          <div class="segmented" id="fill-tones" role="group" aria-label="塗りの色" hidden>
+            <button id="fill-black" class="active" title="黒（ベタ）"><i class="tone black"></i>黒</button>
+            <button id="fill-gray" title="グレー（トーンの代わり）"><i class="tone gray"></i>グレー</button>
+            <button id="fill-white" title="白（ホワイトで消す）"><i class="tone white"></i>白</button>
+          </div>
+          <div class="brush-bar" id="brush-bar">
+            <select id="brush-select" title="ペン・消しゴムの種類"></select>
+            <label class="size" title="太さ（mm）。ホイールでも変えられます"><input id="brush-size" type="number" min="0.05" max="30" step="0.05" /> mm</label>
+            <label class="check" id="brush-tip-label" title="CSP の素材のサムネイルから作った先端の形で描く"><input type="checkbox" id="brush-tip" /> 先端</label>
+            <button id="brush-import" title="CLIP STUDIO PAINT のペン・消しゴムを取り込む">取り込み…</button>
+            <div class="segmented erase-modes" id="erase-modes" title="消し方（消しゴムで E を押すたびに切り替え）。ペンの消しゴム側でも同じ消し方になります">
+              <button id="erase-touched" title="触れた部分だけ消す">部分</button>
+              <button id="erase-intersection" title="触れた線を、ほかの線との交点まで消す">交点まで</button>
+              <button id="erase-whole" title="触れた線を丸ごと消す">線ごと</button>
+              <button id="erase-lasso" title="囲んだ中の線を消す">囲む</button>
+            </div>
+          </div>
+          <span class="tool-hint" id="tool-hint"></span>
+        </div>
+        <div class="stage">
+          <canvas id="editor-canvas"></canvas>
+        </div>
+        <div class="page-nav" id="page-nav">
+          <div class="pager">
+            <button id="editor-next" class="icon-button" title="次へ（←）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4l-6 6 6 6"/></svg></button>
+            <span id="editor-page-label">-</span>
+            <button id="editor-prev" class="icon-button" title="前へ（→）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M7.5 4l6 6-6 6"/></svg></button>
+          </div>
+          <div class="segmented" role="group" aria-label="ページの見せ方">
+            <button id="spread-mode" class="active" title="2 ページを見開きで並べる"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="4" width="8" height="12"/><rect x="10" y="4" width="8" height="12"/></svg><span>見開き</span></button>
+            <button id="single-mode" title="1 ページずつ大きく見る"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="5.5" y="3" width="9" height="14"/></svg><span>単独</span></button>
+          </div>
+          <label class="check" id="first-alone-label" title="見開きの組み方: 1 ページ目を左ページだけで始める"><input type="checkbox" id="editor-first-alone" checked /> 1ページ目を単独</label>
+          <label class="check" title="コマのメモをページの上に出す（画面だけ。書き出しには入りません）"><input type="checkbox" id="show-notes" checked /> コマのメモ</label>
+          <button id="held-badge" class="held-badge" title="このあたりのページに入れたい保留のコマ" hidden></button>
+        </div>
       </section>
       <aside id="inspector" class="inspector edit-only"></aside>
       <section id="overview" class="overview" hidden></section>

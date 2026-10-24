@@ -48,8 +48,34 @@ pub struct Project {
     /// 作品ごとのフキダシの既定: the shape new lines of each kind get.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub line_shapes: Option<LineShapes>,
+    /// 保留コマ: panels taken off the pages until it is decided where they go.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub held: Vec<HeldPanel>,
     /// Next number used by [`Project::new_id`]; ids are never reused.
     pub next_id: u64,
+}
+
+/// 保留コマ: a panel taken off its page with what is in it, where they were
+/// on that page (mm).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeldPanel {
+    pub id: String,
+    pub panel: Panel,
+    #[serde(default)]
+    pub lines: Vec<Line>,
+    #[serde(default)]
+    pub strokes: Vec<Stroke>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fills: Vec<Fill>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stickies: Vec<Sticky>,
+    /// このあたり: the page it is meant to go near.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub near: Option<String>,
+    /// The page it was taken from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
 }
 
 /// 別案: versions of the same run of pages (a page, a 見開き, a scene). The
@@ -176,6 +202,21 @@ pub struct Sticky {
     pub at: [f64; 2],
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
+    /// 紐づけ: the panel or line the note is about; it points there wherever
+    /// the note is put.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link: Option<StickyLink>,
+}
+
+/// A panel or a line a 付箋 is about, and the point on it the note points to
+/// (from the top left of the panel's bounds or the line's box, in mm).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StickyLink {
+    /// "panel" or "line".
+    pub kind: String,
+    pub id: String,
+    pub at: [f64; 2],
 }
 
 /// 構成補助: what the name is aimed at, to compare the page split with.
@@ -251,6 +292,10 @@ pub struct Panel {
     /// 演出メモ: camera, timing or what the panel is for.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub note: String,
+    /// Where the memo's tag was moved to: its top left from the top left of
+    /// the panel's bounds (mm); none: in the panel's corner. Screen only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note_at: Option<[f64; 2]>,
     /// 見開き: shared by the two halves of a panel across the gutter, one on
     /// each page of the spread.
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -445,6 +490,9 @@ pub struct Line {
     /// 強調: bold type.
     #[serde(default, skip_serializing_if = "is_default")]
     pub emphasis: bool,
+    /// コマ枠でマスク: the balloon is cut off at the border of its panel.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub mask: bool,
 }
 
 /// A rough line (ラフ).
@@ -727,6 +775,7 @@ impl Project {
             alternatives: Vec::new(),
             plan: None,
             line_shapes: None,
+            held: Vec::new(),
             next_id: 1,
         }
     }

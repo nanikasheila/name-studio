@@ -2,6 +2,8 @@
 // page list, the script, the cast and the inspector for the selection.
 import { invoke } from "@tauri-apps/api/core";
 import { ask, save } from "@tauri-apps/plugin-dialog";
+import { heldThumbnail, pageGlyph } from "./glyph";
+import { heldNear, holdPanel, movePanelToPage, placeHeld } from "./hold";
 import { Autosaver, autosaveToFile, formatTime } from "./autosave";
 import { addBrushes, loadLibrary } from "./brush";
 import { BrushDialog } from "./brushdialog";
@@ -19,6 +21,7 @@ import {
   ERASE_MODE_LABELS,
   PANEL_CARRIES_KEY,
   SHOW_NOTES_KEY,
+  SINGLE_PAGE_KEY,
   PageEditor,
   isTyping,
   pickedSummary,
@@ -79,6 +82,7 @@ import {
   removePage,
   removeSticky,
   STICKY_COLORS,
+  linkLabel,
   removePanel,
   sceneOf,
   sortLines,
@@ -95,6 +99,7 @@ import {
   type Sticky,
   type StickyColor,
   type Panel,
+  type Point,
   type PanelBorder,
   type PanelEffect,
   type PanelFill,
@@ -142,13 +147,28 @@ interface WorkbenchState {
   roughs: Map<string, ImageBitmap | "loading" | "failed">;
 }
 
+/** What a held panel is carried as when dragged from the 保留 list. */
+const HELD_TYPE = "application/x-name-studio-held";
+
+/** One line under the tool's name in the options row. */
+const TOOL_HINTS: Record<Tool, string> = {
+  select: "クリックで選ぶ・ドラッグで動かす・ダブルクリックで書き込む。Shift で足す、囲んでまとめて選ぶ",
+  cut: "コマを横切るように引くと割れる（Alt で斜め）。コマの外をドラッグで新しいコマ",
+  text: "クリックした所にセリフを置く。選んで Alt+ホイールで文字の大きさ",
+  pen: "",
+  eraser: "",
+  fill: "囲んだ所を塗る",
+  breakout: "コマを突き抜ける所を囲む。中に描いた線はコマ枠の上に",
+  sticky: "クリックで付箋を貼る（書き出しには入りません）",
+};
+
 export class Workbench {
   readonly editor: PageEditor;
   private readonly history = new History<Project>();
   private readonly state: WorkbenchState = { project: null, path: null, dirty: false, revision: 0, pending: null, roughs: new Map() };
   /** Characters whose lines are listed in the 人物 tab. */
   private openCast = new Set<string>();
-  private sideTab: "pages" | "script" | "cast" | "notes" | "layers" = "pages";
+  private sideTab: "pages" | "script" | "cast" | "notes" | "held" | "layers" = "pages";
   private readonly layerView = new LayerView({
     selected: (ref) => this.layerSelected(ref),
     select: (ref) => this.selectLayer(ref),
@@ -276,6 +296,8 @@ export class Workbench {
       autosaveChanged: () => this.autosaver.notify(),
     });
     this.bindControls();
+    this.showSingle();
+    this.setTool(this.editor.tool);
   }
 
   setView(view: "edit" | OverviewKind): void {
@@ -554,6 +576,13 @@ export class Workbench {
     $("editor-page-label").textContent = this.state.project
       ? `${pages.join("–") || "-"} / ${this.state.project.pages.length}`
       : "-";
+    // 保留: the held panels meant for around these pages, a click away.
+    const badge = $("held-badge");
+    const near = this.state.project && pages.length ? heldNear(this.state.project, pages[0] - 1, pages[pages.length - 1] - 1).length : 0;
+    const all = this.state.project?.held?.length ?? 0;
+    badge.hidden = !all;
+    badge.textContent = near ? `保留 ${near}（このあたり）` : `保留 ${all}`;
+    badge.classList.toggle("near", near > 0);
   }
 
   private updateTitle(): void {
@@ -568,8 +597,9 @@ export class Workbench {
     $("side-script").hidden = this.sideTab !== "script";
     $("side-cast").hidden = this.sideTab !== "cast";
     $("side-notes").hidden = this.sideTab !== "notes";
+    $("side-held").hidden = this.sideTab !== "held";
     $("side-layers").hidden = this.sideTab !== "layers";
-    for (const tab of ["pages", "script", "cast", "notes"] as const) $(`tab-${tab}`).classList.toggle("active", this.sideTab === tab);
+    for (const tab of ["pages", "script", "cast", "notes", "held"] as const) $(`tab-${tab}`).classList.toggle("active", this.sideTab === tab);
     $("tab-layers-edit").classList.toggle("active", this.sideTab === "layers");
     const project = this.state.project;
     if (!project) return;
@@ -577,6 +607,7 @@ export class Workbench {
     if (this.sideTab === "script") this.renderScript(project);
     if (this.sideTab === "cast") this.renderCast(project);
     if (this.sideTab === "notes") this.renderNotes(project);
+    if (this.sideTab === "held") this.renderHeld(project);
     if (this.sideTab === "layers") this.renderLayers();
   }
 
@@ -660,10 +691,17 @@ export class Workbench {
       const item = element(
         "div",
         { className: `page-item${current.has(index + 1) ? " current" : ""}${part ? " tinted" : ""}`, title: part ? `${part.name}` : "" },
+        pageGlyph(project, page),
         element("span", { className: "number", textContent: String(index + 1) }),
         element("span", { className: "memo" }, sceneLabel, page.memo.split("\n")[0] || ""),
         ...this.optionTag(project, page),
-        element("span", { className: "count", textContent: `コマ ${page.panels.length}・字 ${textAmount(page)}${page.stickies?.length ? `・付箋 ${page.stickies.length}` : ""}` }),
+        element(
+          "span",
+          { className: "count", title: `コマ ${page.panels.length}・字 ${textAmount(page)}${page.stickies?.length ? `・付箋 ${page.stickies.length}` : ""}（コマの濃さはセリフの量）` },
+          `${textAmount(page)}字`,
+          ...(page.stickies?.length ? [element("span", { className: "sticky-count", textContent: String(page.stickies.length) })] : []),
+          ...(heldNear(project, index, index).length ? [element("span", { className: "held-count", title: "このあたりに入れたい保留のコマ", textContent: `保${heldNear(project, index, index).length}` })] : []),
+        ),
       );
       if (part) item.style.setProperty("--part", part.color);
       item.addEventListener("click", () => {
@@ -792,7 +830,9 @@ export class Workbench {
         const swatch = element("span", { className: "swatch" });
         swatch.style.background = STICKY_COLORS[sticky.color ?? "yellow"].fill;
         const text = element("span", { className: "note-text", textContent: sticky.text.trim() || "（空の付箋）" });
-        const where = element("span", { className: "count", textContent: `${index + 1}` });
+        const about = linkLabel(page, sticky);
+        const where = element("span", { className: "count", textContent: `${index + 1}`, title: about ? `${index + 1} ページの${about}` : `${index + 1} ページ` });
+        if (about) text.append(element("small", { className: "note-link", textContent: ` → ${about}` }));
         const row = element("div", { className: "note-item", title: "この付箋へ" }, swatch, where, text);
         row.addEventListener("click", () => this.goTo(page.id, "sticky", sticky.id));
         const done = element("button", { className: "small", textContent: "済み", title: "決まったので付箋を外す（元に戻すで戻せます）" });
@@ -806,6 +846,113 @@ export class Workbench {
     );
     const head = element("p", { className: "hint", textContent: items.length ? `付箋 ${items.length} 枚（未決のこと）。押すとその付箋へ、決まったら「済み」。` : "付箋はありません。付箋ツールでページに貼ると、ここに集まります。" });
     $("side-notes").replaceChildren(head, ...items);
+  }
+
+  /** 保留: panels waiting for a place, with the page each is meant for. */
+  private renderHeld(project: Project): void {
+    const held = project.held ?? [];
+    const shown = new Set(this.editor.currentPages().map((n) => project.pages[n - 1]?.id));
+    const target = this.editor.selection?.kind === "panel" ? this.editor.selection : null;
+    const items = held.map((h) => {
+      const near = element("select", { title: "このあたりのページに入れたい" });
+      near.append(element("option", { value: "", textContent: "ページ未定" }));
+      project.pages.forEach((page, index) => near.append(element("option", { value: page.id, textContent: `${index + 1} ページあたり` })));
+      near.value = project.pages.some((p) => p.id === h.near) ? h.near! : "";
+      near.addEventListener("change", () =>
+        this.edit(() => {
+          if (near.value) h.near = near.value;
+          else delete h.near;
+        }),
+      );
+      const words = h.lines.map((l) => l.text.replace(/\s+/g, "")).filter(Boolean).join(" / ");
+      const put = this.plainButton("このページに置く", () => {
+        const page = this.editor.focusPage();
+        if (page) this.putHeld(h.id, page);
+      });
+      put.title = "今のページの、元と同じ位置に置く（ページへドラッグしても置けます）";
+      const into = this.plainButton("選んだコマへ", () => {
+        const page = project.pages.find((p) => p.id === target?.pageId);
+        const panel = page?.panels.find((p) => p.id === target?.id);
+        if (page && panel) this.putHeld(h.id, page, undefined, panel);
+      });
+      into.title = "選んでいるコマに、中身（セリフ・ラフ線）を合わせて入れる";
+      into.disabled = !target;
+      const drop = this.plainButton("消す", () => this.edit((p) => (p.held = (p.held ?? []).filter((x) => x.id !== h.id))));
+      drop.className = "danger small";
+      const item = element(
+        "div",
+        { className: `held-item${h.near && shown.has(h.near) ? " near" : ""}`, draggable: true, title: "ページへドラッグして置く。コマの上で離すと、そのコマに中身を入れる" },
+        heldThumbnail(project, h),
+        element(
+          "div",
+          { className: "held-body" },
+          element("div", { className: "held-words", textContent: words || h.panel.note || "（セリフなし）" }),
+          ...(h.panel.note && words ? [element("div", { className: "held-note", textContent: h.panel.note })] : []),
+          near,
+          element("div", { className: "held-actions" }, put, into, drop),
+        ),
+      );
+      item.addEventListener("dragstart", (event) => {
+        event.dataTransfer?.setData(HELD_TYPE, h.id);
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+      });
+      return item;
+    });
+    const head = element("p", {
+      className: "hint",
+      textContent: held.length
+        ? `保留のコマ ${held.length}。ページへドラッグで置く（コマの上で離すと中身をそのコマへ）。`
+        : "保留のコマはありません。コマを選んで「保留」を押すと、中身ごとここへ移ります。置き場所が決まったら、ページへドラッグして戻します。",
+    });
+    $("side-held").replaceChildren(head, ...items);
+  }
+
+  /** Put a held panel on `page`: into `panel`, at `point`, or where it was. */
+  private putHeld(id: string, page: Page, point?: Point, panel?: Panel): void {
+    const held = this.state.project?.held?.find((h) => h.id === id);
+    if (!held) return;
+    let placed: Panel | null = null;
+    this.edit((p) => {
+      const at = p.pages.find((x) => x.id === page.id);
+      const into = panel && at?.panels.find((x) => x.id === panel.id);
+      if (at) placed = placeHeld(p, at, held, point, into);
+    });
+    if (!placed) return;
+    const index = this.state.project!.pages.findIndex((x) => x.id === page.id);
+    this.editor.showPage(index + 1);
+    this.editor.select({ kind: "panel", pageId: page.id, id: (placed as Panel).id });
+    this.setStatus(panel ? `保留のコマの中身を ${index + 1} ページのコマ ${(placed as Panel).order} に入れました` : `保留のコマを ${index + 1} ページに置きました（コマ ${(placed as Panel).order}）`);
+    this.renderAll();
+  }
+
+  /** Take the selected panel off its page into 保留. */
+  private holdSelected(page: Page, panel: Panel): void {
+    const index = this.state.project!.pages.indexOf(page);
+    this.edit((p) => {
+      const at = p.pages.find((x) => x.id === page.id);
+      const target = at?.panels.find((x) => x.id === panel.id);
+      if (at && target) holdPanel(p, at, target);
+    });
+    this.editor.select(null);
+    this.setStatus(`${index + 1} ページのコマ ${panel.order} を中身ごと保留にしました（左の「保留」から、ページへドラッグで戻せます）`);
+    this.renderAll();
+  }
+
+  /** Move the selected panel with what is in it to another page. */
+  private moveSelectedTo(page: Page, panel: Panel, to: Page): void {
+    let moved: Panel | null = null;
+    this.edit((p) => {
+      const from = p.pages.find((x) => x.id === page.id);
+      const target = from?.panels.find((x) => x.id === panel.id);
+      const dest = p.pages.find((x) => x.id === to.id);
+      if (from && target && dest) moved = movePanelToPage(p, from, target, dest);
+    });
+    if (!moved) return;
+    const index = this.state.project!.pages.findIndex((x) => x.id === to.id);
+    this.editor.showPage(index + 1);
+    this.editor.select({ kind: "panel", pageId: to.id, id: (moved as Panel).id });
+    this.setStatus(`コマを中身ごと ${index + 1} ページへ移しました（コマ ${(moved as Panel).order}）。重なったら動かすか、コマ割りで整えてください`);
+    this.renderAll();
   }
 
   /** Show a page in the editor with one of its things selected. */
@@ -823,6 +970,7 @@ export class Workbench {
 
   renderInspector(): void {
     this.renderInspectorPanel();
+    this.dressInspector();
     this.renderLayers();
     // The bar's buttons hold the objects of the project as it is now.
     this.editor.renderBar();
@@ -857,11 +1005,23 @@ export class Workbench {
         });
         const hasLines = page.lines.some((line) => line.panel === panel.id);
         const arrange = button("セリフを並べる", "このコマのセリフを読む順に右上から並べ直す（長いセリフは改行）", () => this.arrange(page.id, panel.id));
+        const hold = button("保留", "中身ごと保留にする: 置き場所を決めるまで、左の「保留」に置いておく", () => this.holdSelected(page, panel));
+        const moveTo = element("select", { title: "中身ごとほかのページへ移す" });
+        moveTo.append(element("option", { value: "", textContent: "移す…" }));
+        project.pages.forEach((other, index) => {
+          if (other !== page) moveTo.append(element("option", { value: other.id, textContent: `→ ${index + 1} ページ` }));
+        });
+        moveTo.addEventListener("change", () => {
+          const to = project.pages.find((p) => p.id === moveTo.value);
+          if (to) this.moveSelectedTo(page, panel, to);
+        });
         return [
           button("メモ", "このコマのメモをその場で書く（コマをダブルクリックでも）", () => this.editor.editInPlace(page.id, "note", panel.id)),
           transform,
           ...(hasLines ? [arrange] : []),
           inset,
+          hold,
+          moveTo,
           copy,
           remove,
         ];
@@ -879,7 +1039,13 @@ export class Workbench {
           }),
         );
         tail.disabled = resolvedShape(line) === "none";
-        return [button("書く", "その場で書き直す（ダブルクリックでも）", () => this.editor.editInPlace(page.id, "line", line.id)), kind, tail, transform, copy, remove];
+        const mask = button(
+          "マスク",
+          "コマ枠でマスク: コマの外に出た所を隠す（もう一度押すと戻す）",
+          () => this.edit(() => (line.mask ? delete line.mask : (line.mask = true))),
+          line.mask ? "active" : "",
+        );
+        return [button("書く", "その場で書き直す（ダブルクリックでも）", () => this.editor.editInPlace(page.id, "line", line.id)), kind, tail, ...(line.panel ? [mask] : []), transform, copy, remove];
       }
       case "stroke":
       case "group":
@@ -939,7 +1105,7 @@ export class Workbench {
     }
     if (s?.kind === "sticky") {
       const sticky = page.stickies?.find((n) => n.id === s.id);
-      if (sticky) return panel.replaceChildren(...this.stickyInspector(sticky));
+      if (sticky) return panel.replaceChildren(...this.stickyInspector(page, sticky));
     }
     if (s?.kind === "fill") {
       const fill = page.fills?.find((f) => f.id === s.id);
@@ -1016,6 +1182,33 @@ export class Workbench {
     panel.replaceChildren(...this.pageInspector(project, page));
   }
 
+  /** Hints folded away once read: the first sentence shows, the rest opens on a click. */
+  private openHints = new Set<string>();
+
+  /**
+   * The inspector in the colour of what is selected, with its tool's icon, and
+   * long how-to hints folded to their first sentence.
+   */
+  private dressInspector(): void {
+    const panel = $("inspector");
+    const kind = this.editor.selection?.kind ?? "page";
+    panel.dataset.kind = kind;
+    const tool = { panel: "tool-cut", line: "tool-text", sticky: "tool-sticky", fill: "tool-fill", stroke: "tool-pen", breakout: "tool-breakout", group: "tool-select" }[kind as string] ?? "view-edit";
+    const icon = document.getElementById(tool)?.querySelector("svg");
+    const title = panel.querySelector("h2");
+    if (icon && title) title.prepend(icon.cloneNode(true));
+    for (const hint of panel.querySelectorAll<HTMLElement>("p.hint")) {
+      const text = hint.textContent ?? "";
+      const cut = text.indexOf("。") + 1;
+      if (cut <= 0 || cut >= text.length - 1 || text.length < 40) continue;
+      const head = cut <= 46 ? text.slice(0, cut) : "使い方";
+      const fold = element("details", { className: "hint-fold" }, element("summary", { textContent: head }), element("p", { textContent: head === "使い方" ? text : text.slice(cut) }));
+      fold.open = this.openHints.has(text);
+      fold.addEventListener("toggle", () => (fold.open ? this.openHints.add(text) : this.openHints.delete(text)));
+      hint.replaceWith(fold);
+    }
+  }
+
   /** A text field edited live; the whole edit becomes one undo step. */
   private liveText(field: HTMLInputElement | HTMLTextAreaElement, apply: (value: string) => void): void {
     let snapshot: string | null = null;
@@ -1032,6 +1225,50 @@ export class Workbench {
       this.renderSide();
       $<HTMLButtonElement>("undo").disabled = !this.history.canUndo;
     });
+  }
+
+  /**
+   * A number edited live: typing, the arrows and the mouse wheel (over the
+   * field, focused or not) show at once on the page; a moment after the last
+   * change it becomes one undo step. The field stays where it is, so the
+   * wheel can go on turning.
+   */
+  private liveNumber(field: HTMLInputElement, apply: (value: number) => void): void {
+    let snapshot: string | null = null;
+    let timer: number | undefined;
+    const record = () => {
+      window.clearTimeout(timer);
+      timer = undefined;
+      if (snapshot !== null && snapshot !== JSON.stringify(this.state.project)) this.history.recordSnapshot(snapshot);
+      snapshot = null;
+      $<HTMLButtonElement>("undo").disabled = !this.history.canUndo;
+    };
+    const set = (value: number) => {
+      if (!Number.isFinite(value) || value <= 0) return;
+      snapshot ??= JSON.stringify(this.state.project);
+      apply(value);
+      this.markDirty();
+      this.editor.draw();
+      this.updateTitle();
+      window.clearTimeout(timer);
+      timer = window.setTimeout(record, 700);
+    };
+    field.addEventListener("input", () => set(Number(field.value)));
+    field.addEventListener("change", (event) => event.stopPropagation());
+    field.addEventListener("blur", record);
+    field.addEventListener(
+      "wheel",
+      (event) => {
+        event.preventDefault();
+        const step = Number(field.step) || 1;
+        const [min, max] = [Number(field.min || -Infinity), Number(field.max || Infinity)];
+        const next = Math.min(max, Math.max(min, Math.round((Number(field.value) + (event.deltaY < 0 ? step : -step)) / step) * step));
+        if (next === Number(field.value)) return;
+        field.value = String(next);
+        set(next);
+      },
+      { passive: false },
+    );
   }
 
   private lineInspector(project: Project, page: Page, line: Line): HTMLElement[] {
@@ -1066,14 +1303,11 @@ export class Workbench {
         }
       }),
     );
-    const size = element("input", { type: "number", min: "4", max: "72", step: "0.5", value: String(round(line.fontSizePt)) });
-    size.addEventListener("change", () =>
-      this.edit(() => {
-        const value = Number(size.value);
-        if (value > 0) line.fontSizePt = value;
-        setLineText(line, line.text);
-      }),
-    );
+    const size = element("input", { type: "number", min: "4", max: "72", step: "0.5", value: String(round(line.fontSizePt)), title: "文字の大きさ（pt）。マウスのホイールでも変えられます" });
+    this.liveNumber(size, (value) => {
+      line.fontSizePt = value;
+      setLineText(line, line.text);
+    });
     const vertical = element("input", { type: "checkbox", checked: line.vertical });
     vertical.addEventListener("change", () =>
       this.edit(() => {
@@ -1117,6 +1351,11 @@ export class Workbench {
     };
     const inverted = flag("白抜き", !!line.inverted, (on) => (on ? (line.inverted = true) : delete line.inverted));
     const emphasis = flag("太字（強調）", !!line.emphasis, (on) => (on ? (line.emphasis = true) : delete line.emphasis));
+    const mask = flag("コマ枠でマスク（枠の外を隠す）", !!line.mask, (on) => (on ? (line.mask = true) : delete line.mask));
+    if (!line.panel) {
+      mask.title = "コマの中にないセリフはマスクできません";
+      mask.querySelector("input")!.disabled = !line.mask;
+    }
     const hasBalloon = resolvedShape(line) !== "none";
     const tails = line.tails ?? [];
     const addTail = element("button", { textContent: "しっぽを足す", disabled: !hasBalloon });
@@ -1175,6 +1414,7 @@ export class Workbench {
       element("h3", { textContent: "フキダシ" }),
       element("label", {}, "形", shape),
       makeDefault,
+      mask,
       element("div", { className: "row" }, addTail, removeTail),
       element("label", {}, `しっぽ（${tails.length} 本）`, tailStyle),
       element("label", {}, "つなぐ（連結フキダシ）", link),
@@ -1240,7 +1480,8 @@ export class Workbench {
     });
     return [
       element("h2", { textContent: `${pageIndex(project, page.id) + 1} ページ ${order} コマ目` }),
-      element("label", {}, "メモ（ページの上にも出ます。コマをダブルクリックでその場で書けます）", note),
+      element("label", {}, "メモ（ページの上にも出ます。コマをダブルクリックでその場で書けます。札はドラッグで好きな所へ）", note),
+      ...(panel.noteAt ? [this.plainButton("メモの札をコマの角に戻す", () => this.edit(() => delete panel.noteAt))] : []),
       element("div", { className: "row" }, element("label", {}, "枠線", border), element("label", {}, "塗り", fill)),
       element("label", {}, "背景の効果", effect),
       element("h3", { textContent: "裁ち切り（ページの外まで）" }),
@@ -1337,7 +1578,13 @@ export class Workbench {
     return [element("h3", { textContent: "つなげる" }), element("div", { className: "row" }, ...buttons)];
   }
 
-  private stickyInspector(sticky: Sticky): HTMLElement[] {
+  private plainButton(label: string, action: () => void): HTMLButtonElement {
+    const b = element("button", { textContent: label });
+    b.addEventListener("click", action);
+    return b;
+  }
+
+  private stickyInspector(page: Page, sticky: Sticky): HTMLElement[] {
     const text = element("textarea", { value: sticky.text, placeholder: "気づいたこと、直したいこと" });
     this.liveText(text, (value) => (sticky.text = value));
     const colors = (Object.keys(STICKY_COLORS) as StickyColor[]).map((color) => {
@@ -1359,7 +1606,11 @@ export class Workbench {
       element("h2", { textContent: "付箋" }),
       element("label", {}, "メモ", text),
       element("div", { className: "row sticky-colors" }, ...colors),
-      element("p", { className: "hint", textContent: "付箋は作業用のメモで、CSP・PDF には書き出しません。ドラッグで動かせます。" }),
+      element("h3", { textContent: "紐づけ" }),
+      linkLabel(page, sticky)
+        ? element("div", { className: "row link-row" }, element("span", { className: "link-target", textContent: `→ ${linkLabel(page, sticky)}` }), this.plainButton("外す", () => this.edit(() => delete sticky.link)))
+        : element("p", { className: "hint", textContent: "どこにも紐づいていません。付箋の左下の丸を、コマかセリフの上へドラッグすると紐づきます。" }),
+      element("p", { className: "hint", textContent: "付箋は作業用のメモで、CSP・PDF には書き出しません。ドラッグで好きな所へ動かせ、紐づけた先とは線でつながったままです（コマやセリフを動かすと付いてきます）。" }),
       remove,
     ];
   }
@@ -1572,7 +1823,35 @@ export class Workbench {
       $(`tool-${name}`).classList.toggle("active", name === tool);
     }
     $("fill-tones").hidden = tool !== "fill";
+    // The options row names the tool and shows only what it has; nothing else moves.
+    const button = $(`tool-${tool}`);
+    const name = $("tool-name");
+    name.replaceChildren(...[...button.childNodes].map((node) => node.cloneNode(true)));
+    name.style.setProperty("--tool", getComputedStyle(button).getPropertyValue("--tool"));
+    $("tool-hint").textContent = TOOL_HINTS[tool];
     this.renderBrushBar();
+  }
+
+  private showSingle(): void {
+    const single = this.editor.single;
+    $("spread-mode").classList.toggle("active", !single);
+    $("single-mode").classList.toggle("active", single);
+    $<HTMLInputElement>("editor-first-alone").disabled = single;
+    $("first-alone-label").setAttribute("aria-disabled", String(single));
+  }
+
+  /** 見開き or 単独: keeps the page in view. */
+  setSingle(single: boolean): void {
+    const page = this.editor.focusPage();
+    const project = this.state.project;
+    this.editor.single = single;
+    writeFlag(SINGLE_PAGE_KEY, single);
+    this.showSingle();
+    const index = page && project ? project.pages.indexOf(page) : -1;
+    this.editor.spreadIndex = 0;
+    if (index >= 0) this.editor.showPage(index + 1);
+    this.editor.resetView();
+    this.renderAll();
   }
 
   /** 投げなわ塗り: what the fill tool fills with. */
@@ -1709,6 +1988,8 @@ export class Workbench {
       writeFlag(SHOW_NOTES_KEY, showNotes.checked);
       this.editor.draw();
     });
+    $("spread-mode").addEventListener("click", () => this.setSingle(false));
+    $("single-mode").addEventListener("click", () => this.setSingle(true));
     $<HTMLInputElement>("editor-first-alone").addEventListener("change", (event) => {
       this.editor.firstAlone = (event.target as HTMLInputElement).checked;
       this.editor.spreadIndex = 0;
@@ -1717,12 +1998,30 @@ export class Workbench {
     for (const name of ["edit", "board", "structure", "emotion", "timeline"] as const) {
       $(`view-${name}`).addEventListener("click", () => this.setView(name));
     }
-    for (const tab of ["pages", "script", "cast", "notes"] as const) {
+    for (const tab of ["pages", "script", "cast", "notes", "held"] as const) {
       $(`tab-${tab}`).addEventListener("click", () => {
         this.sideTab = tab;
         this.renderSide();
       });
     }
+    $("held-badge").addEventListener("click", () => {
+      this.sideTab = "held";
+      this.renderSide();
+    });
+    // A held panel dropped on a page: into the panel there, else where it is dropped.
+    const canvas = $("editor-canvas");
+    canvas.addEventListener("dragover", (event) => {
+      if (!event.dataTransfer?.types.includes(HELD_TYPE)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+    });
+    canvas.addEventListener("drop", (event) => {
+      const id = event.dataTransfer?.getData(HELD_TYPE);
+      if (!id) return;
+      event.preventDefault();
+      const where = this.editor.pageAtClient(event.clientX, event.clientY);
+      if (where) this.putHeld(id, where.page, where.point, where.panel);
+    });
     $("tab-layers-edit").addEventListener("click", () => {
       this.sideTab = "layers";
       this.renderSide();

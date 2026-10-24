@@ -382,3 +382,45 @@ fn titles_the_name_from_the_comic_settings() {
     let (project, _) = import_sheet(&ClipDocument::read(&path).unwrap(), PageFormat::default()).unwrap();
     assert_eq!(project.title, "Template 第3話");
 }
+
+/// 付箋の紐づけ, a moved panel memo, a masked balloon and 保留コマ survive saving.
+#[test]
+fn keeps_links_masks_and_held_panels() {
+    let text = r##"{
+      "formatVersion": 2, "title": "t", "author": "", "binding": "right",
+      "pageFormat": {"canvasMm": [297, 420], "trimMm": [257, 364], "basicMm": [180, 270], "basicOffsetMm": [0, 0]},
+      "pages": [{
+        "id": "page1", "memo": "",
+        "panels": [{"id": "panel2", "shape": [[58, 0], [238, 0], [238, 120], [58, 120]], "order": 1, "note": "間", "noteAt": [-40, 10]}],
+        "lines": [{"id": "line3", "text": "待って", "kind": "speech", "box": [100, 50, 110, 80], "fontSizePt": 13, "vertical": true, "panel": "panel2", "mask": true}],
+        "strokes": [], "roughs": [],
+        "stickies": [{"id": "sticky4", "text": "長く", "at": [10, 200], "link": {"kind": "panel", "id": "panel2", "at": [30, 40]}}]
+      }],
+      "characters": [], "scenes": [], "emotions": [], "nextId": 10,
+      "held": [{
+        "id": "held5", "near": "page1", "from": "page1",
+        "panel": {"id": "panel6", "shape": [[58, 130], [238, 130], [238, 250], [58, 250]], "order": 2},
+        "lines": [{"id": "line7", "text": "いつか", "kind": "speech", "box": [100, 150, 110, 180], "fontSizePt": 13, "vertical": true}],
+        "strokes": [{"id": "stroke8", "points": [[1, 2, 1], [3, 4, 1]], "widthMm": 0.4, "closed": false}]
+      }]
+    }"##;
+    let project = Project::from_json(text).expect("project");
+    let page = &project.pages[0];
+    assert_eq!(page.panels[0].note_at, Some([-40.0, 10.0]));
+    assert!(page.lines[0].mask);
+    let link = page.stickies[0].link.as_ref().expect("link");
+    assert_eq!(
+        (link.kind.as_str(), link.id.as_str(), link.at),
+        ("panel", "panel2", [30.0, 40.0])
+    );
+    assert_eq!(project.held.len(), 1);
+    assert_eq!(project.held[0].panel.id, "panel6");
+    assert_eq!(project.held[0].lines[0].text, "いつか");
+    assert_eq!(project.held[0].near.as_deref(), Some("page1"));
+    let json = project.to_json().unwrap();
+    assert!(
+        json.contains("\"noteAt\"") && json.contains("\"mask\": true") && json.contains("\"held\""),
+        "{json}"
+    );
+    assert_eq!(Project::from_json(&json).unwrap(), project);
+}

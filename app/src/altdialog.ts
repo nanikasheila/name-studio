@@ -1,6 +1,6 @@
 // The 別案 dialog: the options of a set side by side, to compare and pick.
 import { optionPages, removeAlternative, useAlternative } from "./alternatives";
-import { drawBalloons, drawLineText, drawPanelBorders, drawPanelFills, drawStrokes } from "./pagedraw";
+import { drawBalloons, drawPageTexts, drawPanelBorders, drawPanelFills, drawStrokes } from "./pagedraw";
 import { trimBox, type Alternatives, type Page, type Project } from "./project";
 
 export interface AltDialogHost {
@@ -35,7 +35,7 @@ export function pageThumbnail(project: Project, page: Page, width = THUMB_WIDTH)
   drawPanelBorders(ctx, page, m, undefined, 0.6);
   drawStrokes(ctx, page, m, true, () => "#3a3834", 0.4, brushes);
   drawBalloons(ctx, page, m, 0.5);
-  for (const line of page.lines) drawLineText(ctx, line, m);
+  drawPageTexts(ctx, page, m);
   return canvas;
 }
 

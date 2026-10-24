@@ -1,6 +1,7 @@
 // Drawing the parts of a name page (mm coordinates) onto a 2D canvas, shared
 // by the editor and the export (CSP layers, PDF).
 import { pageBalloons } from "./balloon";
+import { maskShape } from "./mask";
 import { opacityFactors, widthFactors } from "./brush";
 import { borderLines, borderWidthMm, dashes, effectStrokes, stacked } from "./koma";
 import { MM_PER_PT, type Brush, type Line, type Page, type Panel, type Point, type Stroke } from "./project";
@@ -319,6 +320,23 @@ export function drawBalloonFills(ctx: CanvasRenderingContext2D, page: Page, m: M
     if (balloon.outline.length < 3) continue;
     tracePath(ctx, balloon.outline, m, true);
     ctx.fill();
+  }
+}
+
+/** All the words of a page; a masked line's no further than its panel. */
+export function drawPageTexts(ctx: CanvasRenderingContext2D, page: Page, m: MmToPx): void {
+  for (const line of page.lines) {
+    const panel = line.mask ? page.panels.find((p) => p.id === line.panel) : undefined;
+    const clip = panel && maskShape(panel);
+    if (!clip) {
+      drawLineText(ctx, line, m);
+      continue;
+    }
+    ctx.save();
+    tracePath(ctx, clip, m, true);
+    ctx.clip();
+    drawLineText(ctx, line, m);
+    ctx.restore();
   }
 }
 

@@ -2,6 +2,7 @@
 // linked balloons (連結) merged into one outline. Every shape is built as a
 // star around the text's centre (points in order of angle), which is what
 // lets a tail or a link replace an arc of the outline.
+import { clipClosed, clipOpen, maskShape } from "./mask";
 import { boxCenter, type BalloonShape, type BoxMm, type Line, type LineKind, type Page, type Point, type Tail, type TailStyle } from "./project";
 
 export type ResolvedShape = Exclude<BalloonShape, "auto">;
@@ -462,15 +463,27 @@ export function pageBalloons(page: Page): BalloonDrawing[] {
     const members = ids.map((id) => stars.get(id)!);
     const head = members[0].line;
     const groupLinks = links.filter(([a]) => ids.includes(a));
-    const outline =
+    let outline =
       members.length === 1
         ? members[0].star.samples.map((sample) => sample.point)
         : joinStars(new Map(members.map((m) => [m.line.id, m])), groupLinks);
+    let extras = members.flatMap((m) => m.extras);
+    // コマ枠でマスク: cut off at the panel's border.
+    const panel = head.mask ? page.panels.find((p) => p.id === head.panel) : undefined;
+    const clip = panel && maskShape(panel);
+    if (clip) {
+      outline = clipClosed(outline, clip);
+      extras = extras.flatMap((extra) =>
+        extra.closed
+          ? [{ ...extra, points: clipClosed(extra.points, clip) }].filter((e) => e.points.length >= 3)
+          : clipOpen(extra.points, clip).map((points) => ({ ...extra, points })),
+      );
+    }
     result.push({
       lines: members.map((m) => m.line),
       shape: resolvedShape(head),
       outline,
-      extras: members.flatMap((m) => m.extras),
+      extras,
       inverted: !!head.inverted,
     });
   }

@@ -4,6 +4,7 @@
 // the editor takes a snapshot before each change for undo.
 
 import { storedOutline } from "./balloon";
+import type { HeldPanel } from "./hold";
 import { inheritOpenEdges } from "./koma";
 import { wrapDialogue } from "./wrap";
 
@@ -68,6 +69,8 @@ export interface Panel {
   z?: number;
   /** 演出メモ */
   note?: string;
+  /** Where the memo's tag was moved to: its top left from the panel's top left (mm); none: in the panel's corner. */
+  noteAt?: Point;
   /** 見開き: shared by the two halves of a panel across the gutter. */
   spread?: string;
 }
@@ -98,6 +101,8 @@ export interface Line {
   inverted?: boolean;
   /** 強調: bold. */
   emphasis?: boolean;
+  /** コマ枠でマスク: the balloon is cut off at the border of its panel. */
+  mask?: boolean;
 }
 
 /**
@@ -222,6 +227,15 @@ export interface Sticky {
   text: string;
   at: Point;
   color?: StickyColor;
+  /** 紐づけ: what the note is about; it points there wherever the note is put. */
+  link?: StickyLink;
+}
+
+/** A panel or a line a 付箋 is about, and the point on it the note points to (from its top left, mm). */
+export interface StickyLink {
+  kind: "panel" | "line";
+  id: string;
+  at: Point;
 }
 
 export const STICKY_COLORS: Record<StickyColor, { label: string; fill: string }> = {
@@ -266,6 +280,51 @@ export function keepStickyOnPage(project: Project, sticky: Sticky): void {
   const x = Math.min(Math.max(x0, 0), Math.max(0, width - (x1 - x0)));
   const y = Math.min(Math.max(y0, 0), Math.max(0, height - (y1 - y0)));
   sticky.at = [x, y];
+}
+
+/** The box a link's point is measured from: the panel's bounds or the line's box. */
+function linkBase(page: Page, kind: StickyLink["kind"], id: string): BoxMm | null {
+  if (kind === "panel") {
+    const panel = page.panels.find((p) => p.id === id);
+    return panel ? bounds(panel.shape) : null;
+  }
+  return page.lines.find((l) => l.id === id)?.box ?? null;
+}
+
+/** Where on the page a 付箋 points (null: it is about nothing there). */
+export function stickyAnchor(page: Page, sticky: Sticky): Point | null {
+  const link = sticky.link;
+  const base = link && linkBase(page, link.kind, link.id);
+  return link && base ? [base[0] + link.at[0], base[1] + link.at[1]] : null;
+}
+
+/** Tie a 付箋 to a panel or a line, pointing at `point` on it; false when it is not on the page. */
+export function linkSticky(page: Page, sticky: Sticky, kind: StickyLink["kind"], id: string, point: Point): boolean {
+  const base = linkBase(page, kind, id);
+  if (!base) return false;
+  sticky.link = { kind, id, at: [point[0] - base[0], point[1] - base[1]] };
+  return true;
+}
+
+/** Let go of links to panels and lines no longer on the page; how many were let go. */
+export function dropLostLinks(page: Page): number {
+  let lost = 0;
+  for (const sticky of page.stickies ?? []) {
+    if (sticky.link && !linkBase(page, sticky.link.kind, sticky.link.id)) {
+      delete sticky.link;
+      lost++;
+    }
+  }
+  return lost;
+}
+
+/** What a 付箋 is about, in a few words (empty: nothing). */
+export function linkLabel(page: Page, sticky: Sticky): string {
+  const link = sticky.link;
+  if (!link || !linkBase(page, link.kind, link.id)) return "";
+  if (link.kind === "panel") return `コマ ${page.panels.find((p) => p.id === link.id)!.order}`;
+  const text = page.lines.find((l) => l.id === link.id)!.text.replace(/\s+/g, "");
+  return `セリフ「${[...text].length > 10 ? `${[...text].slice(0, 10).join("")}…` : text}」`;
 }
 
 export function removeSticky(page: Page, id: string): void {
@@ -417,6 +476,8 @@ export interface Project {
   plan?: Plan;
   /** 作品ごとのフキダシの既定: the shape new lines of each kind get. */
   lineShapes?: Partial<Record<LineKind, BalloonShape>>;
+  /** 保留コマ: panels taken off the pages until it is decided where they go. */
+  held?: HeldPanel[];
   nextId: number;
 }
 
