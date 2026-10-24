@@ -3,7 +3,7 @@
 import { $ } from "./dom";
 import { PAGE_GAP_KEY, type PageEditor } from "./editor";
 import { GRID_GAP_MM } from "./layout";
-import { gutters, setBinding, setGutters, type Project } from "./project";
+import { gutters, nameKind, setBinding, setGutters, type Project } from "./project";
 import { writeNumber } from "./settings";
 import { DEFAULT_SNAP, MAX_GRID_MM, MIN_GRID_MM, saveSnap, type SnapSettings } from "./snapping";
 
@@ -96,8 +96,9 @@ export class SettingsDialog {
       if (document.activeElement !== field) field.value = value === undefined ? "" : String(value);
     }
     const binding = $<HTMLSelectElement>("st-binding");
-    binding.value = project?.binding ?? "right";
-    binding.disabled = !project;
+    // 縦スクロール is chosen when the name is made (its pieces are a size of their own).
+    binding.value = project ? nameKind(project) : "right";
+    binding.disabled = !project || !!project.scroll;
     const gap = $<HTMLInputElement>("st-page-gap");
     if (document.activeElement !== gap) gap.value = String(this.host.editor.pageGapMm);
     const snap = this.host.editor.snapping;

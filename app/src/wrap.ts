@@ -26,6 +26,9 @@ function scriptOf(char: string): Script {
 /** How good a break is between `before` and `after` (higher is better; very low is not allowed). */
 function breakScore(before: string, after: string): number {
   if (NO_START.has(after) || NO_END.has(before)) return -100;
+  // Between words written with spaces: after the space, which the line then drops.
+  if (before === " ") return 3;
+  if (after === " ") return -5;
   if (PUNCTUATION.has(before)) return 6;
   const a = scriptOf(before);
   const b = scriptOf(after);
@@ -71,6 +74,8 @@ export function wrapDialogue(text: string, width = 8): string {
     }
     // A poor break with little left: the rest goes on one line, a little long.
     if (bestScore < 0 && chars.length - start <= width + 4) break;
+    // Not a word or two left over on a line of their own.
+    if (chars.length - best <= 3 && chars.length - start <= width + 4) break;
     if (best < 0 || bestScore < -50) {
       // Nowhere good: past the closing punctuation after the target, or just at it.
       best = Math.min(chars.length, start + width);
@@ -80,5 +85,5 @@ export function wrapDialogue(text: string, width = 8): string {
     start = best;
   }
   if (start < chars.length) lines.push(chars.slice(start).join(""));
-  return lines.join("\n");
+  return lines.map((line) => line.replace(/^ +| +$/g, "")).join("\n");
 }

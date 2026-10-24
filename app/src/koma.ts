@@ -241,6 +241,8 @@ export function moveBreakout(breakout: Breakout, dx: number, dy: number): void {
 /** The page facing `page` in its spread and the side of `page` at the gutter. */
 export function facingPage(project: Project, page: Page, firstAlone: boolean): { page: Page; gutter: Side } | null {
   const number = pageIndex(project, page.id) + 1;
+  // 縦スクロール: the pieces of the strip never face each other.
+  if (project.scroll) return null;
   const pair = spreads(project.pages.length, firstAlone).find((p) => p.includes(number));
   if (!pair || pair[0] === null || pair[1] === null) return null;
   const left = onLeftHand(pair, number, project.binding);

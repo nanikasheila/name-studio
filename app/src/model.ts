@@ -349,6 +349,8 @@ export interface Project {
   images?: StoredImage[];
   /** コマ間: the gaps new panels get (cuts, panel patterns); none is DEFAULT_GUTTERS. */
   gutters?: Gutters;
+  /** 縦スクロール (Webtoon): the pages are pieces (区切り) of one tall strip, read top to bottom, with no spreads. */
+  scroll?: boolean;
   nextId: number;
 }
 

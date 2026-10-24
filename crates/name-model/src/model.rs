@@ -57,6 +57,10 @@ pub struct Project {
     /// コマ間: the gaps new panels get (cuts, panel patterns); none is the default 2 mm / 6 mm.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gutters: Option<Gutters>,
+    /// 縦スクロール (Webtoon): the pages are pieces of one tall strip, read
+    /// top to bottom, with no spreads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scroll: Option<bool>,
     /// Next number used by [`Project::new_id`]; ids are never reused.
     pub next_id: u64,
 }
@@ -822,6 +826,7 @@ impl Project {
             held: Vec::new(),
             images: Vec::new(),
             gutters: None,
+            scroll: None,
             next_id: 1,
         }
     }

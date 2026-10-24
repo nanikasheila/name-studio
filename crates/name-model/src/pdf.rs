@@ -2,7 +2,8 @@
 //!
 //! The pages are drawn by the app (it has the fonts for the dialogue) and
 //! come here as JPEG; each becomes one PDF page of the given size. A
-//! right-bound book opens right to left in viewers that honour it.
+//! right-bound book opens right to left in viewers that honour it, a
+//! 縦スクロール strip as one column of pieces.
 
 const POINTS_PER_MM: f64 = 72.0 / 25.4;
 
@@ -15,6 +16,17 @@ pub struct PdfImagePage {
     pub jpeg: Vec<u8>,
 }
 
+/// How the pages are shown in a viewer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PdfLayout {
+    /// 右綴じ: spreads, read right to left.
+    RightToLeft,
+    /// 左綴じ: spreads, read left to right.
+    LeftToRight,
+    /// 縦スクロール: one page under the other.
+    Scroll,
+}
+
 /// Text string in UTF-16BE with a byte order mark, as PDF wants for non-ASCII.
 fn text_string(text: &str) -> String {
     let mut hex = String::from("<FEFF");
@@ -25,7 +37,7 @@ fn text_string(text: &str) -> String {
     hex
 }
 
-pub fn image_pdf(title: &str, pages: &[PdfImagePage], right_to_left: bool) -> Vec<u8> {
+pub fn image_pdf(title: &str, pages: &[PdfImagePage], layout: PdfLayout) -> Vec<u8> {
     let mut out: Vec<u8> = b"%PDF-1.7\n%\xE2\xE3\xCF\xD3\n".to_vec();
     let mut offsets: Vec<usize> = Vec::new();
     // Objects: 1 catalog, 2 page tree, 3 info, then page, content, image per page.
@@ -36,10 +48,10 @@ pub fn image_pdf(title: &str, pages: &[PdfImagePage], right_to_left: bool) -> Ve
         out.extend_from_slice(body);
         out.extend_from_slice(b"\nendobj\n");
     };
-    let preferences = if right_to_left {
-        " /ViewerPreferences << /Direction /R2L >> /PageLayout /TwoPageRight"
-    } else {
-        " /PageLayout /TwoPageRight"
+    let preferences = match layout {
+        PdfLayout::RightToLeft => " /ViewerPreferences << /Direction /R2L >> /PageLayout /TwoPageRight",
+        PdfLayout::LeftToRight => " /PageLayout /TwoPageRight",
+        PdfLayout::Scroll => " /PageLayout /OneColumn",
     };
     object(
         &mut out,
@@ -122,7 +134,7 @@ mod tests {
         let pdf = image_pdf(
             "第1話",
             &[page(b"\xFF\xD8one\xFF\xD9"), page(b"\xFF\xD8two\xFF\xD9")],
-            true,
+            PdfLayout::RightToLeft,
         );
         let text = String::from_utf8_lossy(&pdf);
         assert!(text.starts_with("%PDF-1.7"));
@@ -150,5 +162,23 @@ mod tests {
                 number + 1
             );
         }
+    }
+
+    #[test]
+    fn lays_out_a_strip_as_one_column_and_a_left_bound_book_as_spreads() {
+        let page = PdfImagePage {
+            width_mm: 120.0,
+            height_mm: 240.0,
+            width_px: 1,
+            height_px: 2,
+            jpeg: b"\xFF\xD8\xFF\xD9".to_vec(),
+        };
+        let strip =
+            String::from_utf8_lossy(&image_pdf("t", std::slice::from_ref(&page), PdfLayout::Scroll)).into_owned();
+        assert!(strip.contains("/PageLayout /OneColumn"));
+        assert!(!strip.contains("/R2L"));
+        let book = String::from_utf8_lossy(&image_pdf("t", &[page], PdfLayout::LeftToRight)).into_owned();
+        assert!(book.contains("/PageLayout /TwoPageRight"));
+        assert!(!book.contains("/R2L"));
     }
 }

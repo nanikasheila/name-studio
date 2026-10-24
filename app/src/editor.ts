@@ -373,9 +373,10 @@ export class PageEditor {
   // --- spreads --------------------------------------------------------------
 
   spreadList(): [number | null, number | null][] {
-    const count = this.host.project()?.pages.length ?? 0;
-    // 単独: each page on its own, one at a time.
-    if (this.single && !this.continuous) return Array.from({ length: count }, (_, i): [number | null, number | null] => [i + 1, null]);
+    const project = this.host.project();
+    const count = project?.pages.length ?? 0;
+    // 単独: each page on its own, one at a time; a 縦スクロール strip has no spreads.
+    if ((this.single && !this.continuous) || project?.scroll) return Array.from({ length: count }, (_, i): [number | null, number | null] => [i + 1, null]);
     return spreads(count, this.firstAlone);
   }
 
@@ -1231,6 +1232,13 @@ export class PageEditor {
     ctx.font = "13px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "alphabetic";
+    if (project.scroll) {
+      // 縦スクロール: the pieces touch; the number goes left of the strip, at the top of its piece.
+      ctx.textAlign = "right";
+      ctx.textBaseline = "top";
+      ctx.fillText(String(slot.index + 1), sx(0) - 8, sy(0) + 4);
+      return;
+    }
     // The page number and its memo, wrapped to the page's width so the two pages of a spread do not run into each other.
     const [trimX0, , trimX1] = trimBox(project.pageFormat);
     const memo = page.memo && !small ? `  ${page.memo.replace(/\s*\n\s*/g, " ")}` : "";
@@ -3643,6 +3651,13 @@ export class PageEditor {
     const project = this.host.project();
     if (!project) return;
     if (event.altKey && this.resizeText(event.deltaY < 0 ? 0.5 : -0.5)) return;
+    if (project.scroll && !event.ctrlKey && !event.metaKey && !event.shiftKey && Math.abs(event.deltaY) >= Math.abs(event.deltaX)) {
+      // 縦スクロール: the wheel goes down the strip, as it is read; Ctrl+ホイール (a pinch) zooms.
+      this.pan[1] -= event.deltaY;
+      this.sliding = null;
+      this.draw();
+      return;
+    }
     if (event.shiftKey || (event.deltaX && Math.abs(event.deltaX) > Math.abs(event.deltaY))) {
       // Shift+ホイール (or a sideways swipe): along the row, onward in reading order.
       const along = event.deltaX || event.deltaY;

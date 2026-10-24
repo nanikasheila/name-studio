@@ -220,7 +220,7 @@
             <span>話数</span>
             <input id="ne-story-index" type="number" min="0" placeholder="ひな形のまま" />
           </div>
-          <p class="hint" id="ne-binding-hint" hidden>このネームは左綴じです。作品の綴じ方はひな形の作品のままになるので、CSP で左綴じにして保存した作品をひな形に選んでください（ページの中身は左から右へ読む並びで書き出します）。</p>
+          <p class="hint" id="ne-binding-hint" hidden></p>
         </div>
         <div id="ne-pdf" hidden>
           <p class="hint">読み返しや打ち合わせ用に、全ページを 1 つの PDF にします（<span id="ne-pdf-binding">右綴じ</span>で開くよう指定します）。</p>
@@ -297,8 +297,10 @@
           <select id="nn-binding">
             <option value="right">右綴じ（日本のマンガ・縦書き）</option>
             <option value="left">左綴じ（海外コミック・横書き）</option>
+            <option value="scroll">縦スクロール（Webtoon・横書き）</option>
           </select>
         </label>
+        <p class="hint" id="nn-scroll-hint" hidden>縦に続く帯を、幅 120 × 高さ 240 mm（スマホ 2 画面ほど）の区切りに分けて描きます。ページ数は区切りの数で、CSP にも区切りごとのページで書き出します。</p>
         <div class="actions">
           <button value="cancel" formnovalidate>やめる</button>
           <button value="ok" class="primary">作る</button>
@@ -359,8 +361,8 @@
           <h3>このネーム <small>（ネームのファイルに保存）</small></h3>
           <div class="setting-row">
             <span>コマ間</span>
-            <label>左右 <input type="number" id="st-gutter-across" min="0" max="12" step="0.5" /> mm</label>
-            <label>上下 <input type="number" id="st-gutter-down" min="0" max="12" step="0.5" /> mm</label>
+            <label>左右 <input type="number" id="st-gutter-across" min="0" max="40" step="0.5" /> mm</label>
+            <label>上下 <input type="number" id="st-gutter-down" min="0" max="40" step="0.5" /> mm</label>
           </div>
           <p class="hint">コマを割るとき、コマ割りの型、台本からコマを作るときの間の広さです。今あるコマは変わりません。</p>
           <div class="setting-row">
@@ -368,10 +370,11 @@
             <select id="st-binding">
               <option value="right">右綴じ（右から左へ・縦書き）</option>
               <option value="left">左綴じ（左から右へ・横書き）</option>
+              <option value="scroll" disabled>縦スクロール（上から下へ・横書き）</option>
             </select>
             <label class="check"><input type="checkbox" id="st-binding-text" checked /> セリフの縦書き・横書きも合わせる</label>
           </div>
-          <p class="hint">見開きの左右、コマとセリフを読む順、しっぽの向き、台本から並べる向きが変わります。CSP の作品の綴じ方は書き出しに使うテンプレートの作品に従います。</p>
+          <p class="hint">見開きの左右、コマとセリフを読む順、しっぽの向き、台本から並べる向きが変わります。CSP の作品の綴じ方は書き出しに使うテンプレートの作品に従います。縦スクロール（Webtoon）は新しいネームを作るときに選びます。</p>
         </section>
         <section>
           <h3>表示 <small>（この PC）</small></h3>
