@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CAPTION, extent, layoutPages, onStage, rowCount, slotAt, spreadWidth, toPage, type Arrangement, type Pair, type Slot } from "./layout";
+import { CAPTION, GRID_GAP_MM, GRID_GAP_PX, extent, layoutPages, onStage, pageGapPx, rowCount, slotAt, spreadWidth, toPage, type Arrangement, type Pair, type Slot } from "./layout";
 import { newProject, trimBox, type Project } from "./project";
 
 const view = (change: Partial<Arrangement> = {}): Arrangement => ({ single: false, continuous: false, rows: 1, zoom: 1, pan: [0, 0], width: 1200, height: 800, ...change });
@@ -102,5 +102,30 @@ describe("points on the screen and on a page", () => {
     expect(onStage(left, pageH, 1200, 800, 0)).toBe(true);
     const away = { ...left, x: left.x + 5000 };
     expect(onStage(away, pageH, 1200, 800, 0)).toBe(false);
+  });
+});
+
+describe("the room between spreads (連続)", () => {
+  it("is the set mm at the scale, a little more while small, and none for 0", () => {
+    expect(pageGapPx(GRID_GAP_MM, 2)).toBeCloseTo(GRID_GAP_MM * 2 + GRID_GAP_PX);
+    expect(pageGapPx(0, 2)).toBe(0);
+    expect(pageGapPx(6, 2)).toBeCloseTo(12 + GRID_GAP_PX / 2);
+  });
+
+  it("puts spreads that far apart", () => {
+    const p = project("right");
+    const pairs: Pair[] = [[1, 2], [3, 4]];
+    const xs = (gapMm: number) => {
+      const slots = layoutPages(p, pairs, 0, view({ continuous: true, rows: 1, gapMm }));
+      const first = slots.filter((s) => s.index < 2);
+      const second = slots.filter((s) => s.index >= 2);
+      // Right binding: the second spread is to the left of the first.
+      const leftEdgeOfFirst = Math.min(...first.map((s) => s.x + s.shown[0] * s.scale));
+      const rightEdgeOfSecond = Math.max(...second.map((s) => s.x + s.shown[1] * s.scale));
+      return { gap: leftEdgeOfFirst - rightEdgeOfSecond, scale: first[0].scale };
+    };
+    expect(xs(0).gap).toBeCloseTo(0);
+    const wide = xs(30);
+    expect(wide.gap).toBeCloseTo(pageGapPx(30, wide.scale));
   });
 });

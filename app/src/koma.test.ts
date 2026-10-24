@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { PATTERNS, applyPattern, fitPattern, patternCount, bleedPanel, facingPage, spreadPanel, spreadTwin, unspreadPanel, borderLines, borderRuns, clipOutside, dashes, framePanels, isBled, patternPanels, wavy } from "./koma";
+import { PATTERNS, addDrawnPanel, applyPattern, fitPattern, patternCount, bleedPanel, facingPage, spreadPanel, spreadTwin, unspreadPanel, borderLines, borderRuns, clipOutside, dashes, framePanels, isBled, patternPanels, wavy } from "./koma";
 import { inheritOpenEdges } from "./geometry";
-import { addLine, addStroke, basicBox, boxCenter, bounds, cutPanels, emptyPage, insidePolygon, newProject, rectShape, type Panel, type Point } from "./project";
+import { addLine, addStroke, basicBox, boxCenter, bounds, cutPanels, emptyPage, gutters, insidePolygon, newProject, rectShape, setGutters, type Panel, type Point } from "./project";
 
 describe("裁ち切り", () => {
   it("runs a panel off the page and back", () => {
@@ -268,5 +268,64 @@ describe("コマ枠フォルダーにするコマ", () => {
     // The inset sits on "plain", but inside it: plain's border is not cut.
     // On a spread page whose gutter is on the right, a panel bled there stays a line.
     expect(framePanels(page, format, "right").map(({ panel }) => panel.id)).toEqual(["plain"]);
+  });
+});
+
+describe("コマを描く", () => {
+  it("adds a drawn outline as a panel, clockwise, in reading order", () => {
+    const project = newProject("t", 1);
+    const page = project.pages[0];
+    page.panels.push({ id: "p1", shape: rectShape([30, 30, 100, 100]), order: 1 });
+    // A trapezoid drawn the other way round, with a repeated corner.
+    const panel = addDrawnPanel(project, page, [[150, 40], [120, 100], [260, 100], [230, 40], [230, 40]])!;
+    expect(panel.shape).toHaveLength(4);
+    expect(panel.shape[0]).toEqual([230, 40]);
+    expect(panel.z).toBeUndefined();
+    // Right binding: the panel on the right is read first.
+    expect(panel.order).toBe(1);
+    expect(page.panels.find((p) => p.id === "p1")!.order).toBe(2);
+  });
+
+  it("makes a panel drawn inside another an inset over it", () => {
+    const project = newProject("t", 1);
+    const page = project.pages[0];
+    page.panels.push({ id: "p1", shape: rectShape([30, 30, 200, 200]), order: 1 });
+    const panel = addDrawnPanel(project, page, rectShape([40, 40, 90, 90]))!;
+    expect(panel.z).toBe(1);
+    expect(panel.fill).toBe("white");
+  });
+
+  it("makes nothing of an outline too small or with too few corners", () => {
+    const project = newProject("t", 1);
+    const page = project.pages[0];
+    expect(addDrawnPanel(project, page, [[10, 10], [11, 10], [10, 11]])).toBeNull();
+    expect(addDrawnPanel(project, page, [[10, 10], [60, 10]])).toBeNull();
+    expect(page.panels).toHaveLength(0);
+  });
+});
+
+describe("コマ間の設定", () => {
+  it("cuts and lays out patterns with the project's gutters", () => {
+    const project = newProject("t", 1);
+    setGutters(project, { across: 5, down: 10 });
+    const page = project.pages[0];
+    const [x0, y0, x1, y1] = basicBox(project.pageFormat);
+    page.panels.push({ id: "p1", shape: rectShape([x0, y0, x1, y1]), order: 1 });
+    cutPanels(project, page, [x0 - 5, 150], [x1 + 5, 150]);
+    const [upper, lower] = [...page.panels].sort((a, b) => bounds(a.shape)[1] - bounds(b.shape)[1]);
+    expect(bounds(lower.shape)[1] - bounds(upper.shape)[3]).toBeCloseTo(10);
+    const panels = patternPanels(project, PATTERNS[0].id);
+    const tops = [...new Set(panels.map((p) => Math.round(bounds(p.shape)[1] * 100) / 100))].sort((a, b) => a - b);
+    const bottoms = [...new Set(panels.map((p) => Math.round(bounds(p.shape)[3] * 100) / 100))].sort((a, b) => a - b);
+    if (tops.length > 1) expect(tops[1] - bottoms[0]).toBeCloseTo(10, 1);
+  });
+
+  it("keeps the default as none and clamps what is set", () => {
+    const project = newProject("t", 1);
+    setGutters(project, { across: 2, down: 6 });
+    expect(project.gutters).toBeUndefined();
+    setGutters(project, { across: -3, down: 40 });
+    expect(project.gutters).toEqual({ across: 0, down: 12 });
+    expect(gutters(project)).toEqual({ across: 0, down: 12 });
   });
 });

@@ -1,6 +1,7 @@
 // コマの変形: grab the border between panels (the 間白) and move it, moving
 // the panels on both sides together, or slide a single edge; join two panels
 // across their border. Works on any straight edges, slanted ones included.
+import { snapValue, type SnapTargets } from "./snapping";
 import { area, bounds, insidePolygon, removePanel, segmentDistance, type Binding, type Page, type Panel, type Point } from "./project";
 
 /** Edges further apart than this (mm) are not one border. */
@@ -251,25 +252,20 @@ export function seamLines(page: Page, seam: Seam): [Point, Point][] {
 }
 
 /**
- * Snap a straight border as it moves: the distance that puts
- * the seam's line on one of `xs` (vertical seams) or `ys` (horizontal ones)
- * within `tolerance`, or `distance` unchanged.
+ * Snap a straight border as it moves: the distance that puts the seam's
+ * line on one of the targets' xs (vertical seams) or ys (horizontal ones)
+ * within `tolerance`, else on the grid, and the line it went onto when that
+ * is one to show. A slanted seam does not snap.
  */
-export function snapSeam(seam: Seam, distance: number, lines: { xs: number[]; ys: number[] }, tolerance: number): number {
+export function snapSeam(seam: Seam, distance: number, targets: SnapTargets, tolerance: number): { distance: number; guide: number | null } {
   const horizontal = Math.abs(seam.dir[1]) < 1e-6;
   const vertical = Math.abs(seam.dir[0]) < 1e-6;
-  if (!horizontal && !vertical) return distance;
+  if (!horizontal && !vertical) return { distance, guide: null };
   const axis = horizontal ? 1 : 0;
   const position = seam.origin[axis] + seam.normal[axis] * distance;
-  let best = distance;
-  let gap = tolerance;
-  for (const line of horizontal ? lines.ys : lines.xs) {
-    if (Math.abs(line - position) < gap) {
-      gap = Math.abs(line - position);
-      best = (line - seam.origin[axis]) / seam.normal[axis];
-    }
-  }
-  return best;
+  const grid = targets.grid ? { origin: horizontal ? targets.grid.y0 : targets.grid.x0, step: targets.grid.step } : null;
+  const snapped = snapValue(position, horizontal ? targets.ys : targets.xs, grid, tolerance);
+  return { distance: (snapped.value - seam.origin[axis]) / seam.normal[axis], guide: snapped.guide };
 }
 
 // --- つなげる -----------------------------------------------------------------

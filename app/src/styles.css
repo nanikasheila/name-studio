@@ -515,6 +515,7 @@ button.with-icon, .page-nav .segmented button { display: inline-flex; align-item
 .toolbar:has(.app-bar:not([hidden])) .file-name { min-width: 0; }
 @media (max-width: 1380px) {
   button.with-icon span { display: none; }
+  .toolbar button.labelled span { display: inline; }
   .page-nav .segmented button span { display: none; }
   .rows-control input[type="range"] { width: 80px; }
 }
@@ -685,3 +686,15 @@ button.with-icon, .page-nav .segmented button { display: inline-flex; align-item
 .board-pages { position: sticky; bottom: 0; z-index: 1; border-top: 1px solid var(--line); }
 .board-label.pages-label { position: sticky; bottom: 0; z-index: 1; background: var(--panel); border-top: 1px solid var(--line); }
 .board-marks, .board-current, .board-mark { z-index: 2; }
+
+/* 設定 */
+.settings section { margin: 14px 0; }
+.settings h3 { margin: 0 0 6px; font-size: 13px; }
+.settings h3 small { font-weight: normal; }
+.settings .setting-row { display: flex; align-items: center; gap: 14px; margin: 6px 0; flex-wrap: wrap; }
+.settings .setting-row > span { min-width: 6.5em; }
+.settings .setting-row label { display: inline-flex; align-items: center; gap: 4px; }
+.settings input[type="number"] { width: 5em; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
+.settings > form > section > .check { margin: 4px 0; color: var(--text); }
+.settings .hint { margin: 4px 0 0; }
+#panel-modes .icon { width: 16px; height: 16px; }

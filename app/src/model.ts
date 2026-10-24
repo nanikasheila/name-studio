@@ -278,6 +278,12 @@ export interface ShapeBeat {
   at: number;
 }
 
+/** コマ間 (mm): between panels side by side (左右) and one above the other (上下). */
+export interface Gutters {
+  across: number;
+  down: number;
+}
+
 /** 構成補助: what the name is aimed at. */
 export interface Plan {
   targetPages?: number;
@@ -341,6 +347,8 @@ export interface Project {
   held?: HeldPanel[];
   /** Pictures the pages' 資料画像 show. */
   images?: StoredImage[];
+  /** コマ間: the gaps new panels get (cuts, panel patterns); none is DEFAULT_GUTTERS. */
+  gutters?: Gutters;
   nextId: number;
 }
 

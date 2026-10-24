@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readCount, readFlag, readJson, readText, writeCount, writeFlag, writeJson, writeText } from "./settings";
+import { readCount, readFlag, readJson, readNumber, readText, writeCount, writeFlag, writeJson, writeNumber, writeText } from "./settings";
 
 function memoryStorage(): Storage {
   const items = new Map<string, string>();
@@ -27,6 +27,19 @@ describe("settings kept on this computer", () => {
     expect([readFlag("f", true), readCount("n", 1), readText("t"), readJson("j", null)]).toEqual([false, 3, "見本.clip", { rows: 2 }]);
     writeText("t", null);
     expect(readText("t")).toBeNull();
+  });
+
+  it("keeps numbers with zero and fractions, within their range", () => {
+    vi.stubGlobal("localStorage", memoryStorage());
+    writeNumber("gap", 0);
+    expect(readNumber("gap", 12, 0, 100)).toBe(0);
+    writeNumber("gap", 2.5);
+    expect(readNumber("gap", 12, 0, 100)).toBe(2.5);
+    writeNumber("gap", 500);
+    expect(readNumber("gap", 12, 0, 100)).toBe(12);
+    writeText("gap", "");
+    expect(readNumber("gap", 12, 0, 100)).toBe(12);
+    expect(readNumber("none", 7, 0, 100)).toBe(7);
   });
 
   it("gives the fallback for what is not there or does not read", () => {

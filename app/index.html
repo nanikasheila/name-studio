@@ -8,12 +8,13 @@
   </head>
   <body>
     <header class="toolbar">
-      <button id="open" class="primary" title="ネームデータ（.namestudio）かネーム用紙（.clip）を開く（Ctrl+O）">開く…</button>
-      <button id="new-project" title="白紙のネームを作る">新しいネーム</button>
-      <button id="save" class="editor-only" title="保存（Ctrl+S）。編集中は自動でも保存します" hidden>保存</button>
-      <button id="versions" class="editor-only" title="版の履歴: 前の状態に戻す、自動保存の設定" hidden>履歴…</button>
-      <button id="shortcuts" class="editor-only" title="ショートカットキーの割り当て" hidden>キー…</button>
-      <button id="pen-settings" class="editor-only" title="ペンタブレットの設定: 筆圧、傾き、消しゴム側、サイドボタン、タッチ操作、カーソル" hidden>ペン…</button>
+      <button id="open" class="primary with-icon labelled" title="ネームデータ（.namestudio）かネーム用紙（.clip）を開く（Ctrl+O）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M2.5 5.5V15a1 1 0 0 0 1 1h13a1 1 0 0 0 1-1V7.5a1 1 0 0 0-1-1H9.5L8 4.5H3.5a1 1 0 0 0-1 1z"/></svg><span>開く</span></button>
+      <button id="new-project" class="with-icon labelled" title="白紙のネームを作る"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.5h6.5L15 6v11.5H5z"/><path d="M11.5 2.5V6H15M10 9v6M7 12h6"/></svg><span>新しいネーム</span></button>
+      <button id="save" class="editor-only with-icon labelled" title="保存（Ctrl+S）。編集中は自動でも保存します" hidden><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 3.5h10l3 3v10h-13z"/><path d="M6.5 3.5v4h6v-4M6 16.5v-5h8v5"/></svg><span>保存</span></button>
+      <button id="versions" class="editor-only with-icon labelled" title="版の履歴: 前の状態に戻す、自動保存の設定" hidden><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 10a6.5 6.5 0 1 0 2-4.7"/><path d="M3 3.5v3h3M10 6.5V10l2.5 2"/></svg><span>履歴</span></button>
+      <button id="settings" class="editor-only with-icon labelled" title="設定: コマ間、ページの間隔、吸着（グリッド・ほかのコマの線）" hidden><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M8.6 2.5h2.8l.4 2.1 1.5.9 2-.8 1.4 2.4-1.6 1.4v1.8l1.6 1.4-1.4 2.4-2-.8-1.5.9-.4 2.1H8.6l-.4-2.1-1.5-.9-2 .8-1.4-2.4 1.6-1.4V9.1L3.3 7.7l1.4-2.4 2 .8 1.5-.9z"/><circle cx="10" cy="10" r="2.4"/></svg><span>設定</span></button>
+      <button id="shortcuts" class="editor-only with-icon labelled" title="ショートカットキーの割り当て" hidden><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="5" width="16" height="10" rx="1.5"/><path d="M5 8h1M8 8h1M11 8h1M14 8h1M5 11h1M14 11h1M8 11h4"/></svg><span>キー設定</span></button>
+      <button id="pen-settings" class="editor-only with-icon labelled" title="ペンタブレットの設定: 筆圧、傾き、消しゴム側、サイドボタン、タッチ操作、カーソル" hidden><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="4" width="15" height="12" rx="1.5"/><path d="M7 13l1-3 5-5 2 2-5 5z"/></svg><span>ペン設定</span></button>
       <span id="file-name" class="file-name">ファイルが開かれていません</span>
       <button id="update" class="primary" hidden>更新</button>
       <span id="app-version" class="app-version"></span>
@@ -69,6 +70,12 @@
       <section class="stage-column">
         <div class="tool-options" id="tool-options">
           <span class="tool-name" id="tool-name"></span>
+          <div class="segmented" id="panel-modes" role="group" aria-label="コマの作り方" hidden>
+            <button id="panel-cut" class="active with-icon" title="コマを横切るように引いて割る（Alt で斜め）。Shift + コマの外のドラッグで四角いコマ"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="2.5" width="15" height="15" rx="1"/><path d="M2.5 8.5l15 2.5"/></svg>割る</button>
+            <button id="panel-rect" class="with-icon" title="ドラッグで四角いコマを描く（コマの中に描くと、はめ込み）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="3.5" y="5" width="13" height="10" rx="0.5"/></svg>四角</button>
+            <button id="panel-polygon" class="with-icon" title="クリックで角を置いて、台形など好きな形のコマを描く。最初の角・ダブルクリック・Enter で閉じる"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4.5h8l3 11H3z"/></svg>多角形</button>
+          </div>
+          <label class="check" id="grid-snap-label" title="コマの角や辺をグリッドに吸着させる（間隔は 設定 で）" hidden><input type="checkbox" id="grid-snap" /> グリッド</label>
           <div class="segmented" id="fill-tones" role="group" aria-label="塗りの色" hidden>
             <button id="fill-black" class="active" title="黒（ベタ）"><i class="tone black"></i>黒</button>
             <button id="fill-gray" title="グレー（トーンの代わり）"><i class="tone gray"></i>グレー</button>
@@ -335,6 +342,43 @@
         <div class="actions">
           <button value="cancel" formnovalidate>閉じる</button>
           <button type="button" id="sd-run" class="primary" disabled>取り込む</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="settings-dialog" class="export settings">
+      <form method="dialog">
+        <h2>設定</h2>
+        <section>
+          <h3>このネーム <small>（ネームのファイルに保存）</small></h3>
+          <div class="setting-row">
+            <span>コマ間</span>
+            <label>左右 <input type="number" id="st-gutter-across" min="0" max="12" step="0.5" /> mm</label>
+            <label>上下 <input type="number" id="st-gutter-down" min="0" max="12" step="0.5" /> mm</label>
+          </div>
+          <p class="hint">コマを割るとき、コマ割りの型、台本からコマを作るときの間の広さです。今あるコマは変わりません。</p>
+        </section>
+        <section>
+          <h3>表示 <small>（この PC）</small></h3>
+          <div class="setting-row">
+            <span>ページの間隔</span>
+            <label><input type="number" id="st-page-gap" min="0" max="100" step="1" /> mm</label>
+          </div>
+          <p class="hint">「連続」で並べた見開きと見開きの間です。0 でくっつけます。</p>
+        </section>
+        <section>
+          <h3>吸着 <small>（この PC）</small></h3>
+          <label class="check"><input type="checkbox" id="st-snap-axis" /> 水平・垂直（隣の角とそろえる）</label>
+          <label class="check"><input type="checkbox" id="st-snap-panels" /> ほかのコマの線（コマ間ぶん離れた所にも）</label>
+          <label class="check"><input type="checkbox" id="st-snap-frame" /> 基本枠・裁ち切り線・用紙の端</label>
+          <div class="setting-row">
+            <label class="check"><input type="checkbox" id="st-snap-grid" /> グリッド</label>
+            <label>間隔 <input type="number" id="st-grid-mm" min="1" max="50" step="0.5" /> mm</label>
+          </div>
+          <p class="hint">コマを動かす・角や辺を動かす・拡大縮小する・コマを描くときに効きます。吸い付いた線は点線で出ます。ドラッグ中に Alt を押している間は吸着しません。</p>
+        </section>
+        <div class="actions">
+          <button type="button" id="st-reset">この PC の設定を初期に戻す</button>
+          <button value="cancel" formnovalidate>閉じる</button>
         </div>
       </form>
     </dialog>

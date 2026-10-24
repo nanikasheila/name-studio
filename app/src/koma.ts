@@ -5,7 +5,9 @@ import { arrangePanel } from "./arrange";
 import { seeded } from "./balloon";
 import { spreads } from "./pages";
 import {
-  DEFAULT_GUTTERS,
+  gutters,
+  area,
+  insidePolygon,
   assignPanels,
   basicBox,
   bounds,
@@ -181,6 +183,42 @@ export function addInset(project: Project, page: Page, parent: Panel): Panel {
   // Bottom left: the corner read last in a right-bound book.
   const shape = rectShape([x0 - out, y1 - h + out, x0 - out + w, y1 + out]);
   const panel: Panel = { id: newId(project, "panel"), shape, order: 0, fill: "white", z: (parent.z ?? 0) + 1 };
+  page.panels.push(panel);
+  orderPanels(page, project.binding);
+  assignPanels(page);
+  return panel;
+}
+
+/**
+ * A panel drawn freely (a rectangle or any outline, 台形 and the like).
+ * Drawn inside another panel, it is an inset over it (はめ込み: white, on
+ * top); elsewhere a panel of its own. The outline goes the way a
+ * rectangle's does, a corner list without repeats or slivers.
+ */
+export function addDrawnPanel(project: Project, page: Page, outline: readonly Point[]): Panel | null {
+  const shape: Point[] = [];
+  for (const point of outline) {
+    const last = shape[shape.length - 1];
+    if (!last || Math.hypot(point[0] - last[0], point[1] - last[1]) > 0.05) shape.push([point[0], point[1]]);
+  }
+  while (shape.length > 1 && Math.hypot(shape[0][0] - shape[shape.length - 1][0], shape[0][1] - shape[shape.length - 1][1]) <= 0.05) shape.pop();
+  if (shape.length < 3 || area(shape) < 4) return null;
+  // Clockwise on the page (y down), as rectShape.
+  let signed = 0;
+  shape.forEach(([x0, y0], i) => {
+    const [x1, y1] = shape[(i + 1) % shape.length];
+    signed += x0 * y1 - x1 * y0;
+  });
+  if (signed < 0) shape.reverse();
+  const middle = centroid(shape);
+  const parent = stacked(page.panels)
+    .reverse()
+    .find((panel) => insidePolygon(panel.shape, middle) && area(panel.shape) > area(shape));
+  const panel: Panel = { id: newId(project, "panel"), shape, order: 0 };
+  if (parent) {
+    panel.fill = "white";
+    panel.z = (parent.z ?? 0) + 1;
+  }
   page.panels.push(panel);
   orderPanels(page, project.binding);
   assignPanels(page);
@@ -535,14 +573,14 @@ export function fitPattern(pattern: Pattern, count: number): Pattern {
  * Panels of a pattern on the page's basic frame (not yet added to the page).
  * With `count`, made to have that many panels ({@link fitPattern}).
  */
-export function patternPanels(project: Project, patternId: string, gutters = DEFAULT_GUTTERS, count?: number): Panel[] {
+export function patternPanels(project: Project, patternId: string, gaps = gutters(project), count?: number): Panel[] {
   const found = PATTERNS.find((p) => p.id === patternId);
   if (!found) return [];
   const pattern = count && count !== patternCount(patternId) ? fitPattern(found, count) : found;
   const format = project.pageFormat;
   const [bx0, by0, bx1, by1] = basicBox(format);
   const total = pattern.rows.reduce((sum, row) => sum + row.weight, 0);
-  const height = by1 - by0 - gutters.down * (pattern.rows.length - 1);
+  const height = by1 - by0 - gaps.down * (pattern.rows.length - 1);
   // Gutter lines between rows: y at the left and right ends of the frame.
   const cuts: { left: number; right: number }[] = [];
   let y = by0;
@@ -551,16 +589,16 @@ export function patternPanels(project: Project, patternId: string, gutters = DEF
     if (index < pattern.rows.length - 1) {
       const tilt = row.tilt ?? 0;
       cuts.push({ left: y + tilt / 2, right: y - tilt / 2 });
-      y += gutters.down;
+      y += gaps.down;
     }
   });
   const lineY = (line: { left: number; right: number }, x: number) => line.left + ((line.right - line.left) * (x - bx0)) / (bx1 - bx0);
   const panels: Panel[] = [];
   pattern.rows.forEach((row, r) => {
-    const top = r === 0 ? { left: by0, right: by0 } : { left: cuts[r - 1].left + gutters.down, right: cuts[r - 1].right + gutters.down };
+    const top = r === 0 ? { left: by0, right: by0 } : { left: cuts[r - 1].left + gaps.down, right: cuts[r - 1].right + gaps.down };
     const bottom = r === pattern.rows.length - 1 ? { left: by1, right: by1 } : cuts[r];
     const sum = row.cells.reduce((s, c) => s + c, 0);
-    const width = bx1 - bx0 - gutters.across * (row.cells.length - 1);
+    const width = bx1 - bx0 - gaps.across * (row.cells.length - 1);
     // Cells from the right edge leftwards.
     let right = bx1;
     row.cells.forEach((weight, c) => {
@@ -577,7 +615,7 @@ export function patternPanels(project: Project, patternId: string, gutters = DEF
       const panel: Panel = { id: newId(project, "panel"), shape, order: 0 };
       if (row.black?.includes(c)) panel.fill = "black";
       panels.push(panel);
-      right = left - gutters.across;
+      right = left - gaps.across;
     });
   });
   const firstRow = panels.slice(0, pattern.rows[0].cells.length);
@@ -619,7 +657,7 @@ export function patternPanels(project: Project, patternId: string, gutters = DEF
  */
 export function applyPattern(project: Project, page: Page, patternId: string, count?: number): void {
   const before = [...page.panels].sort((a, b) => a.order - b.order).map((panel) => ({ note: panel.note, carried: carryContents(page, panel) }));
-  page.panels = patternPanels(project, patternId, DEFAULT_GUTTERS, count);
+  page.panels = patternPanels(project, patternId, gutters(project), count);
   orderPanels(page, project.binding);
   const after = [...page.panels].sort((a, b) => a.order - b.order);
   const shared = new Map<Panel, number>();
