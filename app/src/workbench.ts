@@ -2,7 +2,8 @@
 // page list, the script, the cast and the inspector for the selection.
 import { invoke } from "@tauri-apps/api/core";
 import { ask, save } from "@tauri-apps/plugin-dialog";
-import { pageGlyph } from "./glyph";
+import { heldThumbnail, pageGlyph } from "./glyph";
+import { heldNear, holdPanel, movePanelToPage, placeHeld } from "./hold";
 import { Autosaver, autosaveToFile, formatTime } from "./autosave";
 import { addBrushes, loadLibrary } from "./brush";
 import { BrushDialog } from "./brushdialog";
@@ -98,6 +99,7 @@ import {
   type Sticky,
   type StickyColor,
   type Panel,
+  type Point,
   type PanelBorder,
   type PanelEffect,
   type PanelFill,
@@ -145,6 +147,9 @@ interface WorkbenchState {
   roughs: Map<string, ImageBitmap | "loading" | "failed">;
 }
 
+/** What a held panel is carried as when dragged from the 保留 list. */
+const HELD_TYPE = "application/x-name-studio-held";
+
 /** One line under the tool's name in the options row. */
 const TOOL_HINTS: Record<Tool, string> = {
   select: "クリックで選ぶ・ドラッグで動かす・ダブルクリックで書き込む。Shift で足す、囲んでまとめて選ぶ",
@@ -163,7 +168,7 @@ export class Workbench {
   private readonly state: WorkbenchState = { project: null, path: null, dirty: false, revision: 0, pending: null, roughs: new Map() };
   /** Characters whose lines are listed in the 人物 tab. */
   private openCast = new Set<string>();
-  private sideTab: "pages" | "script" | "cast" | "notes" | "layers" = "pages";
+  private sideTab: "pages" | "script" | "cast" | "notes" | "held" | "layers" = "pages";
   private readonly layerView = new LayerView({
     selected: (ref) => this.layerSelected(ref),
     select: (ref) => this.selectLayer(ref),
@@ -571,6 +576,13 @@ export class Workbench {
     $("editor-page-label").textContent = this.state.project
       ? `${pages.join("–") || "-"} / ${this.state.project.pages.length}`
       : "-";
+    // 保留: the held panels meant for around these pages, a click away.
+    const badge = $("held-badge");
+    const near = this.state.project && pages.length ? heldNear(this.state.project, pages[0] - 1, pages[pages.length - 1] - 1).length : 0;
+    const all = this.state.project?.held?.length ?? 0;
+    badge.hidden = !all;
+    badge.textContent = near ? `保留 ${near}（このあたり）` : `保留 ${all}`;
+    badge.classList.toggle("near", near > 0);
   }
 
   private updateTitle(): void {
@@ -585,8 +597,9 @@ export class Workbench {
     $("side-script").hidden = this.sideTab !== "script";
     $("side-cast").hidden = this.sideTab !== "cast";
     $("side-notes").hidden = this.sideTab !== "notes";
+    $("side-held").hidden = this.sideTab !== "held";
     $("side-layers").hidden = this.sideTab !== "layers";
-    for (const tab of ["pages", "script", "cast", "notes"] as const) $(`tab-${tab}`).classList.toggle("active", this.sideTab === tab);
+    for (const tab of ["pages", "script", "cast", "notes", "held"] as const) $(`tab-${tab}`).classList.toggle("active", this.sideTab === tab);
     $("tab-layers-edit").classList.toggle("active", this.sideTab === "layers");
     const project = this.state.project;
     if (!project) return;
@@ -594,6 +607,7 @@ export class Workbench {
     if (this.sideTab === "script") this.renderScript(project);
     if (this.sideTab === "cast") this.renderCast(project);
     if (this.sideTab === "notes") this.renderNotes(project);
+    if (this.sideTab === "held") this.renderHeld(project);
     if (this.sideTab === "layers") this.renderLayers();
   }
 
@@ -686,6 +700,7 @@ export class Workbench {
           { className: "count", title: `コマ ${page.panels.length}・字 ${textAmount(page)}${page.stickies?.length ? `・付箋 ${page.stickies.length}` : ""}（コマの濃さはセリフの量）` },
           `${textAmount(page)}字`,
           ...(page.stickies?.length ? [element("span", { className: "sticky-count", textContent: String(page.stickies.length) })] : []),
+          ...(heldNear(project, index, index).length ? [element("span", { className: "held-count", title: "このあたりに入れたい保留のコマ", textContent: `保${heldNear(project, index, index).length}` })] : []),
         ),
       );
       if (part) item.style.setProperty("--part", part.color);
@@ -833,6 +848,113 @@ export class Workbench {
     $("side-notes").replaceChildren(head, ...items);
   }
 
+  /** 保留: panels waiting for a place, with the page each is meant for. */
+  private renderHeld(project: Project): void {
+    const held = project.held ?? [];
+    const shown = new Set(this.editor.currentPages().map((n) => project.pages[n - 1]?.id));
+    const target = this.editor.selection?.kind === "panel" ? this.editor.selection : null;
+    const items = held.map((h) => {
+      const near = element("select", { title: "このあたりのページに入れたい" });
+      near.append(element("option", { value: "", textContent: "ページ未定" }));
+      project.pages.forEach((page, index) => near.append(element("option", { value: page.id, textContent: `${index + 1} ページあたり` })));
+      near.value = project.pages.some((p) => p.id === h.near) ? h.near! : "";
+      near.addEventListener("change", () =>
+        this.edit(() => {
+          if (near.value) h.near = near.value;
+          else delete h.near;
+        }),
+      );
+      const words = h.lines.map((l) => l.text.replace(/\s+/g, "")).filter(Boolean).join(" / ");
+      const put = this.plainButton("このページに置く", () => {
+        const page = this.editor.focusPage();
+        if (page) this.putHeld(h.id, page);
+      });
+      put.title = "今のページの、元と同じ位置に置く（ページへドラッグしても置けます）";
+      const into = this.plainButton("選んだコマへ", () => {
+        const page = project.pages.find((p) => p.id === target?.pageId);
+        const panel = page?.panels.find((p) => p.id === target?.id);
+        if (page && panel) this.putHeld(h.id, page, undefined, panel);
+      });
+      into.title = "選んでいるコマに、中身（セリフ・ラフ線）を合わせて入れる";
+      into.disabled = !target;
+      const drop = this.plainButton("消す", () => this.edit((p) => (p.held = (p.held ?? []).filter((x) => x.id !== h.id))));
+      drop.className = "danger small";
+      const item = element(
+        "div",
+        { className: `held-item${h.near && shown.has(h.near) ? " near" : ""}`, draggable: true, title: "ページへドラッグして置く。コマの上で離すと、そのコマに中身を入れる" },
+        heldThumbnail(project, h),
+        element(
+          "div",
+          { className: "held-body" },
+          element("div", { className: "held-words", textContent: words || h.panel.note || "（セリフなし）" }),
+          ...(h.panel.note && words ? [element("div", { className: "held-note", textContent: h.panel.note })] : []),
+          near,
+          element("div", { className: "held-actions" }, put, into, drop),
+        ),
+      );
+      item.addEventListener("dragstart", (event) => {
+        event.dataTransfer?.setData(HELD_TYPE, h.id);
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+      });
+      return item;
+    });
+    const head = element("p", {
+      className: "hint",
+      textContent: held.length
+        ? `保留のコマ ${held.length}。ページへドラッグで置く（コマの上で離すと中身をそのコマへ）。`
+        : "保留のコマはありません。コマを選んで「保留」を押すと、中身ごとここへ移ります。置き場所が決まったら、ページへドラッグして戻します。",
+    });
+    $("side-held").replaceChildren(head, ...items);
+  }
+
+  /** Put a held panel on `page`: into `panel`, at `point`, or where it was. */
+  private putHeld(id: string, page: Page, point?: Point, panel?: Panel): void {
+    const held = this.state.project?.held?.find((h) => h.id === id);
+    if (!held) return;
+    let placed: Panel | null = null;
+    this.edit((p) => {
+      const at = p.pages.find((x) => x.id === page.id);
+      const into = panel && at?.panels.find((x) => x.id === panel.id);
+      if (at) placed = placeHeld(p, at, held, point, into);
+    });
+    if (!placed) return;
+    const index = this.state.project!.pages.findIndex((x) => x.id === page.id);
+    this.editor.showPage(index + 1);
+    this.editor.select({ kind: "panel", pageId: page.id, id: (placed as Panel).id });
+    this.setStatus(panel ? `保留のコマの中身を ${index + 1} ページのコマ ${(placed as Panel).order} に入れました` : `保留のコマを ${index + 1} ページに置きました（コマ ${(placed as Panel).order}）`);
+    this.renderAll();
+  }
+
+  /** Take the selected panel off its page into 保留. */
+  private holdSelected(page: Page, panel: Panel): void {
+    const index = this.state.project!.pages.indexOf(page);
+    this.edit((p) => {
+      const at = p.pages.find((x) => x.id === page.id);
+      const target = at?.panels.find((x) => x.id === panel.id);
+      if (at && target) holdPanel(p, at, target);
+    });
+    this.editor.select(null);
+    this.setStatus(`${index + 1} ページのコマ ${panel.order} を中身ごと保留にしました（左の「保留」から、ページへドラッグで戻せます）`);
+    this.renderAll();
+  }
+
+  /** Move the selected panel with what is in it to another page. */
+  private moveSelectedTo(page: Page, panel: Panel, to: Page): void {
+    let moved: Panel | null = null;
+    this.edit((p) => {
+      const from = p.pages.find((x) => x.id === page.id);
+      const target = from?.panels.find((x) => x.id === panel.id);
+      const dest = p.pages.find((x) => x.id === to.id);
+      if (from && target && dest) moved = movePanelToPage(p, from, target, dest);
+    });
+    if (!moved) return;
+    const index = this.state.project!.pages.findIndex((x) => x.id === to.id);
+    this.editor.showPage(index + 1);
+    this.editor.select({ kind: "panel", pageId: to.id, id: (moved as Panel).id });
+    this.setStatus(`コマを中身ごと ${index + 1} ページへ移しました（コマ ${(moved as Panel).order}）。重なったら動かすか、コマ割りで整えてください`);
+    this.renderAll();
+  }
+
   /** Show a page in the editor with one of its things selected. */
   private goTo(pageId: string, kind: "line" | "sticky", id: string): void {
     const index = this.state.project?.pages.findIndex((p) => p.id === pageId) ?? -1;
@@ -883,11 +1005,23 @@ export class Workbench {
         });
         const hasLines = page.lines.some((line) => line.panel === panel.id);
         const arrange = button("セリフを並べる", "このコマのセリフを読む順に右上から並べ直す（長いセリフは改行）", () => this.arrange(page.id, panel.id));
+        const hold = button("保留", "中身ごと保留にする: 置き場所を決めるまで、左の「保留」に置いておく", () => this.holdSelected(page, panel));
+        const moveTo = element("select", { title: "中身ごとほかのページへ移す" });
+        moveTo.append(element("option", { value: "", textContent: "移す…" }));
+        project.pages.forEach((other, index) => {
+          if (other !== page) moveTo.append(element("option", { value: other.id, textContent: `→ ${index + 1} ページ` }));
+        });
+        moveTo.addEventListener("change", () => {
+          const to = project.pages.find((p) => p.id === moveTo.value);
+          if (to) this.moveSelectedTo(page, panel, to);
+        });
         return [
           button("メモ", "このコマのメモをその場で書く（コマをダブルクリックでも）", () => this.editor.editInPlace(page.id, "note", panel.id)),
           transform,
           ...(hasLines ? [arrange] : []),
           inset,
+          hold,
+          moveTo,
           copy,
           remove,
         ];
@@ -1864,12 +1998,30 @@ export class Workbench {
     for (const name of ["edit", "board", "structure", "emotion", "timeline"] as const) {
       $(`view-${name}`).addEventListener("click", () => this.setView(name));
     }
-    for (const tab of ["pages", "script", "cast", "notes"] as const) {
+    for (const tab of ["pages", "script", "cast", "notes", "held"] as const) {
       $(`tab-${tab}`).addEventListener("click", () => {
         this.sideTab = tab;
         this.renderSide();
       });
     }
+    $("held-badge").addEventListener("click", () => {
+      this.sideTab = "held";
+      this.renderSide();
+    });
+    // A held panel dropped on a page: into the panel there, else where it is dropped.
+    const canvas = $("editor-canvas");
+    canvas.addEventListener("dragover", (event) => {
+      if (!event.dataTransfer?.types.includes(HELD_TYPE)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+    });
+    canvas.addEventListener("drop", (event) => {
+      const id = event.dataTransfer?.getData(HELD_TYPE);
+      if (!id) return;
+      event.preventDefault();
+      const where = this.editor.pageAtClient(event.clientX, event.clientY);
+      if (where) this.putHeld(id, where.page, where.point, where.panel);
+    });
     $("tab-layers-edit").addEventListener("click", () => {
       this.sideTab = "layers";
       this.renderSide();

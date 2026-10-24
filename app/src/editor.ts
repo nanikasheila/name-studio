@@ -586,6 +586,23 @@ export class PageEditor {
     );
   }
 
+  /** The page under a point of the window, the point on it (mm) and the panel there. */
+  pageAtClient(clientX: number, clientY: number): { page: Page; point: Point; panel?: Panel } | null {
+    const project = this.host.project();
+    if (!project) return null;
+    const rect = this.canvas.getBoundingClientRect();
+    let [sx, sy] = [clientX - rect.left, clientY - rect.top];
+    if (this.rotation) {
+      const [cx, cy] = this.centre();
+      const [x, y] = this.turn(sx - cx, sy - cy, -this.rotation);
+      [sx, sy] = [cx + x, cy + y];
+    }
+    const slot = this.slotAt(sx, sy, project);
+    if (!slot) return null;
+    const point = this.toPage(slot, sx, sy);
+    return { page: slot.page, point, panel: this.panelAt(slot.page, point) };
+  }
+
   /** The other page of the spread, if `slot` faces one. */
   private facingSlot(slot: Slot): Slot | null {
     // Slots are laid out again on every draw, so match by page.

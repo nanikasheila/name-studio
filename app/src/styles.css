@@ -608,3 +608,20 @@ button.with-icon, .segmented.views button, .page-nav .segmented button { display
 .link-row { align-items: center; }
 .link-row .link-target { flex: 1; font-size: 13px; color: var(--text); }
 .inspector .row.link-row > button { flex: none; }
+
+/* 保留コマ */
+.held-item { display: flex; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); cursor: grab; }
+.held-item.near { background: color-mix(in srgb, var(--c-sticky) 10%, transparent); box-shadow: inset 3px 0 0 var(--c-sticky); }
+.held-item canvas { flex: none; border: 1px solid var(--line); border-radius: 3px; align-self: flex-start; }
+.held-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.held-words { font-size: 12px; line-height: 1.4; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.held-note { font-size: 11px; color: var(--muted); }
+.held-body select { font: inherit; font-size: 12px; padding: 2px 4px; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+.held-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.held-actions button { font-size: 11px; padding: 2px 6px; }
+.held-badge { font-size: 12px; padding: 2px 8px; border-color: var(--c-sticky); }
+.held-badge.near { background: color-mix(in srgb, var(--c-sticky) 22%, var(--panel)); font-weight: 600; }
+.tabs button { font-size: 13px; }
+.held-count { font-size: 10px; padding: 0 3px; border-radius: 3px; border: 1px solid var(--c-sticky); color: var(--text); }
+#editor .tabs { gap: 3px; padding: 8px 6px; }
+#editor .tabs button { padding-left: 2px; padding-right: 2px; }

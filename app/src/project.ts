@@ -4,6 +4,7 @@
 // the editor takes a snapshot before each change for undo.
 
 import { storedOutline } from "./balloon";
+import type { HeldPanel } from "./hold";
 import { inheritOpenEdges } from "./koma";
 import { wrapDialogue } from "./wrap";
 
@@ -475,6 +476,8 @@ export interface Project {
   plan?: Plan;
   /** 作品ごとのフキダシの既定: the shape new lines of each kind get. */
   lineShapes?: Partial<Record<LineKind, BalloonShape>>;
+  /** 保留コマ: panels taken off the pages until it is decided where they go. */
+  held?: HeldPanel[];
   nextId: number;
 }
 
