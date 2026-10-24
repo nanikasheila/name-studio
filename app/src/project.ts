@@ -1444,6 +1444,47 @@ export function splitAtX(points: StrokePoint[], x: number): { points: StrokePoin
   return runs.filter((run) => run.points.length >= 2);
 }
 
+/**
+ * A line drawn over several pages (連続 shows them all on one canvas): its
+ * runs, each on the page `pageOf` says its points are over. A point off every
+ * page stays with the run before it. Across a gutter (`gutter` gives its x)
+ * the two runs end exactly there; between pages apart, each run takes the
+ * next point too, so the line reaches each page's edge, where the page cuts it.
+ */
+export function splitOverPages<K>(
+  points: StrokePoint[],
+  first: K,
+  pageOf: (point: StrokePoint) => K | null,
+  gutter: (from: K, to: K) => number | null,
+): { page: K; points: StrokePoint[] }[] {
+  const runs: { page: K; points: StrokePoint[] }[] = [];
+  for (const point of points) {
+    const run = runs[runs.length - 1];
+    const page = pageOf(point) ?? run?.page ?? first;
+    if (!run) {
+      runs.push({ page, points: [point] });
+      continue;
+    }
+    if (run.page === page) {
+      run.points.push(point);
+      continue;
+    }
+    const last = run.points[run.points.length - 1];
+    const x = gutter(run.page, page);
+    if (x === null) {
+      run.points.push(point);
+      runs.push({ page, points: [last.slice() as StrokePoint, point] });
+      continue;
+    }
+    const t = (x - last[0]) / (point[0] - last[0]);
+    const crossing = lerpPoint(last, point, Number.isFinite(t) ? t : 0);
+    crossing[0] = x;
+    run.points.push(crossing);
+    runs.push({ page, points: [crossing.slice() as StrokePoint, point] });
+  }
+  return runs.filter((run) => run.points.length >= 2);
+}
+
 /** Whether page `index` and the next one should go to CSP as one 見開き page. */
 export function wantsSpread(project: Project, index: number): boolean {
   const page = project.pages[index];

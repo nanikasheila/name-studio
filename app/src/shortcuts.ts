@@ -16,6 +16,10 @@ export type ActionId =
   | "view.fit"
   | "view.rotateLeft"
   | "view.rotateRight"
+  | "view.continuous"
+  | "view.fewerRows"
+  | "view.moreRows"
+  | "view.all"
   | "tool.select"
   | "tool.cut"
   | "tool.text"
@@ -84,6 +88,10 @@ export const ACTIONS: readonly ActionInfo[] = [
   { id: "view.fit", label: "全体を表示（拡大・移動・回転を戻す）", group: "画面", keys: ["Ctrl+0"] },
   { id: "view.rotateLeft", label: "画面を左に 15° 回す（Shift + Space + ドラッグで自由に）", group: "画面", keys: ["-"] },
   { id: "view.rotateRight", label: "画面を右に 15° 回す", group: "画面", keys: ["^"] },
+  { id: "view.continuous", label: "連続（全ページを一枚のキャンバスに）と見開きを切り替える", group: "画面", keys: ["F7"] },
+  { id: "view.fewerRows", label: "連続: 行を減らす（1 行で全ページ横一列）", group: "画面", keys: ["Alt+ArrowUp"] },
+  { id: "view.moreRows", label: "連続: 行を増やす（俯瞰しやすく）", group: "画面", keys: ["Alt+ArrowDown"] },
+  { id: "view.all", label: "連続: 全ページを画面に収める", group: "画面", keys: ["Ctrl+Alt+0"] },
   { id: "view.focus", label: "左右の欄を隠してページを大きく（もう一度で戻す）", group: "画面", keys: ["Tab"] },
 ];
 

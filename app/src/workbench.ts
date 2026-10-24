@@ -22,6 +22,8 @@ import {
   PANEL_CARRIES_KEY,
   SHOW_NOTES_KEY,
   SINGLE_PAGE_KEY,
+  CONTINUOUS_KEY,
+  ROWS_KEY,
   PageEditor,
   isTyping,
   pickedSummary,
@@ -230,6 +232,7 @@ export class Workbench {
       status: (message) => this.setStatus(message),
       actions: (selection) => this.actions(selection),
       run: (action) => this.run(action),
+      spreadChanged: () => this.renderAll(),
     });
     this.board = new Board($("story"), $("story-handle"), {
       project: () => this.state.project,
@@ -313,7 +316,7 @@ export class Workbench {
       autosaveChanged: () => this.autosaver.notify(),
     });
     this.bindControls();
-    this.showSingle();
+    this.showViewMode();
     this.setTool(this.editor.tool);
   }
 
@@ -577,6 +580,7 @@ export class Workbench {
     this.updateTitle();
     $<HTMLButtonElement>("undo").disabled = !this.history.canUndo;
     $<HTMLButtonElement>("redo").disabled = !this.history.canRedo;
+    if (this.editor.continuous) this.showRows();
     const pages = this.editor.currentPages().sort((a, b) => a - b);
     $("editor-page-label").textContent = this.state.project
       ? `${pages.join("–") || "-"} / ${this.state.project.pages.length}`
@@ -1838,26 +1842,55 @@ export class Workbench {
     this.renderBrushBar();
   }
 
-  private showSingle(): void {
-    const single = this.editor.single;
-    $("spread-mode").classList.toggle("active", !single);
-    $("single-mode").classList.toggle("active", single);
-    $<HTMLInputElement>("editor-first-alone").disabled = single;
-    $("first-alone-label").setAttribute("aria-disabled", String(single));
+  private showViewMode(): void {
+    const { single, continuous } = this.editor;
+    $("spread-mode").classList.toggle("active", !single && !continuous);
+    $("single-mode").classList.toggle("active", single && !continuous);
+    $("continuous-mode").classList.toggle("active", continuous);
+    const alone = single && !continuous;
+    $<HTMLInputElement>("editor-first-alone").disabled = alone;
+    $("first-alone-label").setAttribute("aria-disabled", String(alone));
+    $("rows-control").hidden = !continuous;
+    this.showRows();
   }
 
-  /** 見開き or 単独: keeps the page in view. */
-  setSingle(single: boolean): void {
+  /** 連続: the rows slider, as far as one spread a row. */
+  private showRows(): void {
+    const range = $<HTMLInputElement>("rows-range");
+    range.max = String(Math.max(1, this.editor.spreadList().length));
+    const rows = this.editor.rowCount();
+    range.value = String(rows);
+    $("rows-value").textContent = `${rows} 行`;
+  }
+
+  /** 見開き, 単独 or 連続 (all pages on one canvas): keeps the page in view. */
+  setView(mode: "spread" | "single" | "continuous"): void {
     const page = this.editor.focusPage();
     const project = this.state.project;
-    this.editor.single = single;
-    writeFlag(SINGLE_PAGE_KEY, single);
-    this.showSingle();
+    this.editor.continuous = mode === "continuous";
+    if (mode !== "continuous") this.editor.single = mode === "single";
+    writeFlag(CONTINUOUS_KEY, this.editor.continuous);
+    writeFlag(SINGLE_PAGE_KEY, this.editor.single);
+    this.showViewMode();
     const index = page && project ? project.pages.indexOf(page) : -1;
     this.editor.spreadIndex = 0;
+    // 連続: a few spreads on screen around the page, then out or in with the wheel.
+    this.editor.resetView(this.editor.continuous ? 0.5 : 1);
     if (index >= 0) this.editor.showPage(index + 1);
-    this.editor.resetView();
     this.renderAll();
+    if (this.editor.continuous) this.setStatus("全ページを一枚に並べました。行数は下のつまみ（Alt+↑↓）、全体は Ctrl+Alt+0、横へは Shift+ホイール");
+  }
+
+  /** 連続: the spreads in `rows` rows. */
+  private setRows(rows: number): void {
+    if (!this.editor.continuous) return;
+    this.editor.setRows(rows);
+    try {
+      localStorage.setItem(ROWS_KEY, String(this.editor.rows));
+    } catch {
+      // Not kept for the next start; the rows still hold now.
+    }
+    this.showRows();
   }
 
   /** 投げなわ塗り: what the fill tool fills with. */
@@ -1994,8 +2027,11 @@ export class Workbench {
       writeFlag(SHOW_NOTES_KEY, showNotes.checked);
       this.editor.draw();
     });
-    $("spread-mode").addEventListener("click", () => this.setSingle(false));
-    $("single-mode").addEventListener("click", () => this.setSingle(true));
+    $("spread-mode").addEventListener("click", () => this.setView("spread"));
+    $("single-mode").addEventListener("click", () => this.setView("single"));
+    $("continuous-mode").addEventListener("click", () => this.setView("continuous"));
+    $<HTMLInputElement>("rows-range").addEventListener("input", (event) => this.setRows(Number((event.target as HTMLInputElement).value)));
+    $("fit-all").addEventListener("click", () => this.editor.fitAll());
     $<HTMLInputElement>("editor-first-alone").addEventListener("change", (event) => {
       this.editor.firstAlone = (event.target as HTMLInputElement).checked;
       this.editor.spreadIndex = 0;
@@ -2086,6 +2122,20 @@ export class Workbench {
     const shown = lanes[action];
     if (shown) {
       for (const lane of shown) this.board.toggleLane(lane, true);
+      return true;
+    }
+    if (action === "view.continuous") {
+      this.setView(this.editor.continuous ? (this.editor.single ? "single" : "spread") : "continuous");
+      return true;
+    }
+    if (action === "view.fewerRows" || action === "view.moreRows") {
+      if (!this.editor.continuous) this.setView("continuous");
+      this.setRows(this.editor.rowCount() + (action === "view.moreRows" ? 1 : -1));
+      return true;
+    }
+    if (action === "view.all") {
+      if (!this.editor.continuous) this.setView("continuous");
+      this.editor.fitAll();
       return true;
     }
     if (action === "view.fit" || action === "view.rotateLeft" || action === "view.rotateRight") {
