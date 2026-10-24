@@ -1,4 +1,4 @@
-// The name data is defined twice: here (project.ts) and in Rust
+// The name data is defined twice: in model.ts and in Rust
 // (crates/name-model/src/model.rs). This test writes a project that fills in
 // every field the front end knows, and every value of each choice, to
 // crates/name-model/tests/fixtures; the Rust test `contract.rs` reads them back

@@ -1,5 +1,5 @@
 //! The name data is defined twice: in [`name_model::model`] and in the front
-//! end (app/src/project.ts). The fixtures here are written by the front end's
+//! end (app/src/model.ts). The fixtures here are written by the front end's
 //! `contract.test.ts` and hold every field it knows and every value of each
 //! choice; nothing may be lost or changed when Rust reads and writes them.
 
@@ -48,7 +48,7 @@ fn every_field_of_the_front_end_survives_rust() {
     differences("project", &read, &written, &mut found);
     assert!(
         found.is_empty(),
-        "model.rs and app/src/project.ts differ:\n{}",
+        "model.rs and app/src/model.ts differ:\n{}",
         found.join("\n")
     );
 }
