@@ -3,7 +3,8 @@
 // star around the text's centre (points in order of angle), which is what
 // lets a tail or a link replace an arc of the outline.
 import { clipClosed, clipOpen, maskShape } from "./mask";
-import { boxCenter, type BalloonShape, type BoxMm, type Line, type LineKind, type Page, type Point, type Tail, type TailStyle } from "./project";
+import { boxCenter } from "./geometry";
+import type { BalloonShape, BoxMm, Line, LineKind, Page, Point, Tail, TailStyle } from "./model";
 
 export type ResolvedShape = Exclude<BalloonShape, "auto">;
 

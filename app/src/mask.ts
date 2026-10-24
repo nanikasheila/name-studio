@@ -2,7 +2,7 @@
 // inside a CSP panel folder is. The outline itself is cut, so the page on
 // screen, the PDF and the CSP vector layers all show the same.
 
-import type { Panel, Point } from "./project";
+import type { Panel, Point } from "./model";
 
 /** Twice the area of a polygon, positive when it runs anticlockwise (y up) / clockwise on the page (y down). */
 function area2(points: readonly Point[]): number {

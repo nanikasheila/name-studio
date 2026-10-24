@@ -8,7 +8,7 @@
 // the Rust test fails until model.rs has it too. After changing the fixture,
 // run `npx vitest run -u src/contract.test.ts` to write the files again.
 import { describe, expect, it } from "vitest";
-import type { HeldPanel } from "./hold";
+import type { HeldPanel } from "./model";
 import type {
   BalloonShape,
   Binding,
