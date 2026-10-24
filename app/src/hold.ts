@@ -12,29 +12,13 @@ import {
   orderPanels,
   sortLines,
   type CarriedContents,
-  type Fill,
-  type Line,
+  type HeldPanel,
   type Page,
   type Panel,
   type Point,
   type Project,
   type Sticky,
-  type Stroke,
 } from "./project";
-
-export interface HeldPanel {
-  id: string;
-  /** The panel and what it holds, where they were on the page they came from (mm). */
-  panel: Panel;
-  lines: Line[];
-  strokes: Stroke[];
-  fills?: Fill[];
-  stickies?: Sticky[];
-  /** このあたり: the page it is meant to go near. */
-  near?: string;
-  /** The page it was taken from. */
-  from?: string;
-}
 
 /** Take a panel and what is in it off its page, into the 保留 list; `near`: the page it is meant to go near. */
 export function holdPanel(project: Project, page: Page, panel: Panel, near: string | undefined = page.id): HeldPanel {

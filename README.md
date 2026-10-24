@@ -152,4 +152,4 @@ CSP_NAME_SPLITTER=../csp-name-splitter python tools/compare_with_python.py [作�
 
 作品のファイルはリポジトリに入れません。テストは合成したファイルだけを使います。
 
-ネームデータの型は Rust（`crates/name-model/src/model.rs`）と画面（`app/src/project.ts`）の 2 か所にあります。項目や選択肢を足すときは両方に足し、`app/src/contract.test.ts` の全項目の見本にも足して `(cd app && npx vitest run -u src/contract.test.ts)` で `crates/name-model/tests/fixtures` を書き直してください。片方に足し忘れると、型チェックか `cargo test`（`tests/contract.rs`）が落ちます。
+ネームデータの型は Rust（`crates/name-model/src/model.rs`）と画面（`app/src/model.ts`）の 2 か所にあります。項目や選択肢を足すときは両方に足し、`app/src/contract.test.ts` の全項目の見本にも足して `(cd app && npx vitest run -u src/contract.test.ts)` で `crates/name-model/tests/fixtures` を書き直してください。片方に足し忘れると、型チェックか `cargo test`（`tests/contract.rs`）が落ちます。

@@ -114,37 +114,6 @@ function edgesAlong(shape: readonly Point[], side: Side, format: PageFormat): nu
 }
 
 /**
- * Open edges of a shape cut out of another: an edge is open when it lies
- * along one of the old open edges.
- */
-export function inheritOpenEdges(old: readonly Point[], open: readonly number[] | undefined, shape: readonly Point[]): number[] {
-  if (!open?.length) return [];
-  const result: number[] = [];
-  for (let i = 0; i < shape.length; i++) {
-    const a = shape[i];
-    const b = shape[(i + 1) % shape.length];
-    const mid: Point = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-    const along = open.some((j) => {
-      const p = old[j];
-      const q = old[(j + 1) % old.length];
-      return onSegment(a, p, q) && onSegment(b, p, q) && onSegment(mid, p, q);
-    });
-    if (along) result.push(i);
-  }
-  return result;
-}
-
-function onSegment(point: Point, a: Point, b: Point, tolerance = 0.02): boolean {
-  const dx = b[0] - a[0];
-  const dy = b[1] - a[1];
-  const length = Math.hypot(dx, dy);
-  if (length < 1e-9) return Math.hypot(point[0] - a[0], point[1] - a[1]) <= tolerance;
-  const t = ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / (length * length);
-  if (t < -1e-6 || t > 1 + 1e-6) return false;
-  return Math.abs((point[0] - a[0]) * dy - (point[1] - a[1]) * dx) / length <= tolerance;
-}
-
-/**
  * The border as drawn: runs of edges that are not open, each a polyline.
  * A border with no open edge is one closed run.
  */

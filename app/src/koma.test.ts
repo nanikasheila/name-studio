@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { PATTERNS, applyPattern, fitPattern, patternCount, bleedPanel, facingPage, spreadPanel, spreadTwin, unspreadPanel, borderLines, borderRuns, clipOutside, dashes, framePanels, inheritOpenEdges, isBled, patternPanels, wavy } from "./koma";
+import { PATTERNS, applyPattern, fitPattern, patternCount, bleedPanel, facingPage, spreadPanel, spreadTwin, unspreadPanel, borderLines, borderRuns, clipOutside, dashes, framePanels, isBled, patternPanels, wavy } from "./koma";
+import { inheritOpenEdges } from "./geometry";
 import { addLine, addStroke, basicBox, boxCenter, bounds, cutPanels, emptyPage, insidePolygon, newProject, rectShape, type Panel, type Point } from "./project";
 
 describe("裁ち切り", () => {
