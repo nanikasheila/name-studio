@@ -54,6 +54,9 @@ pub struct Project {
     /// 資料画像: pictures laid under pages ([`Page::references`]), each kept once.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub images: Vec<StoredImage>,
+    /// コマ間: the gaps new panels get (cuts, panel patterns); none is the default 2 mm / 6 mm.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gutters: Option<Gutters>,
     /// Next number used by [`Project::new_id`]; ids are never reused.
     pub next_id: u64,
 }
@@ -250,6 +253,14 @@ pub struct StickyLink {
     pub kind: String,
     pub id: String,
     pub at: [f64; 2],
+}
+
+/// コマ間 in millimetres: between panels side by side and one above the other.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Gutters {
+    pub across: f64,
+    pub down: f64,
 }
 
 /// 構成補助: what the name is aimed at, to compare the page split with.
@@ -810,6 +821,7 @@ impl Project {
             line_shapes: None,
             held: Vec::new(),
             images: Vec::new(),
+            gutters: None,
             next_id: 1,
         }
     }

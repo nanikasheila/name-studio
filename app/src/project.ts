@@ -29,6 +29,7 @@ import type {
   Character,
   Scene,
   Project,
+  Gutters,
 } from "./model";
 import { wrapDialogue } from "./wrap";
 
@@ -204,7 +205,23 @@ export const MM_PER_PT = 25.4 / 72;
 /** Dialogue size on the manuscript (B4 trim, printed smaller in the book). */
 export const DEFAULT_FONT_PT = 13;
 /** Gap between panels side by side (左右) and one above the other (上下). */
-export const DEFAULT_GUTTERS = { across: 2, down: 6 };
+export const DEFAULT_GUTTERS: Gutters = { across: 2, down: 6 };
+/** The widest コマ間 that can be set (mm). */
+export const MAX_GUTTER_SETTING_MM = 12;
+
+/** The コマ間 new panels of the project get. */
+export function gutters(project: Project): Gutters {
+  return project.gutters ?? DEFAULT_GUTTERS;
+}
+
+/** Sets the project's コマ間 (each 0 to MAX_GUTTER_SETTING_MM, 0.1 mm steps); the default is kept as none. */
+export function setGutters(project: Project, next: Gutters): void {
+  const clamp = (value: number, fallback: number) =>
+    Number.isFinite(value) ? Math.round(Math.min(Math.max(value, 0), MAX_GUTTER_SETTING_MM) * 10) / 10 : fallback;
+  const value = { across: clamp(next.across, gutters(project).across), down: clamp(next.down, gutters(project).down) };
+  if (value.across === DEFAULT_GUTTERS.across && value.down === DEFAULT_GUTTERS.down) delete project.gutters;
+  else project.gutters = value;
+}
 
 export const KIND_LABELS: Record<LineKind, string> = {
   speech: "セリフ",
@@ -438,8 +455,8 @@ export function addPanel(project: Project, page: Page, shape: Point[]): Panel {
 }
 
 /** Split every panel the cut `a`-`b` touches. Returns the ids of the new panels. */
-export function cutPanels(project: Project, page: Page, a: Point, b: Point, gutters = DEFAULT_GUTTERS): string[] {
-  const gutter = gutterFor(a, b, gutters);
+export function cutPanels(project: Project, page: Page, a: Point, b: Point, gaps = gutters(project)): string[] {
+  const gutter = gutterFor(a, b, gaps);
   const created: string[] = [];
   const panels: Panel[] = [];
   for (const panel of page.panels) {

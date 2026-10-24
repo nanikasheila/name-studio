@@ -94,8 +94,17 @@ describe("borders between panels", () => {
   it("snaps a straight border onto the frame lines", () => {
     const { page } = pageWith([20, 20, 100, 100]);
     const seam = seamAt(page, [20, 50], 0.5)!;
-    const d = snapSeam(seam, -9.2 * seam.normal[0], { xs: [10], ys: [] }, 1);
-    expect(20 + seam.normal[0] * d).toBeCloseTo(10);
+    const { distance, guide } = snapSeam(seam, -9.2 * seam.normal[0], { xs: [{ at: 10, guide: true }], ys: [], grid: null }, 1);
+    expect(20 + seam.normal[0] * distance).toBeCloseTo(10);
+    expect(guide).toBe(10);
+  });
+
+  it("snaps a straight border onto the grid when no line is near", () => {
+    const { page } = pageWith([20, 20, 100, 100]);
+    const seam = seamAt(page, [20, 50], 0.5)!;
+    const { distance, guide } = snapSeam(seam, -3.7 * seam.normal[0], { xs: [], ys: [], grid: { x0: 0, y0: 0, step: 5 } }, 1);
+    expect(20 + seam.normal[0] * distance).toBeCloseTo(15);
+    expect(guide).toBeNull();
   });
 
   it("is nothing inside a panel", () => {

@@ -62,3 +62,14 @@ export function readJson(key: string, fallback: unknown): unknown {
 export function writeJson(key: string, value: unknown): void {
   writeText(key, JSON.stringify(value));
 }
+
+/** A number from `min` to `max` (zero and fractions too), or the fallback. */
+export function readNumber(key: string, fallback: number, min: number, max: number): number {
+  const text = readText(key);
+  const value = text === null || text.trim() === "" ? Number.NaN : Number(text);
+  return Number.isFinite(value) && value >= min && value <= max ? value : fallback;
+}
+
+export function writeNumber(key: string, value: number): void {
+  writeText(key, String(value));
+}

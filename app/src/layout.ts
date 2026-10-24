@@ -8,9 +8,11 @@ import { trimBox } from "./project";
 export const MARGIN = 28;
 /** Room under the pages for their number and memo (px). */
 export const CAPTION = 36;
-/** 連続: room between the spreads (mm, and px so that they stay apart when small). */
+/** 連続: room between the spreads by default (mm, and px so that they stay apart when small). */
 export const GRID_GAP_MM = 12;
 export const GRID_GAP_PX = 14;
+/** The most room between the spreads that can be set (mm). */
+export const MAX_PAGE_GAP_MM = 100;
 
 /** A page as laid out on screen. */
 export interface Slot {
@@ -37,6 +39,8 @@ export interface Arrangement {
   rows: number;
   zoom: number;
   pan: [number, number];
+  /** 連続: room between the spreads (mm); none is GRID_GAP_MM. */
+  gapMm?: number;
   /** The stage (CSS px). */
   width: number;
   height: number;
@@ -114,12 +118,19 @@ function continuousLayout(project: Project, list: Pair[], view: Arrangement): Sl
   const spreadMm = spreadWidth(project.pageFormat);
   const scale = spreadFit(project.pageFormat, view.width, view.height) * view.zoom;
   const columns = Math.ceil(list.length / rowCount(view.rows, list.length));
-  const pitchX = (spreadMm + GRID_GAP_MM) * scale + GRID_GAP_PX;
-  const pitchY = (pageH + GRID_GAP_MM) * scale + CAPTION + GRID_GAP_PX;
+  const gap = pageGapPx(view.gapMm ?? GRID_GAP_MM, scale);
+  const pitchX = spreadMm * scale + gap;
+  const pitchY = pageH * scale + CAPTION + gap;
   const step = project.binding === "right" ? -1 : 1;
   const left = (step < 0 ? view.width - MARGIN - spreadMm * scale : MARGIN) + view.pan[0];
   const top = MARGIN + view.pan[1];
   return list.flatMap((pair, i) => spreadSlots(project, pair, left + step * (i % columns) * pitchX, top + Math.floor(i / columns) * pitchY, scale));
+}
+
+/** 連続: the room between spreads on screen (px): `gapMm` at the scale, a little more while it is small, none for 0. */
+export function pageGapPx(gapMm: number, scale: number): number {
+  const gap = Math.max(0, gapMm);
+  return gap * scale + GRID_GAP_PX * Math.min(1, gap / GRID_GAP_MM);
 }
 
 /** The screen box (px) of the pages in `slots`, with the room for their page numbers. */

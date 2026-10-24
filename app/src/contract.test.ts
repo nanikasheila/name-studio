@@ -198,6 +198,7 @@ export const FULL_PROJECT: Full<Project> = {
   lineShapes: { speech: "rounded", thought: "polygon", narration: "box", sfx: "none", aside: "dashed" },
   held: [held],
   images: [{ id: "image1", name: "駅.jpg", mime: "image/jpeg", dataBase64: "/9j/4AAQ", widthPx: 400, heightPx: 300 }],
+  gutters: { across: 3, down: 7.5 },
   nextId: 42,
 };
 

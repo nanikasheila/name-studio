@@ -13,6 +13,7 @@ import { dragSort } from "./dragsort";
 import { AltDialog } from "./altdialog";
 import { ScriptDialog } from "./scriptdialog";
 import { ShortcutDialog } from "./shortcutdialog";
+import { SettingsDialog } from "./settingsdialog";
 import { PenDialog } from "./pendialog";
 import { arrangePage, arrangePanel, clearFaces, fitSpills } from "./arrange";
 import { LayerView, moveIntoPanel, type LayerRef } from "./layers";
@@ -26,9 +27,11 @@ import {
   SINGLE_PAGE_KEY,
   CONTINUOUS_KEY,
   ROWS_KEY,
+  PANEL_MODE_LABELS,
   PageEditor,
   isTyping,
   type EditorEraseMode,
+  type PanelMode,
   type Selection,
   type Tool,
 } from "./editor";
@@ -109,7 +112,7 @@ const INSPECTOR_ICON = '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"
 /** One line under the tool's name in the options row. */
 const TOOL_HINTS: Record<Tool, string> = {
   select: "クリックで選ぶ・ドラッグで動かす・ダブルクリックで書き込む。Shift で足す、囲んでまとめて選ぶ",
-  cut: "コマを横切るように引くと割れる（Alt で斜め）。コマの外をドラッグで新しいコマ",
+  cut: "コマを横切るように引くと割れる（Alt で斜め）。Shift + コマの外のドラッグで新しいコマ",
   text: "クリックした所にセリフを置く。選んで Alt+ホイールで文字の大きさ",
   pen: "",
   eraser: "",
@@ -117,6 +120,13 @@ const TOOL_HINTS: Record<Tool, string> = {
   breakout: "コマを突き抜ける所を囲む。中に描いた線はコマ枠の上に",
   sticky: "クリックで付箋を貼る（書き出しには入りません）",
   reference: "写真や背景を薄く敷く。Ctrl+V・ドロップでも貼れる。ドラッグで動かし、角で大きさ（CSP には下描きレイヤーで出ます）",
+};
+
+/** コマ割り: the hint for each way of making panels. */
+const PANEL_HINTS: Record<PanelMode, string> = {
+  cut: TOOL_HINTS.cut,
+  rect: "ドラッグで四角いコマを描く。コマの中に描くと、はめ込み（Alt で吸着しない）",
+  polygon: "クリックで角を置く。最初の角・ダブルクリック・Enter で閉じてコマに。Backspace で 1 つ戻す、Esc でやめる",
 };
 
 export class Workbench {
@@ -161,6 +171,7 @@ export class Workbench {
   private readonly shortcutDialog = new ShortcutDialog(this.shortcuts);
   private readonly penDialog = new PenDialog(penPreferences);
   private readonly brushDialog: BrushDialog;
+  private readonly settingsDialog: SettingsDialog;
   private readonly versionDialog: VersionDialog;
   private readonly autosaver = new Autosaver(
     () => this.autosave(),
@@ -216,6 +227,13 @@ export class Workbench {
       makeOption: (first, last) => this.makeOption(first, last),
       useOption: (set, optionId) => this.useOption(set, optionId),
       compare: (setId) => this.altDialog.open(setId),
+    });
+    this.settingsDialog = new SettingsDialog({
+      editor: this.editor,
+      project: () => this.state.project,
+      edit: (change) => this.edit(change),
+      status: (message) => this.setStatus(message),
+      snapChanged: () => this.showPanelModes(),
     });
     // The page takes whatever room the strip and the side panels leave.
     new ResizeObserver(() => this.editor.resize()).observe($("editor-canvas").parentElement!);
@@ -1176,6 +1194,8 @@ export class Workbench {
       $(`tool-${name}`).classList.toggle("active", name === tool);
     }
     $("fill-tones").hidden = tool !== "fill";
+    $("panel-modes").hidden = tool !== "cut";
+    $("grid-snap-label").hidden = tool !== "cut";
     $("reference-bar").classList.toggle("off", tool !== "reference");
     if (tool !== "reference" && this.editor.reference) this.editor.chooseReference(null);
     this.renderReferenceBar();
@@ -1185,7 +1205,22 @@ export class Workbench {
     name.replaceChildren(...[...button.childNodes].map((node) => node.cloneNode(true)));
     name.style.setProperty("--tool", getComputedStyle(button).getPropertyValue("--tool"));
     $("tool-hint").textContent = TOOL_HINTS[tool];
+    this.showPanelModes();
     this.renderBrushBar();
+  }
+
+  /** コマ割り: how a drag makes panels, and whether they snap to the grid. */
+  private showPanelModes(): void {
+    const mode = this.editor.panelMode;
+    for (const name of Object.keys(PANEL_MODE_LABELS) as PanelMode[]) $(`panel-${name}`).classList.toggle("active", name === mode);
+    $<HTMLInputElement>("grid-snap").checked = this.editor.snapping.grid;
+    if (this.editor.tool === "cut") $("tool-hint").textContent = PANEL_HINTS[mode];
+  }
+
+  private setPanelMode(mode: PanelMode): void {
+    this.editor.setPanelMode(mode);
+    if (this.editor.tool !== "cut") this.setTool("cut");
+    this.showPanelModes();
   }
 
   private showViewMode(): void {
@@ -1449,6 +1484,13 @@ export class Workbench {
     for (const tone of ["black", "gray", "white"] as const) {
       $(`fill-${tone}`).addEventListener("click", () => this.setFillTone(tone));
     }
+    for (const mode of Object.keys(PANEL_MODE_LABELS) as PanelMode[]) {
+      $(`panel-${mode}`).addEventListener("click", () => this.setPanelMode(mode));
+    }
+    $<HTMLInputElement>("grid-snap").addEventListener("change", (event) => {
+      this.settingsDialog.changeSnap({ grid: (event.target as HTMLInputElement).checked });
+    });
+    $("settings").addEventListener("click", () => this.settingsDialog.open());
     for (const name of ["select", "cut", "text", "pen", "eraser", "fill", "breakout", "sticky", "reference"] as const) {
       $(`tool-${name}`).addEventListener("click", () => this.setTool(name));
     }

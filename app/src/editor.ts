@@ -7,9 +7,9 @@ import { FULL_SPEED_MM, followFactor, postCorrect, tiltOf as penTilt, usesMotion
 import { adjustPressure, penPreferences } from "./pen";
 import { balloonExtent, defaultTailStyle, insideBalloon, resolvedShape, tailGeometry } from "./balloon";
 import { spreads } from "./pages";
-import { MARGIN, extent, layoutPages, onStage, rowCount, slotAt, toPage, type Slot } from "./layout";
+import { GRID_GAP_MM, MARGIN, MAX_PAGE_GAP_MM, extent, layoutPages, onStage, rowCount, slotAt, toPage, type Slot } from "./layout";
 import { holdPanel, placeHeld } from "./hold";
-import { addBreakout, moveBreakout, stacked } from "./koma";
+import { addBreakout, addDrawnPanel, moveBreakout, stacked } from "./koma";
 import { joinPanels, moveSeam, seamAt, seamBase, seamLines, snapSeam, type Seam } from "./komaedit";
 import {
   baseBounds,
@@ -38,7 +38,6 @@ import {
   addSticky,
   linkSticky,
   stickyAnchor,
-  addPanel,
   addStroke,
   assignPanels,
   basicBox,
@@ -59,8 +58,6 @@ import {
   pickInside,
   rectShape,
   snapCut,
-  snapLines,
-  snapPoint,
   simplify,
   sortLines,
   swapPanelContents,
@@ -68,6 +65,7 @@ import {
   wantsSpread,
   carryContents,
   followPanel,
+  gutters,
   type CarriedContents,
   strokeHit,
   keepStickyOnPage,
@@ -92,9 +90,15 @@ import {
   type Stroke,
   type StrokePoint,
 } from "./project";
-import { readCount, readFlag } from "./settings";
+import { readCount, readFlag, readNumber } from "./settings";
+import { besideCorners, loadSnap, NO_TARGETS, snapBox, snapPointTo, snapTargets, type SnapSettings, type SnapTargets } from "./snapping";
 
 export type Tool = "select" | "cut" | "text" | "pen" | "eraser" | "fill" | "breakout" | "sticky" | "reference";
+
+/** コマ割り: cut panels apart, draw a rectangle panel, or place the corners of any shape (台形 and the like). */
+export type PanelMode = "cut" | "rect" | "polygon";
+
+export const PANEL_MODE_LABELS: Record<PanelMode, string> = { cut: "割る", rect: "四角", polygon: "多角形" };
 
 export interface Selection {
   kind: "panel" | "line" | "stroke" | "breakout" | "group" | "sticky" | "fill";
@@ -142,10 +146,11 @@ type Drag =
   /** Two fingers: `v` is the view point under their middle (independent of zoom), kept under it. */
   | { kind: "pinch"; ids: [number, number]; dist: number; angle: number; zoom: number; rotation: number; v: Point }
   | { kind: "turn"; from: number; rotation: number }
-  | { kind: "move"; slot: Slot; last: Point; moved: boolean; carried?: CarriedContents; items?: ItemRef[]; cycle?: string }
-  | { kind: "vertex"; slot: Slot; panelId: string; vertex: number; moved: boolean; carried?: CarriedContents }
+  /** `snap`: panels being moved, from `origin` (their box then, and how far they have been moved so far). */
+  | { kind: "move"; slot: Slot; last: Point; moved: boolean; carried?: CarriedContents; items?: ItemRef[]; cycle?: string; snap?: MoveSnap }
+  | { kind: "vertex"; slot: Slot; panelId: string; vertex: number; moved: boolean; carried?: CarriedContents; targets: SnapTargets }
   | { kind: "cut"; slot: Slot; a: Point; b: Point; free: boolean }
-  | { kind: "frame"; slot: Slot; a: Point; b: Point }
+  | { kind: "frame"; slot: Slot; a: Point; b: Point; targets: SnapTargets }
   | { kind: "pen"; slot: Slot; points: StrokePoint[]; last: StrokePoint; motion: boolean; time: number; speed: number; straight: boolean }
   /** しっぽ: its tip, its whole length (body), or its middle (bend); `created` when pulled out of the balloon. */
   | { kind: "tail"; slot: Slot; lineId: string; index: number; moved: boolean; part: TailPart; start: Point; tip: Point; created?: boolean }
@@ -157,13 +162,21 @@ type Drag =
   | { kind: "swap"; slot: Slot; panelId: string; at: [number, number]; to: { slot: Slot; panelId: string } | null }
   | { kind: "note"; slot: Slot; panelId: string; start: [number, number]; origin: Point; moved: boolean }
   | { kind: "stickyLink"; slot: Slot; stickyId: string; to: Selection | null }
-  | { kind: "seam"; slot: Slot; seam: Seam; base: Map<string, Point[]>; start: Point; moved: boolean; carried: Map<string, CarriedContents> }
-  | { kind: "scale"; slot: Slot; handle: number; base: TransformBase; box: BoxMm; moved: boolean }
+  | { kind: "seam"; slot: Slot; seam: Seam; base: Map<string, Point[]>; start: Point; moved: boolean; carried: Map<string, CarriedContents>; targets: SnapTargets }
+  | { kind: "scale"; slot: Slot; handle: number; base: TransformBase; box: BoxMm; moved: boolean; targets: SnapTargets }
   /** 自由変形 (Ctrl + a corner): the corners of the frame, each where it was dragged. */
   | { kind: "warp"; slot: Slot; handle: number; base: TransformBase; box: BoxMm; corners: [Point, Point, Point, Point]; moved: boolean }
   | { kind: "rotate"; slot: Slot; base: TransformBase; centre: Point; start: number; moved: boolean }
   /** 資料画像: moved (corner -1) or resized from a corner, the opposite corner staying put. */
   | { kind: "reference"; slot: Slot; id: string; corner: number; start: Point; box: BoxMm; moved: boolean };
+
+/** Panels being moved: snapped by their box as it was, moved by `total` (snapped) so far. */
+interface MoveSnap {
+  origin: Point;
+  box: BoxMm;
+  total: Point;
+  targets: SnapTargets;
+}
 
 /** Handles of the transform frame: corners from the top left clockwise, then the sides top, right, bottom, left. */
 const FRAME_HANDLES = 8;
@@ -186,6 +199,8 @@ type Hover =
   | { kind: "handle"; slot: Slot; handle: number };
 
 const ACCENT = "#2f6fdb";
+/** Lines snapped to. */
+const GUIDE = "#e0398a";
 /** Radius of a 付箋's link handle (px). */
 const LINK_HANDLE = 5;
 const HANDLE = 5;
@@ -195,6 +210,7 @@ export const SHOW_NOTES_KEY = "namestudio.showNotes";
 export const SINGLE_PAGE_KEY = "namestudio.singlePage";
 export const CONTINUOUS_KEY = "namestudio.continuous";
 export const ROWS_KEY = "namestudio.rows";
+export const PAGE_GAP_KEY = "namestudio.pageGap";
 /** How long the pages take to slide to a new arrangement (ms). */
 const SLIDE_MS = 220;
 /** Pages narrower than this (px) show their drawing without panel numbers or memos. */
@@ -234,8 +250,16 @@ export class PageEditor {
   eraseMode: EditorEraseMode = "whole";
   /** The pen's eraser end is down or hovering: erase whatever the tool. */
   private tipEraser = false;
-  /** Snap panel corners to the frames. */
-  snap = true;
+  /** 吸着: what panel corners, borders and panels snap to (nothing while Alt is held). */
+  snapping: SnapSettings = loadSnap();
+  /** 連続: room between the spreads (mm). */
+  pageGapMm = readNumber(PAGE_GAP_KEY, GRID_GAP_MM, 0, MAX_PAGE_GAP_MM);
+  /** コマ割り: what a drag with the panel tool does. */
+  panelMode: PanelMode = "cut";
+  /** 多角形: the corners placed so far on a page (the panel is made when the outline is closed). */
+  private polygon: { pageId: string; points: Point[] } | null = null;
+  /** Lines snapped to while dragging (page mm), shown as guides. */
+  private guides: { pageId: string; xs: number[]; ys: number[] } | null = null;
   /** 変形 (Ctrl+T): the transform frame on a panel, a balloon, a fill or a はみ出し. */
   private transforming = false;
   /** Hidden on screen from the レイヤー list (`kind:id`); exports keep them. */
@@ -313,6 +337,19 @@ export class PageEditor {
     });
     canvas.addEventListener("wheel", (event) => this.wheel(event), { passive: false });
     canvas.addEventListener("dblclick", (event) => this.doubleClick(event));
+    // 多角形: Enter closes the outline, Backspace takes back a corner, Esc stops (before the app's own keys).
+    window.addEventListener(
+      "keydown",
+      (event) => {
+        if (!this.polygon || isTyping(event)) return;
+        const done = event.key === "Enter" ? this.finishPolygon() : event.key === "Backspace" ? this.cancelPolygon(true) : event.key === "Escape" ? this.cancelPolygon() : false;
+        if (done) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+        }
+      },
+      { capture: true },
+    );
     window.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && this.transforming && !isTyping(event)) {
         event.preventDefault();
@@ -554,6 +591,7 @@ export class PageEditor {
   setTool(tool: Tool): void {
     this.tool = tool;
     this.transforming = false;
+    if (tool !== "cut") this.cancelPolygon();
     this.updateCursor();
     this.renderBar();
     this.draw();
@@ -651,7 +689,7 @@ export class PageEditor {
 
   private layout(project: Project): Slot[] {
     const { width, height } = this.canvas.getBoundingClientRect();
-    const view = { single: this.single, continuous: this.continuous, rows: this.rows, zoom: this.zoom, pan: this.pan, width, height };
+    const view = { single: this.single, continuous: this.continuous, rows: this.rows, zoom: this.zoom, pan: this.pan, width, height, gapMm: this.pageGapMm };
     return layoutPages(project, this.spreadList(), this.spreadIndex, view);
   }
 
@@ -1492,6 +1530,10 @@ export class PageEditor {
       const line = hoverSlot.page.lines.find((l) => l.id === lineId);
       if (line && !this.isSelected(hoverSlot.page, "line", line.id)) this.drawTailHandles(hoverSlot, line, true);
     }
+    this.drawGrid(this.host.project()!);
+    // The outline being placed snaps its next corner: the guides after it.
+    this.drawPolygon();
+    this.drawGuides();
     if (drag && (drag.kind === "cut" || drag.kind === "frame")) {
       const { slot } = drag;
       const a = drag.a;
@@ -1605,6 +1647,251 @@ export class PageEditor {
       ctx.arc(this.pointer[0], this.pointer[1], this.eraserRadiusPx(), 0, Math.PI * 2);
       ctx.stroke();
     }
+  }
+
+  // --- 吸着・コマを描く -------------------------------------------------------------
+
+  /** What panel points on `page` snap to, but the panels `exclude` (the ones being changed). */
+  private snapTargetsOn(project: Project, page: Page, exclude: Iterable<string> = []): SnapTargets {
+    return snapTargets(page, project.pageFormat, this.snapping, gutters(project), new Set(exclude));
+  }
+
+  /** A panel point snapped (nothing with Alt): `beside` are the corners it lines up with; the lines it went onto show. */
+  private snapped(slot: Slot, point: Point, targets: SnapTargets, free: boolean, beside: readonly Point[] = []): Point {
+    if (free) {
+      this.guides = null;
+      return point;
+    }
+    const result = snapPointTo(point, targets, 8 / slot.scale, this.snapping.axis ? beside : []);
+    this.guides = { pageId: slot.page.id, ...result.guides };
+    return result.point;
+  }
+
+  /** Moving panels (among `items`) snap by their box; nothing to snap when no panel moves. */
+  private moveSnap(project: Project, page: Page, origin: Point, items: readonly ItemRef[]): MoveSnap | undefined {
+    const ids = items.filter((item) => item.kind === "panel").map((item) => item.id);
+    const shapes = page.panels.filter((panel) => ids.includes(panel.id)).map((panel) => panel.shape);
+    if (!shapes.length) return undefined;
+    return { origin, box: bounds(shapes.flat()), total: [0, 0], targets: this.snapTargetsOn(project, page, ids) };
+  }
+
+  /**
+   * The point a transform handle is pulled to, snapped so that the panels'
+   * side (inside the frame's padding) lands on a line.
+   */
+  private snappedHandle(drag: Extract<Drag, { kind: "scale" }>, point: Point, free: boolean): Point {
+    if (drag.targets === NO_TARGETS) return point;
+    const pad = 3 / drag.slot.scale;
+    // Which way each axis of the handle is from the frame's middle: the padding is outward that way.
+    const side = ([[-1, -1], [1, -1], [1, 1], [-1, 1], [0, -1], [1, 0], [0, 1], [-1, 0]] as Point[])[drag.handle];
+    const edge: Point = [point[0] - side[0] * pad, point[1] - side[1] * pad];
+    const snapped = this.snapped(drag.slot, edge, drag.targets, free);
+    // Only the axes the handle pulls show a guide.
+    if (this.guides) {
+      if (!side[0]) this.guides.xs = [];
+      if (!side[1]) this.guides.ys = [];
+    }
+    return [snapped[0] + side[0] * pad, snapped[1] + side[1] * pad];
+  }
+
+  /** A panel drawn on `page` (inside another one: an inset over it), selected. */
+  private addFreePanel(project: Project, page: Page, outline: Point[]): void {
+    this.host.begin();
+    const panel = addDrawnPanel(project, page, outline);
+    if (!panel) {
+      this.host.cancel();
+      this.host.status("コマにするには、もう少し大きく囲んでください");
+      return;
+    }
+    this.host.commit();
+    this.select({ kind: "panel", pageId: page.id, id: panel.id });
+    this.host.status(
+      panel.z
+        ? `コマ ${panel.order} を足しました（中に描いたので、はめ込みにしました）`
+        : `コマ ${panel.order} を足しました。選択で角をドラッグすると形を変えられます`,
+    );
+  }
+
+  /** 多角形: whether corners are being placed. */
+  get placingCorners(): boolean {
+    return this.polygon !== null;
+  }
+
+  /** The page of the outline being placed, as laid out now. */
+  private polygonSlot(): Slot | null {
+    const polygon = this.polygon;
+    return polygon ? (this.slots.find((slot) => slot.page.id === polygon.pageId) ?? null) : null;
+  }
+
+  /** The next corner, snapped, from the pointer at `point` on the outline's page. */
+  private nextCorner(slot: Slot, point: Point, free: boolean): Point {
+    const points = this.polygon?.points ?? [];
+    const project = this.host.project();
+    if (!project) return point;
+    const beside = points.length ? [points[points.length - 1], points[0]] : [];
+    return this.snapped(slot, point, this.snapTargetsOn(project, slot.page), free, beside);
+  }
+
+  /** 多角形: a click places a corner; on the first corner (or the last again) it closes the outline into a panel. */
+  private placeCorner(slot: Slot, point: Point, free: boolean): void {
+    const polygon = this.polygon?.pageId === slot.page.id ? this.polygon : null;
+    if (!polygon) {
+      this.polygon = { pageId: slot.page.id, points: [this.nextCorner(slot, point, free)] };
+      this.host.status("多角形: クリックで角を置く。最初の角をクリック・ダブルクリック・Enter で閉じてコマに（Backspace で 1 つ戻す、Esc でやめる）");
+      this.requestOverlay();
+      return;
+    }
+    const near = (p: Point) => Math.hypot(p[0] - point[0], p[1] - point[1]) * slot.scale <= 8;
+    if (polygon.points.length >= 3 && (near(polygon.points[0]) || near(polygon.points[polygon.points.length - 1]))) {
+      this.finishPolygon();
+      return;
+    }
+    polygon.points.push(this.nextCorner(slot, point, free));
+    this.guides = null;
+    this.requestOverlay();
+  }
+
+  /** 多角形: the corners placed make a panel (with three or more). */
+  finishPolygon(): boolean {
+    const polygon = this.polygon;
+    const project = this.host.project();
+    if (!polygon || !project) return false;
+    this.polygon = null;
+    this.guides = null;
+    const page = project.pages.find((p) => p.id === polygon.pageId);
+    if (page && polygon.points.length >= 3) this.addFreePanel(project, page, polygon.points);
+    else this.host.status("コマにするには角を 3 つ以上置いてください");
+    this.draw();
+    return true;
+  }
+
+  /** 多角形: stop placing corners (`last`: take back only the last one). */
+  cancelPolygon(last = false): boolean {
+    if (!this.polygon) return false;
+    if (last && this.polygon.points.length > 1) this.polygon.points.pop();
+    else {
+      this.polygon = null;
+      this.host.status("");
+    }
+    this.guides = null;
+    this.requestOverlay();
+    return true;
+  }
+
+  /** コマ割り: cut, draw rectangles or place corners. */
+  setPanelMode(mode: PanelMode): void {
+    this.panelMode = mode;
+    if (mode !== "polygon") this.cancelPolygon();
+    this.requestOverlay();
+  }
+
+  /** 連続: room between the spreads (mm), the spread worked on staying where it is on screen. */
+  setPageGap(mm: number): void {
+    const project = this.host.project();
+    const next = Math.min(Math.max(0, mm), MAX_PAGE_GAP_MM);
+    if (next === this.pageGapMm) return;
+    const before = project && this.continuous ? this.spreadBox(this.layout(project)) : null;
+    this.pageGapMm = next;
+    const after = project && this.continuous ? this.spreadBox(this.layout(project)) : null;
+    if (before && after) {
+      this.pan[0] += before[0] - after[0];
+      this.pan[1] += before[1] - after[1];
+    }
+    this.draw();
+  }
+
+  /** The lines snapped to, across the page they are on. */
+  private drawGuides(): void {
+    const guides = this.guides;
+    const slot = guides && this.slots.find((s) => s.page.id === guides.pageId);
+    if (!guides || !slot || (!guides.xs.length && !guides.ys.length)) return;
+    const [pageW, pageH] = this.host.project()!.pageFormat.canvasMm;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.strokeStyle = GUIDE;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    for (const x of guides.xs) {
+      ctx.moveTo(slot.x + x * slot.scale, slot.y);
+      ctx.lineTo(slot.x + x * slot.scale, slot.y + pageH * slot.scale);
+    }
+    for (const y of guides.ys) {
+      ctx.moveTo(slot.x + slot.shown[0] * slot.scale, slot.y + y * slot.scale);
+      ctx.lineTo(slot.x + Math.min(slot.shown[1], pageW) * slot.scale, slot.y + y * slot.scale);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** The grid (when panels snap to it) on the pages, while panels are cut, drawn or changed. */
+  private drawGrid(project: Project): void {
+    const { grid, gridMm } = this.snapping;
+    const panelDrag = this.drag && ["frame", "vertex", "seam", "scale"].includes(this.drag.kind);
+    const moving = this.drag?.kind === "move" && !!this.drag.snap;
+    if (!grid || !(this.tool === "cut" || panelDrag || moving)) return;
+    const [pageW, pageH] = project.pageFormat.canvasMm;
+    const [bx, by] = basicBox(project.pageFormat);
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.strokeStyle = "rgba(47, 111, 219, 0.14)";
+    ctx.lineWidth = 1;
+    for (const slot of this.slots) {
+      // Too fine to see: no grid.
+      if (gridMm * slot.scale < 4 || this.small(project, slot)) continue;
+      const [x0, x1] = slot.shown;
+      ctx.beginPath();
+      for (let x = bx - Math.floor((bx - x0) / gridMm) * gridMm; x <= x1; x += gridMm) {
+        ctx.moveTo(slot.x + x * slot.scale, slot.y);
+        ctx.lineTo(slot.x + x * slot.scale, slot.y + pageH * slot.scale);
+      }
+      for (let y = by - Math.floor(by / gridMm) * gridMm; y <= pageH; y += gridMm) {
+        ctx.moveTo(slot.x + x0 * slot.scale, slot.y + y * slot.scale);
+        ctx.lineTo(slot.x + Math.min(x1, pageW) * slot.scale, slot.y + y * slot.scale);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /** 多角形: the corners placed, and the side to where the pointer is. */
+  private drawPolygon(): void {
+    const polygon = this.polygon;
+    const slot = this.polygonSlot();
+    if (!polygon || !slot) return;
+    const ctx = this.ctx;
+    const at = ([x, y]: Point): Point => [slot.x + x * slot.scale, slot.y + y * slot.scale];
+    const points = [...polygon.points];
+    let closing = false;
+    if (this.pointer && !this.drag) {
+      const pointer = toPage(slot, ...this.pointer);
+      const first = polygon.points[0];
+      closing = polygon.points.length >= 3 && Math.hypot(first[0] - pointer[0], first[1] - pointer[1]) * slot.scale <= 8;
+      if (!closing) points.push(this.nextCorner(slot, pointer, false));
+    }
+    ctx.save();
+    if (points.length >= 3) {
+      tracePath(ctx, points, { scale: slot.scale, x: slot.x, y: slot.y }, true);
+      ctx.fillStyle = "rgba(47, 111, 219, 0.08)";
+      ctx.fill();
+    }
+    ctx.strokeStyle = ACCENT;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    tracePath(ctx, points, { scale: slot.scale, x: slot.x, y: slot.y }, closing);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#ffffff";
+    ctx.lineWidth = 1.5;
+    polygon.points.forEach((point, i) => {
+      const [px, py] = at(point);
+      const r = i === 0 && closing ? HANDLE + 2 : HANDLE - 1;
+      ctx.beginPath();
+      ctx.arc(px, py, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    });
+    ctx.restore();
   }
 
   // --- 変形（拡大縮小・回転・反転） -------------------------------------------------------
@@ -2216,6 +2503,7 @@ export class PageEditor {
     if (!drag) return;
     this.drag = null;
     this.base = null;
+    this.guides = null;
     if (["move", "vertex", "seam", "scale", "rotate", "warp", "tail", "erase"].includes(drag.kind)) this.completeDrag(drag);
     this.dragPointer = null;
     this.dragPointerType = "";
@@ -2300,7 +2588,10 @@ export class PageEditor {
             const centre: Point = [(x0 + x1) / 2, (y0 + y1) / 2];
             this.drag = { kind: "rotate", slot: frame.slot, base, centre, start: Math.atan2(point[1] - centre[1], point[0] - centre[0]), moved: false };
           } else {
-            this.drag = { kind: "scale", slot: frame.slot, handle, base, box: frame.box, moved: false };
+            // Panels' sides snap as they are pulled.
+            const panelIds = base.panels?.map((panel) => panel.id) ?? [];
+            const targets = panelIds.length ? this.snapTargetsOn(project, frame.slot.page, panelIds) : NO_TARGETS;
+            this.drag = { kind: "scale", slot: frame.slot, handle, base, box: frame.box, moved: false, targets };
           }
           return;
         }
@@ -2349,7 +2640,8 @@ export class PageEditor {
           this.host.begin();
           const panel = slot.page.panels.find((p) => p.id === this.selection!.id);
           const carried = panel && this.panelCarries ? carryContents(slot.page, panel) : undefined;
-          this.drag = { kind: "vertex", slot, panelId: this.selection!.id, vertex, moved: false, carried };
+          const targets = this.snapTargetsOn(project, slot.page, [this.selection!.id]);
+          this.drag = { kind: "vertex", slot, panelId: this.selection!.id, vertex, moved: false, carried, targets };
           return;
         }
         const target = this.hit(slot, point);
@@ -2376,7 +2668,8 @@ export class PageEditor {
                 if (panel) carried.set(id, carryContents(slot.page, panel));
               }
             }
-            this.drag = { kind: "seam", slot, seam, base: seamBase(slot.page, seam), start: point, moved: false, carried };
+            const targets = this.snapTargetsOn(project, slot.page, seam.edges.map((edge) => edge.panelId));
+            this.drag = { kind: "seam", slot, seam, base: seamBase(slot.page, seam), start: point, moved: false, carried, targets };
             this.hover = null;
             return;
           }
@@ -2386,7 +2679,8 @@ export class PageEditor {
           if (this.groupHit(slot.page, point, 4 / slot.scale)) {
             this.host.begin();
             // Panels picked take along what is drawn in them.
-            this.drag = { kind: "move", slot, last: point, moved: false, items: this.selectedItems() };
+            const items = this.selectedItems();
+            this.drag = { kind: "move", slot, last: point, moved: false, items, snap: this.moveSnap(project, slot.page, point, items) };
             return;
           }
         }
@@ -2405,15 +2699,25 @@ export class PageEditor {
         // A panel takes its dialogue and rough lines along.
         const panel = target.kind === "panel" ? slot.page.panels.find((p) => p.id === target.id) : undefined;
         const carried = panel && this.panelCarries ? carryContents(slot.page, panel) : undefined;
-        this.drag = { kind: "move", slot, last: point, moved: false, carried, ...(cycle ? { cycle } : {}) };
+        const snap = panel ? this.moveSnap(project, slot.page, point, [{ kind: "panel", id: panel.id }]) : undefined;
+        this.drag = { kind: "move", slot, last: point, moved: false, carried, ...(cycle ? { cycle } : {}), ...(snap ? { snap } : {}) };
         return;
       }
       case "cut": {
+        if (this.panelMode === "polygon") {
+          this.placeCorner(slot, point, event.altKey);
+          return;
+        }
         const inPanel = slot.page.panels.some((panel) => insidePolygon(panel.shape, point));
-        this.drag = inPanel || slot.page.panels.length
-          ? { kind: "cut", slot, a: point, b: point, free: event.altKey }
-          : { kind: "frame", slot, a: point, b: point };
-        if (!inPanel && slot.page.panels.length && event.shiftKey) this.drag = { kind: "frame", slot, a: point, b: point };
+        // 四角, or (割る) a drag off the panels or with Shift: a new panel there.
+        const framing = this.panelMode === "rect" || !slot.page.panels.length || (!inPanel && event.shiftKey);
+        if (framing) {
+          const targets = this.snapTargetsOn(project, slot.page);
+          const a = this.snapped(slot, point, targets, event.altKey);
+          this.drag = { kind: "frame", slot, a, b: a, targets };
+          return;
+        }
+        this.drag = { kind: "cut", slot, a: point, b: point, free: event.altKey };
         return;
       }
       case "text": {
@@ -2520,7 +2824,7 @@ export class PageEditor {
     if (!drag) {
       this.setTipEraser(event);
       this.scheduleHover(ex, ey);
-      if (this.erasing() || this.tool === "pen") this.requestOverlay();
+      if (this.erasing() || this.tool === "pen" || this.polygon) this.requestOverlay();
       return;
     }
     if (drag.kind === "pan") {
@@ -2584,9 +2888,26 @@ export class PageEditor {
         break;
       }
       case "move": {
-        const dx = point[0] - drag.last[0];
-        const dy = point[1] - drag.last[1];
-        if (dx === 0 && dy === 0) return;
+        let dx = point[0] - drag.last[0];
+        let dy = point[1] - drag.last[1];
+        if (drag.snap) {
+          // Panels: where they would be from the start, snapped by their box; moved the rest of the way there.
+          const { origin, box, total, targets } = drag.snap;
+          let [tx, ty] = [point[0] - origin[0], point[1] - origin[1]];
+          if (!event.altKey) {
+            const shift = snapBox([box[0] + tx, box[1] + ty, box[2] + tx, box[3] + ty], targets, 8 / drag.slot.scale);
+            [tx, ty] = [tx + shift.dx, ty + shift.dy];
+            this.guides = { pageId: drag.slot.page.id, ...shift.guides };
+          } else {
+            this.guides = null;
+          }
+          [dx, dy] = [tx - total[0], ty - total[1]];
+          drag.snap.total = [tx, ty];
+        }
+        if (dx === 0 && dy === 0) {
+          drag.last = point;
+          return;
+        }
         this.moveSelection(drag.slot.page, dx, dy, drag.items);
         this.follow(drag.slot.page, drag.carried);
         drag.last = point;
@@ -2594,7 +2915,7 @@ export class PageEditor {
         break;
       }
       case "scale": {
-        const m = this.scaleFor(drag, point, event.shiftKey, event.altKey);
+        const m = this.scaleFor(drag, this.snappedHandle(drag, point, event.altKey), event.shiftKey, event.altKey);
         transformItems(drag.slot.page, drag.base, m);
         drag.moved = true;
         this.host.status(`大きさ ${Math.round(m[0] * 100)}% × ${Math.round(m[3] * 100)}%（Shift で縦横別々、Alt で中心から）`);
@@ -2620,7 +2941,13 @@ export class PageEditor {
       case "seam": {
         const { seam } = drag;
         let distance = (point[0] - drag.start[0]) * seam.normal[0] + (point[1] - drag.start[1]) * seam.normal[1];
-        if (this.snap && !event.altKey) distance = snapSeam(seam, distance, snapLines(project.pageFormat), 8 / drag.slot.scale);
+        if (event.altKey) this.guides = null;
+        else {
+          const snapped = snapSeam(seam, distance, drag.targets, 8 / drag.slot.scale);
+          distance = snapped.distance;
+          const horizontal = Math.abs(seam.dir[1]) < 1e-6;
+          this.guides = { pageId: drag.slot.page.id, xs: horizontal || snapped.guide === null ? [] : [snapped.guide], ys: horizontal && snapped.guide !== null ? [snapped.guide] : [] };
+        }
         const moved = moveSeam(drag.slot.page, drag.base, seam, distance);
         for (const [id, carried] of drag.carried) {
           const panel = drag.slot.page.panels.find((p) => p.id === id);
@@ -2634,9 +2961,8 @@ export class PageEditor {
       case "vertex": {
         const panel = drag.slot.page.panels.find((p) => p.id === drag.panelId);
         if (!panel) return;
-        const tolerance = 8 / drag.slot.scale;
-        const snapped = this.snap && !event.altKey ? snapPoint(point, snapLines(project.pageFormat), tolerance) : point;
-        panel.shape[drag.vertex] = snapped;
+        // 水平・垂直 with the corners beside it, the other panels' lines, the frames, the grid.
+        panel.shape[drag.vertex] = this.snapped(drag.slot, point, drag.targets, event.altKey, besideCorners(panel.shape, drag.vertex));
         this.follow(drag.slot.page, drag.carried);
         drag.moved = true;
         break;
@@ -2669,9 +2995,11 @@ export class PageEditor {
         drag.points.push(point);
         break;
       case "cut":
-      case "frame":
         drag.b = point;
-        if (drag.kind === "cut") drag.free = event.altKey;
+        drag.free = event.altKey;
+        break;
+      case "frame":
+        drag.b = this.snapped(drag.slot, point, drag.targets, event.altKey);
         break;
       case "pen": {
         if (drag.straight) {
@@ -2743,6 +3071,7 @@ export class PageEditor {
     const drag = this.drag;
     this.drag = null;
     this.base = null;
+    this.guides = null;
     const after = this.afterUp;
     this.afterUp = null;
     if (after) setTimeout(after, 0);
@@ -2894,14 +3223,7 @@ export class PageEditor {
           this.host.status("コマにするには、もう少し大きく囲んでください");
           break;
         }
-        const tolerance = 8 / drag.slot.scale;
-        const lines = snapLines(project.pageFormat);
-        const [x0, y0] = snapPoint([box[0], box[1]], lines, tolerance);
-        const [x1, y1] = snapPoint([box[2], box[3]], lines, tolerance);
-        this.host.begin();
-        const panel = addPanel(project, drag.slot.page, rectShape([x0, y0, x1, y1]));
-        this.host.commit();
-        this.select({ kind: "panel", pageId: drag.slot.page.id, id: panel.id });
+        this.addFreePanel(project, drag.slot.page, rectShape(box));
         break;
       }
       case "pen": {
@@ -3120,6 +3442,7 @@ export class PageEditor {
 
   private doubleClick(event: MouseEvent): void {
     window.clearTimeout(this.cycleTimer);
+    if (this.tool === "cut" && this.finishPolygon()) return;
     const project = this.host.project();
     if (!project || this.tool !== "select") return;
     const [ex, ey] = this.at(event);

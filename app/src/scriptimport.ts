@@ -28,6 +28,7 @@ import {
   basicBox,
   DEFAULT_GUTTERS,
   fitLine,
+  gutters,
   insertPage,
   moveLine,
   orderPanels,
@@ -308,20 +309,20 @@ export interface ScriptImportReport {
 }
 
 /** Panels for `count` script panels over the basic frame: tiers, two side by side past four. */
-export function panelBoxes(box: BoxMm, count: number, gutters = DEFAULT_GUTTERS): BoxMm[] {
+export function panelBoxes(box: BoxMm, count: number, gaps = DEFAULT_GUTTERS): BoxMm[] {
   const [x0, y0, x1, y1] = box;
   const rows = count <= 4 ? count : Math.ceil(count / 2);
-  const height = (y1 - y0 - gutters.down * (rows - 1)) / rows;
+  const height = (y1 - y0 - gaps.down * (rows - 1)) / rows;
   const boxes: BoxMm[] = [];
   let left = count;
   for (let row = 0; row < rows; row++) {
     const across = count <= 4 ? 1 : left > rows - row ? 2 : 1;
     left -= across;
-    const top = y0 + row * (height + gutters.down);
-    const width = (x1 - x0 - gutters.across * (across - 1)) / across;
+    const top = y0 + row * (height + gaps.down);
+    const width = (x1 - x0 - gaps.across * (across - 1)) / across;
     // Right binding reads right to left: the first panel of a row on the right.
     for (let col = across - 1; col >= 0; col--) {
-      const x = x0 + col * (width + gutters.across);
+      const x = x0 + col * (width + gaps.across);
       boxes.push([x, top, x + width, top + height]);
     }
   }
@@ -584,10 +585,10 @@ export function applyScript(project: Project, doc: ScriptDoc, options: ScriptImp
     if (!page.panels.length && options.makePanels && used.length) {
       const pattern = scriptPage.pattern ?? options.pattern;
       if (pattern) {
-        page.panels = patternPanels(project, pattern, DEFAULT_GUTTERS, used.length);
+        page.panels = patternPanels(project, pattern, gutters(project), used.length);
         orderPanels(page, project.binding);
       } else {
-        for (const box of panelBoxes(basicBox(project.pageFormat), used.length)) addPanel(project, page, rectShape(box));
+        for (const box of panelBoxes(basicBox(project.pageFormat), used.length, gutters(project))) addPanel(project, page, rectShape(box));
       }
       report.panels += page.panels.length;
     }

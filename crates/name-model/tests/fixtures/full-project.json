@@ -784,5 +784,9 @@
       "heightPx": 300
     }
   ],
+  "gutters": {
+    "across": 3,
+    "down": 7.5
+  },
   "nextId": 42
 }
