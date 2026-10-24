@@ -41,6 +41,7 @@ import { clearAlert, showAlert } from "./alerts";
 import { logError } from "./errorlog";
 import { projectBody } from "./projectjson";
 import { repair } from "./repair";
+import { addReference, opacityOf, readImage, removeReference, savedForm } from "./references";
 import { type Snapshot, Snapshotter, sameSnapshot } from "./snapshot";
 import { VersionDialog, type VersionInfo } from "./versiondialog";
 import {
@@ -114,7 +115,9 @@ import {
   type PanelFill,
   type Project,
   type RoughImage,
+  type StoredImage,
   type TailStyle,
+  newId,
   wantsSpread,
 } from "./project";
 
@@ -188,6 +191,7 @@ const TOOL_HINTS: Record<Tool, string> = {
   fill: "囲んだ所を塗る",
   breakout: "コマを突き抜ける所を囲む。中に描いた線はコマ枠の上に",
   sticky: "クリックで付箋を貼る（書き出しには入りません）",
+  reference: "写真や背景を薄く敷く。Ctrl+V・ドロップでも貼れる。ドラッグで動かし、角で大きさ（CSP には下描きレイヤーで出ます）",
 };
 
 export class Workbench {
@@ -196,6 +200,10 @@ export class Workbench {
   private readonly state: WorkbenchState = { project: null, path: null, dirty: false, revision: 0, pending: null, roughs: new Map() };
   /** Characters whose lines are listed in the 人物 tab. */
   private openCast = new Set<string>();
+  /** What the last copy here put on the system clipboard ("failed" when it could not), to tell it from a picture copied later. */
+  private copyMark: string | null = null;
+  /** The browser's paste event came after Ctrl+V. */
+  private pasteHandled = true;
   /** The palettes beside the pages (left or right, several at once). */
   private docks!: Docks;
   private readonly layerView = new LayerView({
@@ -248,6 +256,7 @@ export class Workbench {
       actions: (selection) => this.actions(selection),
       run: (action) => this.run(action),
       spreadChanged: () => this.renderAll(),
+      referenceChanged: () => this.renderReferenceBar(),
     });
     this.board = new Board($("story"), $("story-handle"), {
       project: () => this.state.project,
@@ -434,7 +443,7 @@ export class Workbench {
     else this.state.pending = null;
     const revision = this.state.revision;
     try {
-      await invoke("save_project", projectBody({ path, previousPath: this.state.path }, project));
+      await invoke("save_project", projectBody({ path, previousPath: this.state.path }, savedForm(project)));
       this.state.path = path;
       if (this.state.revision === revision) {
         this.state.dirty = false;
@@ -463,7 +472,7 @@ export class Workbench {
     try {
       const result = await invoke<{ savedToFile: boolean; version: VersionInfo | null; problems: string[] }>(
         "autosave_project",
-        projectBody({ path, toFile: autosaveToFile() }, project),
+        projectBody({ path, toFile: autosaveToFile() }, savedForm(project)),
       );
       if (result.savedToFile && this.state.path === path && this.state.revision === revision) {
         this.state.dirty = false;
@@ -498,7 +507,7 @@ export class Workbench {
     if (!current) return;
     const path = this.state.path;
     const older = await invoke<Project>("load_version", { path, id: version.id });
-    await invoke("record_version", projectBody({ path, kind: "beforeRestore" }, current));
+    await invoke("record_version", projectBody({ path, kind: "beforeRestore" }, savedForm(current)));
     this.history.record(current);
     this.state.project = normalize(older);
     this.editor.selection = null;
@@ -1855,6 +1864,10 @@ export class Workbench {
   }
 
   deleteSelection(): void {
+    if (this.editor.tool === "reference") {
+      this.removeChosenReference();
+      return;
+    }
     const s = this.editor.selection;
     if (!s) return;
     this.edit((project) => {
@@ -1899,10 +1912,13 @@ export class Workbench {
 
   setTool(tool: Tool): void {
     this.editor.setTool(tool);
-    for (const name of ["select", "cut", "text", "pen", "eraser", "fill", "breakout", "sticky"] as const) {
+    for (const name of ["select", "cut", "text", "pen", "eraser", "fill", "breakout", "sticky", "reference"] as const) {
       $(`tool-${name}`).classList.toggle("active", name === tool);
     }
     $("fill-tones").hidden = tool !== "fill";
+    $("reference-bar").classList.toggle("off", tool !== "reference");
+    if (tool !== "reference" && this.editor.reference) this.editor.chooseReference(null);
+    this.renderReferenceBar();
     // The options row names the tool and shows only what it has; nothing else moves.
     const button = $(`tool-${tool}`);
     const name = $("tool-name");
@@ -1998,6 +2014,127 @@ export class Workbench {
   }
 
   /** The pen / eraser chooser: the project's brushes, then ones taken in other projects. */
+  // --- 資料画像 ---------------------------------------------------------------------------
+
+  /** The picture chosen with the 資料 tool, and its page. */
+  private chosenReference() {
+    const chosen = this.editor.reference;
+    const page = chosen && this.state.project?.pages.find((p) => p.id === chosen.pageId);
+    const reference = page?.references?.find((r) => r.id === chosen!.id);
+    return page && reference ? { page, reference } : null;
+  }
+
+  private renderReferenceBar(): void {
+    const chosen = this.chosenReference();
+    const opacity = $<HTMLInputElement>("reference-opacity");
+    opacity.disabled = !chosen;
+    if (chosen) opacity.value = String(opacityOf(chosen.reference));
+    $<HTMLButtonElement>("reference-remove").disabled = !chosen;
+  }
+
+  private removeChosenReference(): void {
+    const chosen = this.chosenReference();
+    if (!chosen) return;
+    this.edit(() => removeReference(chosen.page, chosen.reference.id));
+    this.editor.chooseReference(null);
+    this.setStatus("資料画像を外しました（Ctrl+Z で戻せます）");
+  }
+
+  /**
+   * Picture files (or a pasted picture) laid on a page: the page under the
+   * pointer (or dropped on), else the one worked on. Each is made smaller when
+   * large, kept once in the name, and chosen with the 資料 tool to move at once.
+   */
+  async pasteImages(files: File[], where?: { page: Page; point?: Point }): Promise<boolean> {
+    const project = this.state.project;
+    const pictures = files.filter((file) => file.type.startsWith("image/"));
+    if (!project || !pictures.length) return false;
+    const target = where ?? this.editor.pasteTarget();
+    if (!target) return false;
+    this.setStatus("画像を読み込んでいます…");
+    try {
+      const images: StoredImage[] = [];
+      for (const file of pictures) images.push(await readImage(file, file.name || "貼り付けた画像"));
+      if (this.state.project !== project || !project.pages.includes(target.page)) return false;
+      let last: string | null = null;
+      this.edit(() => {
+        images.forEach((image, i) => {
+          // Numbered inside the step, so undo takes the number back with the picture.
+          image.id = newId(project, "image");
+          const at = target.point && ([target.point[0] + i * 8, target.point[1] + i * 8] as Point);
+          last = addReference(project, target.page, image, at).id;
+        });
+      });
+      if (this.editor.tool !== "reference") this.setTool("reference");
+      if (last) this.editor.chooseReference({ pageId: target.page.id, id: last });
+      const number = project.pages.indexOf(target.page) + 1;
+      this.setStatus(`${number} ページに資料画像を貼りました。ドラッグで動かし、角で大きさを変えます`);
+      return true;
+    } catch (error) {
+      showAlert("reference", `画像を貼れませんでした: ${error instanceof Error ? error.message : String(error)}`, "error", 8);
+      logError(error);
+      return false;
+    }
+  }
+
+  private bindReferences(): void {
+    const file = $<HTMLInputElement>("reference-file");
+    $("reference-add").addEventListener("click", () => file.click());
+    file.addEventListener("change", () => {
+      const files = [...(file.files ?? [])];
+      file.value = "";
+      const page = this.editor.focusPage();
+      void this.pasteImages(files, page ? { page } : undefined);
+    });
+    this.liveNumber($<HTMLInputElement>("reference-opacity"), (value) => {
+      const chosen = this.chosenReference();
+      if (chosen) chosen.reference.opacity = Math.min(1, value);
+    });
+    $("reference-remove").addEventListener("click", () => this.removeChosenReference());
+    // Ctrl+V: a picture on the clipboard (copied after the last copy made here) is laid on the page.
+    document.addEventListener("paste", (event) => {
+      this.pasteHandled = true;
+      if (!this.state.project || isTyping(event) || document.querySelector("dialog[open]")) return;
+      if (!$("editor-canvas").getClientRects().length) return;
+      const files = [...(event.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+      const ours = this.copyMark === "failed" || (this.copyMark !== null && event.clipboardData?.getData("text/plain") === this.copyMark);
+      if (files.length && !ours) {
+        event.preventDefault();
+        void this.pasteImages(files);
+      } else if (this.editor.paste()) event.preventDefault();
+    });
+    // Picture files dropped from outside on a page.
+    const canvas = $("editor-canvas");
+    canvas.addEventListener("dragover", (event) => {
+      if (!event.dataTransfer?.types.includes("Files")) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+    });
+    canvas.addEventListener("drop", (event) => {
+      const files = [...(event.dataTransfer?.files ?? [])];
+      if (!files.some((f) => f.type.startsWith("image/"))) return;
+      event.preventDefault();
+      const where = this.editor.pageAtClient(event.clientX, event.clientY);
+      void this.pasteImages(files, where ?? undefined);
+    });
+  }
+
+  /**
+   * Copy here, marking the system clipboard so a later Ctrl+V knows whether
+   * a picture there came after it (and so is the one meant).
+   */
+  private copyItems(): boolean {
+    if (!this.editor.copy()) return false;
+    const mark = `name-studio:${Date.now()}`;
+    this.copyMark = "failed";
+    if (!navigator.clipboard) return true;
+    void navigator.clipboard
+      .writeText(mark)
+      .then(() => (this.copyMark = mark))
+      .catch(() => (this.copyMark = "failed"));
+    return true;
+  }
+
   private renderBrushBar(): void {
     const tool = this.editor.tool;
     const bar = $("brush-bar");
@@ -2056,7 +2193,7 @@ export class Workbench {
     for (const tone of ["black", "gray", "white"] as const) {
       $(`fill-${tone}`).addEventListener("click", () => this.setFillTone(tone));
     }
-    for (const name of ["select", "cut", "text", "pen", "eraser", "fill", "breakout", "sticky"] as const) {
+    for (const name of ["select", "cut", "text", "pen", "eraser", "fill", "breakout", "sticky", "reference"] as const) {
       $(`tool-${name}`).addEventListener("click", () => this.setTool(name));
     }
     $("undo").addEventListener("click", () => this.undo());
@@ -2133,6 +2270,7 @@ export class Workbench {
       readFlag(SIDE_FOLDED_KEY, window.innerWidth < 1500),
     );
     $("held-badge").addEventListener("click", () => this.docks.open("held"));
+    this.bindReferences();
     // A held panel dropped on a page: into the panel there, else where it is dropped.
     const canvas = $("editor-canvas");
     canvas.addEventListener("dragover", (event) => {
@@ -2237,6 +2375,7 @@ export class Workbench {
       "tool.fill": "fill",
       "tool.breakout": "breakout",
       "tool.sticky": "sticky",
+      "tool.reference": "reference",
     };
     const tool = tools[action];
     const nextEraseMode = () => {
@@ -2264,14 +2403,20 @@ export class Workbench {
         this.deleteSelection();
         return true;
       case "copy":
-        return this.editor.copy();
+        return this.copyItems();
       case "cut":
-        if (!this.editor.copy()) return false;
+        if (!this.copyItems()) return false;
         this.deleteSelection();
         this.setStatus("切り取りました。Ctrl+V で、ポインターのあるページに貼り付けます");
         return true;
       case "paste":
-        return this.editor.paste();
+        // The browser's paste event comes next, with the clipboard's picture if there is one;
+        // where it does not come, what was copied here is pasted.
+        this.pasteHandled = false;
+        window.setTimeout(() => {
+          if (!this.pasteHandled) this.editor.paste();
+        }, 60);
+        return false;
       case "selectAll":
         return this.editor.selectAll();
       case "flip.horizontal":

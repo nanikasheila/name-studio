@@ -22,6 +22,7 @@ pub fn validate(project: &Project) -> Vec<String> {
         }
     };
     let characters: HashSet<&str> = project.characters.iter().map(|c| c.id.as_str()).collect();
+    let images: HashSet<&str> = project.images.iter().map(|i| i.id.as_str()).collect();
     // 見開き id → page numbers of its halves.
     let mut spreads: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
     for character in &project.characters {
@@ -85,12 +86,24 @@ pub fn validate(project: &Project) -> Vec<String> {
         for rough in &page.roughs {
             check_id(&rough.id, &mut problems);
         }
+        for reference in &page.references {
+            check_id(&reference.id, &mut problems);
+            if !images.contains(reference.image.as_str()) {
+                problems.push(format!(
+                    "{number} ページの資料画像 {} の画像 {} がありません",
+                    reference.id, reference.image
+                ));
+            }
+        }
     }
     for brush in &project.brushes {
         check_id(&brush.id, &mut problems);
         if !(brush.size_mm.is_finite() && brush.size_mm > 0.0) {
             problems.push(format!("ブラシ「{}」の大きさが正しくありません", brush.name));
         }
+    }
+    for image in &project.images {
+        check_id(&image.id, &mut problems);
     }
     for (spread, pages) in &spreads {
         let facing = pages.len() == 2 && pages[0].abs_diff(pages[1]) == 1;

@@ -32,6 +32,7 @@ import {
   type StrokePoint,
   wantsSpread,
 } from "./project";
+import { decodePicture, opacityOf, usedImages } from "./references";
 import { sceneSpans } from "./story";
 import type { ReadUnit } from "./readback";
 
@@ -319,6 +320,8 @@ export function frameMetas(project: Project, page: Page, m: MmToPx, gutter: Side
  * planning, and long ones would cover the panels.
  */
 export const NOTES_LAYER_NAME = "メモ（ネーム）";
+/** 資料画像 go to CSP as a 下描き layer under everything. */
+export const REFERENCE_LAYER_NAME = "資料（ネーム）";
 const NOTE_TEXT_MM = 3;
 
 /** Whether a page has any memo to write. */
@@ -543,6 +546,8 @@ export async function exportToCsp(
   await loadTips(project.brushes);
   const notes = request.notes !== false && project.pages.some(hasNotes);
   if (notes) request = { ...request, draftLayers: [...(request.draftLayers ?? []), NOTES_LAYER_NAME] };
+  const pictures = await decodeReferences(project);
+  if (pictures.size) request = { ...request, draftLayers: [...(request.draftLayers ?? []), REFERENCE_LAYER_NAME] };
   const start = await invoke<NameExportStart>("begin_name_export", { request });
   const vector = editable && start.vectorLayers;
   const text = editable && start.textLayers;
@@ -595,6 +600,16 @@ export async function exportToCsp(
       const layers: LayerMeta[] = [];
       const pngs: Uint8Array[] = [];
       overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+      if (pictures.size) {
+        let png: Uint8Array = new Uint8Array();
+        if (placed.some(({ page }) => page.references?.length)) {
+          ctx.clearRect(0, 0, width, height);
+          for (const { page, m, right } of placed) clipped(ctx, factor, right, () => drawReferences(ctx, page, pictures, scaled(m, factor)));
+          png = await encode(drawing, "image/png");
+        }
+        layers.push({ kind: "raster", name: REFERENCE_LAYER_NAME, length: png.length });
+        pngs.push(png);
+      }
       for (const kind of LAYER_ORDER) {
         // Image balloons carry their own paper.
         if (kind === "balloonFills" && !vector) continue;
@@ -665,12 +680,38 @@ export async function exportToCsp(
     }
     drawing.width = 0;
     overlay.width = 0;
+    for (const picture of pictures.values()) picture.close();
     const report = await invoke<{ pages: string[]; work: string | null; workCheck: FileCheck | null }>("finish_name_export");
     return { ...report, vectorLayers: vector, textLayers: text, checks, warnings, spreads: units.filter((unit) => unit.length > 1).length };
   } catch (error) {
     await invoke("cancel_name_export").catch(() => undefined);
     throw error;
   }
+}
+
+/** The 資料画像 the pages show, decoded (by image id); one that cannot be read is left out. */
+async function decodeReferences(project: Project): Promise<Map<string, ImageBitmap>> {
+  const pictures = new Map<string, ImageBitmap>();
+  for (const image of usedImages(project)) {
+    const picture = await decodePicture(image).catch(() => null);
+    if (picture) pictures.set(image.id, picture);
+  }
+  return pictures;
+}
+
+/**
+ * A page's 資料画像 as they lie on it. The layer itself is a 下描き layer at
+ * half opacity in CSP, so each is drawn twice as strong as on screen.
+ */
+function drawReferences(ctx: CanvasRenderingContext2D, page: Page, pictures: Map<string, ImageBitmap>, m: MmToPx): void {
+  for (const reference of page.references ?? []) {
+    const picture = pictures.get(reference.image);
+    if (!picture) continue;
+    const [x0, y0, x1, y1] = reference.box;
+    ctx.globalAlpha = Math.min(1, opacityOf(reference) * 2);
+    ctx.drawImage(picture, m.x + x0 * m.scale, m.y + y0 * m.scale, (x1 - x0) * m.scale, (y1 - y0) * m.scale);
+  }
+  ctx.globalAlpha = 1;
 }
 
 /** One page brought up to date (clip-core `update::DialogueUpdateReport`). */

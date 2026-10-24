@@ -51,6 +51,9 @@ pub struct Project {
     /// 保留コマ: panels taken off the pages until it is decided where they go.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub held: Vec<HeldPanel>,
+    /// 資料画像: pictures laid under pages ([`Page::references`]), each kept once.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<StoredImage>,
     /// Next number used by [`Project::new_id`]; ids are never reused.
     pub next_id: u64,
 }
@@ -179,6 +182,36 @@ pub struct Page {
     /// 投げなわ塗り: areas filled with one tone (ベタ and the like).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fills: Vec<Fill>,
+    /// 資料画像: photos or backgrounds laid faintly under the page to draw over.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub references: Vec<ReferenceImage>,
+}
+
+/// 資料画像 on a page: which picture ([`Project::images`]) and where it lies.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReferenceImage {
+    pub id: String,
+    pub image: String,
+    #[serde(rename = "box")]
+    pub box_mm: BoxMm,
+    /// How strongly it shows (0–1); none is half.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opacity: Option<f64>,
+}
+
+/// A picture kept in the name (made smaller when it was taken in).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredImage {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    /// "image/jpeg" or "image/png".
+    pub mime: String,
+    pub data_base64: String,
+    pub width_px: u32,
+    pub height_px: u32,
 }
 
 /// 投げなわ塗り: an outline filled with one tone.
@@ -776,6 +809,7 @@ impl Project {
             plan: None,
             line_shapes: None,
             held: Vec::new(),
+            images: Vec::new(),
             next_id: 1,
         }
     }
