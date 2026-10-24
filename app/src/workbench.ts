@@ -1034,6 +1034,50 @@ export class Workbench {
     });
   }
 
+  /**
+   * A number edited live: typing, the arrows and the mouse wheel (over the
+   * field, focused or not) show at once on the page; a moment after the last
+   * change it becomes one undo step. The field stays where it is, so the
+   * wheel can go on turning.
+   */
+  private liveNumber(field: HTMLInputElement, apply: (value: number) => void): void {
+    let snapshot: string | null = null;
+    let timer: number | undefined;
+    const record = () => {
+      window.clearTimeout(timer);
+      timer = undefined;
+      if (snapshot !== null && snapshot !== JSON.stringify(this.state.project)) this.history.recordSnapshot(snapshot);
+      snapshot = null;
+      $<HTMLButtonElement>("undo").disabled = !this.history.canUndo;
+    };
+    const set = (value: number) => {
+      if (!Number.isFinite(value) || value <= 0) return;
+      snapshot ??= JSON.stringify(this.state.project);
+      apply(value);
+      this.markDirty();
+      this.editor.draw();
+      this.updateTitle();
+      window.clearTimeout(timer);
+      timer = window.setTimeout(record, 700);
+    };
+    field.addEventListener("input", () => set(Number(field.value)));
+    field.addEventListener("change", (event) => event.stopPropagation());
+    field.addEventListener("blur", record);
+    field.addEventListener(
+      "wheel",
+      (event) => {
+        event.preventDefault();
+        const step = Number(field.step) || 1;
+        const [min, max] = [Number(field.min || -Infinity), Number(field.max || Infinity)];
+        const next = Math.min(max, Math.max(min, Math.round((Number(field.value) + (event.deltaY < 0 ? step : -step)) / step) * step));
+        if (next === Number(field.value)) return;
+        field.value = String(next);
+        set(next);
+      },
+      { passive: false },
+    );
+  }
+
   private lineInspector(project: Project, page: Page, line: Line): HTMLElement[] {
     const text = element("textarea", { value: line.text, spellcheck: false });
     this.liveText(text, (value) => setLineText(line, value));
@@ -1066,14 +1110,11 @@ export class Workbench {
         }
       }),
     );
-    const size = element("input", { type: "number", min: "4", max: "72", step: "0.5", value: String(round(line.fontSizePt)) });
-    size.addEventListener("change", () =>
-      this.edit(() => {
-        const value = Number(size.value);
-        if (value > 0) line.fontSizePt = value;
-        setLineText(line, line.text);
-      }),
-    );
+    const size = element("input", { type: "number", min: "4", max: "72", step: "0.5", value: String(round(line.fontSizePt)), title: "文字の大きさ（pt）。マウスのホイールでも変えられます" });
+    this.liveNumber(size, (value) => {
+      line.fontSizePt = value;
+      setLineText(line, line.text);
+    });
     const vertical = element("input", { type: "checkbox", checked: line.vertical });
     vertical.addEventListener("change", () =>
       this.edit(() => {

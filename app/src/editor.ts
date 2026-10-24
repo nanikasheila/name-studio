@@ -216,6 +216,8 @@ export class PageEditor {
   /** Picking the next of overlapping balloons, held back while a double-click may follow. */
   private cycleTimer = 0;
   firstAlone = true;
+  /** 単独: one page at a time instead of 見開き. */
+  single = false;
   /** コマに中身が付いてくる: moving or reshaping a panel takes its contents along. */
   panelCarries = readFlag(PANEL_CARRIES_KEY, true);
   /** Each panel's memo shown on the page (only on screen, never exported). */
@@ -325,7 +327,10 @@ export class PageEditor {
   // --- spreads --------------------------------------------------------------
 
   spreadList(): [number | null, number | null][] {
-    return spreads(this.host.project()?.pages.length ?? 0, this.firstAlone);
+    const count = this.host.project()?.pages.length ?? 0;
+    // 単独: each page on its own, one at a time.
+    if (this.single) return Array.from({ length: count }, (_, i): [number | null, number | null] => [i + 1, null]);
+    return spreads(count, this.firstAlone);
   }
 
   /** Page numbers (1-based) on the current spread, right page first. */
@@ -527,6 +532,15 @@ export class PageEditor {
     const [pageW, pageH] = project.pageFormat.canvasMm;
     // 見開き: the trims of the two pages meet at the gutter, as in the book.
     const [trimX0, , trimX1] = trimBox(project.pageFormat);
+    if (this.single) {
+      // 単独: the whole page in the middle.
+      const page = pair[0] ?? pair[1];
+      if (page === null) return [];
+      const scale = Math.min((width - 2 * MARGIN) / pageW, (height - 2 * MARGIN) / pageH) * this.zoom;
+      const x = (width - pageW * scale) / 2 + this.pan[0];
+      const y = (height - pageH * scale) / 2 + this.pan[1];
+      return [{ page: project.pages[page - 1], index: page - 1, x, y, scale, shown: [0, pageW] }];
+    }
     const spreadMm = trimX1 + (pageW - trimX0);
     const fit = Math.min((width - 2 * MARGIN) / spreadMm, (height - 2 * MARGIN) / pageH);
     const scale = fit * this.zoom;
@@ -2671,10 +2685,34 @@ export class PageEditor {
     return true;
   }
 
+  private sizing?: number;
+
+  /** Alt+ホイール: the selected line's text larger or smaller, shown at once; one undo step a moment after. */
+  private resizeText(step: number): boolean {
+    const s = this.selection;
+    const project = this.host.project();
+    const line = s?.kind === "line" ? project?.pages.find((p) => p.id === s.pageId)?.lines.find((l) => l.id === s.id) : undefined;
+    if (!line) return false;
+    const size = Math.min(72, Math.max(4, Math.round((line.fontSizePt + step) * 2) / 2));
+    if (size === line.fontSizePt) return true;
+    if (this.sizing === undefined) this.host.begin();
+    window.clearTimeout(this.sizing);
+    line.fontSizePt = size;
+    setLineText(line, line.text);
+    this.draw();
+    this.host.status(`文字の大きさ ${size} pt（Alt+ホイール）`);
+    this.sizing = window.setTimeout(() => {
+      this.sizing = undefined;
+      this.host.commit();
+    }, 600);
+    return true;
+  }
+
   private wheel(event: WheelEvent): void {
     event.preventDefault();
     const project = this.host.project();
     if (!project) return;
+    if (event.altKey && this.resizeText(event.deltaY < 0 ? 0.5 : -0.5)) return;
     const factor = Math.exp(-event.deltaY * 0.0015);
     const zoom = Math.min(Math.max(this.zoom * factor, 0.3), 12);
     const applied = zoom / this.zoom;
