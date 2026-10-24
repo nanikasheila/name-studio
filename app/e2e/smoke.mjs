@@ -168,6 +168,25 @@ try {
   await page.keyboard.press("Control+z");
   await page.keyboard.press("v");
 
+  // The right panel follows the selection, and a change made there is one undo step.
+  const panelId = await page.evaluate(async () => {
+    const { addPanel, rectShape } = await import("/src/project.ts");
+    const wb = window.nameStudio.workbench;
+    let id = "";
+    wb.edit((p) => (id = addPanel(p, p.pages[0], rectShape([20, 20, 100, 100])).id));
+    wb.editor.select({ kind: "panel", pageId: wb.project.pages[0].id, id });
+    return id;
+  });
+  await page.waitForTimeout(50);
+  const heading = await page.locator("#inspector h2").textContent();
+  check(heading?.includes("1 ページ 1 コマ目") ?? false, `selecting a panel shows it on the right (${heading})`);
+  check((await page.locator(".action-bar button", { hasText: "はめ込み" }).count()) === 1, "the bar beside it has the panel's actions");
+  const border = () => page.evaluate((id) => window.nameStudio.workbench.project.pages[0].panels.find((p) => p.id === id)?.border, panelId);
+  await page.locator("#inspector label", { hasText: "枠線" }).locator("select").selectOption("thick");
+  const thick = await border();
+  await page.keyboard.press("Control+z");
+  check(thick === "thick" && (await border()) === undefined, "枠線 changed on the right, and undone");
+
   // Every page on one canvas: moving about stays smooth.
   await page.keyboard.press("F7");
   await page.waitForTimeout(400);
