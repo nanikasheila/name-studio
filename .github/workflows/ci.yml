@@ -46,7 +46,7 @@ jobs:
           npm run build
           npm test
 
-      - name: Browser walk-through (open, draw, undo, errors undone, autosave, 連続)
+      - name: Browser walk-through (open, draw, undo, errors undone, autosave, 連続, every tool against its record)
         if: runner.os == 'Linux'
         working-directory: app
         run: |

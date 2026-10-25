@@ -1,51 +1,39 @@
 // The page editor: draws a spread of the name data and turns pointer input
 // into edits (select and move, cut panels, place lines, draw and erase).
+// What each tool does with a press and its drags is in its own module
+// (tools.ts); the editor keeps the view, the hit testing and the drawing.
 // Coordinates on a page are millimetres; each page of the spread has its own
 // mm → screen mapping.
 import { maskShape } from "./mask";
-import { FULL_SPEED_MM, followFactor, postCorrect, tiltOf as penTilt, usesMotion } from "./brush";
-import { adjustPressure, penPreferences } from "./pen";
-import { balloonExtent, defaultTailStyle, insideBalloon, resolvedShape, tailGeometry, tailRootAt } from "./balloon";
+import { penPreferences } from "./pen";
+import { balloonExtent, insideBalloon, tailGeometry } from "./balloon";
 import { spreads } from "./pages";
 import { GRID_GAP_MM, MARGIN, MAX_PAGE_GAP_MM, extent, layoutPages, onStage, rowCount, slotAt, toPage, type Slot } from "./layout";
 import { holdPanel, placeHeld } from "./hold";
 import { canvasFont, lineBold, lineFont } from "./fonts";
-import { addBreakout, addDrawnPanel, moveBreakout, spanGutter, stacked } from "./koma";
-import { joinPanels, moveSeam, seamAt, seamBase, seamLines, snapSeam, type Seam } from "./komaedit";
+import { addDrawnPanel, moveBreakout, spanGutter, stacked } from "./koma";
+import { joinPanels, seamAt, seamLines, type Seam } from "./komaedit";
 import {
   baseBounds,
   copySelection,
-  densify,
   pasteClip,
   rotation,
   scaling,
-  straightEnd,
-  toggleItem,
   transformBase,
   transformItems,
   withContents,
   moveItems,
-  type Affine,
   type Clip,
   type ItemRef,
-  type TransformBase,
 } from "./transform";
 import { INK, drawBalloons, drawLineText, drawPageFills, drawPanelBorders, drawPanelFills, drawStroke, drawStrokes, onTipLoaded, tracePath } from "./pagedraw";
-import { corners, imageOf, opacityOf, pictureOf, referenceAt, REFERENCE_HANDLE, resizeBox } from "./references";
+import { corners, imageOf, opacityOf, pictureOf, REFERENCE_HANDLE } from "./references";
 import { StrokeCache } from "./strokecache";
 import {
-  addFill,
-  addLine,
-  addSticky,
-  linkSticky,
   stickyAnchor,
-  addStroke,
   assignPanels,
   basicBox,
   bounds,
-  cutPanels,
-  eraseInside,
-  eraseWith,
   insideBox,
   insidePolygon,
   MM_PER_PT,
@@ -55,13 +43,8 @@ import {
   orderPanels,
   pageIndex,
   panelContents,
-  pickInside,
-  rectShape,
   snapCut,
-  simplify,
   sortLines,
-  swapPanelContents,
-  splitOverPages,
   wantsSpread,
   carryContents,
   followPanel,
@@ -75,7 +58,6 @@ import {
   type Binding,
   type BoxMm,
   type Brush,
-  type EraseMode,
   type FillTone,
   type Line,
   type Page,
@@ -87,33 +69,31 @@ import {
   stickyBox,
   stickyRows,
   type Project,
-  type RoughImage,
   type Stroke,
-  type StrokePoint,
 } from "./project";
 import { readCount, readFlag, readNumber } from "./settings";
 import { linePitch } from "./style";
-import { besideCorners, loadSnap, NO_TARGETS, snapBox, snapPointTo, snapTargets, type SnapSettings, type SnapTargets } from "./snapping";
+import {
+  FRAME_HANDLES,
+  type EditorCore,
+  type EditorEraseMode,
+  type EditorHost,
+  type Guides,
+  type PanelMode,
+  type Selection,
+  type TailHit,
+  type Tool,
+  type ToolDrag,
+} from "./editorcore";
+import { LINK_HANDLE } from "./toolsticky";
+import { dragHandler, PRESS } from "./tools";
+import { pickedSummary } from "./toolselect";
+import { loadSnap, snapPointTo, snapTargets, type SnapSettings, type SnapTargets } from "./snapping";
 
-export type Tool = "select" | "cut" | "text" | "pen" | "eraser" | "fill" | "breakout" | "sticky" | "reference";
-
-/** コマ割り: cut panels apart, draw a rectangle panel, or place the corners of any shape (台形 and the like). */
-export type PanelMode = "cut" | "rect" | "polygon";
+export type { EditorEraseMode, EditorHost, PanelMode, Selection, Tool } from "./editorcore";
+export { pickedSummary };
 
 export const PANEL_MODE_LABELS: Record<PanelMode, string> = { cut: "割る", rect: "四角", polygon: "多角形" };
-
-export interface Selection {
-  kind: "panel" | "line" | "stroke" | "breakout" | "group" | "sticky" | "fill";
-  pageId: string;
-  id: string;
-  /** 範囲選択 ("group"): the things picked together (rough lines, dialogue, panels, fills, はみ出し). */
-  items?: ItemRef[];
-  /** A line's chosen しっぽ (its index in `tails`): Delete removes it rather than the line. */
-  tail?: number;
-}
-
-/** How the eraser works: CSP's three vector erasers, and 囲って消す. */
-export type EditorEraseMode = EraseMode | "lasso";
 
 export const ERASE_MODE_LABELS: Record<EditorEraseMode, string> = {
   touched: "触れた部分",
@@ -122,78 +102,15 @@ export const ERASE_MODE_LABELS: Record<EditorEraseMode, string> = {
   lasso: "囲って消す",
 };
 
-/** What the editor needs from the app around it. */
-export interface EditorHost {
-  project(): Project | null;
-  /** Remember the project before a change (for undo). */
-  begin(): void;
-  /** The change since `begin` is done. */
-  commit(): void;
-  /** The change since `begin` changed nothing. */
-  cancel(): void;
-  selectionChanged(selection: Selection | null): void;
-  /** Pixels of a rough from the source sheet, or null while they load. */
-  rough(rough: RoughImage): CanvasImageSource | null;
-  status(message: string): void;
-  /** Buttons for the bar shown by the selection (most used actions, at hand). */
-  actions(selection: Selection): HTMLElement[];
-  /** Undo or redo (two- and three-finger taps, the pen's side button). */
-  run(action: "undo" | "redo"): void;
-  /** 連続: the spread worked on changed by touching a page of another one. */
-  spreadChanged?(): void;
-  /** 資料: the picture chosen with the 資料 tool changed. */
-  referenceChanged?(): void;
-}
-
+/** Drags of the view itself (the tools' drags are in their modules). */
 type Drag =
+  | ToolDrag
   | { kind: "pan"; x: number; y: number }
   /** Two fingers: `v` is the view point under their middle (independent of zoom), kept under it. */
   | { kind: "pinch"; ids: [number, number]; dist: number; angle: number; zoom: number; rotation: number; v: Point }
-  | { kind: "turn"; from: number; rotation: number }
-  /** `snap`: panels being moved, from `origin` (their box then, and how far they have been moved so far). */
-  | { kind: "move"; slot: Slot; last: Point; moved: boolean; carried?: CarriedContents; items?: ItemRef[]; cycle?: string; snap?: MoveSnap }
-  | { kind: "vertex"; slot: Slot; panelId: string; vertex: number; moved: boolean; carried?: CarriedContents; targets: SnapTargets }
-  | { kind: "cut"; slot: Slot; a: Point; b: Point; free: boolean }
-  | { kind: "frame"; slot: Slot; a: Point; b: Point; targets: SnapTargets }
-  | { kind: "pen"; slot: Slot; points: StrokePoint[]; last: StrokePoint; motion: boolean; time: number; speed: number; straight: boolean }
-  /** しっぽ: its tip, its whole length (body), or its middle (bend); `created` when pulled out of the balloon. */
-  | { kind: "tail"; slot: Slot; lineId: string; index: number; moved: boolean; part: TailPart; start: Point; tip: Point; created?: boolean }
-  | { kind: "lasso"; slot: Slot; points: Point[] }
-  | { kind: "fill"; slot: Slot; points: Point[] }
-  | { kind: "pick"; slot: Slot; points: Point[]; add?: { base: ItemRef[]; target: ItemRef | null } }
-  | { kind: "eraseLasso"; slot: Slot; points: Point[] }
-  | { kind: "erase"; slot: Slot; erased: number }
-  | { kind: "swap"; slot: Slot; panelId: string; at: [number, number]; to: { slot: Slot; panelId: string } | null }
-  | { kind: "note"; slot: Slot; panelId: string; start: [number, number]; origin: Point; moved: boolean }
-  | { kind: "stickyLink"; slot: Slot; stickyId: string; to: Selection | null }
-  | { kind: "seam"; slot: Slot; seam: Seam; base: Map<string, Point[]>; start: Point; moved: boolean; carried: Map<string, CarriedContents>; targets: SnapTargets }
-  | { kind: "scale"; slot: Slot; handle: number; base: TransformBase; box: BoxMm; moved: boolean; targets: SnapTargets }
-  /** 自由変形 (Ctrl + a corner): the corners of the frame, each where it was dragged. */
-  | { kind: "warp"; slot: Slot; handle: number; base: TransformBase; box: BoxMm; corners: [Point, Point, Point, Point]; moved: boolean }
-  | { kind: "rotate"; slot: Slot; base: TransformBase; centre: Point; start: number; moved: boolean }
-  /** 資料画像: moved (corner -1) or resized from a corner, the opposite corner staying put. */
-  | { kind: "reference"; slot: Slot; id: string; corner: number; start: Point; box: BoxMm; moved: boolean };
+  | { kind: "turn"; from: number; rotation: number };
 
-/** Panels being moved: snapped by their box as it was, moved by `total` (snapped) so far. */
-interface MoveSnap {
-  origin: Point;
-  box: BoxMm;
-  total: Point;
-  targets: SnapTargets;
-}
-
-/** Handles of the transform frame: corners from the top left clockwise, then the sides top, right, bottom, left. */
-const FRAME_HANDLES = 8;
 const ROTATE_GAP = 22;
-
-type TailPart = "tip" | "body" | "bend" | "root";
-
-/** A tail of a line under the pointer. */
-interface TailHit {
-  lineId: string;
-  index: number;
-  part: TailPart;
-}
 
 /** What the pointer is over with the select tool, shown before anything is pressed. */
 type Hover =
@@ -205,8 +122,6 @@ type Hover =
 const ACCENT = "#2f6fdb";
 /** Lines snapped to. */
 const GUIDE = "#e0398a";
-/** Radius of a 付箋's link handle (px). */
-const LINK_HANDLE = 5;
 const HANDLE = 5;
 
 export const PANEL_CARRIES_KEY = "namestudio.panelCarries";
@@ -266,7 +181,7 @@ export class PageEditor {
   /** 多角形: the corners placed so far on a page (the panel is made when the outline is closed). */
   private polygon: { pageId: string; points: Point[] } | null = null;
   /** Lines snapped to while dragging (page mm), shown as guides. */
-  private guides: { pageId: string; xs: number[]; ys: number[] } | null = null;
+  private guides: Guides | null = null;
   /** 変形 (Ctrl+T): the transform frame on a panel, a balloon, a fill or a はみ出し. */
   private transforming = false;
   /** Hidden on screen from the レイヤー list (`kind:id`); exports keep them. */
@@ -312,6 +227,9 @@ export class PageEditor {
   private readonly touchStarts = new Map<number, Point>();
   /** The fingers since the first came down: for taps (two: undo, three: redo). */
   private gesture: { start: number; most: number; moved: boolean } | null = null;
+
+  /** The editor as its tools see it (tools.ts). */
+  private readonly core: EditorCore = this.toolView();
 
   constructor(private readonly canvas: HTMLCanvasElement, private readonly host: EditorHost) {
     // Low latency: the pen line reaches the screen without waiting for the compositor.
@@ -1510,18 +1428,6 @@ export class PageEditor {
     return [slot.x + x0 * slot.scale, slot.y + y1 * slot.scale];
   }
 
-  /** On the selected 付箋's link handle: start dragging it to what the note is about. */
-  private startStickyLink(slot: Slot, sx: number, sy: number): boolean {
-    const s = this.selection;
-    if (s?.kind !== "sticky" || s.pageId !== slot.page.id) return false;
-    const sticky = slot.page.stickies?.find((n) => n.id === s.id);
-    if (!sticky) return false;
-    const [hx, hy] = this.stickyHandle(slot, sticky);
-    if (Math.hypot(hx - sx, hy - sy) > LINK_HANDLE + 4) return false;
-    this.drag = { kind: "stickyLink", slot, stickyId: sticky.id, to: null };
-    return true;
-  }
-
   /** The line or panel at a point, to tie a 付箋 to. */
   private linkTarget(slot: Slot, point: Point): Selection | null {
     const page = this.visiblePage(slot.page);
@@ -1753,33 +1659,6 @@ export class PageEditor {
     const result = snapPointTo(point, targets, 8 / slot.scale, this.snapping.axis ? beside : []);
     this.guides = { pageId: slot.page.id, ...result.guides };
     return result.point;
-  }
-
-  /** Moving panels (among `items`) snap by their box; nothing to snap when no panel moves. */
-  private moveSnap(project: Project, page: Page, origin: Point, items: readonly ItemRef[]): MoveSnap | undefined {
-    const ids = items.filter((item) => item.kind === "panel").map((item) => item.id);
-    const shapes = page.panels.filter((panel) => ids.includes(panel.id)).map((panel) => panel.shape);
-    if (!shapes.length) return undefined;
-    return { origin, box: bounds(shapes.flat()), total: [0, 0], targets: this.snapTargetsOn(project, page, ids) };
-  }
-
-  /**
-   * The point a transform handle is pulled to, snapped so that the panels'
-   * side (inside the frame's padding) lands on a line.
-   */
-  private snappedHandle(drag: Extract<Drag, { kind: "scale" }>, point: Point, free: boolean): Point {
-    if (drag.targets === NO_TARGETS) return point;
-    const pad = 3 / drag.slot.scale;
-    // Which way each axis of the handle is from the frame's middle: the padding is outward that way.
-    const side = ([[-1, -1], [1, -1], [1, 1], [-1, 1], [0, -1], [1, 0], [0, 1], [-1, 0]] as Point[])[drag.handle];
-    const edge: Point = [point[0] - side[0] * pad, point[1] - side[1] * pad];
-    const snapped = this.snapped(drag.slot, edge, drag.targets, free);
-    // Only the axes the handle pulls show a guide.
-    if (this.guides) {
-      if (!side[0]) this.guides.xs = [];
-      if (!side[1]) this.guides.ys = [];
-    }
-    return [snapped[0] + side[0] * pad, snapped[1] + side[1] * pad];
   }
 
   /** A panel drawn on `page` (inside another one: an inset over it), selected. */
@@ -2134,25 +2013,6 @@ export class PageEditor {
 
   private static handleCursor(handle: number): string {
     return handle === FRAME_HANDLES ? "grab" : ["nwse-resize", "nesw-resize", "nwse-resize", "nesw-resize", "ns-resize", "ew-resize", "ns-resize", "ew-resize"][handle];
-  }
-
-  /** Scale from the handle being dragged: the far side stays (the centre with Alt). */
-  private scaleFor(drag: Extract<Drag, { kind: "scale" }>, point: Point, free: boolean, fromCentre: boolean): Affine {
-    const [x0, y0, x1, y1] = drag.box;
-    const [cx, cy] = [(x0 + x1) / 2, (y0 + y1) / 2];
-    const at: Point[] = [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [cx, y0], [x1, cy], [cx, y1], [x0, cy]];
-    const handle = at[drag.handle];
-    const anchor: Point = fromCentre ? [cx, cy] : at[drag.handle < 4 ? (drag.handle + 2) % 4 : 4 + ((drag.handle - 2) % 4)];
-    const ratio = (i: 0 | 1) => {
-      const span = handle[i] - anchor[i];
-      return Math.abs(span) < 1e-6 ? 1 : Math.max(0.05, (point[i] - anchor[i]) / span);
-    };
-    if (drag.handle >= 4) return drag.handle % 2 === 0 ? scaling(1, ratio(1), anchor) : scaling(ratio(0), 1, anchor);
-    if (free) return scaling(ratio(0), ratio(1), anchor);
-    // Corners keep the proportions: how far along the diagonal the pointer is.
-    const [hx, hy] = [handle[0] - anchor[0], handle[1] - anchor[1]];
-    const s = Math.max(0.05, ((point[0] - anchor[0]) * hx + (point[1] - anchor[1]) * hy) / (hx * hx + hy * hy || 1));
-    return scaling(s, s, anchor);
   }
 
   /** 左右反転 / 上下反転 / 90° turns of the selected rough lines and dialogue. */
@@ -2662,239 +2522,96 @@ export class PageEditor {
     // The page settings follow the page worked on (the left page of a spread too).
     if (this.focusedPageId !== slot.page.id) this.focusOn(slot);
     const point = toPage(slot, sx, sy);
-    const tool = this.tipEraser ? "eraser" : this.tool;
-    switch (tool) {
-      case "reference": {
-        // A corner of the chosen picture resizes it; a picture moves; elsewhere nothing is chosen.
-        const corner = this.referenceCornerAt(slot, sx, sy);
-        const hit = corner >= 0 ? slot.page.references?.find((r) => r.id === this.reference?.id) : referenceAt(slot.page, point);
-        if (!hit) {
-          this.chooseReference(null);
-          return;
-        }
-        if (this.reference?.id !== hit.id) this.chooseReference({ pageId: slot.page.id, id: hit.id });
-        this.drag = { kind: "reference", slot, id: hit.id, corner, start: point, box: [...hit.box], moved: false };
-        return;
-      }
-      case "select": {
-        // The transform frame of the selected rough lines and dialogue.
-        const handle = this.frameHandleAt(sx, sy);
-        if (handle >= 0) {
-          const items = this.selectedItems();
-          // A balloon on its own grows with its text, or (as set) changes alone around it.
-          const lone = this.selection?.kind === "line" ? (this.balloonTextFollows ? "withText" : "balloonOnly") : undefined;
-          const base = transformBase(slot.page, items, lone);
-          const frame = this.frameGeometry()!;
-          this.host.begin();
-          if (handle < 4 && (event.ctrlKey || event.metaKey)) {
-            const [x0, y0, x1, y1] = frame.box;
-            const corners: [Point, Point, Point, Point] = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
-            this.drag = { kind: "warp", slot: frame.slot, handle, base, box: frame.box, corners, moved: false };
-          } else if (handle === FRAME_HANDLES) {
-            const [x0, y0, x1, y1] = frame.box;
-            const centre: Point = [(x0 + x1) / 2, (y0 + y1) / 2];
-            this.drag = { kind: "rotate", slot: frame.slot, base, centre, start: Math.atan2(point[1] - centre[1], point[0] - centre[0]), moved: false };
-          } else {
-            // Panels' sides snap as they are pulled.
-            const panelIds = base.panels?.map((panel) => panel.id) ?? [];
-            const targets = panelIds.length ? this.snapTargetsOn(project, frame.slot.page, panelIds) : NO_TARGETS;
-            this.drag = { kind: "scale", slot: frame.slot, handle, base, box: frame.box, moved: false, targets };
-          }
-          return;
-        }
-        if (this.startStickyLink(slot, sx, sy)) return;
-        // A panel's memo tag: write in it right there, or drag it out of the way.
-        const noted = this.noteAt(slot, sx, sy);
-        if (noted) {
-          this.select({ kind: "panel", pageId: slot.page.id, id: noted.id });
-          const { x, y } = this.noteBox(slot, noted);
-          const [x0, y0] = bounds(noted.shape);
-          this.drag = { kind: "note", slot, panelId: noted.id, start: [sx, sy], origin: [(x - slot.x) / slot.scale - x0, (y - slot.y) / slot.scale - y0], moved: false };
-          return;
-        }
-        // Alt + drag from a balloon: pull out a new tail.
-        if (event.altKey) {
-          const hitLine = this.hit(slot, point);
-          const line = hitLine?.kind === "line" ? slot.page.lines.find((l) => l.id === hitLine.id) : undefined;
-          if (line && resolvedShape(line) !== "none") {
-            this.host.begin();
-            line.tails = [...(line.tails ?? []), { tip: point, style: defaultTailStyle(line) }];
-            this.select({ kind: "line", pageId: slot.page.id, id: line.id, tail: line.tails.length - 1 });
-            this.drag = { kind: "tail", slot, lineId: line.id, index: line.tails.length - 1, moved: false, part: "tip", start: point, tip: point, created: true };
-            return;
-          }
-        }
-        // コマの入れ替え: drag a panel's number (or Alt + drag the panel) onto another panel.
-        const numbered = this.badgeAt(slot, sx, sy, project.pageFormat.canvasMm[0]);
-        const altPanel = event.altKey ? this.panelAt(slot.page, point) : undefined;
-        const swapping = numbered ?? altPanel;
-        if (swapping) {
-          this.select({ kind: "panel", pageId: slot.page.id, id: swapping.id });
-          this.drag = { kind: "swap", slot, panelId: swapping.id, at: [sx, sy], to: null };
-          return;
-        }
-        const tail = this.tailAt(slot, sx, sy);
-        if (tail) {
-          const line = slot.page.lines.find((l) => l.id === tail.lineId)!;
-          this.host.begin();
-          this.select({ kind: "line", pageId: slot.page.id, id: line.id, tail: tail.index });
-          const tip = line.tails![tail.index].tip;
-          this.drag = { kind: "tail", slot, lineId: line.id, index: tail.index, moved: false, part: tail.part, start: point, tip: [...tip] as Point };
-          return;
-        }
-        const vertex = this.vertexAt(slot, sx, sy);
-        if (vertex >= 0) {
-          this.host.begin();
-          const panel = slot.page.panels.find((p) => p.id === this.selection!.id);
-          const carried = panel && this.panelCarries ? carryContents(slot.page, panel) : undefined;
-          const targets = this.snapTargetsOn(project, slot.page, [this.selection!.id]);
-          this.drag = { kind: "vertex", slot, panelId: this.selection!.id, vertex, moved: false, carried, targets };
-          return;
-        }
-        const target = this.hit(slot, point);
-        // Shift: click to add a thing to the picked ones (or take it out), drag around things to add them.
-        if (event.shiftKey) {
-          const s = this.selection;
-          const base: ItemRef[] =
-            s?.pageId !== slot.page.id ? [] : s.kind === "group" ? [...(s.items ?? [])] : isItemKind(s.kind) ? [{ kind: s.kind, id: s.id }] : [];
-          // Halves of 見開き panels move and change only as a pair.
-          const spread = target?.kind === "panel" && slot.page.panels.some((panel) => panel.id === target.id && panel.spread);
-          const ref = target && isItemKind(target.kind) && !spread ? { kind: target.kind, id: target.id } : null;
-          this.drag = { kind: "pick", slot, points: [point], add: { base, target: ref } };
-          return;
-        }
-        // コマの境目: the gutter or an edge moves, the panels on both sides with it.
-        if (!target || target.kind === "panel") {
-          const seam = seamAt(slot.page, point, 6 / slot.scale);
-          if (seam) {
-            this.host.begin();
-            const carried = new Map<string, CarriedContents>();
-            if (this.panelCarries) {
-              for (const id of new Set(seam.edges.map((edge) => edge.panelId))) {
-                const panel = slot.page.panels.find((p) => p.id === id);
-                if (panel) carried.set(id, carryContents(slot.page, panel));
-              }
-            }
-            const targets = this.snapTargetsOn(project, slot.page, seam.edges.map((edge) => edge.panelId));
-            this.drag = { kind: "seam", slot, seam, base: seamBase(slot.page, seam), start: point, moved: false, carried, targets };
-            this.hover = null;
-            return;
-          }
-        }
-        // Inside a 範囲選択: drag the whole group.
-        if (this.selection?.kind === "group" && this.selection.pageId === slot.page.id && (!target || this.isSelected(slot.page, target.kind, target.id))) {
-          if (this.groupHit(slot.page, point, 4 / slot.scale)) {
-            this.host.begin();
-            // Panels picked take along what is drawn in them.
-            const items = this.selectedItems();
-            this.drag = { kind: "move", slot, last: point, moved: false, items, snap: this.moveSnap(project, slot.page, point, items) };
-            return;
-          }
-        }
-        if (!target) {
-          // On nothing: drag around rough lines and dialogue to pick them together.
-          this.select(null);
-          this.drag = { kind: "pick", slot, points: [point] };
-          return;
-        }
-        // A click on the selected balloon where others lie under it picks the next one down.
-        const again = target.kind === "line" && this.isSelected(slot.page, "line", target.id);
-        const under = again ? this.linesAt(slot, point) : [];
-        const cycle = under.length > 1 ? under[(under.indexOf(target.id) + 1) % under.length] : undefined;
-        this.select(target);
-        this.host.begin();
-        // A panel takes its dialogue and rough lines along.
-        const panel = target.kind === "panel" ? slot.page.panels.find((p) => p.id === target.id) : undefined;
-        const carried = panel && this.panelCarries ? carryContents(slot.page, panel) : undefined;
-        const snap = panel ? this.moveSnap(project, slot.page, point, [{ kind: "panel", id: panel.id }]) : undefined;
-        this.drag = { kind: "move", slot, last: point, moved: false, carried, ...(cycle ? { cycle } : {}), ...(snap ? { snap } : {}) };
-        return;
-      }
-      case "cut": {
-        if (this.panelMode === "polygon") {
-          this.placeCorner(slot, point, event.altKey);
-          return;
-        }
-        const inPanel = slot.page.panels.some((panel) => insidePolygon(panel.shape, point));
-        // 四角, or (割る) a drag off the panels or with Shift: a new panel there.
-        const framing = this.panelMode === "rect" || !slot.page.panels.length || (!inPanel && event.shiftKey);
-        if (framing) {
-          const targets = this.snapTargetsOn(project, slot.page);
-          const a = this.snapped(slot, point, targets, event.altKey);
-          this.drag = { kind: "frame", slot, a, b: a, targets };
-          return;
-        }
-        this.drag = { kind: "cut", slot, a: point, b: point, free: event.altKey };
-        return;
-      }
-      case "text": {
-        // Write straight onto the page: a new line, or the one clicked.
-        const hit = this.hit(slot, point);
-        if (hit?.kind === "line") {
-          this.select(hit);
-          this.afterUp = () => this.editInPlace(slot.page.id, "line", hit.id);
-          return;
-        }
-        this.host.begin();
-        const line = addLine(project, slot.page, point);
-        this.host.commit();
-        this.select({ kind: "line", pageId: slot.page.id, id: line.id });
-        this.afterUp = () => this.editInPlace(slot.page.id, "line", line.id);
-        return;
-      }
-      case "pen": {
-        // Keep tilt and speed only for brushes that change with them.
-        const motion = usesMotion(this.brush("pen"));
-        const first: StrokePoint = motion ? [...point, pressureOf(event), tiltOf(event), 0] : [...point, pressureOf(event)];
-        // Shift: a straight line from where the pen went down.
-        this.drag = { kind: "pen", slot, points: [first], last: first, motion, time: event.timeStamp, speed: 0, straight: event.shiftKey };
-        this.captureBase();
-        return;
-      }
-      case "breakout":
-        this.drag = { kind: "lasso", slot, points: [point] };
-        return;
-      case "fill":
-        this.drag = { kind: "fill", slot, points: [point] };
-        return;
-      case "sticky": {
-        if (this.startStickyLink(slot, sx, sy)) return;
-        // On a note: pick it up to move; elsewhere: a new note there, tied to the panel or line clicked.
-        const hit = this.hit(slot, point);
-        if (hit?.kind === "sticky") {
-          this.select(hit);
-          this.host.begin();
-          this.drag = { kind: "move", slot, last: point, moved: false };
-          return;
-        }
-        this.host.begin();
-        const about = this.linkTarget(slot, point);
-        // Tied to something: the note beside it, pointing back (as a comment in a spreadsheet).
-        const sticky = addSticky(project, slot.page, about ? [point[0] + 10, point[1] - 14] : point);
-        if (about) linkSticky(slot.page, sticky, about.kind as "panel" | "line", about.id, point);
-        this.host.commit();
-        this.select({ kind: "sticky", pageId: slot.page.id, id: sticky.id });
-        this.host.status(
-          about
-            ? "付箋を貼りました。クリックした所に紐づいています。付箋は好きな所へ動かせます（丸をドラッグで付け替え）"
-            : "付箋を貼りました。右の欄に書けます（書き出しには入りません）。丸をコマやセリフへドラッグすると紐づきます",
-        );
-        return;
-      }
-      case "eraser": {
-        if (this.eraseMode === "lasso") {
-          this.drag = { kind: "eraseLasso", slot, points: [point] };
-          return;
-        }
-        this.host.begin();
-        this.drag = { kind: "erase", slot, erased: 0 };
-        this.erase(slot, point);
-        return;
-      }
-      default:
-        // A new tool must say here what a press does with it.
-        tool satisfies never;
-    }
+    PRESS[this.tipEraser ? "eraser" : this.tool](this.core, { event, project, slot, point, sx, sy });
+  }
+
+  /** What the tools may see and do (their press, drag and finish are in their own modules). */
+  private toolView(): EditorCore {
+    const editor = this;
+    return {
+      // A getter: the tools are made before the constructor has the host.
+      get host() {
+        return editor.host;
+      },
+      get slots() {
+        return editor.slots;
+      },
+      get selection() {
+        return editor.selection;
+      },
+      get pointer() {
+        return editor.pointer;
+      },
+      get reference() {
+        return editor.reference;
+      },
+      get panelMode() {
+        return editor.panelMode;
+      },
+      get panelCarries() {
+        return editor.panelCarries;
+      },
+      get balloonTextFollows() {
+        return editor.balloonTextFollows;
+      },
+      get eraseMode() {
+        return editor.eraseMode;
+      },
+      get fillTone() {
+        return editor.fillTone;
+      },
+      get penWidthMm() {
+        return editor.penWidthMm;
+      },
+      get guides() {
+        return editor.guides;
+      },
+      set guides(guides) {
+        editor.guides = guides;
+      },
+      startDrag: (drag) => (this.drag = drag),
+      afterUp: (action) => (this.afterUp = action),
+      pickLater: (action, ms) => (this.cycleTimer = window.setTimeout(action, ms)),
+      select: (selection) => this.select(selection),
+      setSelection: (selection) => (this.selection = selection),
+      chooseReference: (reference) => this.chooseReference(reference),
+      forgetHover: () => (this.hover = null),
+      requestDraw: () => this.requestDraw(),
+      requestOverlay: () => this.requestOverlay(),
+      captureBase: () => this.captureBase(),
+      at: (event) => this.at(event),
+      slotAt: (sx, sy, project) => this.slotAt(sx, sy, project),
+      facingSlot: (slot) => this.facingSlot(slot),
+      gutterOf: (slot, facing) => this.gutterOf(slot, facing),
+      binding: () => this.binding(),
+      brush: (kind) => this.brush(kind),
+      eraserRadiusPx: (scale) => this.eraserRadiusPx(scale),
+      hit: (slot, point) => this.hit(slot, point),
+      linesAt: (slot, point) => this.linesAt(slot, point),
+      panelAt: (page, point) => this.panelAt(page, point),
+      vertexAt: (slot, sx, sy) => this.vertexAt(slot, sx, sy),
+      tailAt: (slot, sx, sy) => this.tailAt(slot, sx, sy),
+      badgeAt: (slot, sx, sy, pageW) => this.badgeAt(slot, sx, sy, pageW),
+      noteAt: (slot, sx, sy) => this.noteAt(slot, sx, sy),
+      noteBox: (slot, panel) => this.noteBox(slot, panel),
+      stickyHandle: (slot, sticky) => this.stickyHandle(slot, sticky),
+      linkTarget: (slot, point) => this.linkTarget(slot, point),
+      referenceCornerAt: (slot, sx, sy) => this.referenceCornerAt(slot, sx, sy),
+      isSelected: (page, kind, id) => this.isSelected(page, kind, id),
+      groupHit: (page, point, tolerance) => this.groupHit(page, point, tolerance),
+      selectedItems: () => this.selectedItems(),
+      frameHandleAt: (sx, sy) => this.frameHandleAt(sx, sy),
+      frameGeometry: () => this.frameGeometry(),
+      snapTargetsOn: (project, page, exclude) => this.snapTargetsOn(project, page, exclude),
+      snapped: (slot, point, targets, free, beside) => this.snapped(slot, point, targets, free, beside),
+      moveSelection: (page, dx, dy, items) => this.moveSelection(page, dx, dy, items),
+      follow: (page, carried) => this.follow(page, carried),
+      carryToPageUnder: (project, slot) => this.carryToPageUnder(project, slot),
+      spanPanels: (project, pageId) => this.spanPanels(project, pageId),
+      addFreePanel: (project, page, outline) => this.addFreePanel(project, page, outline),
+      placeCorner: (slot, point, free) => this.placeCorner(slot, point, free),
+      editInPlace: (pageId, kind, id) => this.editInPlace(pageId, kind, id),
+    };
   }
 
   /** Keep the pages as drawn now (without the overlay) for the pen line to go over. */
@@ -2956,203 +2673,7 @@ export class PageEditor {
     if (drag.kind === "pinch") return;
     const point = toPage(drag.slot, ex, ey);
     const project = this.host.project()!;
-    switch (drag.kind) {
-      case "reference": {
-        const reference = drag.slot.page.references?.find((r) => r.id === drag.id);
-        if (!reference) return;
-        if (!drag.moved) {
-          if (Math.hypot(point[0] - drag.start[0], point[1] - drag.start[1]) * drag.slot.scale < 3) return;
-          this.host.begin();
-          drag.moved = true;
-        }
-        const [dx, dy] = [point[0] - drag.start[0], point[1] - drag.start[1]];
-        const [x0, y0, x1, y1] = drag.box;
-        reference.box = drag.corner < 0 ? [x0 + dx, y0 + dy, x1 + dx, y1 + dy] : resizeBox(drag.box, drag.corner, point);
-        break;
-      }
-      case "note": {
-        const panel = drag.slot.page.panels.find((p) => p.id === drag.panelId);
-        if (!panel) return;
-        if (!drag.moved) {
-          if (Math.hypot(ex - drag.start[0], ey - drag.start[1]) < 4) return;
-          this.host.begin();
-          drag.moved = true;
-        }
-        const [ox, oy] = drag.origin;
-        panel.noteAt = [ox + (ex - drag.start[0]) / drag.slot.scale, oy + (ey - drag.start[1]) / drag.slot.scale];
-        break;
-      }
-      case "stickyLink": {
-        drag.to = this.linkTarget(drag.slot, point);
-        this.requestOverlay();
-        return;
-      }
-      case "swap": {
-        // The panel under the pointer, on this page or the facing one.
-        const under = this.slotAt(ex, ey, project);
-        const target = under && this.panelAt(under.page, toPage(under, ex, ey));
-        drag.to = under && target && !(under.page === drag.slot.page && target.id === drag.panelId) ? { slot: under, panelId: target.id } : null;
-        break;
-      }
-      case "move": {
-        let dx = point[0] - drag.last[0];
-        let dy = point[1] - drag.last[1];
-        if (drag.snap) {
-          // Panels: where they would be from the start, snapped by their box; moved the rest of the way there.
-          const { origin, box, total, targets } = drag.snap;
-          let [tx, ty] = [point[0] - origin[0], point[1] - origin[1]];
-          if (!event.altKey) {
-            const shift = snapBox([box[0] + tx, box[1] + ty, box[2] + tx, box[3] + ty], targets, 8 / drag.slot.scale);
-            [tx, ty] = [tx + shift.dx, ty + shift.dy];
-            this.guides = { pageId: drag.slot.page.id, ...shift.guides };
-          } else {
-            this.guides = null;
-          }
-          [dx, dy] = [tx - total[0], ty - total[1]];
-          drag.snap.total = [tx, ty];
-        }
-        if (dx === 0 && dy === 0) {
-          drag.last = point;
-          return;
-        }
-        this.moveSelection(drag.slot.page, dx, dy, drag.items);
-        this.follow(drag.slot.page, drag.carried);
-        drag.last = point;
-        drag.moved = true;
-        break;
-      }
-      case "scale": {
-        const m = this.scaleFor(drag, this.snappedHandle(drag, point, event.altKey), event.shiftKey, event.altKey);
-        transformItems(drag.slot.page, drag.base, m);
-        drag.moved = true;
-        this.host.status(`大きさ ${Math.round(m[0] * 100)}% × ${Math.round(m[3] * 100)}%（Shift で縦横別々、Alt で中心から）`);
-        break;
-      }
-      case "warp": {
-        drag.corners[drag.handle] = point;
-        transformItems(drag.slot.page, drag.base, { box: drag.box, corners: drag.corners });
-        drag.moved = true;
-        this.host.status("自由変形: 角をそれぞれ動かしています（Ctrl を押したまま角をドラッグ）");
-        break;
-      }
-      case "rotate": {
-        let angle = Math.atan2(point[1] - drag.centre[1], point[0] - drag.centre[0]) - drag.start;
-        const step = Math.PI / 12;
-        if (event.shiftKey) angle = Math.round(angle / step) * step;
-        transformItems(drag.slot.page, drag.base, rotation(angle, drag.centre));
-        drag.moved = true;
-        const degrees = ((Math.round((angle * 180) / Math.PI) % 360) + 540) % 360 - 180;
-        this.host.status(`${degrees}° 回しています（Shift で 15° ずつ）`);
-        break;
-      }
-      case "seam": {
-        const { seam } = drag;
-        let distance = (point[0] - drag.start[0]) * seam.normal[0] + (point[1] - drag.start[1]) * seam.normal[1];
-        if (event.altKey) this.guides = null;
-        else {
-          const snapped = snapSeam(seam, distance, drag.targets, 8 / drag.slot.scale);
-          distance = snapped.distance;
-          const horizontal = Math.abs(seam.dir[1]) < 1e-6;
-          this.guides = { pageId: drag.slot.page.id, xs: horizontal || snapped.guide === null ? [] : [snapped.guide], ys: horizontal && snapped.guide !== null ? [snapped.guide] : [] };
-        }
-        const moved = moveSeam(drag.slot.page, drag.base, seam, distance);
-        for (const [id, carried] of drag.carried) {
-          const panel = drag.slot.page.panels.find((p) => p.id === id);
-          if (panel) followPanel(drag.slot.page, panel, carried);
-        }
-        drag.moved = drag.moved || Math.abs(moved) > 0.01;
-        const what = seam.between ? "間白" : "コマの辺";
-        this.host.status(`${what}を ${Math.abs(moved).toFixed(1)} mm 動かしています（Alt で吸い付かない）`);
-        break;
-      }
-      case "vertex": {
-        const panel = drag.slot.page.panels.find((p) => p.id === drag.panelId);
-        if (!panel) return;
-        // 水平・垂直 with the corners beside it, the other panels' lines, the frames, the grid.
-        panel.shape[drag.vertex] = this.snapped(drag.slot, point, drag.targets, event.altKey, besideCorners(panel.shape, drag.vertex));
-        this.follow(drag.slot.page, drag.carried);
-        drag.moved = true;
-        break;
-      }
-      case "tail": {
-        const line = drag.slot.page.lines.find((l) => l.id === drag.lineId);
-        const tail = line?.tails?.[drag.index];
-        if (!line || !tail) return;
-        if (drag.part === "bend") {
-          // How far the pointer is to the side of the straight tail.
-          const straight = tailGeometry(line, { ...tail, bend: 0 });
-          if (!straight) return;
-          const mid: Point = [(straight.root[0] + tail.tip[0]) / 2, (straight.root[1] + tail.tip[1]) / 2];
-          const length = Math.hypot(tail.tip[0] - straight.root[0], tail.tip[1] - straight.root[1]);
-          let bend = (point[0] - mid[0]) * straight.normal[0] + (point[1] - mid[1]) * straight.normal[1];
-          bend = Math.max(-length * 0.6, Math.min(length * 0.6, bend));
-          if (Math.abs(bend) < 0.4) delete tail.bend;
-          else tail.bend = Math.round(bend * 10) / 10;
-          this.host.status("しっぽを曲げています（まっすぐ近くで戻ります）");
-        } else if (drag.part === "root") {
-          // Round the balloon: the direction of the pointer from its centre; near the tip's own direction it goes back to following the tip.
-          const root = tailRootAt(line, tail, point);
-          if (root === null) delete tail.root;
-          else tail.root = root;
-          this.host.status("しっぽの根本を動かしています（先の向き近くで元に戻ります）");
-        } else {
-          tail.tip = drag.part === "body" ? [drag.tip[0] + point[0] - drag.start[0], drag.tip[1] + point[1] - drag.start[1]] : point;
-        }
-        drag.moved = true;
-        break;
-      }
-      case "lasso":
-      case "fill":
-      case "pick":
-      case "eraseLasso":
-        drag.points.push(point);
-        break;
-      case "cut":
-        drag.b = point;
-        drag.free = event.altKey;
-        break;
-      case "frame":
-        drag.b = this.snapped(drag.slot, point, drag.targets, event.altKey);
-        break;
-      case "pen": {
-        if (drag.straight) {
-          const [x, y] = straightEnd(drag.points[0], point);
-          const end: StrokePoint = drag.motion ? [x, y, pressureOf(event), tiltOf(event), 0] : [x, y, pressureOf(event)];
-          drag.points = [drag.points[0], end];
-          drag.last = end;
-          break;
-        }
-        // 手ブレ補正: each point moves only part of the way towards the pen.
-        const brush = this.brush("pen");
-        const events = event.getCoalescedEvents?.() ?? [event];
-        for (const e of events.length ? events : [event]) {
-          const [x, y] = toPage(drag.slot, ...this.at(e));
-          const seconds = (e.timeStamp - drag.time) / 1000;
-          if (seconds > 0) {
-            const speed = Math.hypot(x - drag.last[0], y - drag.last[1]) / seconds / FULL_SPEED_MM;
-            // Smoothed: single samples jump about.
-            drag.speed += (Math.min(speed, 1) - drag.speed) * 0.3;
-            drag.time = e.timeStamp;
-          }
-          const raw: StrokePoint = drag.motion
-            ? [x, y, pressureOf(e), tiltOf(e), drag.speed]
-            : [x, y, pressureOf(e)];
-          const follow = followFactor(brush?.stabilization ?? 0, drag.speed, brush?.stabilizationBySpeed);
-          const previous = drag.points[drag.points.length - 1];
-          drag.points.push(previous.map((value, i) => value + (raw[i] - value) * follow) as StrokePoint);
-          drag.last = raw;
-        }
-        break;
-      }
-      case "erase": {
-        // The eraser goes on across the gutter onto the facing page.
-        const under = this.slotAt(ex, ey, project) ?? drag.slot;
-        this.erase(under, toPage(under, ex, ey));
-        break;
-      }
-      default:
-        drag satisfies never;
-    }
+    if (dragHandler(drag).move(this.core, drag, { event, project, point, ex, ey }) === false) return;
     this.requestDraw();
   }
 
@@ -3197,282 +2718,8 @@ export class PageEditor {
   /** Finish what a drag did: keep the change for undo, make what was drawn. */
   private completeDrag(drag: Drag): void {
     const project = this.host.project();
-    if (!project) return;
-    switch (drag.kind) {
-      case "pick": {
-        const page = drag.slot.page;
-        const [x0, y0, x1, y1] = bounds(drag.points);
-        let items: ItemRef[];
-        if (drag.add && Math.max(x1 - x0, y1 - y0) * drag.slot.scale < 4) {
-          // Shift + click.
-          if (!drag.add.target) break;
-          items = toggleItem(drag.add.base, drag.add.target);
-        } else {
-          const picked = pickInside(page, drag.points);
-          const found: ItemRef[] = [
-            ...picked.panels.map((id) => ({ kind: "panel" as const, id })),
-            ...picked.strokes.map((id) => ({ kind: "stroke" as const, id })),
-            ...picked.lines.map((id) => ({ kind: "line" as const, id })),
-            ...picked.fills.map((id) => ({ kind: "fill" as const, id })),
-            ...picked.breakouts.map((id) => ({ kind: "breakout" as const, id })),
-          ];
-          items = drag.add ? [...drag.add.base] : [];
-          for (const item of found) if (!items.some((x) => x.kind === item.kind && x.id === item.id)) items.push(item);
-        }
-        if (!items.length) this.select(null);
-        else if (items.length === 1) this.select({ kind: items[0].kind, pageId: page.id, id: items[0].id });
-        else this.select({ kind: "group", pageId: page.id, id: "group", items });
-        if (items.length > 1) this.host.status(`${pickedSummary(items)}を選びました。ドラッグで動かし、枠で変形、Delete で消せます（Shift + クリックで足す・外す）`);
-        break;
-      }
-      case "eraseLasso": {
-        this.host.begin();
-        const changed = eraseInside(project, drag.slot.page, drag.points);
-        if (changed) {
-          this.host.commit();
-          this.host.status(`囲んだ中の線を消しました（${changed} 本）`);
-        } else {
-          this.host.cancel();
-        }
-        break;
-      }
-      case "tail": {
-        const line = drag.slot.page.lines.find((l) => l.id === drag.lineId);
-        const tail = line?.tails?.[drag.index];
-        if (!drag.moved && !drag.created) {
-          this.host.cancel();
-          if ((line?.tails?.length ?? 0) > 1) this.host.status(`${drag.index + 1} 本目のしっぽを選びました（Delete か右の欄の × で、このしっぽだけ消せます）`);
-          break;
-        }
-        // A tip put back inside its balloon takes the tail away.
-        if (line && tail && drag.part !== "bend" && drag.part !== "root" && insideBalloon(line, tail.tip)) {
-          line.tails = line.tails!.filter((_, i) => i !== drag.index);
-          if (!line.tails.length) delete line.tails;
-          if (this.selection?.kind === "line" && this.selection.id === line.id) this.selection = { kind: "line", pageId: this.selection.pageId, id: line.id };
-          this.host.status(drag.created ? "" : "しっぽを消しました（元に戻すは Ctrl+Z）");
-          if (drag.created) {
-            this.host.cancel();
-            break;
-          }
-        } else if (drag.created) {
-          this.host.status("しっぽを足しました。先をドラッグで向きを、ひし形で曲がりを変えられます");
-        }
-        this.host.commit();
-        break;
-      }
-      case "fill": {
-        const shape = simplify(
-          drag.points.map(([x, y]) => [x, y, 1] as [number, number, number]),
-          0.4,
-        ).map(([x, y]) => [x, y] as Point);
-        const box = bounds(shape);
-        if (shape.length < 3 || box[2] - box[0] < 1 || box[3] - box[1] < 1) {
-          this.host.status("塗る所を囲むようにドラッグしてください");
-          break;
-        }
-        this.host.begin();
-        addFill(project, drag.slot.page, shape, this.fillTone);
-        this.host.commit();
-        break;
-      }
-      case "lasso": {
-        const shape = simplify(
-          drag.points.map(([x, y]) => [x, y, 1] as [number, number, number]),
-          0.8,
-        ).map(([x, y]) => [x, y] as Point);
-        const box = bounds(shape);
-        if (shape.length < 3 || box[2] - box[0] < 4 || box[3] - box[1] < 4) {
-          this.host.status("はみ出しにする所を囲むようにドラッグしてください");
-          break;
-        }
-        this.host.begin();
-        const breakout = addBreakout(project, drag.slot.page, shape);
-        this.host.commit();
-        this.select({ kind: "breakout", pageId: drag.slot.page.id, id: breakout.id });
-        this.host.status("はみ出しを作りました。中でペンを描き始めると、コマ枠の上に描かれます");
-        break;
-      }
-      case "move":
-      case "vertex":
-        if (!drag.moved) {
-          this.host.cancel();
-          if (drag.kind === "move" && drag.cycle) {
-            // Not at once: the second click of a double-click writes in the selected one.
-            const pageId = drag.slot.page.id;
-            const id = drag.cycle;
-            this.cycleTimer = window.setTimeout(() => {
-              this.select({ kind: "line", pageId, id });
-              this.host.status("重なったセリフの下のものを選びました（同じ所をもう一度押すと次へ）");
-            }, 320);
-          }
-          break;
-        }
-        if (drag.kind === "vertex" || this.selection?.kind === "panel" || this.selection?.items?.some((item) => item.kind === "panel")) {
-          orderPanels(drag.slot.page, project.binding);
-        }
-        if (drag.kind === "move") this.carryToPageUnder(project, drag.slot);
-        this.spanPanels(project, this.selection?.pageId ?? drag.slot.page.id);
-        for (const slot of this.slots) {
-          assignPanels(slot.page);
-          sortLines(slot.page, this.binding());
-        }
-        this.host.commit();
-        break;
-      case "cut": {
-        const b = drag.free ? drag.b : snapCut(drag.a, drag.b);
-        if (Math.hypot(b[0] - drag.a[0], b[1] - drag.a[1]) < 3) break;
-        this.host.begin();
-        const created = cutPanels(project, drag.slot.page, drag.a, b);
-        if (created.length) {
-          sortLines(drag.slot.page, this.binding());
-          this.host.commit();
-          this.host.status(`コマを ${created.length} か所で分けました`);
-        } else {
-          this.host.cancel();
-          this.host.status("コマを横切るように線を引いてください");
-        }
-        break;
-      }
-      case "frame": {
-        const box = bounds([drag.a, drag.b]);
-        if (box[2] - box[0] < 5 || box[3] - box[1] < 5) {
-          this.host.status("コマにするには、もう少し大きく囲んでください");
-          break;
-        }
-        this.addFreePanel(project, drag.slot.page, rectShape(box));
-        break;
-      }
-      case "pen": {
-        this.host.begin();
-        const brushId = this.brush("pen")?.id;
-        if (drag.straight) {
-          // Points along the line, so that pressure and 入り抜き work along it.
-          drag.points = densify(drag.points);
-        } else {
-          // The smoothed line catches up with where the pen left the page.
-          if (drag.points.length > 1) drag.points.push(drag.last);
-          // 後補正: the finished line loses its wobble.
-          drag.points = postCorrect(drag.points, this.brush("pen")?.postCorrection ?? 0);
-        }
-        // Begun inside a はみ出し: the line goes over the panel borders.
-        const [bx, by] = drag.points[0];
-        const over = drag.slot.page.breakouts.some((breakout) => insidePolygon(breakout.shape, [bx, by]));
-        // A line drawn across the gutter (or, 連続, onto other pages) goes onto each page it is over, cut where it crosses.
-        const from = drag.slot;
-        const slotOf = (index: number) => this.slots.find((slot) => slot.index === index) ?? from;
-        const runs = splitOverPages<number>(
-          drag.points,
-          from.index,
-          ([x, y]) => this.slotAt(from.x + x * from.scale, from.y + y * from.scale, project)?.index ?? null,
-          (a, b) => {
-            const [sa, sb] = [slotOf(a), slotOf(b)];
-            return this.facingSlot(sa)?.index === b ? (sa.x + this.gutterOf(sa, sb) * sa.scale - from.x) / from.scale : null;
-          },
-        );
-        let added = 0;
-        for (const [index, run] of runs.entries()) {
-          const target = slotOf(run.page);
-          const [dx, dy] = [(from.x - target.x) / from.scale, (from.y - target.y) / from.scale];
-          const points = run.points.map((p) => [p[0] + dx, p[1] + dy, ...p.slice(2)] as StrokePoint);
-          const stroke = addStroke(project, target.page, points, this.penWidthMm, brushId);
-          if (!stroke) continue;
-          added++;
-          if (over && target.index === drag.slot.index) stroke.over = true;
-          const cut: [boolean, boolean] = [index > 0, index < runs.length - 1];
-          if (cut[0] || cut[1]) stroke.cut = cut;
-        }
-        if (added) this.host.commit();
-        else this.host.cancel();
-        break;
-      }
-      case "erase":
-        if (drag.erased) this.host.commit();
-        else this.host.cancel();
-        break;
-      case "reference":
-        if (drag.moved) this.host.commit();
-        break;
-      case "note": {
-        if (!drag.moved) {
-          this.editInPlace(drag.slot.page.id, "note", drag.panelId);
-          break;
-        }
-        this.host.commit();
-        this.host.status("コマのメモを動かしました。線でコマとつながっています（右の欄で元の位置に戻せます）");
-        break;
-      }
-      case "stickyLink": {
-        const sticky = drag.slot.page.stickies?.find((n) => n.id === drag.stickyId);
-        if (!sticky || !this.pointer) break;
-        const point = toPage(drag.slot, this.pointer[0], this.pointer[1]);
-        const to = this.linkTarget(drag.slot, point);
-        if (!to && !sticky.link) break;
-        this.host.begin();
-        if (to) linkSticky(drag.slot.page, sticky, to.kind as "panel" | "line", to.id, point);
-        else delete sticky.link;
-        this.host.commit();
-        this.host.status(to ? `付箋を${to.kind === "panel" ? "コマ" : "セリフ"}に紐づけました` : "付箋の紐づけを外しました");
-        break;
-      }
-      case "swap": {
-        const from = drag.slot.page.panels.find((panel) => panel.id === drag.panelId);
-        const to = drag.to;
-        const target = to && to.slot.page.panels.find((panel) => panel.id === to.panelId);
-        if (!from || !to || !target) break;
-        this.host.begin();
-        swapPanelContents(drag.slot.page, from, to.slot.page, target, project.binding);
-        this.host.commit();
-        this.select({ kind: "panel", pageId: to.slot.page.id, id: target.id });
-        this.host.status(`コマ ${from.order} とコマ ${target.order} の中身を入れ替えました（元に戻すは Ctrl+Z）`);
-        break;
-      }
-      case "scale":
-      case "rotate":
-      case "warp":
-        if (!drag.moved) {
-          this.host.cancel();
-          break;
-        }
-        if (drag.base.panels) {
-          orderPanels(drag.slot.page, project.binding);
-          this.spanPanels(project, drag.slot.page.id);
-        }
-        assignPanels(drag.slot.page);
-        sortLines(drag.slot.page, this.binding());
-        this.host.commit();
-        break;
-      case "seam": {
-        if (!drag.moved) {
-          this.host.cancel();
-          // A click on an edge picks the panel there.
-          const panel = this.panelAt(drag.slot.page, drag.start) ?? drag.slot.page.panels.find((p) => p.id === drag.seam.edges[0].panelId);
-          this.select(panel ? { kind: "panel", pageId: drag.slot.page.id, id: panel.id } : null);
-          break;
-        }
-        orderPanels(drag.slot.page, project.binding);
-        assignPanels(drag.slot.page);
-        sortLines(drag.slot.page, this.binding());
-        const spanned = this.spanPanels(project, drag.slot.page.id);
-        this.host.commit();
-        if (!spanned) this.host.status(drag.seam.between ? "間白を動かしました（両側のコマが一緒に）" : "コマの辺を動かしました");
-        break;
-      }
-      case "pan":
-      case "turn":
-      case "pinch":
-        break;
-      default:
-        // A new kind of drag must say here how it ends.
-        drag satisfies never;
-    }
-  }
-
-  private erase(slot: Slot, point: Point): void {
-    const project = this.host.project();
-    if (!project) return;
-    const mode = this.eraseMode === "lasso" ? "whole" : this.eraseMode;
-    const erased = eraseWith(project, slot.page, point, this.eraserRadiusPx(slot.scale) / slot.scale, mode);
-    if (this.drag?.kind === "erase") this.drag.erased += erased;
+    if (!project || drag.kind === "pan" || drag.kind === "turn" || drag.kind === "pinch") return;
+    dragHandler(drag).end(this.core, drag, project);
   }
 
   /** Move what is selected; `items`: a 範囲選択 with what its panels hold, as taken when the drag began. */
@@ -3802,17 +3049,6 @@ export class PageEditor {
   }
 }
 
-function pressureOf(event: PointerEvent): number {
-  // Mice report 0.5 while a button is down; treat that as full pressure.
-  if (event.pointerType !== "pen") return 1;
-  // The 筆圧カーブ of the tablet settings, then the brush's own.
-  return Math.max(0.05, adjustPressure(penPreferences.settings.pressureCurve, event.pressure || 0.5));
-}
-
-function tiltOf(event: PointerEvent): number {
-  return penPreferences.settings.tilt ? penTilt(event) : 0;
-}
-
 /** A small dot for drawing (the tablet settings' 点 cursor). */
 const DOT_CURSOR = `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="9" height="9"><circle cx="4.5" cy="4.5" r="2" fill="#222" stroke="#fff" stroke-width="1"/></svg>')}") 4 4, crosshair`;
 
@@ -3848,24 +3084,3 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, width: number, ma
   return kept;
 }
 
-
-/** Kinds of things a 範囲選択 can hold. */
-function isItemKind(kind: Selection["kind"]): kind is ItemRef["kind"] {
-  return kind === "stroke" || kind === "line" || kind === "panel" || kind === "fill" || kind === "breakout";
-}
-
-/** 「コマ 2 つ・線 5 本・セリフ 3 個」 for the status line. */
-export function pickedSummary(items: readonly ItemRef[]): string {
-  const count = (kind: ItemRef["kind"]) => items.filter((item) => item.kind === kind).length;
-  const parts = [
-    [count("panel"), "コマ", "つ"],
-    [count("stroke"), "線", "本"],
-    [count("line"), "セリフ", "個"],
-    [count("fill"), "塗り", "つ"],
-    [count("breakout"), "はみ出し", "つ"],
-  ] as const;
-  return parts
-    .filter(([n]) => n > 0)
-    .map(([n, name, unit]) => `${name} ${n} ${unit}`)
-    .join("・");
-}
