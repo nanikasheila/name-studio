@@ -56,6 +56,15 @@ pub enum PageLayer {
         frames: Vec<NewFrame>,
         ink: Option<String>,
     },
+    /// A folder holding `children` (bottom first). With a `mask` (any size
+    /// with the page's proportions, scaled to it) it gets a レイヤーマスク:
+    /// what is in the folder shows only under the mask's opaque pixels, and
+    /// the rest is hidden, not cut, so it can be shown again in CSP.
+    Folder {
+        name: String,
+        mask: Option<RgbaImage>,
+        children: Vec<PageLayer>,
+    },
 }
 
 /// Text layer columns that hold several blocks; a new text has one block.
@@ -269,12 +278,13 @@ fn freshen(values: &mut Values, name: &str) {
 const DRAFT_OPACITY: i64 = 128;
 
 /// A layer's name as it is written.
-fn layer_name(layer: &PageLayer) -> &str {
+pub(crate) fn layer_name(layer: &PageLayer) -> &str {
     match layer {
         PageLayer::Raster(layer) => &layer.name,
         PageLayer::Vector { name, .. } => name,
         PageLayer::Text(text) => &text.text,
         PageLayer::Frames { name, .. } => name,
+        PageLayer::Folder { name, .. } => name,
     }
 }
 
@@ -454,6 +464,130 @@ pub fn template_canvas(template: &ClipDocument) -> TemplateCanvas {
     }
 }
 
+/// Whether `layer` (or a layer in it) needs a donor of `kind`: 0 vector, 1 text, 2 frame folder.
+fn holds(layer: &PageLayer, kind: u8) -> bool {
+    match (layer, kind) {
+        (PageLayer::Vector { .. }, 0) | (PageLayer::Text(_), 1) | (PageLayer::Frames { .. }, 2) => true,
+        (PageLayer::Folder { children, .. }, _) => children.iter().any(|child| holds(child, kind)),
+        _ => false,
+    }
+}
+
+/// `image` with its alpha cut down to `mask`'s (both the same size).
+fn masked(image: &RgbaImage, mask: &RgbaImage) -> RgbaImage {
+    let mut result = image.clone();
+    for (pixel, cover) in result.pixels.chunks_exact_mut(4).zip(mask.pixels.chunks_exact(4)) {
+        pixel[3] = ((u16::from(pixel[3]) * u16::from(cover[3]) + 127) / 255) as u8;
+    }
+    result
+}
+
+/// Adds the layers of one page, keeping the thumbnail's picture of them.
+struct PageBuilder<'a> {
+    /// The template's raster layer, which new raster layers and folders copy.
+    raster: i64,
+    source: &'a ClipDocument,
+    donors: &'a Donors,
+    width: u32,
+    height: u32,
+    composite: RgbaImage,
+    draft_layers: &'a [String],
+}
+
+impl PageBuilder<'_> {
+    /// Add `layer` at the top of `parent`; `mask` is the folder mask over it
+    /// (page size), for the thumbnail.
+    fn add(
+        &mut self,
+        editor: &mut ClipEditor,
+        layer: &PageLayer,
+        parent: i64,
+        mask: Option<&RgbaImage>,
+    ) -> Result<i64> {
+        let source = self.source;
+        let payload = |id: &str| source.container.external_payload(id).map(<[u8]>::to_vec);
+        let raster = self.raster;
+        let blank = |editor: &mut ClipEditor, name: &str| -> Result<i64> {
+            let mut rename = |values: &mut Values| -> Result<()> {
+                set_value(values, "LayerName", Value::Text(name.to_owned()));
+                Ok(())
+            };
+            editor.add_layer(source.database(), &payload, raster, Some(&mut rename), None)
+        };
+        let missing = |kind: &str| CspError::format(format!("No {kind} layer to copy (template or name sheet)"));
+        let (width, height) = (self.width, self.height);
+        let fit = |image: &RgbaImage| -> Option<RgbaImage> {
+            ((image.width, image.height) != (width, height)).then(|| resize(image, width, height, Filter::Lanczos3))
+        };
+        let id = match layer {
+            PageLayer::Raster(layer) => {
+                let image = fit(&layer.image);
+                let image = image.as_ref().unwrap_or(&layer.image);
+                let id = blank(editor, &layer.name)?;
+                if !image.is_transparent() {
+                    editor.set_layer_image(id, image, (0, 0))?;
+                    match mask {
+                        Some(mask) => self.composite.blend_over(&masked(image, mask), 0, 0),
+                        None => self.composite.blend_over(image, 0, 0),
+                    }
+                }
+                id
+            }
+            PageLayer::Frames { name, frames, ink } => {
+                let donor = self.donors.frame.as_ref().ok_or_else(|| missing("frame folder"))?;
+                let id = add_frame_folder(editor, donor, name, frames)?;
+                if let Some(ink) = ink {
+                    let inside = blank(editor, ink)?;
+                    editor.append_to_folder(id, inside, None)?;
+                }
+                id
+            }
+            PageLayer::Vector { name, lines } => {
+                let donor = self.donors.vector.as_ref().ok_or_else(|| missing("vector"))?;
+                add_vector_layer(editor, donor, name, lines)?
+            }
+            PageLayer::Text(text) => {
+                let donor = self.donors.text.as_ref().ok_or_else(|| missing("text"))?;
+                add_text_layer(editor, donor, text)?
+            }
+            PageLayer::Folder {
+                name,
+                mask: own,
+                children,
+            } => {
+                let id = blank(editor, name)?;
+                editor.make_folder(id)?;
+                // Scaled without Lanczos' ringing, which would show as a faint halo.
+                let own = own.as_ref().map(|image| {
+                    if (image.width, image.height) == (width, height) {
+                        image.clone()
+                    } else {
+                        resize(image, width, height, Filter::Box)
+                    }
+                });
+                if let Some(own) = &own {
+                    editor.set_layer_mask(id, own)?;
+                }
+                // Inside a masked folder in a masked folder, both masks hide.
+                let inner = match (mask, &own) {
+                    (Some(outer), Some(own)) => Some(masked(own, outer)),
+                    (None, Some(own)) => Some(own.clone()),
+                    (outer, None) => outer.cloned(),
+                };
+                for child in children {
+                    self.add(editor, child, id, inner.as_ref())?;
+                }
+                id
+            }
+        };
+        editor.append_to_folder(parent, id, None)?;
+        if self.draft_layers.iter().any(|draft| *draft == layer_name(layer)) {
+            make_draft(editor, id)?;
+        }
+        Ok(id)
+    }
+}
+
 /// Write one page: a copy of `template` with `layers` added on top, bottom
 /// layer first. Images of another size are scaled to the page canvas; vector
 /// and text layers are copied from `donors`. Vector and text layers are not
@@ -477,21 +611,7 @@ pub fn write_name_page(
     let mut editor = ClipEditor::open(template)?;
     editor.renew_ids()?;
     apply_page_settings(&editor.db, page_index, canvas_values, first_right)?;
-    let raster = editor.first_raster_layer()?;
-    let payload = |id: &str| source.container.external_payload(id).map(<[u8]>::to_vec);
-    let mut composite = RgbaImage {
-        width,
-        height,
-        pixels: [255, 255, 255, 255].repeat(width as usize * height as usize),
-    };
-    let needs = |kind: u8| {
-        layers.iter().any(|layer| {
-            matches!(
-                (layer, kind),
-                (PageLayer::Vector { .. }, 0) | (PageLayer::Text(_), 1) | (PageLayer::Frames { .. }, 2)
-            )
-        })
-    };
+    let needs = |kind: u8| layers.iter().any(|layer| holds(layer, kind));
     for (needed, donor) in [
         (needs(0), &donors.vector),
         (needs(1), &donors.text),
@@ -501,55 +621,25 @@ pub fn write_name_page(
             prepare_for(&editor, donor)?;
         }
     }
-    let missing = |kind: &str| CspError::format(format!("No {kind} layer to copy (template or name sheet)"));
+    let mut builder = PageBuilder {
+        raster: editor.first_raster_layer()?,
+        source: &source,
+        donors,
+        width,
+        height,
+        composite: RgbaImage {
+            width,
+            height,
+            pixels: [255, 255, 255, 255].repeat(width as usize * height as usize),
+        },
+        draft_layers,
+    };
     let mut ids = Vec::new();
     for layer in layers {
-        let blank = |editor: &mut ClipEditor, name: &str| -> Result<i64> {
-            let mut rename = |values: &mut Values| -> Result<()> {
-                set_value(values, "LayerName", Value::Text(name.to_owned()));
-                Ok(())
-            };
-            editor.add_layer(source.database(), &payload, raster, Some(&mut rename), None)
-        };
-        let id = match layer {
-            PageLayer::Raster(layer) => {
-                let image = if (layer.image.width, layer.image.height) == (width, height) {
-                    None
-                } else {
-                    Some(resize(&layer.image, width, height, Filter::Lanczos3))
-                };
-                let image = image.as_ref().unwrap_or(&layer.image);
-                let id = blank(&mut editor, &layer.name)?;
-                if !image.is_transparent() {
-                    editor.set_layer_image(id, image, (0, 0))?;
-                    composite.blend_over(image, 0, 0);
-                }
-                id
-            }
-            PageLayer::Frames { name, frames, ink } => {
-                let donor = donors.frame.as_ref().ok_or_else(|| missing("frame folder"))?;
-                let id = add_frame_folder(&mut editor, donor, name, frames)?;
-                if let Some(ink) = ink {
-                    let inside = blank(&mut editor, ink)?;
-                    editor.append_to_folder(id, inside, None)?;
-                }
-                id
-            }
-            PageLayer::Vector { name, lines } => {
-                let donor = donors.vector.as_ref().ok_or_else(|| missing("vector"))?;
-                add_vector_layer(&mut editor, donor, name, lines)?
-            }
-            PageLayer::Text(text) => {
-                let donor = donors.text.as_ref().ok_or_else(|| missing("text"))?;
-                add_text_layer(&mut editor, donor, text)?
-            }
-        };
-        editor.append_to_folder(editor.root_id, id, None)?;
-        if draft_layers.iter().any(|draft| *draft == layer_name(layer)) {
-            make_draft(&editor, id)?;
-        }
-        ids.push(id);
+        let root = editor.root_id;
+        ids.push(builder.add(&mut editor, layer, root, None)?);
     }
+    let composite = builder.composite;
     let thumbnail = match overlay {
         Some(overlay) => {
             let mut base = resize(&composite, overlay.width, overlay.height, Filter::Box);
@@ -570,24 +660,33 @@ pub fn page_record(layers: &[PageLayer], images: &[String]) -> PageRecord {
         texts: Some(Vec::new()),
         ..Default::default()
     };
+    add_to_record(&mut record, layers, images, "");
+    record
+}
+
+/// Record `layers`; those in a folder by `folder/name`.
+fn add_to_record(record: &mut PageRecord, layers: &[PageLayer], images: &[String], prefix: &str) {
     for layer in layers {
         match layer {
             PageLayer::Text(text) => record.texts.get_or_insert_with(Vec::new).push(text.text.clone()),
             PageLayer::Vector { name, lines } => {
                 let points: Vec<Vec<(f64, f64)>> = lines.iter().map(NewVectorLine::xy).collect();
-                record
-                    .vectors
-                    .insert(name.clone(), shape_signature(points.iter().map(Vec::as_slice)));
+                record.vectors.insert(
+                    format!("{prefix}{name}"),
+                    shape_signature(points.iter().map(Vec::as_slice)),
+                );
             }
             PageLayer::Raster(raster) if images.contains(&raster.name) => {
                 record
                     .rasters
-                    .insert(raster.name.clone(), image_signature(&raster.image));
+                    .insert(format!("{prefix}{}", raster.name), image_signature(&raster.image));
+            }
+            PageLayer::Folder { name, children, .. } => {
+                add_to_record(record, children, images, &format!("{prefix}{name}/"));
             }
             _ => {}
         }
     }
-    record
 }
 
 /// Where and how a set of pages (and their work) is written.

@@ -27,6 +27,13 @@ use crate::offscreen::{OffscreenParameters, RgbaImage};
 use crate::raster::{Filter, resize};
 
 const LAYER_TYPE_RASTER: i64 = 1;
+/// `LayerType` bit of a layer with a layer mask (CSP: 2 on a folder or
+/// vector layer, 3 on a raster layer).
+const LAYER_TYPE_MASKED: i64 = 2;
+/// `LayerVisibility` bit: the layer mask is in use (bit 0 shows the layer).
+const VISIBILITY_MASK_ON: i64 = 2;
+/// `LayerMasking` of a folder CSP made.
+const FOLDER_MASKING: i64 = 32;
 /// Columns that would tie a copied layer to data that is not copied (yet).
 const DROPPED_LAYER_LINKS: [&str; 13] = [
     "LayerLayerMaskMipmap",
@@ -532,6 +539,74 @@ impl ClipEditor {
                 ("LayerLayerMaskMipmap", Value::Integer(mask)),
                 ("LayerLayerMaskThumbnail", Value::Integer(mask_thumbnail)),
                 ("ComicFrameLineMipmap", Value::Integer(line)),
+            ],
+        )
+    }
+
+    /// Make a layer copied from a raster layer a folder, as CSP saves one:
+    /// no colour settings, and render offscreens with no pixels stored.
+    pub fn make_folder(&mut self, layer_id: i64) -> Result<()> {
+        self.update_layer(
+            layer_id,
+            &[
+                ("LayerType", Value::Integer(0)),
+                ("LayerFolder", Value::Integer(1)),
+                ("LayerMasking", Value::Integer(FOLDER_MASKING)),
+                ("LayerColorTypeIndex", Value::Null),
+                ("LayerColorTypeBlackChecked", Value::Null),
+                ("LayerColorTypeWhiteChecked", Value::Null),
+            ],
+        )?;
+        let mipmap = int_value(value_of(&self.layer_row(layer_id)?, "LayerRenderMipmap"));
+        for (offscreen_id, _, _) in self.mipmap_levels(mipmap)? {
+            self.db.execute(
+                "UPDATE Offscreen SET BlockData = ?1 WHERE MainId = ?2",
+                (new_external_id().as_bytes(), offscreen_id),
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Give a layer (or folder) a レイヤーマスク: what is under the opaque
+    /// pixels of `mask` (canvas px, placed at the top left) shows, the rest
+    /// is hidden. The mask is turned on, as CSP's 「レイヤーマスクを作成」 does.
+    pub fn set_layer_mask(&mut self, layer_id: i64, mask: &RgbaImage) -> Result<()> {
+        let raster = self.first_raster_layer()?;
+        let (mipmap, thumbnail) = self.clone_render_offscreens(layer_id, raster)?;
+        let mut full: Option<RgbaImage> = None;
+        for (offscreen_id, attribute, _) in self.mipmap_levels(mipmap)? {
+            let attribute = mask_attribute(&attribute)?;
+            let parameters = OffscreenParameters::parse(&attribute)?;
+            let base = full.get_or_insert_with(|| {
+                let mut image = RgbaImage::transparent(parameters.width, parameters.height);
+                image.paste(mask, 0, 0);
+                image
+            });
+            let level = if (parameters.width, parameters.height) == (base.width, base.height) {
+                None
+            } else {
+                Some(resize(base, parameters.width, parameters.height, Filter::Box))
+            };
+            let external = new_external_id();
+            self.db.execute(
+                "UPDATE Offscreen SET Attribute = ?1, BlockData = ?2 WHERE MainId = ?3",
+                (&attribute, external.as_bytes(), offscreen_id),
+            )?;
+            let payload = encode_offscreen_image(level.as_ref().unwrap_or(base), &parameters)?;
+            self.externals.insert(external, payload);
+        }
+        let row = self.layer_row(layer_id)?;
+        let get = |column: &str| int_value(value_of(&row, column));
+        self.update_layer(
+            layer_id,
+            &[
+                ("LayerType", Value::Integer(get("LayerType") | LAYER_TYPE_MASKED)),
+                (
+                    "LayerVisibility",
+                    Value::Integer(get("LayerVisibility") | VISIBILITY_MASK_ON),
+                ),
+                ("LayerLayerMaskMipmap", Value::Integer(mipmap)),
+                ("LayerLayerMaskThumbnail", Value::Integer(thumbnail)),
             ],
         )
     }

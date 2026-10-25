@@ -33,6 +33,7 @@ import {
   type StrokePoint,
   wantsSpread,
 } from "./project";
+import { drawPanelMask, panelFolders } from "./panelfolders";
 import { decodePicture, opacityOf, usedImages } from "./references";
 import { sceneSpans } from "./story";
 import { balloonLineMm, useStyle } from "./style";
@@ -217,6 +218,8 @@ export type LayerMeta =
   | { kind: "raster"; name: string; length: number }
   | { kind: "vector"; name: string; lines: VectorLineMeta[] }
   | { kind: "frames"; name: string; frames: FrameMeta[]; ink?: string }
+  /** A folder of `children` (bottom first); its mask PNG of `maskLength` bytes (0: none) comes before theirs. */
+  | { kind: "folder"; name: string; maskLength: number; children: LayerMeta[] }
   | {
       kind: "text";
       text: string;
@@ -533,7 +536,9 @@ export async function exportToCsp(
   const start = await call("begin_name_export", { request });
   const vector = editable && start.vectorLayers;
   const text = editable && start.textLayers;
-  const frames = vector && !!request.frameFolders && start.frameFolders;
+  // マスク付きフォルダー take the place of the コマ枠フォルダー.
+  const masks = !!request.panelMasks;
+  const frames = vector && !masks && !!request.frameFolders && start.frameFolders;
   try {
     // Asked before anything is written: lines and dialogue CSP cannot edit stop the pen work.
     const missing = editable ? missingEditable(start) : [];
@@ -543,7 +548,7 @@ export async function exportToCsp(
     }
     const full = projectToTemplate(project, start);
     const { units, warnings } = exportUnits(project, start.firstPageLeft, start.spread ? null : start.spreadProblem);
-    if (vector && request.frameFolders && !start.frameFolders) warnings.push(NO_FRAME_FOLDER);
+    if (vector && !masks && request.frameFolders && !start.frameFolders) warnings.push(NO_FRAME_FOLDER);
     const checks: FileCheck[] = [];
     // One drawing canvas for the widest page; each page is drawn at its own size.
     const widest = Math.max(start.widthPx, ...(units.some((unit) => unit.length > 1) && start.spread ? [start.spread.widthPx] : []));
@@ -587,45 +592,72 @@ export async function exportToCsp(
         layers.push({ kind: "raster", name: REFERENCE_LAYER_NAME, length: png.length });
         pngs.push(png);
       }
+      // One kind of part of `pages` as a layer named `name`: vector lines, or a picture (its PNG goes to `pngs`).
+      const part = async (kind: LayerKind, pages: readonly PlacedPage[], name: string): Promise<LayerMeta> => {
+        if (layerForm(kind, vector, text) === "vector" && canBeVector(kind)) {
+          const lines = pages.flatMap(({ page, m, right }) => {
+            const own = vectorLines(page, kind, m, project.brushes);
+            return spread ? clipLines(own, spread.gutterPx, right) : own;
+          });
+          return { kind: "vector", name, lines };
+        }
+        // An empty part goes as no bytes; the Rust side makes it a blank layer.
+        let png: Uint8Array = new Uint8Array();
+        if (pages.some(({ page }) => partCount(page, kind))) {
+          ctx.clearRect(0, 0, width, height);
+          for (const { page, m, right } of pages) {
+            clipped(ctx, factor, right, () => drawPart(ctx, page, kind, scaled(m, factor), project.brushes));
+          }
+          png = await encode(drawing, "image/png");
+        }
+        pngs.push(png);
+        return { kind: "raster", name, length: png.length };
+      };
       for (const kind of LAYER_ORDER) {
         const form = layerForm(kind, vector, text);
         if (form === "none") continue;
         if (form !== "raster") {
           const toOverlay = overlay.width / pageWidth;
           for (const { page, m, right } of placed) {
-            if (kind === "text") layers.push(...textLayers(page, m, start.resolution));
             // CSP draws these itself when the page is opened; the thumbnail does not.
             clipped(overlayCtx, toOverlay, right, () => drawPart(overlayCtx, page, kind, scaled(m, toOverlay), project.brushes));
           }
-          if (kind === "panels" && frames) {
-            // The gutter side of a spread page meets its facing page.
-            const framed = placed.map(({ page, m, right }) => frameMetas(project, page, m, spread ? (right ? "left" : "right") : null));
-            layers.push({ kind: "frames", name: FRAME_FOLDER_NAME, frames: framed.flatMap((one) => one.frames), ink: INK_LAYER_NAME });
-            const lines = placed.flatMap(({ page, m, right }, index) => {
-              const own = vectorLines(page, kind, m, project.brushes, framed[index].ids);
-              return spread ? clipLines(own, spread.gutterPx, right) : own;
-            });
-            if (lines.length) layers.push({ kind: "vector", name: LAYER_NAMES[kind], lines });
-          } else if (canBeVector(kind)) {
-            const lines = placed.flatMap(({ page, m, right }) => {
-              const own = vectorLines(page, kind, m, project.brushes);
-              return spread ? clipLines(own, spread.gutterPx, right) : own;
-            });
-            layers.push({ kind: "vector", name: LAYER_NAMES[kind], lines });
+        }
+        if (kind === "strokes" && masks) {
+          // The rough in each panel's folder, under its mask; a stroke in no panel stays on top of the page.
+          const { folders, loose } = panelFolders(placed, project.pageFormat);
+          if (loose.some((strokes) => strokes.length)) {
+            layers.push(await part(kind, placed.map((place, index) => ({ ...place, page: { ...place.page, strokes: loose[index] } })), LAYER_NAMES[kind]));
+          }
+          for (const folder of folders) {
+            ctx.clearRect(0, 0, width, height);
+            drawPanelMask(ctx, folder, project.pageFormat, (m) => scaled(m, factor), (right, draw) => clipped(ctx, factor, right, draw));
+            const mask = await encode(drawing, "image/png");
+            pngs.push(mask);
+            const children: LayerMeta[] = [];
+            const pages = folder.parts.map(({ page, m, right, strokes }) => ({ page: { ...page, strokes }, m, right }));
+            if (pages.some(({ page }) => page.strokes.length)) children.push(await part(kind, pages, LAYER_NAMES[kind]));
+            children.push({ kind: "raster", name: INK_LAYER_NAME, length: 0 });
+            layers.push({ kind: "folder", name: folder.name, maskLength: mask.length, children });
           }
           continue;
         }
-        // An empty part goes as no bytes; the Rust side makes it a blank layer.
-        let png: Uint8Array = new Uint8Array();
-        if (placed.some(({ page }) => partCount(page, kind))) {
-          ctx.clearRect(0, 0, width, height);
-          for (const { page, m, right } of placed) {
-            clipped(ctx, factor, right, () => drawPart(ctx, page, kind, scaled(m, factor), project.brushes));
-          }
-          png = await encode(drawing, "image/png");
+        if (kind === "text" && form === "text") {
+          for (const { page, m } of placed) layers.push(...textLayers(page, m, start.resolution));
+          continue;
         }
-        layers.push({ kind: "raster", name: LAYER_NAMES[kind], length: png.length });
-        pngs.push(png);
+        if (kind === "panels" && frames) {
+          // The gutter side of a spread page meets its facing page.
+          const framed = placed.map(({ page, m, right }) => frameMetas(project, page, m, spread ? (right ? "left" : "right") : null));
+          layers.push({ kind: "frames", name: FRAME_FOLDER_NAME, frames: framed.flatMap((one) => one.frames), ink: INK_LAYER_NAME });
+          const lines = placed.flatMap(({ page, m, right }, index) => {
+            const own = vectorLines(page, kind, m, project.brushes, framed[index].ids);
+            return spread ? clipLines(own, spread.gutterPx, right) : own;
+          });
+          if (lines.length) layers.push({ kind: "vector", name: LAYER_NAMES[kind], lines });
+          continue;
+        }
+        layers.push(await part(kind, placed, LAYER_NAMES[kind]));
       }
       if (notes) {
         let png: Uint8Array = new Uint8Array();

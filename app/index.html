@@ -193,7 +193,15 @@
           <label class="check"><input type="checkbox" id="ne-editable" checked /> 線をベクターレイヤー、セリフをテキストレイヤーにする（CSP で直せる）</label>
           <label class="check"><input type="checkbox" id="ne-draft" checked /> ラフ線を下描きレイヤーにする（不透明度 50%。上にペン入れでき、塗りつぶしの参照と画像の書き出しに入らない）</label>
           <label class="check"><input type="checkbox" id="ne-notes" checked /> コマのメモとページのメモを下描きレイヤー「メモ（ネーム）」に書く（ペン入れ中に見られ、印刷されない。付箋は書かない）</label>
-          <label class="check"><input type="checkbox" id="ne-frames" /> コマ枠をコマ枠フォルダーにする（試験中。中の「ペン入れ」レイヤーに描くとコマの外にはみ出さない。コマ枠フォルダーを作って保存した CSP のページを見本に選ぶ）</label>
+          <div class="field">
+            <span>コマ</span>
+            <select id="ne-panels">
+              <option value="lines">コマ枠の線だけ（ベクターレイヤー「コマ枠」）</option>
+              <option value="masks">コマごとのフォルダー＋レイヤーマスク</option>
+              <option value="frames">コマ枠フォルダー（試験中）</option>
+            </select>
+          </div>
+          <p class="hint" id="ne-panels-hint"></p>
           <div class="segmented ne-modes" role="group" aria-label="CSP のページの作り方">
             <button type="button" id="ne-mode-builtin" class="active">ツールで設定する</button>
             <button type="button" id="ne-mode-file">CSP のひな形を使う</button>

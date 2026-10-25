@@ -163,6 +163,16 @@ pub(crate) enum LayerMeta {
         #[serde(default)]
         ink: Option<String>,
     },
+    /// A folder of `children` (bottom first). A mask PNG of `mask_length`
+    /// bytes (0 for none) comes from the body before the children's: the
+    /// folder's レイヤーマスク, opaque where its layers show.
+    #[serde(rename_all = "camelCase")]
+    Folder {
+        name: String,
+        #[serde(default)]
+        mask_length: usize,
+        children: Vec<LayerMeta>,
+    },
     /// A text in a frame in template px, its size in CSP pt.
     #[serde(rename_all = "camelCase")]
     Text {
@@ -268,6 +278,24 @@ fn page_layer<'a>(
                 .collect(),
             ink,
         },
+        LayerMeta::Folder {
+            name,
+            mask_length,
+            children,
+        } => {
+            let mask = match take(mask_length)? {
+                [] => None,
+                png => Some(decode_png(png).map_err(|error| error.to_string())?),
+            };
+            PageLayer::Folder {
+                name,
+                mask,
+                children: children
+                    .into_iter()
+                    .map(|child| page_layer(child, take, width, height))
+                    .collect::<Result<_, _>>()?,
+            }
+        }
         LayerMeta::Text {
             text,
             frame,
@@ -598,6 +626,60 @@ mod tests {
                 assert_eq!(text.frame, [10, 21, 31, 40]);
                 assert_eq!(text.color, Some([255, 255, 255]));
                 assert!(text.vertical);
+            }
+            other => panic!("unexpected layers: {}", other.len()),
+        }
+    }
+
+    #[test]
+    fn a_folder_takes_its_mask_before_the_images_in_it() {
+        let mask = RgbaImage::transparent(4, 3).to_png().unwrap();
+        let ink = RgbaImage::transparent(2, 2).to_png().unwrap();
+        let json = r#"{"layers": [{"kind": "folder", "name": "コマ1", "maskLength": MASK, "children": [
+                {"kind": "vector", "name": "ラフ線", "lines": []},
+                {"kind": "raster", "name": "ペン入れ", "length": INK}
+            ]}, {"kind": "folder", "name": "コマ2", "children": []}], "sheet": null}"#
+            .replace("MASK", &mask.len().to_string())
+            .replace("INK", &ink.len().to_string());
+        let meta: PageLayersMeta = serde_json::from_str(&json).unwrap();
+        let body = [mask, ink].concat();
+        let mut rest: &[u8] = &body;
+        let mut take = |length: usize| -> Result<&[u8], String> {
+            let part = rest.get(..length).ok_or("データが壊れています")?;
+            rest = &rest[length..];
+            Ok(part)
+        };
+        let layers: Vec<PageLayer> = meta
+            .layers
+            .into_iter()
+            .map(|layer| page_layer(layer, &mut take, 4, 3))
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert!(rest.is_empty());
+        match &layers[..] {
+            [
+                PageLayer::Folder {
+                    name,
+                    mask: Some(mask),
+                    children,
+                },
+                PageLayer::Folder {
+                    mask: None,
+                    children: empty,
+                    ..
+                },
+            ] => {
+                assert_eq!((name.as_str(), mask.width, mask.height), ("コマ1", 4, 3));
+                assert!(empty.is_empty());
+                match &children[..] {
+                    [PageLayer::Vector { name, .. }, PageLayer::Raster(ink)] => {
+                        assert_eq!(
+                            (name.as_str(), ink.name.as_str(), ink.image.width),
+                            ("ラフ線", "ペン入れ", 2)
+                        );
+                    }
+                    other => panic!("unexpected children: {}", other.len()),
+                }
             }
             other => panic!("unexpected layers: {}", other.len()),
         }

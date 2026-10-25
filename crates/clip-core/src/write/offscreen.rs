@@ -109,10 +109,16 @@ pub fn encode_block_records(raw_blocks: &[Option<Vec<u8>>], raw_size: usize) -> 
 /// The image is placed at the offscreen's top-left; parts outside it are
 /// dropped. Fully transparent blocks become None.
 pub fn image_to_blocks(image: &RgbaImage, parameters: &OffscreenParameters) -> Result<Vec<Option<Vec<u8>>>> {
-    let gray = match parameters.color_planes {
-        4 => false,
-        1 => true,
-        _ => return Err(CspError::format("Mask offscreens are not supported yet")),
+    // A layer mask has no colour planes: its one plane is the alpha (255 shows).
+    let (gray, mask) = match parameters.color_planes {
+        4 => (false, false),
+        1 => (true, false),
+        0 => (false, true),
+        planes => {
+            return Err(CspError::format(format!(
+                "Offscreens with {planes} colour planes are not supported"
+            )));
+        }
     };
     let count = (parameters.blocks_x * parameters.blocks_y) as usize;
     Ok((0..count)
@@ -123,7 +129,13 @@ pub fn image_to_blocks(image: &RgbaImage, parameters: &OffscreenParameters) -> R
                 index % parameters.blocks_x as usize,
             );
             let (left, top) = (column * BLOCK_SIZE, row * BLOCK_SIZE);
-            let color_size = if gray { BLOCK_PLANE_BYTES } else { BLOCK_PLANE_BYTES * 4 };
+            let color_size = if mask {
+                0
+            } else if gray {
+                BLOCK_PLANE_BYTES
+            } else {
+                BLOCK_PLANE_BYTES * 4
+            };
             let mut raw = vec![0u8; BLOCK_PLANE_BYTES + color_size];
             let mut visible = false;
             let (alpha, color) = raw.split_at_mut(BLOCK_PLANE_BYTES);
@@ -142,6 +154,9 @@ pub fn image_to_blocks(image: &RgbaImage, parameters: &OffscreenParameters) -> R
                     let target = y * BLOCK_SIZE + x;
                     alpha[target] = pixel[3];
                     visible |= pixel[3] != 0;
+                    if mask {
+                        continue;
+                    }
                     if gray {
                         color[target] = luma(pixel[0], pixel[1], pixel[2]);
                     } else {

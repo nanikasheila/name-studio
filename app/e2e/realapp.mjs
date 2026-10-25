@@ -1,8 +1,9 @@
 // The built app, for real: its window opens a small name and writes it out
 // for CSP from the command line (--export-csp), so what only the real window
 // has (the WebView, its Content-Security-Policy, the calls to the Rust side)
-// is checked too, once with a CSP-made template page and once with the one
-// the app makes from its own settings (--builtin, with a work). Needs the
+// is checked too, once with a CSP-made template page, once with the one
+// the app makes from its own settings (--builtin, with a work) and once with
+// each panel as a folder with a layer mask (--panel-masks). Needs the
 // release build and a template page:
 //   npx tauri build --no-bundle
 //   cargo run -p clip-core --features fixtures --example fixture_page -- <dir>/page.clip
@@ -62,4 +63,7 @@ const builtin = exportWith("builtin", ["--builtin", "--work-name", "通しテス
 check(!!builtin?.work && existsSync(builtin.work), "builtin: it wrote the work (.cmc)");
 check(builtin?.workCheck?.problems?.length === 0, "builtin: the work reads back as sent");
 check(builtin?.vectorLayers === true && builtin?.textLayers === true, "builtin: the panels and dialogue are editable layers");
+// Each panel as a folder with a layer mask: the pages read back with the folder, its mask and the rough in it.
+const masks = exportWith("masks", ["--builtin", "--panel-masks"]);
+check((masks?.checks?.[0]?.layers ?? 0) > (builtin?.checks?.[0]?.layers ?? 0), "masks: the first page has the panel's folder and its layers");
 if (failures.length) process.exit(1);

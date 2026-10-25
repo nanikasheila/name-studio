@@ -40,6 +40,12 @@ pub enum ExpectedLayer {
         frames: usize,
         ink: Option<String>,
     },
+    /// A folder (with a layer mask that hides part of it, if `mask`) holding these layers.
+    Folder {
+        name: String,
+        mask: bool,
+        children: Vec<ExpectedLayer>,
+    },
 }
 
 impl ExpectedLayer {
@@ -76,6 +82,11 @@ impl ExpectedLayer {
                 frames: frames.iter().filter(|frame| frame.points.len() >= 3).count(),
                 ink: ink.clone(),
             },
+            PageLayer::Folder { name, mask, children } => ExpectedLayer::Folder {
+                name: name.clone(),
+                mask: mask.is_some(),
+                children: children.iter().map(|child| Self::of(child, width, height)).collect(),
+            },
         }
     }
 
@@ -84,6 +95,7 @@ impl ExpectedLayer {
             ExpectedLayer::Raster { name, .. }
             | ExpectedLayer::Vector { name, .. }
             | ExpectedLayer::Frames { name, .. } => format!("レイヤー「{name}」"),
+            ExpectedLayer::Folder { name, .. } => format!("フォルダー「{name}」"),
             ExpectedLayer::Text { text, .. } => {
                 let first: String = text.lines().next().unwrap_or_default().chars().take(16).collect();
                 format!("セリフ「{first}」")
@@ -278,6 +290,39 @@ fn check_layer(document: &ClipDocument, layer: &ClipLayer, expected: &ExpectedLa
                 && inside != [ink.as_str()]
             {
                 problems.push(format!("{what}の中に「{ink}」がありません（{inside:?}）"));
+            }
+        }
+        ExpectedLayer::Folder { name, mask, children } => {
+            if layer.kind != LayerKind::Folder || layer.name != *name {
+                problems.push(format!(
+                    "{what}の場所に「{}」（{}）があります",
+                    layer.name,
+                    layer.kind.as_str()
+                ));
+                return;
+            }
+            if *mask {
+                let shown = document
+                    .layer_row(layer.main_id)
+                    .is_some_and(|row| row.int("LayerVisibility") & 2 != 0);
+                match document.layer_mask_pixels(layer) {
+                    Ok(Some(image)) if image.alpha_bbox().is_some() && shown => {}
+                    Ok(_) => problems.push(format!("{what}のマスクが空か、使われていません")),
+                    Err(error) => problems.push(format!("{what}のマスクを読めません: {error}")),
+                }
+            } else if layer.has_mask {
+                problems.push(format!("{what}に要らないマスクがあります"));
+            }
+            if layer.children.len() != children.len() {
+                let inside: Vec<&str> = layer.children.iter().map(|child| child.name.as_str()).collect();
+                problems.push(format!(
+                    "{what}の中が {inside:?} です（書いたのは {} 枚）",
+                    children.len()
+                ));
+                return;
+            }
+            for (child, expected) in layer.children.iter().zip(children) {
+                check_layer(document, child, expected, problems);
             }
         }
         ExpectedLayer::Text { text, color } => {

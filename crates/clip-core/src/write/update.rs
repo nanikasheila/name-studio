@@ -22,7 +22,7 @@ use serde::Serialize;
 use super::editor::ClipEditor;
 use super::manifest::{PageRecord, image_signature};
 use super::raster_page::{
-    Donors, PageLayer, PartDonors, RasterLayer, add_text_layer, add_vector_layer, make_draft, prepare_for,
+    Donors, PageLayer, PartDonors, RasterLayer, add_text_layer, add_vector_layer, layer_name, make_draft, prepare_for,
 };
 use super::{Values, set_value};
 use crate::RgbaImage;
@@ -540,14 +540,6 @@ fn prepare_always(editor: &ClipEditor, donor: &PartDonors) -> Result<()> {
         Ok(())
     } else {
         prepare_for(editor, donor)
-    }
-}
-
-fn layer_name(layer: &PageLayer) -> &str {
-    match layer {
-        PageLayer::Raster(layer) => &layer.name,
-        PageLayer::Vector { name, .. } | PageLayer::Frames { name, .. } => name,
-        PageLayer::Text(text) => &text.text,
     }
 }
 
