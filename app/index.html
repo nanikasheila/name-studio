@@ -519,6 +519,21 @@
                 <p class="hint">切っても、履歴（バージョン）には自動で残ります。「履歴」と同じ設定です。</p>
               </div>
             </section>
+            <section class="settings-pane" data-pane="update" data-scope="pc" data-title="更新">
+              <h3>更新 <small>この PC</small></h3>
+              <div class="setting-item" data-keys="更新 自動更新 アップデート 新しい版">
+                <label class="check"><input type="checkbox" id="st-auto-update" /> 起動したとき、新しい版を自動で入れる</label>
+                <p class="hint">切ると、新しい版があっても右上の「更新」を押すまで入れません。</p>
+              </div>
+              <div class="setting-item" data-keys="前の版 戻す 古い版 ダウングレード 更新 不具合 バージョン">
+                <div class="setting-row">
+                  <span>前の版に戻す</span>
+                  <select id="st-release"><option value="">（版の一覧を読む）</option></select>
+                  <button type="button" id="st-install-release" disabled>この版を入れる…</button>
+                </div>
+                <p class="hint" id="st-release-note">新しい版で困ったときに、選んだ版へ入れ替えます（作業は保存してから）。入れ替えると自動更新は止まります。</p>
+              </div>
+            </section>
             <section class="settings-pane" data-pane="more" data-scope="pc" data-title="ペン・キー">
               <h3>ペン・キー <small>この PC</small></h3>
               <div class="setting-item" data-keys="ペン タブレット 筆圧 傾き 消しゴム サイドボタン タッチ カーソル">

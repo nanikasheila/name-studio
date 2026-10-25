@@ -194,6 +194,8 @@ export interface Commands {
   list_fonts: [void, FontFace[]];
   // The app (lib.rs)
   is_release_build: [void, boolean];
+  // 前の版に戻す (updates.rs)
+  install_release: [{ version: string }, void];
   batch_export_task: [void, BatchExport | null];
   end_batch_export: [{ code: number }, void];
 }
