@@ -163,14 +163,17 @@ pub(crate) fn em_px(items: &TextItems, resolution: f64) -> f64 {
     points * resolution / 72.0
 }
 
-/// The width CSP gives a story text: a full-width character is one em; the
-/// space, digits and other ASCII are narrower (as measured on CSP's own).
+/// The width of a story text's block: a full-width character is one em, the
+/// space, digits and other ASCII narrower. CSP does not lay the block out
+/// again when it opens the page, and breaks a text wider than its block
+/// (a shown ノンブル `- 1 -` lost its last ` -`), so the narrow characters are
+/// given as much as the widest fonts take (half an em for the space and
+/// punctuation, CSP's own `作品名 1話` in ＭＳ ゴシック is 0.26 em for the space).
 pub(crate) fn text_width(text: &str, em: f64) -> i64 {
     let ems: f64 = text
         .chars()
         .map(|character| match character {
-            ' ' => 0.26,
-            '.' | ',' | '-' | ':' => 0.4,
+            ' ' | '.' | ',' | '-' | ':' => 0.5,
             character if character.is_ascii() => 0.62,
             _ => 1.0,
         })
@@ -385,4 +388,17 @@ pub(crate) fn nombre_style(db: &Connection) -> Result<Option<NombreStyle>> {
         suffix: canvas_text(db, "ComicStoryNombreSuffix")?,
         centred: matches!(position, 2 | 5),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gives_a_text_room_enough_not_to_break() {
+        // ＭＳ ゴシック: ASCII is half an em; `- 1 -` at 9 pt (75 px at 600 dpi).
+        assert!(text_width("- 1 -", 75.0) >= 188);
+        // Full-width characters are an em each.
+        assert_eq!(text_width("作品名", 50.0), 150);
+    }
 }
