@@ -1,7 +1,7 @@
 // CSP のページ設定: the CLIP STUDIO PAINT page and work a name is written out
 // on without a CSP-made template. The Rust side makes them from settings
 // (clip-core write::blank) out of a blank page CSP saved, built into the app.
-import type { CspPage, PageFormat, Project } from "./model";
+import type { CspPage, CspStory, PageFormat, Project } from "./model";
 
 /** What `prepare_builtin_template` takes (clip-core `PageSetup`). */
 export interface PageSetup {
@@ -18,6 +18,8 @@ export interface PageSetup {
   author: string;
   nombreStart: number;
   font: { name: string; postscript: string } | null;
+  /** clip-core `StoryLayout`: what is not given is CSP's default. */
+  story?: CspStory;
 }
 
 /** Where `prepare_builtin_template` put the page, the layers to copy and the work. */
@@ -99,6 +101,29 @@ export function withPreset(page: CspPage, id: string): CspPage {
   };
 }
 
+/** `story` without what CSP has anyway (none when nothing is left). */
+export function compactStory(story: CspStory): CspStory | undefined {
+  const next: CspStory = {};
+  if (story.subtitle?.trim()) next.subtitle = story.subtitle.trim();
+  if (story.titlePosition && story.titlePosition !== "left") next.titlePosition = story.titlePosition;
+  if (story.authorPosition && story.authorPosition !== "center") next.authorPosition = story.authorPosition;
+  if (story.pageNumber) {
+    next.pageNumber = { start: story.pageNumber.start };
+    if (story.pageNumber.position && story.pageNumber.position !== "right") next.pageNumber.position = story.pageNumber.position;
+  }
+  if (story.nombre) {
+    const { place, white, edgeMm, prefix, suffix, offsetMm, sizePt } = story.nombre;
+    next.nombre = { place };
+    if (white) next.nombre.white = true;
+    if (edgeMm !== undefined) next.nombre.edgeMm = edgeMm;
+    if (prefix) next.nombre.prefix = prefix;
+    if (suffix) next.nombre.suffix = suffix;
+    if (offsetMm && (offsetMm[0] !== 0 || offsetMm[1] !== 5)) next.nombre.offsetMm = [offsetMm[0], offsetMm[1]];
+    if (sizePt !== undefined && sizePt !== 9) next.nombre.sizePt = sizePt;
+  }
+  return Object.keys(next).length ? next : undefined;
+}
+
 /** What the work's 作品情報 says, as the export dialog has it. */
 export interface StoryInfo {
   title: string;
@@ -150,6 +175,7 @@ export function pageSetup(
     author: story.author.trim(),
     nombreStart: page.nombreStart ?? 1,
     font: page.font ? { name: page.font, postscript: postscriptOf(page.font) ?? page.font } : null,
+    ...(page.story ? { story: structuredClone(page.story) } : {}),
   };
 }
 
@@ -175,6 +201,15 @@ export function setupProblem(setup: PageSetup): string | null {
   if (px(setup.canvasMm[0]) > MAX_SIDE_PX || px(setup.canvasMm[1]) > MAX_SIDE_PX) return "キャンバスが大きすぎます（解像度を下げてください）";
   if (!setup.title.trim()) return "作品名を入れてください";
   if ((setup.storyIndex ?? 0) < 0 || setup.nombreStart < 0) return "話数とノンブルの開始番号は 0 以上にしてください";
+  const story = setup.story;
+  if (story?.pageNumber && !(story.pageNumber.start >= 0)) return "ページ番号の開始番号は 0 以上にしてください";
+  const nombre = story?.nombre;
+  if (nombre) {
+    const size = nombre.sizePt ?? 9;
+    if (!(size >= 4 && size <= 72)) return "ノンブルの大きさは 4〜72 pt にしてください";
+    if (nombre.edgeMm !== undefined && !(nombre.edgeMm >= 0 && nombre.edgeMm <= 5)) return "ノンブルのフチは 0〜5 mm にしてください";
+    if (!(nombre.offsetMm ?? [0, 5]).every((offset) => Math.abs(offset) <= 100)) return "ノンブルの基本枠との間隔は ±100 mm までにしてください";
+  }
   return null;
 }
 

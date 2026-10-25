@@ -4,7 +4,8 @@
 //! choice; nothing may be lost or changed when Rust reads and writes them.
 
 use name_model::{
-    BalloonShape, Binding, BrushKind, EraseMode, LineKind, PanelBorder, PanelEffect, PanelFill, Project, TailStyle,
+    BalloonShape, Binding, BrushKind, EraseMode, LineKind, NombrePlace, PanelBorder, PanelEffect, PanelFill, Project,
+    StoryPosition, TailStyle,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -76,7 +77,9 @@ fn every_choice_of_the_front_end_is_known_to_rust() {
     check_choice::<TailStyle>("tailStyle", &values, &mut found);
     check_choice::<BrushKind>("brushKind", &values, &mut found);
     check_choice::<EraseMode>("eraseMode", &values, &mut found);
-    let checked = 9;
+    check_choice::<StoryPosition>("storyPosition", &values, &mut found);
+    check_choice::<NombrePlace>("nombrePlace", &values, &mut found);
+    let checked = 11;
     assert_eq!(
         values.as_object().map(|choices| choices.len()),
         Some(checked),

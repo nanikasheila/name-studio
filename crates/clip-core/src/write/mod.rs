@@ -16,6 +16,7 @@ pub mod raster_page;
 pub mod schema;
 pub mod split;
 pub mod spread;
+pub(crate) mod story;
 pub mod update;
 pub mod verify;
 

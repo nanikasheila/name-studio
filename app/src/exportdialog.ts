@@ -19,8 +19,8 @@ import { ISSUE_LABELS, checkName, issueSummary } from "./namecheck";
 import type { Project, RoughImage } from "./project";
 import { $, element } from "./dom";
 import { readText, writeText } from "./settings";
-import { cspPageOf, firstPageLeft, joinedPage, pageSetup, piecesPerPage, pixelSize, presetOf, PRESETS, setupProblem, withPreset } from "./csppage";
-import type { CspPage } from "./model";
+import { compactStory, cspPageOf, firstPageLeft, joinedPage, pageSetup, piecesPerPage, pixelSize, presetOf, PRESETS, setupProblem, withPreset } from "./csppage";
+import type { CspPage, CspStory, NombrePlace, StoryPosition } from "./model";
 import { fontField } from "./fontpicker";
 import { installedFont } from "./fonts";
 
@@ -84,6 +84,85 @@ const PAGE_FIELDS: [string, (page: CspPage) => number, (page: CspPage, value: nu
   ["ne-basic-x", (p) => p.basicOffsetMm[0], (p, v) => (p.basicOffsetMm[0] = v)],
   ["ne-basic-y", (p) => p.basicOffsetMm[1], (p, v) => (p.basicOffsetMm[1] = v)],
 ];
+
+/** The fields of the 作品情報・ノンブル settings besides 作品名・話数・作者名. */
+const STORY_FIELDS = [
+  "ne-subtitle",
+  "ne-title-pos",
+  "ne-author-pos",
+  "ne-page-number",
+  "ne-page-number-start",
+  "ne-page-number-pos",
+  "ne-nombre-place",
+  "ne-nombre-color",
+  "ne-nombre-edge",
+  "ne-nombre-edge-mm",
+  "ne-nombre-size",
+  "ne-nombre-prefix",
+  "ne-nombre-suffix",
+  "ne-nombre-x",
+  "ne-nombre-y",
+];
+
+/** What the story fields say (none: CSP's defaults). */
+function readStory(): CspStory | undefined {
+  const value = (id: string) => $<HTMLInputElement | HTMLSelectElement>(id).value;
+  const number = (id: string, fallback: number) => {
+    const read = $<HTMLInputElement>(id).valueAsNumber;
+    return Number.isFinite(read) ? read : fallback;
+  };
+  const checked = (id: string) => $<HTMLInputElement>(id).checked;
+  const story: CspStory = {
+    subtitle: value("ne-subtitle"),
+    titlePosition: value("ne-title-pos") as StoryPosition,
+    authorPosition: value("ne-author-pos") as StoryPosition,
+  };
+  if (checked("ne-page-number")) story.pageNumber = { start: Math.max(0, Math.round(number("ne-page-number-start", 1))), position: value("ne-page-number-pos") as StoryPosition };
+  const place = value("ne-nombre-place");
+  if (place !== "hidden") {
+    story.nombre = {
+      place: place as NombrePlace,
+      white: value("ne-nombre-color") === "white",
+      edgeMm: checked("ne-nombre-edge") ? number("ne-nombre-edge-mm", 0.3) : undefined,
+      prefix: value("ne-nombre-prefix"),
+      suffix: value("ne-nombre-suffix"),
+      offsetMm: [number("ne-nombre-x", 0), number("ne-nombre-y", 5)],
+      sizePt: number("ne-nombre-size", 9),
+    };
+  }
+  return compactStory(story);
+}
+
+/** Fill the story fields from `story`. */
+function showStory(story: CspStory | undefined): void {
+  const set = (id: string, value: string) => ($<HTMLInputElement | HTMLSelectElement>(id).value = value);
+  set("ne-subtitle", story?.subtitle ?? "");
+  set("ne-title-pos", story?.titlePosition ?? "left");
+  set("ne-author-pos", story?.authorPosition ?? "center");
+  $<HTMLInputElement>("ne-page-number").checked = !!story?.pageNumber;
+  set("ne-page-number-start", String(story?.pageNumber?.start ?? 1));
+  set("ne-page-number-pos", story?.pageNumber?.position ?? "right");
+  const nombre = story?.nombre;
+  set("ne-nombre-place", nombre?.place ?? "hidden");
+  set("ne-nombre-color", nombre?.white ? "white" : "black");
+  $<HTMLInputElement>("ne-nombre-edge").checked = nombre?.edgeMm !== undefined;
+  set("ne-nombre-edge-mm", String(nombre?.edgeMm ?? 0.3));
+  set("ne-nombre-size", String(nombre?.sizePt ?? 9));
+  set("ne-nombre-prefix", nombre?.prefix ?? "");
+  set("ne-nombre-suffix", nombre?.suffix ?? "");
+  set("ne-nombre-x", String(nombre?.offsetMm?.[0] ?? 0));
+  set("ne-nombre-y", String(nombre?.offsetMm?.[1] ?? 5));
+  showStoryRows();
+}
+
+/** The rows of a shown ノンブル only with one; the ページ番号's settings only with it. */
+function showStoryRows(): void {
+  const shown = $<HTMLSelectElement>("ne-nombre-place").value !== "hidden";
+  for (const row of document.querySelectorAll<HTMLElement>(".ne-shown")) row.hidden = !shown;
+  const numbered = $<HTMLInputElement>("ne-page-number").checked;
+  for (const id of ["ne-page-number-start", "ne-page-number-pos"]) $<HTMLInputElement>(id).disabled = !numbered;
+  $<HTMLInputElement>("ne-nombre-edge-mm").disabled = !$<HTMLInputElement>("ne-nombre-edge").checked;
+}
 
 /** What the pages are written from: the template page and work, and pages to copy layers from. */
 interface Templates {
@@ -172,7 +251,7 @@ export class ExportDialog {
       this.showPage();
     });
     for (const [id] of PAGE_FIELDS) $(id).addEventListener("input", () => this.pageChanged());
-    for (const id of ["ne-dpi", "ne-first-side", "ne-nombre-start", "ne-join-pieces"]) $(id).addEventListener("change", () => this.pageChanged());
+    for (const id of ["ne-dpi", "ne-first-side", "ne-nombre-start", "ne-join-pieces", ...STORY_FIELDS]) $(id).addEventListener("change", () => this.pageChanged());
     $("ne-run").addEventListener("click", () => void this.run());
     $("ne-update").addEventListener("click", () => void this.update());
     $("ne-readback").addEventListener("click", () => void this.readBack());
@@ -353,6 +432,9 @@ export class ExportDialog {
     else delete next.nombreStart;
     if (project?.scroll && $<HTMLInputElement>("ne-join-pieces").checked) next.joinPieces = true;
     else delete next.joinPieces;
+    const story = readStory();
+    if (story) next.story = story;
+    else delete next.story;
     return next;
   }
 
@@ -370,6 +452,7 @@ export class ExportDialog {
     $<HTMLSelectElement>("ne-first-side").value = firstPageLeft(project, page) ? "left" : "right";
     $<HTMLInputElement>("ne-nombre-start").value = String(page.nombreStart ?? 1);
     $<HTMLInputElement>("ne-join-pieces").checked = !!page.joinPieces;
+    showStory(page.story);
     for (const row of document.querySelectorAll<HTMLElement>(".ne-join")) row.hidden = !project.scroll;
     $<HTMLInputElement>("ne-author").value = this.author;
     $("ne-binding-label").textContent = project.scroll ? "縦スクロール（左綴じとして作ります）" : project.binding === "left" ? "左綴じ（ネームの綴じ方）" : "右綴じ（ネームの綴じ方）";
@@ -387,6 +470,7 @@ export class ExportDialog {
   private pageChanged(): void {
     if (!this.page) return;
     this.page = this.readPage(this.page);
+    showStoryRows();
     $<HTMLSelectElement>("ne-preset").value = presetOf(this.page) ?? "";
     const [w, h] = pixelSize(this.page);
     $("ne-px").textContent = `${w} × ${h} px`;

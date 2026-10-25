@@ -8,7 +8,7 @@
 // the Rust test fails until model.rs has it too. After changing the fixture,
 // run `npx vitest run -u src/contract.test.ts` to write the files again.
 import { describe, expect, it } from "vitest";
-import type { HeldPanel, Series } from "./model";
+import type { HeldPanel, NombrePlace, Series, StoryPosition } from "./model";
 import type {
   BalloonShape,
   Binding,
@@ -217,6 +217,13 @@ export const FULL_PROJECT: Full<Project> = {
     nombreStart: 3,
     font: "BIZ UDゴシック",
     joinPieces: true,
+    story: {
+      subtitle: "サブ",
+      titlePosition: "left",
+      authorPosition: "right",
+      pageNumber: { start: 7, position: "center" },
+      nombre: { place: "bottom-outer", white: true, edgeMm: 0.5, prefix: "p.", suffix: "-", offsetMm: [1, 3], sizePt: 10 },
+    },
   },
   roughLayers: [
     { id: "rough", name: "ラフ線", hidden: false, opacity: 1, locked: false },
@@ -270,6 +277,15 @@ export const CHOICES: { [K in string]: string[] } = {
   tailStyle: Object.keys({ wedge: true, bubbles: true, line: true, zigzag: true } satisfies AllOf<TailStyle>),
   brushKind: Object.keys({ pen: true, eraser: true } satisfies AllOf<BrushKind>),
   eraseMode: Object.keys({ touched: true, intersection: true, whole: true } satisfies AllOf<EraseMode>),
+  storyPosition: Object.keys({ left: true, center: true, right: true } satisfies AllOf<StoryPosition>),
+  nombrePlace: Object.keys({
+    "top-inner": true,
+    top: true,
+    "top-outer": true,
+    "bottom-inner": true,
+    bottom: true,
+    "bottom-outer": true,
+  } satisfies AllOf<NombrePlace>),
 };
 
 describe("the name data as Rust reads it", () => {

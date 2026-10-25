@@ -15,6 +15,7 @@ use rusqlite::{Connection, OptionalExtension, params_from_iter};
 
 use super::editor::ClipEditor;
 use super::schema::{column_names, merge_columns, merge_schema, table_names};
+use super::story::{nombre_style, update_page_number};
 use super::{Values, set_value, value_of};
 use crate::clip::{ClipDocument, LayerKind, round_half_even};
 use crate::error::Result;
@@ -143,6 +144,7 @@ pub(crate) fn apply_page_settings(
             replace_story_index(db, old, *new)?;
         }
     }
+    update_page_number(db, first_right)?;
     update_nombre(db, first_right)
 }
 
@@ -350,7 +352,8 @@ pub(crate) fn mirror_nombre(db: &Connection) -> Result<()> {
 /// Write the page's own number into the (ノンブル) text.
 ///
 /// The template's ノンブル shows the template's page number; CSP writes
-/// `ComicStoryNombreStart + ComicPageIndex` there. The text and its style run
+/// `ComicStoryNombreStart + ComicPageIndex` there (a shown ノンブル with the
+/// work's prefix and suffix around it). The text and its style run
 /// change, and the block widens or narrows by the template's width per
 /// character, keeping the edge nearer to the page border (the binding edge).
 pub(crate) fn update_nombre(db: &Connection, first_right: bool) -> Result<()> {
@@ -362,21 +365,28 @@ pub(crate) fn update_nombre(db: &Connection, first_right: bool) -> Result<()> {
             Ok((row.get(0)?, row.get(1)?))
         })?;
     let first = start.unwrap_or(1) + index.unwrap_or(0);
+    // A shown ノンブル has the work's text around the number.
+    let style = nombre_style(db)?;
+    let text = |number: i64| match &style {
+        Some(style) => format!("{}{number}{}", style.prefix, style.suffix),
+        None => number.to_string(),
+    };
+    let centred = style.as_ref().is_some_and(|style| style.centred);
     if is_spread(db)? {
         for (layer_id, right) in story_layers(db, NOMBRE_INFO)? {
             let number = if right == first_right { first } else { first + 1 };
-            set_nombre(db, layer_id, &number.to_string())?;
+            set_nombre(db, layer_id, &text(number), centred)?;
         }
         return Ok(());
     }
     let Some(layer_id) = nombre_layer(db)? else {
         return Ok(());
     };
-    set_nombre(db, layer_id, &first.to_string())
+    set_nombre(db, layer_id, &text(first), centred)
 }
 
 /// Write `number` into one (ノンブル) layer.
-fn set_nombre(db: &Connection, layer_id: i64, number: &str) -> Result<()> {
+fn set_nombre(db: &Connection, layer_id: i64, number: &str, centred: bool) -> Result<()> {
     let number = number.to_owned();
     let (string, attributes): (Value, Value) = db.query_row(
         "SELECT TextLayerString, TextLayerAttributes FROM Layer WHERE MainId = ?1",
@@ -406,7 +416,10 @@ fn set_nombre(db: &Connection, layer_id: i64, number: &str) -> Result<()> {
         let new_width = round_half_even(block_width as f64 * new_length as f64 / old_length as f64).max(1);
         let grow = new_width - block_width as i64;
         let keep_border_edge = |x0: i64, x1: i64| {
-            if x0 + offset < width - (x1 + offset) {
+            if centred {
+                let x0 = (x0 + x1 - new_width).div_euclid(2);
+                (x0, x0 + new_width)
+            } else if x0 + offset < width - (x1 + offset) {
                 (x0, x1 + grow)
             } else {
                 (x0 - grow, x1)

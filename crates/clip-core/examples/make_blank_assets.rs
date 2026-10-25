@@ -34,6 +34,7 @@ fn setup() -> PageSetup {
             name: "ＭＳ ゴシック".to_owned(),
             postscript: "MS-Gothic".to_owned(),
         }),
+        story: Default::default(),
     }
 }
 

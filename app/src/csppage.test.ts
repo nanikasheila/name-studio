@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cspPageOf, joinedPage, pageFromFormat, pageSetup, piecesPerPage, pixelSize, presetOf, setupProblem, withPreset } from "./csppage";
+import { compactStory, cspPageOf, joinedPage, pageFromFormat, pageSetup, piecesPerPage, pixelSize, presetOf, setupProblem, withPreset } from "./csppage";
 import { newProject, scrollPageFormat } from "./project";
 
 describe("CSP のページ設定", () => {
@@ -71,5 +71,21 @@ describe("CSP のページ設定", () => {
     expect(tall.trimMm[1]).toBeCloseTo(piece.trimMm[1] + 4 * piece.canvasMm[1]);
     expect(pixelSize(joinedPage(piece, 5))[1]).toBeLessThanOrEqual(30000);
     expect(setupProblem(tall)).toBeNull();
+  });
+  it("keeps only the 作品情報・ノンブル settings that differ from CSP's, and passes them on", () => {
+    expect(compactStory({ subtitle: " ", titlePosition: "left", authorPosition: "center" })).toBeUndefined();
+    const story = compactStory({
+      subtitle: " サブ ",
+      titlePosition: "right",
+      authorPosition: "center",
+      pageNumber: { start: 7, position: "right" },
+      nombre: { place: "top-inner", white: false, edgeMm: 0.5, prefix: "p.", suffix: "", offsetMm: [0, 5], sizePt: 9 },
+    });
+    expect(story).toEqual({ subtitle: "サブ", titlePosition: "right", pageNumber: { start: 7 }, nombre: { place: "top-inner", edgeMm: 0.5, prefix: "p." } });
+    const project = newProject("ネーム", 2);
+    const setup = pageSetup(project, { ...cspPageOf(project), story }, { title: "作品", storyIndex: 1, author: "" });
+    expect(setup.story).toEqual(story);
+    expect(setupProblem({ ...setup, story: { nombre: { place: "top", sizePt: 100 } } })).toContain("ノンブルの大きさ");
+    expect(pageSetup(project, cspPageOf(project), { title: "作品", storyIndex: 1, author: "" })).not.toHaveProperty("story");
   });
 });

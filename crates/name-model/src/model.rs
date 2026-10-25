@@ -346,6 +346,76 @@ pub struct CspPage {
     /// 縦スクロール: the pieces joined one under the other into tall pages.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub join_pieces: Option<bool>,
+    /// The rest of CSP's 作品情報 and ノンブル settings; none: CSP's defaults.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub story: Option<CspStory>,
+}
+
+/// Where a 作品情報 text goes under the 仕上がり: 左下・下・右下.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StoryPosition {
+    Left,
+    Center,
+    Right,
+}
+
+/// CSP's 作品情報 and ノンブル settings besides 作品名・話数・作者名.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CspStory {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subtitle: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title_position: Option<StoryPosition>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author_position: Option<StoryPosition>,
+    /// ページ番号 in the 作品情報.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_number: Option<StoryPageNumber>,
+    /// A ノンブル printed on the page rather than the hidden one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nombre: Option<ShownNombre>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoryPageNumber {
+    pub start: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<StoryPosition>,
+}
+
+/// Where a shown ノンブル goes: above or below the 基本枠, 内側・中央・外側.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum NombrePlace {
+    TopInner,
+    Top,
+    TopOuter,
+    BottomInner,
+    Bottom,
+    BottomOuter,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShownNombre {
+    pub place: NombrePlace,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub white: Option<bool>,
+    /// フチ (mm).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edge_mm: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefix: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suffix: Option<String>,
+    /// 基本枠との間隔: 横, 縦.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub offset_mm: Option<[f64; 2]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_pt: Option<f64>,
 }
 
 /// A number for each kind of line.
