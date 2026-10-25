@@ -11,17 +11,19 @@ import { BALLOON_TEXT_KEY, PAGE_GAP_KEY, PANEL_CARRIES_KEY, type PageEditor } fr
 import { GRID_GAP_MM } from "./layout";
 import type { BalloonShape, LineKind } from "./model";
 import { saveNewNameDefaults } from "./namedefaults";
-import { KIND_LABELS, gutters, nameKind, setBinding, setDefaultLineSize, setDefaultShape, setGutters, type Project } from "./project";
+import { KIND_LABELS, gutters, nameKind, setBinding, setDefaultLineSize, setDefaultShape, setGutters, setLineSpacing, type Project } from "./project";
 import { readText, writeFlag, writeNumber, writeText } from "./settings";
 import { DEFAULT_SNAP, MAX_GRID_MM, MIN_GRID_MM, saveSnap, type SnapSettings } from "./snapping";
 import {
   APP_BALLOON_LINE_MM,
   APP_FONT_PT,
+  APP_LINE_SPACING,
   APP_PANEL_LINE_MM,
   APP_THICK_LINE_MM,
   MAX_FONT_PT,
   MIN_FONT_PT,
   defaultFontPt,
+  lineSpacing,
   setStyleLine,
   type StyleLine,
 } from "./style";
@@ -91,6 +93,14 @@ export class SettingsDialog {
         this.host.status(now === undefined ? `${label}の太さを初期（アプリの既定）に戻しました` : `${label}の太さを ${now} mm にしました`);
       });
     }
+    number("st-line-spacing").addEventListener("change", () => {
+      const text = number("st-line-spacing").value.trim();
+      let changed = 0;
+      this.host.edit((project) => (changed = setLineSpacing(project, text === "" ? null : Number(text))));
+      this.render();
+      const now = this.host.project();
+      if (now) this.host.status(`セリフの行間を ${lineSpacing(now.style)}% にしました（セリフ ${changed} 個を並べ直しました）`);
+    });
     $<HTMLSelectElement>("st-binding").addEventListener("change", (event) => {
       const binding = (event.target as HTMLSelectElement).value === "left" ? "left" : "right";
       const turnText = $<HTMLInputElement>("st-binding-text").checked;
@@ -332,6 +342,10 @@ export class SettingsDialog {
       field.placeholder = String(app);
       if (document.activeElement !== field) field.value = project?.style?.[key] === undefined ? "" : String(project.style[key]);
     }
+    const spacing = $<HTMLInputElement>("st-line-spacing");
+    spacing.disabled = !project;
+    spacing.placeholder = String(APP_LINE_SPACING);
+    if (document.activeElement !== spacing) spacing.value = project?.style?.lineSpacing === undefined ? "" : String(project.style.lineSpacing);
     const binding = $<HTMLSelectElement>("st-binding");
     // 縦スクロール is chosen when the name is made (its pieces are a size of their own).
     binding.value = project ? nameKind(project) : "right";

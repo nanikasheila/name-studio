@@ -6,8 +6,8 @@ use std::io::Write;
 use clip_core::container::CsfContainer;
 use clip_core::offscreen::{self, OffscreenParameters};
 use clip_core::text::{
-    FontName, NewText, build_tlv, parse_text_attributes, parse_tlv, retarget_add_attributes, retarget_text_attributes,
-    split_attribute_array, transform_text_attributes,
+    FontName, NewText, build_tlv, line_spacing, parse_text_attributes, parse_tlv, retarget_add_attributes,
+    retarget_text_attributes, split_attribute_array, transform_text_attributes,
 };
 use clip_core::vector::{parse_vector_data, select_vector_objects, transform_vector_data};
 use clip_core::{ClipDocument, LayerKind};
@@ -353,6 +353,7 @@ fn new_text_takes_one_run_from_a_text_styled_in_parts() {
         vertical: true,
         color: None,
         font: None,
+        line_spacing: None,
     };
     let retargeted = retarget_text_attributes(&blob, &text).unwrap();
     let items = parse_tlv(&retargeted).unwrap();
@@ -378,6 +379,64 @@ fn new_text_takes_one_run_from_a_text_styled_in_parts() {
 }
 
 #[test]
+fn new_text_writes_the_line_spacing_into_its_paragraph_run() {
+    // As in CSP's dialogue: mode 1 (percent), an f64 CSP keeps, 125 %.
+    let paragraph = |mode: u8, percent: f64| {
+        [
+            vec![mode, 0],
+            4.0f64.to_le_bytes().to_vec(),
+            percent.to_le_bytes().to_vec(),
+        ]
+        .concat()
+    };
+    let run = |start: u32, length: u32, data: &[u8]| {
+        [
+            start.to_le_bytes(),
+            length.to_le_bytes(),
+            (data.len() as u32).to_le_bytes(),
+        ]
+        .concat()
+        .into_iter()
+        .chain(data.iter().copied())
+        .collect::<Vec<u8>>()
+    };
+    let runs = |parts: Vec<Vec<u8>>| [(parts.len() as u32).to_le_bytes().to_vec(), parts.concat()].concat();
+    let blob = build_tlv(&[
+        (
+            0x0d,
+            runs(vec![run(0, 9, &paragraph(1, 125.0)), run(9, 3, &paragraph(0, 100.0))]),
+        ),
+        (0x20, 400i32.to_le_bytes().to_vec()),
+    ]);
+    assert_eq!(line_spacing(&blob).unwrap(), Some(125.0));
+    let mut text = NewText {
+        text: "やあ\nどうも".into(),
+        frame: [0, 0, 100, 300],
+        font_size_pt: 9.0,
+        vertical: true,
+        color: None,
+        font: None,
+        line_spacing: None,
+    };
+    // Kept as the donor has it, as one run over the new text.
+    let kept = retarget_text_attributes(&blob, &text).unwrap();
+    assert_eq!(line_spacing(&kept).unwrap(), Some(125.0));
+    text.line_spacing = Some(115.0);
+    let spaced = retarget_text_attributes(&blob, &text).unwrap();
+    assert_eq!(line_spacing(&spaced).unwrap(), Some(115.0));
+    let items = parse_tlv(&spaced).unwrap();
+    let value = items.iter().find(|(tag, _)| *tag == 0x0d).unwrap().1.to_vec();
+    assert_eq!(value, runs(vec![run(0, 7, &paragraph(1, 115.0))]));
+    // A paragraph run spaced some other way takes the percentage.
+    let fixed = build_tlv(&[(0x0d, runs(vec![run(0, 9, &paragraph(0, 100.0))]))]);
+    assert_eq!(line_spacing(&fixed).unwrap(), None);
+    assert_eq!(
+        line_spacing(&retarget_text_attributes(&fixed, &text).unwrap()).unwrap(),
+        Some(115.0)
+    );
+}
+
+#[test]
 fn new_text_names_its_font_as_csp_does() {
     // As in a CSP-made page: the font run names no font; 0x39 holds the shown and PostScript names.
     let donor_font = FontName {
@@ -396,6 +455,7 @@ fn new_text_names_its_font_as_csp_does() {
         vertical: true,
         color: None,
         font: None,
+        line_spacing: None,
     };
     let kept = retarget_text_attributes(&blob, &text).unwrap();
     assert_eq!(
@@ -447,6 +507,7 @@ fn new_text_takes_one_run_in_the_added_attributes_too() {
         vertical: false,
         color: None,
         font: None,
+        line_spacing: None,
     };
     let retargeted = retarget_add_attributes(&blob, &text).unwrap();
     let items = parse_tlv(&retargeted[4..]).unwrap();

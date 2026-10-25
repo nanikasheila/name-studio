@@ -92,6 +92,7 @@ impl PartDonors {
             vertical: true,
             color: None,
             font: None,
+            line_spacing: None,
         };
         let mut vector = None;
         let mut text = None;
@@ -712,6 +713,9 @@ pub struct WorkOptions {
     pub draft_layers: Vec<String>,
     /// Look for a コマ枠フォルダー to copy (in a finished page among the donors).
     pub frame_folders: bool,
+    /// The book's binding (true: right-bound), written over the template's
+    /// so a left-bound name made from a right-bound work stays left-bound.
+    pub right_binding: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -802,13 +806,17 @@ impl RasterWorkWriter {
             Some((_, cmc)) => work_canvas_values(cmc)?,
             None => Vec::new(),
         };
-        let overrides: Values = match options.story_index {
+        let mut overrides: Values = match options.story_index {
             Some(index) => vec![
                 ("ComicStoryUseStoryIndex".to_owned(), Value::Integer(1)),
                 ("ComicStoryStoryIndex".to_owned(), Value::Integer(index)),
             ],
             None => Vec::new(),
         };
+        if let Some(right) = options.right_binding {
+            // 1 in CSP's right-bound works, on the work and on each page.
+            overrides.push(("ComicBindPosition".to_owned(), Value::Integer(right as i64)));
+        }
         for (column, value) in &overrides {
             super::set_value(&mut canvas_values, column, value.clone());
         }

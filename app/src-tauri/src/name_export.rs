@@ -42,6 +42,9 @@ pub(crate) struct NameExportRequest {
     /// Look for a コマ枠フォルダー to copy, to write panels as frames.
     #[serde(default)]
     frame_folders: bool,
+    /// The name's binding (true: right-bound), written over the template's.
+    #[serde(default)]
+    right_binding: Option<bool>,
 }
 
 /// The template's canvas and which parts can be written as editable layers.
@@ -83,6 +86,7 @@ pub(crate) async fn begin_name_export(
         donor_sources: request.donors.into_iter().map(PathBuf::from).collect(),
         draft_layers: request.draft_layers,
         frame_folders: request.frame_folders,
+        right_binding: request.right_binding,
     })
     .map_err(|error| error.to_string())?;
     let start = NameExportStart {
@@ -186,6 +190,9 @@ pub(crate) enum LayerMeta {
         /// Absent keeps the template text's font.
         #[serde(default)]
         font: Option<FontMeta>,
+        /// Line spacing in percent of the font size; absent keeps the template text's.
+        #[serde(default)]
+        line_spacing: Option<f64>,
     },
 }
 
@@ -303,6 +310,7 @@ fn page_layer<'a>(
             vertical,
             color,
             font,
+            line_spacing,
         } => PageLayer::Text(NewText {
             text,
             frame: frame.map(|value| value.round() as i32),
@@ -313,6 +321,7 @@ fn page_layer<'a>(
                 name: font.name,
                 postscript: font.postscript,
             }),
+            line_spacing,
         }),
     })
 }

@@ -828,7 +828,8 @@
     },
     "panelLineMm": 0.5,
     "thickLineMm": 1.4,
-    "balloonLineMm": 0.25
+    "balloonLineMm": 0.25,
+    "lineSpacing": 125
   },
   "cspPage": {
     "canvasMm": [

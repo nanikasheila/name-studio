@@ -293,6 +293,7 @@ fn writes_a_work_with_editable_layers_from_the_built_template() {
         donor_sources: vec![built.parts.clone()],
         draft_layers: Vec::new(),
         frame_folders: false,
+        right_binding: None,
     })
     .unwrap();
     assert!(writer.donors.vector.is_some() && writer.donors.text.is_some());
@@ -330,6 +331,7 @@ fn writes_a_work_with_editable_layers_from_the_built_template() {
             vertical: true,
             color: None,
             font: None,
+            line_spacing: None,
         }),
     ];
     let expected: Vec<ExpectedLayer> = layers

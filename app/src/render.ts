@@ -89,7 +89,7 @@ export function drawText(ctx: CanvasRenderingContext2D, text: TextView, t: Trans
   ctx.fillStyle = text.color ?? INK;
   ctx.font = canvasFont(text.fontName, size, !!text.bold);
   const lines = text.text.replace(/\r\n?/g, "\n").split("\n");
-  const pitch = size * 1.15;
+  const pitch = size * (text.pitch ?? 1.15);
   if (!text.vertical) {
     ctx.textAlign = "left";
     ctx.textBaseline = "top";

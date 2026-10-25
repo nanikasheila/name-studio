@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { LAYER_ORDER, canBeVector, layerForm, placeUnit, checkSummary, clipLines, dialogueUpdateSummary, imagesNote, missingEditable, exportUnits, frameMetas, hasNotes, mapBox, packBody, partCount, projectToTemplate, scriptText, textLayers, vectorLines, type DialogueUpdateReport, type LayerMeta } from "./nameexport";
 import { addCharacter, addLine, addScene, basicBox, newProject, rectShape } from "./project";
+import { useStyle } from "./style";
 
 describe("projectToTemplate", () => {
   it("puts the basic frame on the template's basic frame", () => {
@@ -120,13 +121,15 @@ describe("editable layers", () => {
     // 9 pt on the name at 10 px/mm is 31.75 px: 9 pt at 254 dpi.
     expect(vertical.kind === "text" && vertical.fontSizePt).toBeCloseTo(9);
     // CSP sets vertical text from the frame's left edge, each column with
-    // its gap on the right: the frame holds two columns at CSP's pitch, the
-    // first one ending at the box's right edge (300 px).
+    // its gap on the right: the frame holds two columns at the name's 行間
+    // (115 %, written into the layer), the first one ending at the box's
+    // right edge (300 px).
+    expect(vertical).toMatchObject({ lineSpacing: 115 });
     const frame = (layer: LayerMeta) => (layer.kind === "text" ? layer.frame : []);
     const [vx0, vy0, vx1, vy1] = frame(vertical);
     expect([vy0, vy1]).toEqual([150, 450]);
-    expect(vx0).toBeCloseTo(300 - (1.8 + 1) * 31.75);
-    expect(vx1 - vx0).toBeCloseTo(2 * 1.8 * 31.75);
+    expect(vx0).toBeCloseTo(300 - (1.15 + 1) * 31.75);
+    expect(vx1 - vx0).toBeCloseTo(2 * 1.15 * 31.75);
     // One column: the frame starts one character left of the box's right edge (500 px).
     said.text = "セリフ";
     said.box = [10, 10, 40, 40];
@@ -139,7 +142,15 @@ describe("editable layers", () => {
     const horizontal = layers.find((layer) => layer.kind === "text" && !layer.vertical)!;
     const [hx0, hy0, hx1, hy1] = frame(horizontal);
     expect([hx0, hy0, hx1]).toEqual([700, 650, 900]);
-    expect(hy1).toBeCloseTo(650 + 5 * 31.75 * 1.8);
+    expect(hy1).toBeCloseTo(650 + 5 * 31.75 * 1.15);
+    // A name spaced like CSP's own dialogue (125 %) is written so.
+    useStyle({ lineSpacing: 125 });
+    try {
+      const wide = textLayers(page, m, 254).find((layer) => layer.kind === "text" && layer.vertical)!;
+      expect(wide).toMatchObject({ lineSpacing: 125 });
+    } finally {
+      useStyle(undefined);
+    }
   });
 });
 

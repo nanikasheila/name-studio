@@ -177,6 +177,12 @@ const RUN_TAGS: [u32; 8] = [ATTR_FONT_RUNS, 0x1a, 0x0c, 0x0d, 0x1d, 0x41, 0x1e, 
 /// holds flags, with byte 1 of the run's data in `TextLayerAddAttributesV01`
 /// the same.
 const ATTR_FONT_RUNS: u32 = 0x0b;
+/// Paragraph runs: data byte 0 is the line spacing mode and an `f64` at
+/// bytes 10..18 the spacing. With mode 1 it is a percentage of the font
+/// size, the column (or line) pitch: CSP's dialogue has 1 and 125.0, and
+/// its vertical text is laid out 1.25 font sizes per column.
+const ATTR_PARAGRAPH_RUNS: u32 = 0x0d;
+const LINE_SPACING_PERCENT: u8 = 1;
 /// Font run flag: the run has its own colour, `u16` R, G, B (8-bit value ×
 /// 257) at data bytes 2..8. CSP draws it instead of [`ATTR_COLOR`], so a
 /// donor's black dialogue stays black unless the run is recoloured too.
@@ -201,6 +207,33 @@ fn parse_add_runs(value: &[u8]) -> Option<Vec<&[u8]>> {
         offset += 4 + size;
     }
     (offset == value.len()).then_some(runs)
+}
+
+/// Set the line spacing of the one paragraph run of `value` (as
+/// [`single_run`] or [`single_add_run`] makes it) to `percent`.
+fn space_paragraph_run(value: &mut [u8], percent: f64, counted_run: bool) {
+    let data = if counted_run { 16 } else { 8 };
+    if value.len() < data + 18 {
+        return;
+    }
+    value[data] = LINE_SPACING_PERCENT;
+    value[data + 10..data + 18].copy_from_slice(&percent.to_le_bytes());
+}
+
+/// The line spacing (percent of the font size) of the first paragraph run
+/// of `blob`, when it is given as a percentage.
+pub fn line_spacing(blob: &[u8]) -> Result<Option<f64>> {
+    for (id, value) in parse_tlv(blob)? {
+        if id == ATTR_PARAGRAPH_RUNS
+            && let Some(runs) = parse_runs(id, value)
+            && let Some((_, _, _, data)) = runs.first()
+            && data.len() >= 18
+            && data[0] == LINE_SPACING_PERCENT
+        {
+            return Ok(Some(f64::from_le_bytes(data[10..18].try_into().unwrap())));
+        }
+    }
+    Ok(None)
 }
 
 /// The first run of an add-attributes run list on its own.
@@ -282,6 +315,8 @@ pub struct NewText {
     pub color: Option<[u8; 3]>,
     /// Font; `None` keeps the donor's.
     pub font: Option<FontName>,
+    /// Line spacing in percent of the font size (CSP's 行間); `None` keeps the donor's.
+    pub line_spacing: Option<f64>,
 }
 
 /// A font as a text layer names it ([`ATTR_FONT_NAME`]): the name CSP shows
@@ -373,6 +408,9 @@ fn retarget(blob: &[u8], text: &NewText, counted_runs: bool) -> Result<Vec<u8>> 
                 };
                 if let (ATTR_FONT_RUNS, Some(color)) = (id, text.color) {
                     color_font_run(&mut value, color, counted_runs);
+                }
+                if let (ATTR_PARAGRAPH_RUNS, Some(percent)) = (id, text.line_spacing) {
+                    space_paragraph_run(&mut value, percent, counted_runs);
                 }
             }
         } else if EXTRA_RUN_TAGS.contains(&id) {

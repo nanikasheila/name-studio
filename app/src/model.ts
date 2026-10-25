@@ -403,6 +403,8 @@ export interface NameStyle {
   thickLineMm?: number;
   /** フキダシの線の太さ (mm). */
   balloonLineMm?: number;
+  /** セリフの行間: the pitch of lines (columns in 縦書き) in percent of the font size, as CSP's 行間. */
+  lineSpacing?: number;
 }
 
 /** What a font is chosen for: each kind of line, and lines marked 強調. */

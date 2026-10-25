@@ -5,7 +5,7 @@
 // snapshot before each change for undo.
 
 import { storedOutline } from "./balloon";
-import { APP_FONT_PT, defaultFontPt, setDefaultFontPt } from "./style";
+import { APP_FONT_PT, defaultFontPt, linePitch, setDefaultFontPt, setLineSpacingStyle, useStyle } from "./style";
 import { bounds, area, centroid, insidePolygon, segmentDistance, boxCenter, inheritOpenEdges } from "./geometry";
 import type {
   Point,
@@ -533,9 +533,6 @@ export function assignPanels(page: Page): void {
 
 // --- lines -----------------------------------------------------------------------
 
-/** Line pitch as a multiple of the font size. */
-export const LINE_PITCH = 1.15;
-
 const HALF_WIDTH = /[\u0020-\u007e\uff61-\uff9f]/;
 /** How wide a half-width letter is, in full-width ones (for sans-serif Latin, a little over half). */
 const HALF_WIDTH_EM = 0.6;
@@ -553,7 +550,7 @@ export function textSize(text: string, fontSizePt: number, vertical: boolean): [
   // Across, half-width letters (Latin, digits, ｱ) take about half a full-width one; down a column every character takes a whole cell.
   const length = (row: string) => (vertical ? [...row].length : [...row].reduce((sum, char) => sum + (HALF_WIDTH.test(char) ? HALF_WIDTH_EM : 1), 0));
   const longest = Math.max(1, ...rows.map(length));
-  const across = size * (1 + (rows.length - 1) * LINE_PITCH);
+  const across = size * (1 + (rows.length - 1) * linePitch());
   return vertical ? [across, longest * size] : [longest * size, across];
 }
 
@@ -696,6 +693,23 @@ export function setDefaultLineSize(project: Project, kind: LineKind, pt: number 
     for (const line of page.lines) {
       if (line.kind !== kind || line.fontSizePt !== before) continue;
       line.fontSizePt = after;
+      setLineText(line, line.text);
+      changed++;
+    }
+  }
+  return changed;
+}
+
+/**
+ * セリフの行間 of the name (%; null: the app's). Every line is laid out
+ * again from its reading start; returns how many lines there are.
+ */
+export function setLineSpacing(project: Project, percent: number | null): number {
+  setLineSpacingStyle(project, percent);
+  useStyle(project.style);
+  let changed = 0;
+  for (const page of project.pages) {
+    for (const line of page.lines) {
       setLineText(line, line.text);
       changed++;
     }

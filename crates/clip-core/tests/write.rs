@@ -422,6 +422,47 @@ fn splits_a_sheet_into_a_work() {
 }
 
 #[test]
+fn a_left_bound_name_stays_left_bound_from_a_right_bound_work() {
+    use clip_core::write::raster_page::{PageLayer, RasterLayer, RasterWorkWriter, WorkOptions};
+    let folder = tempfile::tempdir().unwrap();
+    let template_path = template(folder.path());
+    // The template work and its page are right-bound (ComicBindPosition 1).
+    let cmc_path = build_cmc(&folder.path().join("template").join("name.cmc"), &["page.clip"]);
+    let options = |right_binding: Option<bool>, out: &str| WorkOptions {
+        template: template_path.clone(),
+        out_dir: folder.path().join(out),
+        name_pattern: DEFAULT_NAME_PATTERN.into(),
+        work: Some(("左綴じ".into(), cmc_path.clone())),
+        story_index: None,
+        inputs: Vec::new(),
+        donor_sources: Vec::new(),
+        draft_layers: Vec::new(),
+        frame_folders: false,
+        right_binding,
+    };
+    let bind = |right_binding: Option<bool>, out: &str| {
+        let mut writer = RasterWorkWriter::new(options(right_binding, out)).unwrap();
+        let layer = PageLayer::Raster(RasterLayer {
+            name: "ラフ".into(),
+            image: RgbaImage::transparent(400, 560),
+        });
+        writer.write_page(&[layer], None, false).unwrap();
+        let report = writer.finish().unwrap();
+        let work = CmcProject::read(report.work.unwrap()).unwrap().binding_position;
+        let page: i64 = ClipDocument::read(&report.pages[0])
+            .unwrap()
+            .database()
+            .query_row("SELECT ComicBindPosition FROM Canvas", [], |row| row.get(0))
+            .unwrap();
+        (work, page)
+    };
+    assert_eq!(bind(Some(false), "left"), (0, 0));
+    assert_eq!(bind(Some(true), "right"), (1, 1));
+    // Without a binding, the template's stays.
+    assert_eq!(bind(None, "as-is"), (1, 1));
+}
+
+#[test]
 fn writes_whole_page_raster_layers_into_a_work() {
     use clip_core::write::raster_page::{PageLayer, RasterLayer, RasterWorkWriter, WorkOptions};
     let folder = tempfile::tempdir().unwrap();
@@ -439,6 +480,7 @@ fn writes_whole_page_raster_layers_into_a_work() {
         donor_sources: Vec::new(),
         draft_layers: Vec::new(),
         frame_folders: false,
+        right_binding: None,
     })
     .unwrap();
     assert_eq!((writer.canvas.width_px, writer.canvas.height_px), (400, 560));
@@ -501,6 +543,7 @@ fn writes_whole_page_raster_layers_into_a_work() {
         donor_sources: Vec::new(),
         draft_layers: Vec::new(),
         frame_folders: false,
+        right_binding: None,
     });
     assert!(refused.is_err());
 }
@@ -525,6 +568,7 @@ fn writes_vector_and_text_layers_copied_from_the_sheet() {
         donor_sources,
         draft_layers: Vec::new(),
         frame_folders: false,
+        right_binding: None,
     };
     // The template has no vector or text layer to copy: without the sheet
     // there is nothing to make them from.
@@ -559,6 +603,7 @@ fn writes_vector_and_text_layers_copied_from_the_sheet() {
         vertical: true,
         color: None,
         font: None,
+        line_spacing: None,
     };
     let layers = [
         PageLayer::Vector {
@@ -661,6 +706,7 @@ fn checks_written_pages_and_works() {
         donor_sources: vec![sheet_path.clone()],
         draft_layers: vec!["ラフ".into()],
         frame_folders: false,
+        right_binding: None,
     })
     .unwrap();
     let mut rough = RgbaImage::transparent(200, 280);
@@ -680,6 +726,7 @@ fn checks_written_pages_and_works() {
         vertical: true,
         color: Some([255, 255, 255]),
         font: None,
+        line_spacing: None,
     };
     let layers = vec![
         PageLayer::Raster(RasterLayer {
@@ -907,6 +954,7 @@ fn writes_spread_pages() {
         donor_sources: Vec::new(),
         draft_layers: Vec::new(),
         frame_folders: false,
+        right_binding: None,
     })
     .unwrap();
     assert_eq!(writer.first_page_left, Some(true));
@@ -1002,6 +1050,7 @@ fn writes_panels_as_a_frame_folder_copied_from_a_finished_page() {
         donor_sources: vec![finished.clone()],
         draft_layers: Vec::new(),
         frame_folders,
+        right_binding: None,
     };
     // Only looked for when asked (finished pages are big to read).
     assert!(RasterWorkWriter::new(options(false)).unwrap().donors.frame.is_none());
@@ -1120,6 +1169,7 @@ fn writes_a_panel_as_a_folder_with_a_layer_mask() {
         donor_sources: vec![sheet_path],
         draft_layers: vec!["ラフ線".into()],
         frame_folders: false,
+        right_binding: None,
     })
     .unwrap();
     let canvas = writer.canvas;
@@ -1247,6 +1297,7 @@ fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
         donor_sources: vec![sheet_path.clone()],
         draft_layers: vec!["メモ（ネーム）".into()],
         frame_folders: false,
+        right_binding: None,
     })
     .unwrap();
     let balloon = |x: f64| PageLayer::Vector {
@@ -1300,6 +1351,7 @@ fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
         vertical: true,
         color: None,
         font: None,
+        line_spacing: None,
     };
     let layers = [
         paper(290),
@@ -1355,6 +1407,7 @@ fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
         donor_sources: vec![sheet_path.clone()],
         draft_layers: Vec::new(),
         frame_folders: false,
+        right_binding: None,
     })
     .unwrap();
     let backups = folder.path().join("backup");

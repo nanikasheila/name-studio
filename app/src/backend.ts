@@ -54,6 +54,8 @@ export interface CspExportRequest {
   draftLayers?: string[];
   /** Panels as a コマ枠フォルダー (copied from a finished page among the donors), with an empty layer in it to ink on. */
   frameFolders?: boolean;
+  /** The name's binding (true: right-bound), written over the template's in the work and its pages. */
+  rightBinding?: boolean;
   /** Each panel as a folder with a レイヤーマスク, holding its rough and an empty layer to ink on (instead of `frameFolders`). */
   panelMasks?: boolean;
   /** The name's memos as a 下描き image layer on top (on unless false). */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { addLine, newProject, setDefaultLineSize } from "./project";
-import { APP_FONT_PT, balloonLineMm, defaultFontPt, panelLineMm, setDefaultFontPt, setPanelLineMm, setStyleLine, styleLineMm, useStyle } from "./style";
+import { MM_PER_PT, addLine, newProject, setDefaultLineSize, setLineSpacing } from "./project";
+import { APP_FONT_PT, APP_LINE_SPACING, MAX_LINE_SPACING, balloonLineMm, linePitch, lineSpacing, setLineSpacingStyle, defaultFontPt, panelLineMm, setDefaultFontPt, setPanelLineMm, setStyleLine, styleLineMm, useStyle } from "./style";
 
 describe("作品の既定", () => {
   it("gives new lines the size set for their kind, else the app's", () => {
@@ -56,5 +56,32 @@ describe("作品の既定", () => {
     expect("lineMm" in panel).toBe(false);
     setPanelLineMm(panel, 0.01, undefined);
     expect(panel).toMatchObject({ lineMm: 0.05 });
+  });
+});
+
+describe("セリフの行間", () => {
+  it("spaces lines on screen as in CSP, and lays the name's lines out again", () => {
+    const project = newProject("t", 1);
+    const line = addLine(project, project.pages[0], [100, 100], "はじめ\nまして");
+    const [, y0, x1] = line.box;
+    const width = line.box[2] - line.box[0];
+    expect(lineSpacing(project.style)).toBe(APP_LINE_SPACING);
+    try {
+      expect(setLineSpacing(project, 125)).toBe(1);
+      expect(project.style?.lineSpacing).toBe(125);
+      expect(linePitch()).toBe(1.25);
+      // Two columns: one column-gap wider, the first column where it was.
+      const size = line.fontSizePt * MM_PER_PT;
+      expect(line.box[2] - line.box[0]).toBeCloseTo(width + 0.1 * size);
+      expect([line.box[1], line.box[2]]).toEqual([y0, x1]);
+      // Out of range is held to the limits; the app's own clears it.
+      setLineSpacingStyle(project, 1000);
+      expect(project.style?.lineSpacing).toBe(MAX_LINE_SPACING);
+      setLineSpacing(project, APP_LINE_SPACING);
+      expect(project.style).toBeUndefined();
+      expect(line.box[2] - line.box[0]).toBeCloseTo(width);
+    } finally {
+      useStyle(undefined);
+    }
   });
 });
