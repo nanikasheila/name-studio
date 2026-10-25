@@ -8,7 +8,7 @@
 // the Rust test fails until model.rs has it too. After changing the fixture,
 // run `npx vitest run -u src/contract.test.ts` to write the files again.
 import { describe, expect, it } from "vitest";
-import type { HeldPanel } from "./model";
+import type { HeldPanel, Series } from "./model";
 import type {
   BalloonShape,
   Binding,
@@ -222,7 +222,26 @@ export const FULL_PROJECT: Full<Project> = {
     { id: "rough", name: "ラフ線", hidden: false, opacity: 1, locked: false },
     { id: "rough2", name: "人物", hidden: true, opacity: 0.5, locked: true },
   ],
+  series: "../作品.nameseries",
   nextId: 42,
+};
+
+/** A series with every field, sharing what the project above has. */
+export const FULL_SERIES: Full<Series> = {
+  formatVersion: 1,
+  title: "作品",
+  author: "作者",
+  episodes: [{ path: "第4話/第4話.namestudio", title: "第4話", storyIndex: 4, pages: 32 }],
+  shared: {
+    characters: FULL_PROJECT.characters,
+    brushes: FULL_PROJECT.brushes,
+    fonts: FULL_PROJECT.fonts,
+    style: FULL_PROJECT.style,
+    cspPage: FULL_PROJECT.cspPage,
+    lineShapes: FULL_PROJECT.lineShapes,
+    gutters: FULL_PROJECT.gutters,
+    roughLayers: FULL_PROJECT.roughLayers,
+  },
 };
 
 /** Every value of each choice the Rust model has as an enum. */
@@ -256,6 +275,10 @@ export const CHOICES: { [K in string]: string[] } = {
 describe("the name data as Rust reads it", () => {
   it("has every field in the fixture for the Rust test", async () => {
     await expect(`${JSON.stringify(FULL_PROJECT, null, 2)}\n`).toMatchFileSnapshot("../../crates/name-model/tests/fixtures/full-project.json");
+  });
+
+  it("has every field of a series in the fixture for the Rust test", async () => {
+    await expect(`${JSON.stringify(FULL_SERIES, null, 2)}\n`).toMatchFileSnapshot("../../crates/name-model/tests/fixtures/full-series.json");
   });
 
   it("has every value of each choice in the fixture for the Rust test", async () => {

@@ -115,6 +115,8 @@ pub fn run() {
             project_io::log_error,
             project_io::load_project,
             project_io::save_project,
+            project_io::load_series,
+            project_io::save_series,
             project_io::autosave_project,
             project_io::list_versions,
             project_io::load_version,

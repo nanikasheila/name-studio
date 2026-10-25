@@ -8,12 +8,14 @@
 pub mod import;
 pub mod model;
 pub mod pdf;
+pub mod series;
 pub mod validate;
 pub mod versions;
 
 use std::path::Path;
 
 pub use model::*;
+pub use series::{SERIES_EXTENSION, SERIES_VERSION, Series, SeriesEpisode, SeriesShared};
 pub use validate::validate;
 
 /// File extension of project files.
@@ -86,7 +88,7 @@ impl Project {
     }
 }
 
-fn write_through_temporary(path: &Path, text: &str) -> Result<(), ProjectError> {
+pub(crate) fn write_through_temporary(path: &Path, text: &str) -> Result<(), ProjectError> {
     let temporary = path.with_extension(format!("{EXTENSION}.tmp"));
     std::fs::write(&temporary, text).map_err(ProjectError::Io)?;
     std::fs::rename(&temporary, path).map_err(ProjectError::Io)

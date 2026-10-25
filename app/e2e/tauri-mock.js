@@ -5,6 +5,9 @@ window.__TAURI_INTERNALS__ = {
   metadata: { currentWindow: { label: "main" }, currentWebview: { windowLabel: "main", label: "main" } },
   async invoke(command, args) {
     window.__calls.push({ command, args });
+    // A test can answer commands itself (files, dialogs): undefined leaves them to the cases below.
+    const answer = window.__answer && (await window.__answer(command, args));
+    if (answer !== undefined) return answer;
     switch (command) {
       case "plugin:event|listen":
         return 1;

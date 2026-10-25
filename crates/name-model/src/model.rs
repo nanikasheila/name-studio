@@ -74,6 +74,10 @@ pub struct Project {
     /// ラフ線のレイヤー, bottom first; none is one layer.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rough_layers: Vec<RoughLayer>,
+    /// シリーズ: the series file this name belongs to, from the name's folder
+    /// (`/` between folders). The name keeps its own copy of what is shared.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub series: Option<String>,
     /// Next number used by [`Project::new_id`]; ids are never reused.
     pub next_id: u64,
 }
@@ -960,6 +964,7 @@ impl Project {
             style: None,
             csp_page: None,
             rough_layers: Vec::new(),
+            series: None,
             next_id: 1,
         }
     }

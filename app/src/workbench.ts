@@ -20,6 +20,7 @@ import { PenDialog } from "./pendialog";
 import { arrangePage, arrangePanel, clearFaces, fitSpills } from "./arrange";
 import { LayerView, moveIntoPanel, type LayerRef } from "./layers";
 import { RoughPanel, type RoughChange } from "./roughpanel";
+import { SeriesPanel } from "./seriespanel";
 import { addRoughLayer, layerOf, moveRoughLayer, moveStrokesToLayer, removeRoughLayer, renameRoughLayer, ROUGH_BASE, roughLayersOf, setRoughLayer } from "./roughlayers";
 import { penPreferences } from "./pen";
 import { comboOf, Shortcuts, type ActionId } from "./shortcuts";
@@ -111,6 +112,7 @@ const CAST_ICON = '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><cir
 const NOTES_ICON = '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 3h13v9l-5 5h-8z"/><path d="M11.5 17v-5h5"/></svg>';
 const HELD_ICON = '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="3.5" y="3.5" width="13" height="13" rx="1" stroke-dasharray="2.2 2"/><path d="M10 7v6M7 10h6"/></svg>';
 const LAYERS_ICON = '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3l7 3.8-7 3.8-7-3.8z"/><path d="M3 10.5l7 3.8 7-3.8M3 14l7 3.8 7-3.8"/></svg>';
+const SERIES_ICON = '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="5" width="9" height="12" rx="1"/><path d="M6 5V3h9.5v12h-4"/></svg>';
 const INSPECTOR_ICON = '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5.5h8M15 5.5h2M3 10h3M10 10h7M3 14.5h7M14 14.5h3"/><circle cx="13" cy="5.5" r="2"/><circle cx="8" cy="10" r="2"/><circle cx="12" cy="14.5" r="2"/></svg>';
 
 /** One line under the tool's name in the options row. */
@@ -180,6 +182,30 @@ export class Workbench {
     },
     change: (change) => this.changeRough(change),
     selectedStrokes: () => this.selectedStrokeIds().length,
+  });
+  private readonly seriesPanel = new SeriesPanel({
+    project: () => this.state.project,
+    path: () => this.state.path,
+    edit: (change) => this.edit(change),
+    status: (message) => this.setStatus(message),
+    save: () => this.save(),
+    open: async (path) => {
+      if (!(await this.confirmDiscard())) return;
+      try {
+        await this.load(path);
+      } catch (error) {
+        this.setStatus(`開けませんでした: ${error}`);
+      }
+    },
+    refresh: () => {
+      if (this.docks?.isOpen("series")) this.seriesPanel.render($("side-series"));
+    },
+    adopt: async (project, path, message) => {
+      if (!(await this.confirmDiscard())) return;
+      this.show(project, path, message);
+      this.markDirty();
+      await this.save();
+    },
   });
   readonly board: Board;
   private readonly inspector: Inspector;
@@ -358,6 +384,7 @@ export class Workbench {
   show(project: Project, path: string | null, message: string): void {
     this.state.project = normalize(project);
     this.state.path = path;
+    this.seriesPanel.follow(this.state.project, path);
     this.state.dirty = false;
     this.state.pending = null;
     this.state.roughs = new Map();
@@ -375,7 +402,8 @@ export class Workbench {
 
   async load(path: string): Promise<void> {
     const project = await call("load_project", { path });
-    this.show(project, path, `${project.pages.length} ページのネームを開きました`);
+    const series = await this.seriesPanel.attach(project, path);
+    this.show(project, path, `${project.pages.length} ページのネームを開きました${series}`);
   }
 
   async importSheet(sheetPath: string): Promise<void> {
@@ -428,10 +456,12 @@ export class Workbench {
     const mended = repair(project);
     if (mended.length) this.commit();
     else this.state.pending = null;
+    this.seriesPanel.beforeSave(project, path);
     const revision = this.state.revision;
     try {
       await call("save_project", projectBody({ path, previousPath: this.state.path }, savedForm(project)));
       this.state.path = path;
+      await this.seriesPanel.saved(project, path);
       if (this.state.revision === revision) {
         this.state.dirty = false;
         this.autosaver.reset();
@@ -465,6 +495,7 @@ export class Workbench {
         this.state.dirty = false;
         this.updateTitle();
       }
+      if (result.savedToFile && path) await this.seriesPanel.saved(project, path);
       if (result.problems?.length) {
         const list = result.problems.slice(0, 3).join("\n");
         showAlert(
@@ -686,6 +717,7 @@ export class Workbench {
     if (open("notes")) this.renderNotes(project);
     if (open("held")) this.renderHeld(project);
     if (open("layers")) this.renderLayers();
+    if (open("series")) this.seriesPanel.render($("side-series"));
   }
 
   // --- レイヤー（コマ枠フォルダ） ----------------------------------------------------------
@@ -1684,6 +1716,7 @@ export class Workbench {
         palette("notes", "付箋", "全ページの付箋（未決のこと）", NOTES_ICON),
         palette("held", "保留", "置き場所の決まっていないコマ（保留）", HELD_ICON),
         palette("layers", "レイヤー", "見開きのコマと、その中のセリフ・ラフ線・塗り（CSP のコマ枠フォルダのように）", LAYERS_ICON, "tab-layers-edit"),
+        palette("series", "シリーズ", "何話ものネームで人物・ブラシ・フォント・設定を共有する（話から話へ移る・次の話を作る）", SERIES_ICON),
         palette("inspector", "詳細", "選んだもの（ページ・コマ・セリフ・付箋など）の設定", INSPECTOR_ICON),
       ],
       () => this.renderSide(),

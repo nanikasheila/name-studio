@@ -31,11 +31,11 @@ describe("欄（パレット）", () => {
     });
     const layout = readLayout(kept);
     expect(layout.order.slice(0, 2)).toEqual(["inspector", "pages"]);
-    expect(layout.order).toHaveLength(7);
+    expect(layout.order).toHaveLength(8);
     expect(layout.palettes.pages).toEqual({ side: "right", shown: true, folded: true, weight: 2 });
     expect(layout.palettes.script.side).toBe("left");
     expect(layout.width).toEqual({ left: 640, right: 200 });
     expect(layout.collapsed).toEqual({ left: true, right: false });
-    expect(readLayout("{not json").order).toHaveLength(7);
+    expect(readLayout("{not json").order).toHaveLength(8);
   });
 });
