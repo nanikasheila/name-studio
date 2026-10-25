@@ -177,6 +177,15 @@ button.danger { color: #c0392b; }
 .rough-lock { opacity: 0.35; }
 .rough-lock.on { opacity: 1; }
 .rough-row input.rough-opacity { width: 56px; flex: none; min-height: 0; padding: 0; }
+.series-panel { padding: 6px 8px; font-size: 13px; }
+.series-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.series-list { list-style: none; margin: 0 0 6px; padding: 0; }
+.series-row { display: flex; align-items: baseline; gap: 6px; padding: 3px 6px; cursor: pointer; user-select: none; }
+.series-row:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.series-row.selected { cursor: default; background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 3px 0 0 var(--accent); }
+.series-row .layer-name { flex: 1; }
+.series-number { min-width: 3.5em; color: var(--muted); }
+.series-tools { display: flex; flex-wrap: wrap; gap: 6px; }
 .rough-menu { display: flex; }
 .rough-rename { width: 7em; font-size: 13px; padding: 0 2px; min-height: 0; }
 .rough-tools { padding: 2px 8px; }

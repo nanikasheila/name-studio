@@ -874,5 +874,6 @@
       "locked": true
     }
   ],
+  "series": "../作品.nameseries",
   "nextId": 42
 }

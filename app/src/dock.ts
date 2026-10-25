@@ -5,7 +5,7 @@
 // place or column, the line between two drags their heights and a column's
 // inner edge its width. The arrangement is kept for the next start.
 
-export type PaletteId = "pages" | "script" | "cast" | "notes" | "held" | "layers" | "inspector";
+export type PaletteId = "pages" | "script" | "cast" | "notes" | "held" | "layers" | "series" | "inspector";
 export type Side = "left" | "right";
 
 export interface PaletteState {
@@ -43,7 +43,7 @@ export const DOCK_KEY = "namestudio.docks";
 export const MIN_WIDTH = 200;
 export const MAX_WIDTH = 640;
 
-const PALETTE_IDS: PaletteId[] = ["pages", "script", "cast", "notes", "held", "layers", "inspector"];
+const PALETTE_IDS: PaletteId[] = ["pages", "script", "cast", "notes", "held", "layers", "series", "inspector"];
 
 export function defaultLayout(leftCollapsed = false): DockLayout {
   const left = (shown: boolean): PaletteState => ({ side: "left", shown, folded: false, weight: 1 });
@@ -56,6 +56,7 @@ export function defaultLayout(leftCollapsed = false): DockLayout {
       notes: left(false),
       held: left(false),
       layers: left(false),
+      series: left(false),
       inspector: { side: "right", shown: true, folded: false, weight: 1 },
     },
     width: { left: 280, right: 300 },

@@ -14,6 +14,7 @@ mod common;
 use common::differences;
 
 const FULL_PROJECT: &str = include_str!("fixtures/full-project.json");
+const FULL_SERIES: &str = include_str!("fixtures/full-series.json");
 const CHOICES: &str = include_str!("fixtures/choices.json");
 
 #[test]
@@ -27,6 +28,21 @@ fn every_field_of_the_front_end_survives_rust() {
     assert!(
         found.is_empty(),
         "model.rs and app/src/model.ts differ:\n{}",
+        found.join("\n")
+    );
+}
+
+#[test]
+fn every_field_of_a_series_survives_rust() {
+    let read: Value = serde_json::from_str(FULL_SERIES).unwrap();
+    let series = name_model::Series::from_json(FULL_SERIES)
+        .unwrap_or_else(|error| panic!("series.rs cannot read the front end's series: {error}"));
+    let written = serde_json::to_value(&series).unwrap();
+    let mut found = Vec::new();
+    differences("series", &read, &written, &mut found);
+    assert!(
+        found.is_empty(),
+        "series.rs and app/src/model.ts differ:\n{}",
         found.join("\n")
     );
 }

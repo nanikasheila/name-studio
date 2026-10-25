@@ -381,7 +381,38 @@ export interface Project {
   cspPage?: CspPage;
   /** ラフ線のレイヤー, bottom first; none is one layer (ROUGH_BASE). */
   roughLayers?: RoughLayer[];
+  /** シリーズ: the series file this name belongs to, from the name's folder ("/" between folders); the name keeps a copy of what is shared. */
+  series?: string;
   nextId: number;
+}
+
+/** シリーズ: several names (話) of one work sharing characters, brushes, fonts, look and CSP page settings. */
+export interface Series {
+  formatVersion: number;
+  title: string;
+  author: string;
+  /** In story order. */
+  episodes: SeriesEpisode[];
+  shared: SeriesShared;
+}
+
+export interface SeriesEpisode {
+  /** The name's file, from the series file's folder ("/" between folders). */
+  path: string;
+  title: string;
+  storyIndex?: number;
+  pages: number;
+}
+
+export interface SeriesShared {
+  characters: Character[];
+  brushes: Brush[];
+  fonts?: LineFonts;
+  style?: NameStyle;
+  cspPage?: CspPage;
+  lineShapes?: Partial<Record<LineKind, BalloonShape>>;
+  gutters?: Gutters;
+  roughLayers?: RoughLayer[];
 }
 
 /**

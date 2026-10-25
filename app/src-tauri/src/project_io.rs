@@ -21,6 +21,20 @@ fn raw_project(text: String) -> Result<Box<RawValue>, name_model::ProjectError> 
     RawValue::from_string(text).map_err(name_model::ProjectError::Json)
 }
 
+// --- シリーズ ---------------------------------------------------------------------
+
+/// The series file's text, checked; fields only the app knows stay as they are.
+#[tauri::command]
+pub(crate) async fn load_series(path: String) -> Result<Box<RawValue>, String> {
+    blocking(move || name_model::Series::load_text(&path).and_then(raw_project)).await
+}
+
+/// Check and save a series file; nothing is written when it has problems.
+#[tauri::command]
+pub(crate) async fn save_series(path: String, text: String) -> Result<(), String> {
+    blocking(move || name_model::Series::save_text(&path, &text).map(|_| ())).await
+}
+
 // --- saving, autosave and versions ---------------------------------------------
 
 /// Autosave versions are kept at most this often (saves and restores aside).

@@ -7,7 +7,7 @@ import type { CspSubTool } from "./brush";
 import type { ExportReport, ExportRequest, OverwriteCheck } from "./export";
 import type { BuiltTemplate, PageSetup } from "./csppage";
 import type { FontFace } from "./fonts";
-import type { Project } from "./model";
+import type { Project, Series } from "./model";
 import type { SheetView } from "./types";
 
 /** The template page as `begin_name_export` reports it (clip-core `TemplateCanvas`). */
@@ -178,6 +178,8 @@ export interface Commands {
   log_error: [{ message: string }, void];
   load_project: [{ path: string }, Project];
   save_project: [RawBody, VersionInfo | null];
+  load_series: [{ path: string }, Series];
+  save_series: [{ path: string; text: string }, void];
   autosave_project: [RawBody, { savedToFile: boolean; version: VersionInfo | null; problems: string[] }];
   list_versions: [{ path: string | null }, VersionInfo[]];
   load_version: [{ path: string | null; id: string }, Project];
