@@ -1,11 +1,15 @@
 //! Writing a name out for CSP from the command line, without the window's dialogs:
 //!
 //! ```text
-//! name-studio-app --export-csp <name.namestudio> --template <page.clip> --out <folder>
-//!     [--work-template <work.cmc> --work-name <name>] [--story-index <n>] [--donor <sample.clip>]...
+//! name-studio-app --export-csp <name.namestudio> (--template <page.clip> | --builtin) --out <folder>
+//!     [--work-template <work.cmc>] [--work-name <name>] [--story-index <n>] [--donor <sample.clip>]...
 //!     [--no-draft-rough] [--no-notes] [--frame-folders] [--update-dialogue | --read-dialogue]
 //!     [--report <file.json>]
 //! ```
+//!
+//! With `--builtin` the pages (and the work, given `--work-name`) are made
+//! without a CSP-made template, from the name's CSP page settings (the
+//! export dialog's 「ツールで設定する」).
 //!
 //! With `--update-dialogue` the pages already in the folder (drawn on in CSP
 //! since) get only the changed dialogue and its balloons, as the export
@@ -26,7 +30,10 @@ use serde::Serialize;
 #[serde(rename_all = "camelCase")]
 pub struct BatchExport {
     pub project: String,
-    pub template: String,
+    /// The page template; none with `--builtin`.
+    pub template: Option<String>,
+    /// Pages from the name's own CSP page settings (`--builtin`), no template.
+    pub builtin: bool,
     pub out_dir: String,
     pub work_template: Option<String>,
     pub work_name: Option<String>,
@@ -62,6 +69,7 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
     let mut notes = true;
     let mut update_dialogue = false;
     let mut read_dialogue = false;
+    let mut builtin = false;
     while let Some(arg) = args.next() {
         let mut value = || args.next().ok_or(format!("{arg} の後に値がありません"));
         match arg.as_str() {
@@ -84,6 +92,7 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
             "--no-notes" => notes = false,
             "--update-dialogue" => update_dialogue = true,
             "--read-dialogue" => read_dialogue = true,
+            "--builtin" => builtin = true,
             // Anything else (such as what the system adds) is left alone.
             _ => {}
         }
@@ -91,7 +100,9 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
     let Some(project) = project else {
         return Ok(None);
     };
-    let template = template.ok_or("--template（ページのひな形 .clip）がありません")?;
+    if template.is_none() && !builtin {
+        return Err("--template（ページのひな形 .clip）か --builtin（ツールの設定で作る）がありません".to_owned());
+    }
     let out_dir = out_dir.ok_or("--out（書き出し先のフォルダー）がありません")?;
     let report = report.unwrap_or_else(|| {
         Path::new(&out_dir)
@@ -102,6 +113,7 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
     Ok(Some(BatchExport {
         project,
         template,
+        builtin,
         out_dir,
         work_template,
         work_name,
@@ -154,6 +166,8 @@ mod tests {
         .unwrap()
         .unwrap();
         assert_eq!(batch.project, "a.namestudio");
+        assert_eq!(batch.template.as_deref(), Some("page.clip"));
+        assert!(!batch.builtin);
         assert_eq!(batch.donors, vec!["sample.clip".to_owned()]);
         assert_eq!(batch.work_name.as_deref(), Some("第1話"));
         assert_eq!(batch.story_index, Some(1));
@@ -194,6 +208,23 @@ mod tests {
         .unwrap()
         .unwrap();
         assert!(batch.read_dialogue && !batch.update_dialogue);
+    }
+
+    #[test]
+    fn reads_a_builtin_export() {
+        let batch = from_args(args(&[
+            "--export-csp",
+            "a",
+            "--builtin",
+            "--out",
+            "o",
+            "--work-name",
+            "作品",
+        ]))
+        .unwrap()
+        .unwrap();
+        assert!(batch.builtin && batch.template.is_none());
+        assert_eq!(batch.work_name.as_deref(), Some("作品"));
     }
 
     #[test]

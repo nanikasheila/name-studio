@@ -189,21 +189,51 @@
         </div>
         <details id="ne-check" class="name-check"><summary id="ne-check-summary"></summary><div id="ne-check-list" class="name-check-list"></div></details>
         <div id="ne-csp">
-          <p class="hint">ページごとに .clip を作り、ラフ線・コマ枠・フキダシ・セリフを別々のレイヤーにします（取り込んだネーム用紙のラフ画像もレイヤーに）。ネームの基本枠を、ひな形の基本枠に合わせます。</p>
+          <p class="hint">ページごとに .clip を作り、ラフ線・コマ枠・フキダシ・セリフを別々のレイヤーにします（取り込んだネーム用紙のラフ画像もレイヤーに）。ネームの基本枠を、CSP のページの基本枠に合わせます。</p>
           <label class="check"><input type="checkbox" id="ne-editable" checked /> 線をベクターレイヤー、セリフをテキストレイヤーにする（CSP で直せる）</label>
           <label class="check"><input type="checkbox" id="ne-draft" checked /> ラフ線を下描きレイヤーにする（不透明度 50%。上にペン入れでき、塗りつぶしの参照と画像の書き出しに入らない）</label>
           <label class="check"><input type="checkbox" id="ne-notes" checked /> コマのメモとページのメモを下描きレイヤー「メモ（ネーム）」に書く（ペン入れ中に見られ、印刷されない。付箋は書かない）</label>
           <label class="check"><input type="checkbox" id="ne-frames" /> コマ枠をコマ枠フォルダーにする（試験中。中の「ペン入れ」レイヤーに描くとコマの外にはみ出さない。コマ枠フォルダーを作って保存した CSP のページを見本に選ぶ）</label>
-          <p class="hint">CSP で描いたベクター線とテキストのレイヤーを、ひな形・見本のページ・取り込み元のネーム用紙・ひな形と同じフォルダーのページから写して使います。見つからないときは書き出す前に知らせます。</p>
+          <div class="segmented ne-modes" role="group" aria-label="CSP のページの作り方">
+            <button type="button" id="ne-mode-builtin" class="active">ツールで設定する</button>
+            <button type="button" id="ne-mode-file">CSP のひな形を使う</button>
+          </div>
+          <div id="ne-builtin">
+            <p class="hint">ひな形を選ばずに、ここで決めた大きさ・枠・解像度・綴じで CSP のページと作品（.cmc）を作ります。設定はネームに保存されます。</p>
+            <div class="field csp-page">
+              <span>用紙</span>
+              <select id="ne-preset"></select>
+              <span>キャンバス</span>
+              <span class="mm-pair"><input id="ne-canvas-w" type="number" min="1" step="0.1" aria-label="キャンバスの幅" /> × <input id="ne-canvas-h" type="number" min="1" step="0.1" aria-label="キャンバスの高さ" /> mm</span>
+              <span>仕上がり</span>
+              <span class="mm-pair"><input id="ne-trim-w" type="number" min="1" step="0.1" aria-label="仕上がりの幅" /> × <input id="ne-trim-h" type="number" min="1" step="0.1" aria-label="仕上がりの高さ" /> mm</span>
+              <span>裁ち落とし</span>
+              <span class="mm-pair"><input id="ne-bleed" type="number" min="0" step="0.1" aria-label="裁ち落とし幅" /> mm</span>
+              <span>基本枠</span>
+              <span class="mm-pair"><input id="ne-basic-w" type="number" min="1" step="0.1" aria-label="基本枠の幅" /> × <input id="ne-basic-h" type="number" min="1" step="0.1" aria-label="基本枠の高さ" /> mm</span>
+              <span>基本枠のずれ</span>
+              <span class="mm-pair"><input id="ne-basic-x" type="number" step="0.1" aria-label="基本枠の横のずれ" /> , <input id="ne-basic-y" type="number" step="0.1" aria-label="基本枠の縦のずれ" /> mm<small>（右・下へ）</small></span>
+              <span>解像度</span>
+              <span class="mm-pair"><select id="ne-dpi"><option value="600">600</option><option value="1200">1200</option><option value="350">350</option><option value="300">300</option><option value="150">150</option></select> dpi <output id="ne-px"></output></span>
+              <span>1 ページ目</span>
+              <span class="mm-pair"><select id="ne-first-side"><option value="left">左ページ</option><option value="right">右ページ</option></select> <small id="ne-binding-label"></small></span>
+              <span>作者名</span>
+              <input id="ne-author" type="text" />
+              <span>ノンブル開始</span>
+              <span class="mm-pair"><input id="ne-nombre-start" type="number" min="0" step="1" aria-label="ノンブルの開始番号" /></span>
+              <span>作品情報の書体</span>
+              <span id="ne-story-font" class="mm-pair"></span>
+            </div>
+          </div>
           <div class="field">
-            <span>ひな形のページ</span>
+            <span id="ne-template-label">ひな形のページ</span>
             <output id="ne-template" class="path">未選択</output>
             <button type="button" id="ne-pick-template">選ぶ…</button>
-            <small>同じ作品の設定で CSP が保存した、空のページ（.clip）</small>
+            <small id="ne-template-hint">同じ作品の設定で CSP が保存した、空のページ（.clip）</small>
             <span>見本のページ</span>
             <output id="ne-donor" class="path">未選択</output>
             <span class="row"><button type="button" id="ne-pick-donor">選ぶ…</button><button type="button" id="ne-clear-donor">外す</button></span>
-            <small>任意。CSP でテキストとベクター線を描いて保存したページ（.clip）。ひな形に無いとき、そのレイヤーを写します</small>
+            <small>任意。CSP でテキストとベクター線を描いて保存したページ（.clip）。その書体や線のレイヤーを写します（なければ内蔵のものを使います）</small>
           </div>
           <div class="field">
             <span>書き出し先</span>
@@ -212,7 +242,7 @@
           </div>
           <label class="check"><input type="checkbox" id="ne-make-work" checked /> 作品ファイル（.cmc）も作る</label>
           <div class="field" id="ne-work-fields">
-            <span>作品のひな形</span>
+            <span id="ne-work-template-label">作品のひな形</span>
             <output id="ne-work-template" class="path">未選択</output>
             <button type="button" id="ne-pick-work-template">選ぶ…</button>
             <span>作品名</span>

@@ -17,8 +17,12 @@ import {
 import { applyTakeBack, planTakeBack, takeBackSummary } from "./readback";
 import { ISSUE_LABELS, checkName, issueSummary } from "./namecheck";
 import type { Project, RoughImage } from "./project";
-import { $ } from "./dom";
+import { $, element } from "./dom";
 import { readText, writeText } from "./settings";
+import { cspPageOf, firstPageLeft, pageSetup, pixelSize, presetOf, PRESETS, setupProblem, withPreset } from "./csppage";
+import type { CspPage } from "./model";
+import { fontField } from "./fontpicker";
+import { installedFont } from "./fonts";
 
 export interface ExportDialogHost {
   project(): Project | null;
@@ -47,6 +51,30 @@ function readDonor(): string {
   return readText(DONOR_KEY) ?? "";
 }
 
+/** How the CSP pages are made: from the settings here, or from a CSP-made template. */
+type TemplateMode = "builtin" | "file";
+const MODE_KEY = "namestudio.exportTemplateMode";
+
+/** The CSP page's number fields, with where each goes in a `CspPage`. */
+const PAGE_FIELDS: [string, (page: CspPage) => number, (page: CspPage, value: number) => void][] = [
+  ["ne-canvas-w", (p) => p.canvasMm[0], (p, v) => (p.canvasMm[0] = v)],
+  ["ne-canvas-h", (p) => p.canvasMm[1], (p, v) => (p.canvasMm[1] = v)],
+  ["ne-trim-w", (p) => p.trimMm[0], (p, v) => (p.trimMm[0] = v)],
+  ["ne-trim-h", (p) => p.trimMm[1], (p, v) => (p.trimMm[1] = v)],
+  ["ne-bleed", (p) => p.bleedMm, (p, v) => (p.bleedMm = v)],
+  ["ne-basic-w", (p) => p.basicMm[0], (p, v) => (p.basicMm[0] = v)],
+  ["ne-basic-h", (p) => p.basicMm[1], (p, v) => (p.basicMm[1] = v)],
+  ["ne-basic-x", (p) => p.basicOffsetMm[0], (p, v) => (p.basicOffsetMm[0] = v)],
+  ["ne-basic-y", (p) => p.basicOffsetMm[1], (p, v) => (p.basicOffsetMm[1] = v)],
+];
+
+/** What the pages are written from: the template page and work, and pages to copy layers from. */
+interface Templates {
+  template: string;
+  workTemplate: string;
+  donors: string[];
+}
+
 
 export class ExportDialog {
   private kind: Kind = "csp";
@@ -69,6 +97,10 @@ export class ExportDialog {
   private busy = false;
   /** A CSP page with text and vector layers to copy, when the template has none. */
   private donor = readDonor();
+  private mode: TemplateMode = readText(MODE_KEY) === "file" ? "file" : "builtin";
+  /** CSP のページ設定 being edited (the name's, saved with it on writing out). */
+  private page: CspPage | null = null;
+  private author = "";
 
   constructor(private readonly host: ExportDialogHost) {
     for (const kind of ["csp", "pdf", "text"] as const) {
@@ -99,6 +131,27 @@ export class ExportDialog {
     $<HTMLInputElement>("ne-frames").addEventListener("change", (event) => {
       this.frameFolders = (event.target as HTMLInputElement).checked;
     });
+    for (const mode of ["builtin", "file"] as const) {
+      $(`ne-mode-${mode}`).addEventListener("click", () => {
+        this.readFields();
+        this.mode = mode;
+        writeText(MODE_KEY, mode);
+        this.show();
+        this.message("");
+      });
+    }
+    const presets = $<HTMLSelectElement>("ne-preset");
+    presets.replaceChildren(
+      element("option", { value: "", textContent: "手で決める" }),
+      ...PRESETS.map((preset) => element("option", { value: preset.id, textContent: preset.label })),
+    );
+    presets.addEventListener("change", () => {
+      if (!this.page || !presets.value) return;
+      this.page = withPreset(this.readPage(this.page), presets.value);
+      this.showPage();
+    });
+    for (const [id] of PAGE_FIELDS) $(id).addEventListener("input", () => this.pageChanged());
+    for (const id of ["ne-dpi", "ne-first-side", "ne-nombre-start"]) $(id).addEventListener("change", () => this.pageChanged());
     $("ne-run").addEventListener("click", () => void this.run());
     $("ne-update").addEventListener("click", () => void this.update());
     $("ne-readback").addEventListener("click", () => void this.readBack());
@@ -109,6 +162,9 @@ export class ExportDialog {
     if (!project) return;
     this.form.workName ||= project.title;
     if (!this.form.storyIndex && project.storyIndex !== undefined) this.form.storyIndex = String(project.storyIndex);
+    this.page = cspPageOf(project);
+    this.author = project.author;
+    this.showPage();
     this.show();
     this.message("");
     this.renderCheck(project);
@@ -182,6 +238,13 @@ export class ExportDialog {
       $(id).textContent = value || "未選択";
       $(id).title = value;
     };
+    const builtin = this.mode === "builtin";
+    for (const mode of ["builtin", "file"] as const) $(`ne-mode-${mode}`).classList.toggle("active", mode === this.mode);
+    $("ne-builtin").hidden = !builtin;
+    for (const id of ["ne-template-label", "ne-template", "ne-pick-template", "ne-template-hint", "ne-work-template-label", "ne-work-template", "ne-pick-work-template"]) {
+      $(id).hidden = builtin;
+    }
+    $<HTMLInputElement>("ne-story-index").placeholder = builtin ? "なし" : "ひな形のまま";
     path("ne-template", this.form.template);
     path("ne-out-dir", this.form.outDir);
     path("ne-work-template", this.form.workTemplate);
@@ -196,7 +259,7 @@ export class ExportDialog {
     const project = this.host.project();
     const left = project?.binding === "left";
     const hint = $("ne-binding-hint");
-    hint.hidden = !left;
+    hint.hidden = !left || builtin;
     hint.textContent = project?.scroll
       ? "このネームは縦スクロールです。区切りごとに CSP のページになり、ページはひな形の基本枠に合わせて置かれます。区切りと同じ縦横比（幅 120 × 高さ 240 mm など）で作った CSP のページをひな形にしてください。作品（.cmc）は区切りを順に並べたものになります。"
       : "このネームは左綴じです。作品の綴じ方はひな形の作品のままになるので、CSP で左綴じにして保存した作品をひな形に選んでください（ページの中身は左から右へ読む並びで書き出します）。";
@@ -245,6 +308,85 @@ export class ExportDialog {
   private readFields(): void {
     this.form.workName = $<HTMLInputElement>("ne-work-name").value;
     this.form.storyIndex = $<HTMLInputElement>("ne-story-index").value;
+    if (this.page) this.page = this.readPage(this.page);
+    this.author = $<HTMLInputElement>("ne-author").value;
+  }
+
+  /** `page` with what the CSP page fields hold (a field left empty keeps its value). */
+  private readPage(page: CspPage): CspPage {
+    const next = structuredClone(page);
+    for (const [id, , set] of PAGE_FIELDS) {
+      const input = $<HTMLInputElement>(id);
+      const value = input.valueAsNumber;
+      if (Number.isFinite(value)) set(next, value);
+    }
+    next.resolution = Number($<HTMLSelectElement>("ne-dpi").value) || next.resolution;
+    const project = this.host.project();
+    const left = $<HTMLSelectElement>("ne-first-side").value === "left";
+    // Kept only when it differs from what the binding has.
+    if (project && left === firstPageLeft(project, { ...next, firstPageLeft: undefined })) delete next.firstPageLeft;
+    else next.firstPageLeft = left;
+    const start = $<HTMLInputElement>("ne-nombre-start").valueAsNumber;
+    if (Number.isInteger(start) && start !== 1) next.nombreStart = start;
+    else delete next.nombreStart;
+    return next;
+  }
+
+  /** Fill the CSP page fields from `this.page`. */
+  private showPage(): void {
+    const page = this.page;
+    const project = this.host.project();
+    if (!page || !project) return;
+    for (const [id, get] of PAGE_FIELDS) $<HTMLInputElement>(id).value = String(get(page));
+    const dpi = $<HTMLSelectElement>("ne-dpi");
+    if (![...dpi.options].some((option) => Number(option.value) === page.resolution)) {
+      dpi.append(element("option", { value: String(page.resolution), textContent: String(page.resolution) }));
+    }
+    dpi.value = String(page.resolution);
+    $<HTMLSelectElement>("ne-first-side").value = firstPageLeft(project, page) ? "left" : "right";
+    $<HTMLInputElement>("ne-nombre-start").value = String(page.nombreStart ?? 1);
+    $<HTMLInputElement>("ne-author").value = this.author;
+    $("ne-binding-label").textContent = project.scroll ? "縦スクロール（左綴じとして作ります）" : project.binding === "left" ? "左綴じ（ネームの綴じ方）" : "右綴じ（ネームの綴じ方）";
+    $("ne-story-font").replaceChildren(
+      fontField(page.font ?? "", "ＭＳ ゴシック（内蔵の既定）", (name) => {
+        if (!this.page) return;
+        if (name) this.page.font = name;
+        else delete this.page.font;
+      }, "作品情報（作品名・話数・作者名）とノンブルの書体", "作品名 1話"),
+    );
+    this.pageChanged();
+  }
+
+  /** After a CSP page field changed: the preset it matches and the size in px. */
+  private pageChanged(): void {
+    if (!this.page) return;
+    this.page = this.readPage(this.page);
+    $<HTMLSelectElement>("ne-preset").value = presetOf(this.page) ?? "";
+    const [w, h] = pixelSize(this.page);
+    $("ne-px").textContent = `${w} × ${h} px`;
+  }
+
+  /**
+   * The template page and work to write from: the chosen CSP files, or the
+   * built-in ones made for the settings here (which are then kept with the name).
+   */
+  private async templates(project: Project): Promise<Templates | string> {
+    if (this.mode === "file" || !this.page) return { template: this.form.template, workTemplate: this.form.workTemplate, donors: [] };
+    const storyIndex = this.form.storyIndex.trim() ? Number(this.form.storyIndex) : null;
+    if (storyIndex !== null && !(Number.isInteger(storyIndex) && storyIndex >= 0)) return "話数は 0 以上の整数で入力してください";
+    const setup = pageSetup(project, this.page, { title: this.form.workName, storyIndex, author: this.author }, (name) => installedFont(name)?.postscript);
+    const problem = setupProblem(setup);
+    if (problem) return problem;
+    const built = await call("prepare_builtin_template", { setup });
+    const page = this.page;
+    const author = this.author.trim();
+    if (JSON.stringify(project.cspPage ?? null) !== JSON.stringify(page) || project.author !== author) {
+      this.host.edit((p) => {
+        p.cspPage = structuredClone(page);
+        p.author = author;
+      });
+    }
+    return { template: built.page, workTemplate: built.work, donors: [built.parts] };
   }
 
   private async run(): Promise<void> {
@@ -262,9 +404,10 @@ export class ExportDialog {
       const started = performance.now();
       const seconds = () => ((performance.now() - started) / 1000).toFixed(1);
       if (this.kind === "csp") {
-        const request = buildRequest(this.form, this.sources());
-        if (typeof request === "string") {
-          this.message(request, true);
+        const templates = await this.templates(project);
+        const request = typeof templates === "string" ? templates : buildRequest({ ...this.form, template: templates.template, workTemplate: templates.workTemplate }, this.sources());
+        if (typeof request === "string" || typeof templates === "string") {
+          this.message(String(request), true);
           return;
         }
         // 上書きの知らせ: pages there may have been drawn on in CSP since.
@@ -283,7 +426,7 @@ export class ExportDialog {
             workName: request.workName,
             storyIndex: request.storyIndex,
             inputs: this.sources(),
-            donors: [this.donor, project.source?.path].filter((path): path is string => !!path),
+            donors: [this.donor, project.source?.path, ...templates.donors].filter((path): path is string => !!path),
             draftLayers: this.draftRough ? ROUGH_LAYERS : [],
             frameFolders: this.frameFolders,
             notes: this.notes,
@@ -360,9 +503,10 @@ export class ExportDialog {
     const project = this.host.project();
     if (!project || this.busy) return;
     this.readFields();
-    const request = buildRequest(this.form, this.sources());
-    if (typeof request === "string") {
-      this.message(request, true);
+    const templates = await this.templates(project);
+    const request = typeof templates === "string" ? templates : buildRequest({ ...this.form, template: templates.template, workTemplate: templates.workTemplate }, this.sources());
+    if (typeof request === "string" || typeof templates === "string") {
+      this.message(String(request), true);
       return;
     }
     const target = await call("check_export_target", { outDir: request.outDir }).catch(() => null);
@@ -394,7 +538,7 @@ export class ExportDialog {
           workName: null,
           storyIndex: null,
           inputs: this.sources(),
-          donors: [this.donor, project.source?.path].filter((path): path is string => !!path),
+          donors: [this.donor, project.source?.path, ...templates.donors].filter((path): path is string => !!path),
           notes: this.notes,
         },
         (text) => {
@@ -418,9 +562,10 @@ export class ExportDialog {
     const project = this.host.project();
     if (!project || this.busy) return;
     this.readFields();
-    const request = buildRequest(this.form, this.sources());
-    if (typeof request === "string") {
-      this.message(request, true);
+    const templates = await this.templates(project);
+    const request = typeof templates === "string" ? templates : buildRequest({ ...this.form, template: templates.template, workTemplate: templates.workTemplate }, this.sources());
+    if (typeof request === "string" || typeof templates === "string") {
+      this.message(String(request), true);
       return;
     }
     const target = await call("check_export_target", { outDir: request.outDir }).catch(() => null);
@@ -441,7 +586,7 @@ export class ExportDialog {
           workName: null,
           storyIndex: null,
           inputs: this.sources(),
-          donors: [this.donor, project.source?.path].filter((path): path is string => !!path),
+          donors: [this.donor, project.source?.path, ...templates.donors].filter((path): path is string => !!path),
         },
         (text) => this.message(text),
       );

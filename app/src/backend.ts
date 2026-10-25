@@ -5,6 +5,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { CspSubTool } from "./brush";
 import type { ExportReport, ExportRequest, OverwriteCheck } from "./export";
+import type { BuiltTemplate, PageSetup } from "./csppage";
 import type { FontFace } from "./fonts";
 import type { Project } from "./model";
 import type { SheetView } from "./types";
@@ -100,7 +101,10 @@ export interface VersionInfo {
 
 export interface BatchExport {
   project: string;
-  template: string;
+  /** The page template; null with --builtin. */
+  template: string | null;
+  /** Pages from the name's CSP page settings, without a template (--builtin). */
+  builtin?: boolean;
   outDir: string;
   workTemplate: string | null;
   workName: string | null;
@@ -174,6 +178,7 @@ export interface Commands {
   finish_name_export: [void, { pages: string[]; work: string | null; workCheck: FileCheck | null }];
   cancel_name_export: [void, void];
   check_export_target: [{ outDir: string }, OverwriteCheck];
+  prepare_builtin_template: [{ setup: PageSetup }, BuiltTemplate];
   // Other files (files.rs)
   write_pdf: [RawBody, void];
   write_text_file: [{ path: string; text: string }, void];

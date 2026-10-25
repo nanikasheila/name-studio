@@ -205,6 +205,17 @@ export const FULL_PROJECT: Full<Project> = {
   scroll: true,
   fonts: { speech: "I-OTFアンチックStd B", thought: "游明朝 Demibold", narration: "BIZ UD明朝 Medium", sfx: "メイリオ", aside: "BIZ UDゴシック", emphasis: "游ゴシック Bold" },
   style: { fontPt: { speech: 14, thought: 13.5, narration: 12, sfx: 20, aside: 9 }, panelLineMm: 0.5, thickLineMm: 1.4, balloonLineMm: 0.25 },
+  cspPage: {
+    canvasMm: [188, 263],
+    trimMm: [182, 257],
+    bleedMm: 3,
+    basicMm: [150, 220],
+    basicOffsetMm: [1.5, -2],
+    resolution: 350,
+    firstPageLeft: false,
+    nombreStart: 3,
+    font: "BIZ UDゴシック",
+  },
   nextId: 42,
 };
 
