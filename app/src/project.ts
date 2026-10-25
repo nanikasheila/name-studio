@@ -5,6 +5,7 @@
 // snapshot before each change for undo.
 
 import { storedOutline } from "./balloon";
+import { APP_FONT_PT, defaultFontPt, setDefaultFontPt } from "./style";
 import { bounds, area, centroid, insidePolygon, segmentDistance, boxCenter, inheritOpenEdges } from "./geometry";
 import type {
   Point,
@@ -202,8 +203,6 @@ export const STRUCTURES: Record<BuiltinShapeId, StoryShape> = {
 
 export const FORMAT_VERSION = 2;
 export const MM_PER_PT = 25.4 / 72;
-/** Dialogue size on the manuscript (B4 trim, printed smaller in the book). */
-export const DEFAULT_FONT_PT = 13;
 /** Gap between panels side by side (左右) and one above the other (上下). */
 export const DEFAULT_GUTTERS: Gutters = { across: 2, down: 6 };
 /** The widest コマ間 that can be set (mm). */
@@ -560,7 +559,7 @@ export function textSize(text: string, fontSizePt: number, vertical: boolean): [
 
 /** Outline for a line's balloon, or undefined for kinds drawn without one. */
 export function balloonFor(kind: LineKind, box: BoxMm): Point[] | undefined {
-  return storedOutline({ id: "", text: "", kind, box, fontSizePt: DEFAULT_FONT_PT, vertical: true });
+  return storedOutline({ id: "", text: "", kind, box, fontSizePt: APP_FONT_PT[kind], vertical: true });
 }
 
 /** Resize a line's box around its centre to fit its text, and redo its balloon. */
@@ -635,7 +634,7 @@ export function addLine(project: Project, page: Page, center: Point, text = "セ
     text,
     kind,
     box: [center[0], center[1], center[0], center[1]],
-    fontSizePt: kind === "narration" ? DEFAULT_FONT_PT - 1 : DEFAULT_FONT_PT,
+    fontSizePt: defaultFontPt(kind, project.style),
     vertical: writesVertically(project),
   };
   const shape = project.lineShapes?.[kind];
@@ -677,6 +676,27 @@ export function setDefaultShape(project: Project, kind: LineKind, shape: Balloon
       if (shape === "auto") delete line.balloonShape;
       else line.balloonShape = shape;
       fitLine(line);
+      changed++;
+    }
+  }
+  return changed;
+}
+
+/**
+ * 文字の大きさの既定 of a kind of line (null: the app's). The lines of that
+ * kind still at the old default size take the new one; returns how many.
+ */
+export function setDefaultLineSize(project: Project, kind: LineKind, pt: number | null): number {
+  const before = defaultFontPt(kind, project.style);
+  setDefaultFontPt(project, kind, pt);
+  const after = defaultFontPt(kind, project.style);
+  if (after === before) return 0;
+  let changed = 0;
+  for (const page of project.pages) {
+    for (const line of page.lines) {
+      if (line.kind !== kind || line.fontSizePt !== before) continue;
+      line.fontSizePt = after;
+      setLineText(line, line.text);
       changed++;
     }
   }

@@ -2,6 +2,7 @@
 // page list, the script, the cast and the inspector for the selection.
 import { call } from "./backend";
 import { useFonts } from "./fonts";
+import { useStyle } from "./style";
 import { $, element, plainButton } from "./dom";
 import { Inspector } from "./inspector";
 import { ask, save } from "@tauri-apps/plugin-dialog";
@@ -222,6 +223,7 @@ export class Workbench {
       edit: (change) => this.edit(change),
       status: (message) => this.setStatus(message),
       deleteSelection: () => this.deleteSelection(),
+      removeTail: (pageId, lineId, index) => this.removeTail(pageId, lineId, index),
       liveText: (field, apply) => this.liveText(field, apply),
       liveNumber: (field, apply) => this.liveNumber(field, apply),
       arrange: (pageId, panelId) => this.arrange(pageId, panelId),
@@ -238,6 +240,9 @@ export class Workbench {
       edit: (change) => this.edit(change),
       status: (message) => this.setStatus(message),
       snapChanged: () => this.showPanelModes(),
+      autosaveChanged: () => this.autosaver.notify(),
+      openPenSettings: () => this.penDialog.open(),
+      openShortcuts: () => this.shortcutDialog.open(),
     });
     // The page takes whatever room the strip and the side panels leave.
     new ResizeObserver(() => this.editor.resize()).observe($("editor-canvas").parentElement!);
@@ -620,6 +625,7 @@ export class Workbench {
 
   renderAll(): void {
     useFonts(this.state.project?.fonts);
+    useStyle(this.state.project?.style);
     this.renderBrushBar();
     this.editor.draw();
     this.board.update(this.state.revision);
@@ -1151,6 +1157,21 @@ export class Workbench {
     this.renderAll();
   }
 
+  /** Take one しっぽ off a line; the line stays selected. */
+  removeTail(pageId: string, lineId: string, index: number): void {
+    let removed = false;
+    this.edit((project) => {
+      const line = project.pages.find((p) => p.id === pageId)?.lines.find((l) => l.id === lineId);
+      if (!line?.tails?.[index]) return;
+      line.tails = line.tails.filter((_, i) => i !== index);
+      if (!line.tails.length) delete line.tails;
+      removed = true;
+    });
+    if (!removed) return;
+    this.editor.select({ kind: "line", pageId, id: lineId });
+    this.setStatus(`${index + 1} 本目のしっぽを消しました（元に戻すは Ctrl+Z）`);
+  }
+
   deleteSelection(): void {
     if (this.editor.tool === "reference") {
       this.removeChosenReference();
@@ -1158,6 +1179,14 @@ export class Workbench {
     }
     const s = this.editor.selection;
     if (!s) return;
+    // A chosen しっぽ: that tail alone goes.
+    if (s.kind === "line" && s.tail !== undefined) {
+      const line = this.state.project?.pages.find((p) => p.id === s.pageId)?.lines.find((l) => l.id === s.id);
+      if (line?.tails?.[s.tail]) {
+        this.removeTail(s.pageId, line.id, s.tail);
+        return;
+      }
+    }
     this.edit((project) => {
       const page = project.pages.find((p) => p.id === s.pageId);
       if (!page) return;

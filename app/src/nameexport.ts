@@ -8,7 +8,6 @@ import { widthFactors } from "./brush";
 import { cspFont, useFonts } from "./fonts";
 import { borderLines, borderWidthMm, dashes, framePanels, type Side } from "./koma";
 import {
-  BALLOON_LINE_MM,
   drawBalloonFills,
   drawBalloons,
   drawPageTexts,
@@ -36,6 +35,7 @@ import {
 } from "./project";
 import { decodePicture, opacityOf, usedImages } from "./references";
 import { sceneSpans } from "./story";
+import { balloonLineMm, useStyle } from "./style";
 import type { ReadUnit } from "./readback";
 
 /**
@@ -263,7 +263,7 @@ export function vectorLines(
       });
     case "balloons":
       return pageBalloons(page).flatMap((balloon) => {
-        const widthPx = BALLOON_LINE_MM * m.scale;
+        const widthPx = balloonLineMm() * m.scale;
         const outline = balloon.outline.length >= 3 ? [{ points: map(balloon.outline, () => 1), closed: true, widthPx }] : [];
         const extras = balloon.extras.map((extra) => ({ points: map(extra.points, () => 1), closed: extra.closed, widthPx }));
         return [...outline, ...extras];
@@ -518,6 +518,7 @@ export async function exportToCsp(
 ): Promise<CspExportReport | null> {
   // The dialogue in the name's fonts, also when written from the command line.
   useFonts(project.fonts);
+  useStyle(project.style);
   await loadTips(project.brushes);
   const notes = request.notes !== false && project.pages.some(hasNotes);
   if (notes) request = { ...request, draftLayers: [...(request.draftLayers ?? []), NOTES_LAYER_NAME] };
@@ -710,6 +711,7 @@ export async function updateCspDialogue(
   progress: (message: string) => void,
 ): Promise<DialogueUpdateSummary> {
   useFonts(project.fonts);
+  useStyle(project.style);
   await loadTips(project.brushes);
   const notes = request.notes !== false;
   const start = await call("begin_name_export", { request: { ...request, frameFolders: false, notes: false } });
@@ -883,6 +885,7 @@ export async function exportPdf(
   progress: (message: string) => void,
 ): Promise<void> {
   useFonts(project.fonts);
+  useStyle(project.style);
   const [w, h] = project.pageFormat.canvasMm;
   const area = options.area === "trim" ? trimBox(project.pageFormat) : [0, 0, w, h];
   const scale = options.dpi / 25.4;

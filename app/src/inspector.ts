@@ -11,6 +11,7 @@ import { BALLOON_TEXT_KEY, PANEL_CARRIES_KEY, pickedSummary, type PageEditor, ty
 import { fontField } from "./fontpicker";
 import { APP_FONT_LABEL, FONT_ROLE_LABELS, lineFont } from "./fonts";
 import { writeFlag } from "./settings";
+import { MAX_LINE_MM, MIN_LINE_MM, defaultFontPt, setPanelLineMm, setStyleLine, styleLineMm } from "./style";
 import {
   BORDER_LABELS,
   EFFECT_LABELS,
@@ -46,6 +47,7 @@ import {
   pageIndex,
   rectShape,
   removePage,
+  setDefaultLineSize,
   setDefaultShape,
   setLineKind,
   setLineText,
@@ -78,6 +80,8 @@ export interface InspectorHost {
   edit(change: (project: Project) => void): void;
   status(message: string): void;
   deleteSelection(): void;
+  /** Take one しっぽ off a line. */
+  removeTail(pageId: string, lineId: string, index: number): void;
   /** A text field edited live; the whole edit becomes one undo step. */
   liveText(field: HTMLInputElement | HTMLTextAreaElement, apply: (value: string) => void): void;
   /** A number edited live (typing, arrows, the wheel); a pause makes it one undo step. */
@@ -164,6 +168,10 @@ export class Inspector {
           () => this.host.edit(() => (line.mask ? delete line.mask : (line.mask = true))),
           line.mask ? "active" : "",
         );
+        if (selection.tail !== undefined && line.tails?.[selection.tail]) {
+          remove.textContent = "しっぽを消す";
+          remove.title = `選んだ ${selection.tail + 1} 本目のしっぽだけ消す（Delete）`;
+        }
         return [button("書く", "その場で書き直す（ダブルクリックでも）", () => this.host.editor.editInPlace(page.id, "line", line.id)), kind, tail, ...(line.panel ? [mask] : []), transform, copy, remove];
       }
       case "stroke":
@@ -369,6 +377,20 @@ export class Inspector {
       line.fontSizePt = value;
       setLineText(line, line.text);
     });
+    // 文字の大きさの既定: this kind of line gets this size from now on.
+    const usualSize = defaultFontPt(line.kind, project.style);
+    const sizeDefault = element("button", {
+      className: "small",
+      textContent: "既定にする",
+      title: `この大きさを「${KIND_LABELS[line.kind]}」の文字の大きさの既定にする（今は ${round(usualSize)} pt）。既定の大きさのままだった同じ種類のセリフも変わります`,
+      disabled: line.fontSizePt === usualSize,
+    });
+    sizeDefault.addEventListener("click", () => {
+      let changed = 0;
+      const pt = line.fontSizePt;
+      this.host.edit((p) => (changed = setDefaultLineSize(p, line.kind, pt)));
+      this.host.status(`「${KIND_LABELS[line.kind]}」の文字の大きさの既定を ${round(pt)} pt にしました（同じ種類のほかのセリフ ${changed} 個も変えました）`);
+    });
     const vertical = element("input", { type: "checkbox", checked: line.vertical });
     vertical.addEventListener("change", () =>
       this.host.edit(() => {
@@ -390,6 +412,7 @@ export class Inspector {
           else delete line.font;
         }),
       "このセリフだけのフォント。種類ごとのフォントは「設定」で決めます",
+      line.text.replace(/\s+/g, " ").slice(0, 40),
     );
     // 変形: the text grows with the balloon, or the balloon alone changes around it.
     const follows = element("input", { type: "checkbox", checked: this.host.editor.balloonTextFollows });
@@ -450,27 +473,46 @@ export class Inspector {
     const hasBalloon = resolvedShape(line) !== "none";
     const tails = line.tails ?? [];
     const addTail = element("button", { textContent: "しっぽを足す", disabled: !hasBalloon });
-    addTail.addEventListener("click", () =>
+    addTail.addEventListener("click", () => {
       this.host.edit(() => {
         const [x0, , , y1] = line.box;
         // Down and to the left; drag the round handle to the speaker.
         const offset = (line.tails?.length ?? 0) * 8;
         line.tails = [...(line.tails ?? []), { tip: [x0 - 6 - offset, y1 + 12], style: defaultTailStyle(line) }];
-      }),
-    );
-    const removeTail = element("button", { textContent: "しっぽを消す", disabled: !tails.length });
-    removeTail.addEventListener("click", () =>
-      this.host.edit(() => {
-        line.tails = (line.tails ?? []).slice(0, -1);
-        if (!line.tails.length) delete line.tails;
-      }),
-    );
-    const tailStyle = choice(TAIL_LABELS, tails[tails.length - 1]?.style ?? defaultTailStyle(line), (value: TailStyle) =>
-      this.host.edit(() => {
-        for (const tail of line.tails ?? []) tail.style = value;
-      }),
-    );
-    tailStyle.disabled = !tails.length;
+      });
+      this.host.editor.select({ kind: "line", pageId: page.id, id: line.id, tail: (line.tails?.length ?? 1) - 1 });
+    });
+    // しっぽ: one row each, to choose (its tip is filled on the page), restyle or remove that tail alone.
+    const chosen = this.host.editor.selection?.kind === "line" && this.host.editor.selection.id === line.id ? this.host.editor.selection.tail : undefined;
+    const tailRows = tails.map((tail, index) => {
+      const pick = element("button", {
+        className: `tail-pick${index === chosen ? " active" : ""}`,
+        textContent: `${index + 1}`,
+        title: `${index + 1} 本目のしっぽを選ぶ（先が塗られます。Delete で消せます）`,
+      });
+      pick.addEventListener("click", () =>
+        this.host.editor.select(index === chosen ? { kind: "line", pageId: page.id, id: line.id } : { kind: "line", pageId: page.id, id: line.id, tail: index }),
+      );
+      const style = choice(TAIL_LABELS, tail.style ?? defaultTailStyle(line), (value: TailStyle) =>
+        this.host.edit(() => {
+          const target = line.tails?.[index];
+          if (target) target.style = value;
+        }),
+      );
+      style.title = `${index + 1} 本目のしっぽの形`;
+      const remove = element("button", { className: "tail-remove", textContent: "×", title: `${index + 1} 本目のしっぽを消す` });
+      remove.addEventListener("click", () => this.host.removeTail(page.id, line.id, index));
+      return element("div", { className: `tail-row${index === chosen ? " chosen" : ""}` }, pick, style, remove);
+    });
+    const tailStyleAll =
+      tails.length > 1
+        ? choice({ "": "（全部をそろえる）", ...TAIL_LABELS } as Record<"" | TailStyle, string>, "", (value: "" | TailStyle) => {
+            if (!value) return;
+            this.host.edit(() => {
+              for (const tail of line.tails ?? []) tail.style = value;
+            });
+          })
+        : null;
     const names = new Map(project.characters.map((c) => [c.id, c.name]));
     const link = element("select");
     link.append(element("option", { value: "", textContent: "（つながない）" }));
@@ -500,7 +542,7 @@ export class Inspector {
       element("label", {}, "文字", text),
       element("div", { className: "row" }, element("label", {}, "種類", kind), element("label", {}, "話者", speaker)),
       ...(toneOf(project, line.speaker) ? [element("p", { className: "hint tone-hint", textContent: `口調: ${toneOf(project, line.speaker)}` })] : []),
-      element("div", { className: "row" }, element("label", {}, "文字の大きさ（pt）", size), element("label", { className: "inline" }, vertical, "縦書き")),
+      element("div", { className: "row" }, element("label", {}, "文字の大きさ（pt）", element("span", { className: "with-button" }, size, sizeDefault)), element("label", { className: "inline" }, vertical, "縦書き")),
       element("div", { className: "row" }, emphasis, inverted),
       element("label", {}, "フォント", font),
       element("h3", { textContent: "フキダシ" }),
@@ -509,13 +551,13 @@ export class Inspector {
       mask,
       element("label", { className: "inline", title: "切ると、変形の枠でフキダシだけ広げたり細くしたりでき、文字の大きさはそのまま" }, follows, "変形で文字の大きさも変える"),
       fitBalloon,
-      element("div", { className: "row" }, addTail, removeTail),
-      element("label", {}, `しっぽ（${tails.length} 本）`, tailStyle),
+      element("div", { className: "tails-head" }, element("span", { textContent: `しっぽ（${tails.length} 本）` }), ...(tailStyleAll ? [tailStyleAll] : []), addTail),
+      ...(tailRows.length ? [element("div", { className: "tail-rows" }, ...tailRows)] : []),
       element("label", {}, "つなぐ（連結フキダシ）", link),
       element("p", {
         className: "hint",
         textContent:
-          "しっぽの丸い先をドラッグして話者に向けます（コマの外の話者にも）。ひし形で曲げ、フキダシの縁の小さな四角で根本の位置を動かせます。2本以上で同時に話す声。改行で行を分けます。ドラッグか矢印キーで動かせます。",
+          "しっぽの丸い先をドラッグして話者に向けます（コマの外の話者にも）。ひし形で曲げ、フキダシの縁の小さな四角で根本の位置を動かせます。2本以上で同時に話す声。しっぽを押すと選べて（先が塗られます）、Delete か × でその 1 本だけ消せます。改行で行を分けます。ドラッグか矢印キーで動かせます。",
       }),
       remove,
     ];
@@ -532,6 +574,38 @@ export class Inspector {
         else panel[key] = value;
       });
     const border = choice(BORDER_LABELS, panel.border ?? "solid", (value: PanelBorder) => set("border", value, "solid"));
+    // 枠線の太さ: this panel's own, else the name's for its kind of border (設定).
+    const thick = panel.border === "thick";
+    const usualWidth = styleLineMm(thick, project.style);
+    const width = element("input", {
+      type: "number",
+      min: String(MIN_LINE_MM),
+      max: String(MAX_LINE_MM),
+      step: "0.05",
+      value: panel.lineMm === undefined ? "" : String(panel.lineMm),
+      placeholder: `${usualWidth}（既定）`,
+      title: "このコマの枠線の太さ（mm）。空欄で作品の既定（設定 → コマ割り）",
+      disabled: panel.border === "none",
+    });
+    width.addEventListener("change", () => {
+      const value = width.value.trim() === "" ? null : Number(width.value);
+      this.host.edit((p) => setPanelLineMm(panel, value, p.style));
+    });
+    const widthDefault = element("button", {
+      className: "small",
+      textContent: "既定にする",
+      title: `この太さを作品の${thick ? "太枠" : "枠線"}の既定にする（ほかの${thick ? "太枠" : "枠線"}のコマも変わります）`,
+      disabled: panel.lineMm === undefined,
+    });
+    widthDefault.addEventListener("click", () => {
+      const mm = panel.lineMm;
+      if (mm === undefined) return;
+      this.host.edit((p) => {
+        setStyleLine(p, thick ? "thickLineMm" : "panelLineMm", mm);
+        delete panel.lineMm;
+      });
+      this.host.status(`${thick ? "太枠" : "枠線"}の太さの既定を ${mm} mm にしました（太さを決めていないコマはみなこの太さです）`);
+    });
     const fill = choice(FILL_LABELS, panel.fill ?? "none", (value: PanelFill) => set("fill", value, "none"));
     const effect = choice(EFFECT_LABELS, panel.effect ?? "none", (value: PanelEffect) => set("effect", value, "none"));
     const bleeds = (["top", "right", "bottom", "left"] as Side[]).map((side) => {
@@ -577,6 +651,7 @@ export class Inspector {
       element("label", {}, "メモ（ページの上にも出ます。コマをダブルクリックでその場で書けます。札はドラッグで好きな所へ）", note),
       ...(panel.noteAt ? [plainButton("メモの札をコマの角に戻す", () => this.host.edit(() => delete panel.noteAt))] : []),
       element("div", { className: "row" }, element("label", {}, "枠線", border), element("label", {}, "塗り", fill)),
+      element("label", {}, "枠線の太さ（mm）", element("span", { className: "with-button" }, width, widthDefault)),
       element("label", {}, "背景の効果", effect),
       element("h3", { textContent: "裁ち切り（ページの外まで）" }),
       element("div", { className: "row" }, ...bleeds),

@@ -75,6 +75,8 @@ export interface Panel {
   noteAt?: Point;
   /** 見開き: shared by the two halves of a panel across the gutter. */
   spread?: string;
+  /** 枠線の太さ (mm) of this panel alone; none: the name's for its border (NameStyle). */
+  lineMm?: number;
 }
 
 /** はみ出し: an area over the panels where borders and gutters are blanked. */
@@ -359,7 +361,21 @@ export interface Project {
   scroll?: boolean;
   /** 用途ごとのフォント: the typeface each kind of line (and 強調) is set in. */
   fonts?: LineFonts;
+  /** 作品の既定: sizes and line widths new things get (and borders without their own width). */
+  style?: NameStyle;
   nextId: number;
+}
+
+/** 作品の既定: the sizes and line widths a name draws with; none: the app's (style.ts). */
+export interface NameStyle {
+  /** 文字の大きさ (pt) new lines of each kind get. */
+  fontPt?: Partial<Record<LineKind, number>>;
+  /** 枠線の太さ (mm) of plain, dashed and wavy borders. */
+  panelLineMm?: number;
+  /** 太枠の太さ (mm). */
+  thickLineMm?: number;
+  /** フキダシの線の太さ (mm). */
+  balloonLineMm?: number;
 }
 
 /** What a font is chosen for: each kind of line, and lines marked 強調. */

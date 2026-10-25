@@ -4,6 +4,7 @@
 import { arrangePanel } from "./arrange";
 import { seeded } from "./balloon";
 import { inheritOpenEdges } from "./geometry";
+import { panelLineMm } from "./style";
 import { onLeftHand, spreads } from "./pages";
 import {
   gutters,
@@ -950,5 +951,5 @@ export function framePanels(page: Page, format: PageFormat, gutter: Side | null 
 
 /** Line width of a panel border on the manuscript, in mm. */
 export function borderWidthMm(panel: Panel): number {
-  return panel.border === "thick" ? 1.2 : 0.6;
+  return panelLineMm(panel);
 }

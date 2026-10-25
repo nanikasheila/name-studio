@@ -64,6 +64,9 @@ pub struct Project {
     /// 用途ごとのフォント: the typeface each kind of line (and 強調) is set in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fonts: Option<LineFonts>,
+    /// 作品の既定: sizes and line widths new things get (and borders without their own width).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style: Option<NameStyle>,
     /// Next number used by [`Project::new_id`]; ids are never reused.
     pub next_id: u64,
 }
@@ -289,6 +292,41 @@ pub struct LineFonts {
     pub emphasis: Option<String>,
 }
 
+/// 作品の既定: the sizes and line widths a name draws with. None: the app's
+/// (13 pt dialogue, 12 pt narration, 0.6 mm borders, 1.2 mm 太枠, 0.3 mm balloons).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NameStyle {
+    /// 文字の大きさ (pt) new lines of each kind get.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_pt: Option<KindSizes>,
+    /// 枠線の太さ (mm) of plain, dashed and wavy borders.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub panel_line_mm: Option<f64>,
+    /// 太枠の太さ (mm).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thick_line_mm: Option<f64>,
+    /// フキダシの線の太さ (mm).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub balloon_line_mm: Option<f64>,
+}
+
+/// A number for each kind of line.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KindSizes {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speech: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thought: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub narration: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sfx: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aside: Option<f64>,
+}
+
 /// 構成補助: what the name is aimed at, to compare the page split with.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -370,6 +408,9 @@ pub struct Panel {
     /// each page of the spread.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub spread: String,
+    /// 枠線の太さ (mm) of this panel alone; none: the name's for its border.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line_mm: Option<f64>,
 }
 
 fn is_default<T: Default + PartialEq>(value: &T) -> bool {
@@ -862,6 +903,7 @@ impl Project {
             gutters: None,
             scroll: None,
             fonts: None,
+            style: None,
             next_id: 1,
         }
     }

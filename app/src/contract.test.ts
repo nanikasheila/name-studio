@@ -52,6 +52,7 @@ function fullPage(id: string): Full<Project["pages"][number]> {
         note: "引き",
         noteAt: [2.5, 3.5],
         spread: "spread1",
+        lineMm: 0.8,
       },
     ],
     lines: [
@@ -203,6 +204,7 @@ export const FULL_PROJECT: Full<Project> = {
   gutters: { across: 3, down: 7.5 },
   scroll: true,
   fonts: { speech: "I-OTFアンチックStd B", thought: "游明朝 Demibold", narration: "BIZ UD明朝 Medium", sfx: "メイリオ", aside: "BIZ UDゴシック", emphasis: "游ゴシック Bold" },
+  style: { fontPt: { speech: 14, thought: 13.5, narration: 12, sfx: 20, aside: 9 }, panelLineMm: 0.5, thickLineMm: 1.4, balloonLineMm: 0.25 },
   nextId: 42,
 };
 

@@ -108,6 +108,8 @@ export interface Selection {
   id: string;
   /** 範囲選択 ("group"): the things picked together (rough lines, dialogue, panels, fills, はみ出し). */
   items?: ItemRef[];
+  /** A line's chosen しっぽ (its index in `tails`): Delete removes it rather than the line. */
+  tail?: number;
 }
 
 /** How the eraser works: CSP's three vector erasers, and 囲って消す. */
@@ -2430,7 +2432,9 @@ export class PageEditor {
     ctx.save();
     ctx.strokeStyle = strong ? ACCENT : "rgba(47, 111, 219, 0.7)";
     ctx.lineWidth = 1.5;
-    for (const tail of line.tails ?? []) {
+    const s = this.selection;
+    const chosen = s?.kind === "line" && s.id === line.id && s.pageId === slot.page.id ? s.tail : undefined;
+    for (const [index, tail] of (line.tails ?? []).entries()) {
       const geometry = tailGeometry(line, tail);
       if (geometry) {
         const [mx, my] = at(geometry.middle);
@@ -2450,10 +2454,11 @@ export class PageEditor {
         ctx.fillRect(rx - r, ry - r, r * 2, r * 2);
         ctx.strokeRect(rx - r, ry - r, r * 2, r * 2);
       }
+      // The chosen tail's tip is filled (Delete removes that tail).
       const [tx, ty] = at(tail.tip);
-      ctx.fillStyle = "#ffffff";
+      ctx.fillStyle = index === chosen ? ACCENT : "#ffffff";
       ctx.beginPath();
-      ctx.arc(tx, ty, HANDLE, 0, Math.PI * 2);
+      ctx.arc(tx, ty, index === chosen ? HANDLE + 1 : HANDLE, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
     }
@@ -2714,7 +2719,7 @@ export class PageEditor {
           if (line && resolvedShape(line) !== "none") {
             this.host.begin();
             line.tails = [...(line.tails ?? []), { tip: point, style: defaultTailStyle(line) }];
-            this.select({ kind: "line", pageId: slot.page.id, id: line.id });
+            this.select({ kind: "line", pageId: slot.page.id, id: line.id, tail: line.tails.length - 1 });
             this.drag = { kind: "tail", slot, lineId: line.id, index: line.tails.length - 1, moved: false, part: "tip", start: point, tip: point, created: true };
             return;
           }
@@ -2732,7 +2737,7 @@ export class PageEditor {
         if (tail) {
           const line = slot.page.lines.find((l) => l.id === tail.lineId)!;
           this.host.begin();
-          this.select({ kind: "line", pageId: slot.page.id, id: line.id });
+          this.select({ kind: "line", pageId: slot.page.id, id: line.id, tail: tail.index });
           const tip = line.tails![tail.index].tip;
           this.drag = { kind: "tail", slot, lineId: line.id, index: tail.index, moved: false, part: tail.part, start: point, tip: [...tip] as Point };
           return;
@@ -3236,12 +3241,14 @@ export class PageEditor {
         const tail = line?.tails?.[drag.index];
         if (!drag.moved && !drag.created) {
           this.host.cancel();
+          if ((line?.tails?.length ?? 0) > 1) this.host.status(`${drag.index + 1} 本目のしっぽを選びました（Delete か右の欄の × で、このしっぽだけ消せます）`);
           break;
         }
         // A tip put back inside its balloon takes the tail away.
         if (line && tail && drag.part !== "bend" && drag.part !== "root" && insideBalloon(line, tail.tip)) {
           line.tails = line.tails!.filter((_, i) => i !== drag.index);
           if (!line.tails.length) delete line.tails;
+          if (this.selection?.kind === "line" && this.selection.id === line.id) this.selection = { kind: "line", pageId: this.selection.pageId, id: line.id };
           this.host.status(drag.created ? "" : "しっぽを消しました（元に戻すは Ctrl+Z）");
           if (drag.created) {
             this.host.cancel();
