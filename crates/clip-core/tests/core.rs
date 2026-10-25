@@ -486,6 +486,7 @@ fn new_text_names_its_font_as_csp_does() {
     let runs = |data: &[u8]| [1u32.to_le_bytes().to_vec(), run(0, 6, 0x32, data)].concat();
     let blob = build_tlv(&[
         (0x0b, runs(&named_run("游明朝 Demibold"))),
+        (0x1f, "游明朝 Demibold".as_bytes().to_vec()),
         (0x39, donor_font.to_attribute()),
     ]);
     text.font = Some(FontName {
@@ -503,6 +504,9 @@ fn new_text_names_its_font_as_csp_does() {
         parse_text_attributes(&meiryo).unwrap().font_name.as_deref(),
         Some("メイリオ")
     );
+    // And the name the tool property shows (0x1f, plain UTF-8).
+    let value = items.iter().find(|(tag, _)| *tag == 0x1f).unwrap().1;
+    assert_eq!(value, "メイリオ".as_bytes());
 }
 
 fn hex(bytes: &[u8]) -> String {

@@ -163,6 +163,10 @@ pub const ATTR_ORIGIN: u32 = 0x48;
 /// twice. Seen black (all 0) on dialogue and white (all `ff`) on text over
 /// black. A font run with [`RUN_HAS_COLOR`] overrides it.
 pub const ATTR_COLOR: u32 = 0x22;
+/// The text's font as CSP's tool property shows it: the shown name in UTF-8,
+/// with no length (in the add-attributes too). A CSP-made dialogue has it
+/// beside [`ATTR_FONT_NAME`] and the font run's name.
+pub const ATTR_FONT_FAMILY: u32 = 0x1f;
 /// `MainId` of the Offscreen holding CSP's rendering of the text (`u32`).
 /// A copied layer must not point at the donor's id, which in the new file is
 /// missing or belongs to another layer; 0 makes CSP render the text afresh.
@@ -457,6 +461,11 @@ fn retarget(blob: &[u8], text: &NewText, counted_runs: bool) -> Result<Vec<u8>> 
                 ATTR_COLOR if value.len() == 12 => {
                     if let Some(color) = text.color {
                         value = color_bytes(color);
+                    }
+                }
+                ATTR_FONT_FAMILY if !value.is_empty() => {
+                    if let Some(font) = &text.font {
+                        value = font.name.as_bytes().to_vec();
                     }
                 }
                 // The add-attributes list leaves it empty; only a named one is replaced.
