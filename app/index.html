@@ -420,13 +420,14 @@
         <div class="pen-grid">
           <section>
             <h3>筆圧カーブ</h3>
-            <canvas id="pen-curve" class="pen-curve" width="220" height="220" title="点をドラッグで動かす。線の上を押すと点を足し、点をダブルクリックで消す"></canvas>
+            <canvas id="pen-curve" class="pen-curve" width="220" height="220" title="点をドラッグで動かす（両端の点は左右にも）。線の上を押すと点を足し、点をダブルクリックで消す"></canvas>
             <div class="pen-presets">
               <button type="button" data-curve="soft" title="軽い力で太く・濃く">やわらかめ</button>
               <button type="button" data-curve="linear" title="ペンの筆圧そのまま">標準</button>
               <button type="button" data-curve="hard" title="強く押したときだけ太く・濃く">かため</button>
             </div>
-            <small>横がペンの筆圧、縦が線に使う筆圧です。</small>
+            <small>横がペンの筆圧、縦が線に使う筆圧です。両端の点は左右にも動かせます（下の点を右へ: 軽い力は描かない、上の点を左へ: 少ない力で最大に）。</small>
+            <small id="pen-curve-ends" class="pen-curve-ends"></small>
           </section>
           <section>
             <h3>試し描き</h3>

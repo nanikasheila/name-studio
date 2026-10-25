@@ -139,9 +139,24 @@ export function star(line: Line): Star | null {
   const angles: number[] = [];
   switch (shape) {
     case "ellipse":
-    case "dashed":
+    case "dashed": {
+      // Not evenly by the angle from the centre, which leaves the ends of a
+      // tall narrow ellipse (where it turns fastest) pointed: evenly along
+      // the outline, and evenly by the way it faces, so the ends stay round.
+      const steps = Math.min(240, Math.max(48, Math.round(perimeter / 1.5)));
+      for (let k = 0; k < steps; k++) {
+        const t = -Math.PI + (k * TAU) / steps;
+        angles.push(Math.atan2(ry * Math.sin(t), rx * Math.cos(t)));
+      }
+      const facings = 72;
+      for (let k = 0; k < facings; k++) {
+        const facing = -Math.PI + (k * TAU) / facings;
+        angles.push(Math.atan2(ry * ry * Math.sin(facing), rx * rx * Math.cos(facing)));
+      }
+      count = 0;
       radius = ellipse;
       break;
+    }
     case "box": {
       const bx = hw + PAD;
       const by = hh + PAD;

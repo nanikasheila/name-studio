@@ -27,6 +27,19 @@ describe("balloon shapes", () => {
     expect([...angles].sort((a, b) => a - b)).toEqual(angles);
   });
 
+  it("keeps the ends of a tall narrow ellipse round", () => {
+    // One short column of text: the balloon is far taller than wide.
+    const outline = star(line("line1", [100, 100, 106, 160]))!.samples.map((x) => x.point);
+    // Going round, the outline turns little from one segment to the next, at the ends too.
+    let sharpest = 0;
+    for (let i = 0; i < outline.length; i++) {
+      const [a, b, c] = [outline[i], outline[(i + 1) % outline.length], outline[(i + 2) % outline.length]];
+      const turn = Math.abs(Math.atan2(c[1] - b[1], c[0] - b[0]) - Math.atan2(b[1] - a[1], b[0] - a[0]));
+      sharpest = Math.max(sharpest, Math.min(turn, 2 * Math.PI - turn));
+    }
+    expect(sharpest).toBeLessThan((12 * Math.PI) / 180);
+  });
+
   it("follows the kind of line unless chosen", () => {
     expect(resolvedShape(line("a", [0, 0, 5, 5], { kind: "thought" }))).toBe("cloud");
     expect(resolvedShape(line("a", [0, 0, 5, 5], { kind: "narration" }))).toBe("box");

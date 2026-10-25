@@ -94,11 +94,17 @@ export function parsePenSettings(text: string | null): PenSettings {
   return settings;
 }
 
-/** Points in order of pressure, the ends at 0 and 1. */
+/**
+ * Points in order of pressure, within 0..1. The ends need not be at 0 and 1:
+ * below the first point and above the last the curve stays flat (下限・上限).
+ */
 export function normalizeCurve(points: [number, number][]): [number, number][] {
   const sorted = points.map(([x, y]) => [clamp(x), clamp(y)] as [number, number]).sort((a, b) => a[0] - b[0]);
-  sorted[0] = [0, sorted[0][1]];
-  sorted[sorted.length - 1] = [1, sorted[sorted.length - 1][1]];
+  // The ends apart, so that the curve still rises somewhere.
+  if (sorted.length >= 2 && sorted[sorted.length - 1][0] - sorted[0][0] < 0.02) {
+    sorted[0] = [0, sorted[0][1]];
+    sorted[sorted.length - 1] = [1, sorted[sorted.length - 1][1]];
+  }
   return sorted;
 }
 

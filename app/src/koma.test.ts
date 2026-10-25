@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { PATTERNS, addDrawnPanel, applyPattern, fitPattern, patternCount, bleedPanel, facingPage, spreadPanel, spreadTwin, unspreadPanel, borderLines, borderRuns, clipOutside, dashes, framePanels, isBled, patternPanels, wavy } from "./koma";
+import { PATTERNS, addDrawnPanel, applyPattern, fitPattern, patternCount, bleedPanel, facingPage, spanGutter, spreadPanel, spreadTwin, unspreadPanel, borderLines, borderRuns, clipOutside, dashes, framePanels, isBled, patternPanels, wavy } from "./koma";
 import { inheritOpenEdges } from "./geometry";
-import { addLine, addStroke, basicBox, boxCenter, bounds, cutPanels, emptyPage, gutters, insidePolygon, newProject, rectShape, setGutters, type Panel, type Point } from "./project";
+import { addLine, addStroke, basicBox, boxCenter, bounds, cutPanels, emptyPage, gutters, insidePolygon, newProject, rectShape, setGutters, trimBox, type Panel, type Point } from "./project";
 
 describe("裁ち切り", () => {
   it("runs a panel off the page and back", () => {
@@ -88,6 +88,52 @@ describe("見開き", () => {
     expect(panel.spread).toBeUndefined();
     expect(bounds(panel.shape)[0]).toBe(x0);
     expect(panel.openEdges).toBeUndefined();
+  });
+});
+
+describe("a panel drawn on past the gutter", () => {
+  it("becomes a 見開き panel, the part over the facing page its half there", () => {
+    const project = newProject("t", 4);
+    const format = project.pageFormat;
+    const [w] = format.canvasMm;
+    const [trimX0, , trimX1] = trimBox(format);
+    const right = project.pages[1];
+    const left = project.pages[2];
+    // 40 mm past the right page's gutter (its trim), over the left page.
+    const panel: Panel = { id: "panel1", shape: rectShape([trimX0 - 40, 50, 200, 120]), order: 1, border: "thick" };
+    right.panels.push(panel);
+    addLine(project, right, [trimX0 - 20, 80], "向こう");
+    addLine(project, right, [150, 80], "こっち");
+    const twin = spanGutter(project, right, panel, true)!;
+    expect(twin).not.toBeNull();
+    expect(twin.spread).toBe(panel.spread);
+    expect(twin.border).toBe("thick");
+    // Each half runs on to the canvas edge behind the gutter, left open there.
+    expect(bounds(panel.shape)).toEqual([0, 50, 200, 120]);
+    expect(bounds(twin.shape)).toEqual([trimX1 - 40, 50, w, 120]);
+    expect(isBled(panel, "left", format) && isBled(twin, "right", format)).toBe(true);
+    expect(panel.openEdges?.map((i) => panel.shape[i][0])).toEqual([0]);
+    expect(twin.openEdges?.map((i) => twin.shape[i][0])).toEqual([w]);
+    // The words past the gutter went over with their half.
+    expect(left.lines.map((line) => line.text)).toEqual(["向こう"]);
+    expect(right.lines.map((line) => line.text)).toEqual(["こっち"]);
+    expect(right.joinNext).toBe(true);
+  });
+
+  it("leaves a 裁ち切り to the gutter, a panel within its page and a page facing none", () => {
+    const project = newProject("t", 4);
+    const format = project.pageFormat;
+    const [trimX0] = trimBox(format);
+    const right = project.pages[1];
+    const bled: Panel = { id: "panel1", shape: rectShape([0, 50, 200, 120]), order: 1 };
+    const inside: Panel = { id: "panel2", shape: rectShape([trimX0 + 10, 150, 200, 200]), order: 2 };
+    right.panels.push(bled, inside);
+    expect(spanGutter(project, right, bled, true)).toBeNull();
+    expect(spanGutter(project, right, inside, true)).toBeNull();
+    const alone: Panel = { id: "panel3", shape: rectShape([-30, 50, 200, 120]), order: 1 };
+    project.pages[0].panels.push(alone);
+    expect(spanGutter(project, project.pages[0], alone, true)).toBeNull();
+    expect(project.pages[2].panels).toEqual([]);
   });
 });
 

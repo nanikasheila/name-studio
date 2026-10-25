@@ -3,6 +3,7 @@
 // patterns taken from the manuscripts. Everything here works in page mm.
 import { arrangePanel } from "./arrange";
 import { seeded } from "./balloon";
+import { inheritOpenEdges } from "./geometry";
 import { onLeftHand, spreads } from "./pages";
 import {
   gutters,
@@ -13,12 +14,18 @@ import {
   bounds,
   carryContents,
   centroid,
+  clipHalfPlane,
   followPanel,
+  moveLine,
+  moveStroke,
   newId,
   orderPanels,
   pageIndex,
+  panelContents,
   rectShape,
   sortLines,
+  trimBox,
+  type BoxMm,
   type Breakout,
   type Page,
   type PageFormat,
@@ -299,6 +306,77 @@ export function spreadPanel(project: Project, page: Page, panel: Panel, firstAlo
   facing.page.panels.push(twin);
   orderPanels(facing.page, project.binding);
   assignPanels(facing.page);
+  // A panel across the gutter needs the two pages to be one CSP page.
+  setSpreadPage(project, page, firstAlone, true);
+  return twin;
+}
+
+/**
+ * ページをまたぐコマ: a panel drawn on past the gutter onto the facing page
+ * becomes a 見開き panel. The part over each page is its half there, cut
+ * at the gutter and run on to the canvas edge (open), as 見開きにする
+ * leaves it; what the panel holds past the gutter goes with its half.
+ * Returns the new half, or null when the panel does not reach over (one
+ * bled to the canvas edge at the gutter, 裁ち切り, stays as it is).
+ */
+export function spanGutter(project: Project, page: Page, panel: Panel, firstAlone: boolean): Panel | null {
+  if (panel.spread) return null;
+  const facing = facingPage(project, page, firstAlone);
+  if (!facing) return null;
+  const format = project.pageFormat;
+  const [w] = format.canvasMm;
+  const [trimX0, , trimX1] = trimBox(format);
+  // This page's gutter, the facing page's and the canvas edges behind them.
+  const onLeft = facing.gutter === "left";
+  const gutter = onLeft ? trimX0 : trimX1;
+  const facingGutter = onLeft ? trimX1 : trimX0;
+  const [edge, facingEdge] = onLeft ? [0, w] : [w, 0];
+  const past = (x: number) => (onLeft ? gutter - x : x - gutter);
+  const reach = Math.max(...panel.shape.map(([x]) => past(x)));
+  const beyondCanvas = Math.max(...panel.shape.map(([x]) => past(x) - past(edge))) > ON_EDGE;
+  if (reach <= 1 || (isBled(panel, facing.gutter, format) && !beyondCanvas)) return null;
+  const own = clipHalfPlane(panel.shape, ([x]) => -past(x));
+  const over = clipHalfPlane(panel.shape, ([x]) => past(x));
+  if (own.length < 3 || over.length < 3 || area(own) < 4 || area(over) < 4) return null;
+  // Open edges carry over before the cut runs on to the edge (the corners keep their numbers).
+  const ownOpen = inheritOpenEdges(panel.shape, panel.openEdges, own);
+  const overOpen = inheritOpenEdges(panel.shape, panel.openEdges, over);
+  const shift = facingGutter - gutter;
+  const atCut = (x: number) => Math.abs(x - gutter) < 1e-6;
+  const ownShape = own.map(([x, y]): Point => [atCut(x) ? edge : x, y]);
+  // No further than the facing page's canvas.
+  const twinShape = over.map(([x, y]): Point => [atCut(x) ? facingEdge : Math.min(Math.max(x + shift, 0), w), y]);
+  const opened = (shape: Point[], open: number[], side: Side) => [...new Set([...open, ...edgesAlong(shape, side, format)])].sort((a, b) => a - b);
+  const ownEdges = opened(ownShape, ownOpen, facing.gutter);
+  const twinEdges = opened(twinShape, overOpen, OPPOSITE[facing.gutter]);
+  // What the panel holds past the gutter is on the facing page now.
+  const held = panelContents(page, panel);
+  const centreOver = (box: BoxMm) => past((box[0] + box[2]) / 2) > 0;
+  const lines = page.lines.filter((line) => held.lines.includes(line.id) && centreOver(line.box));
+  const strokes = page.strokes.filter((stroke) => held.strokes.includes(stroke.id) && centreOver(bounds(stroke.points.map(([x, y]): Point => [x, y]))));
+  panel.shape = ownShape;
+  if (ownEdges.length) panel.openEdges = ownEdges;
+  else delete panel.openEdges;
+  panel.spread = newId(project, "spread");
+  const { id: _id, shape: _shape, order: _order, openEdges: _open, note: _note, noteAt: _noteAt, ...style } = panel;
+  const twin: Panel = { ...style, id: newId(project, "panel"), shape: twinShape, order: 0, ...(twinEdges.length ? { openEdges: twinEdges } : {}) };
+  facing.page.panels.push(twin);
+  page.lines = page.lines.filter((line) => !lines.includes(line));
+  page.strokes = page.strokes.filter((stroke) => !strokes.includes(stroke));
+  for (const line of lines) {
+    moveLine(line, shift, 0);
+    delete line.linkTo;
+    facing.page.lines.push(line);
+  }
+  for (const stroke of strokes) {
+    moveStroke(stroke, shift, 0);
+    facing.page.strokes.push(stroke);
+  }
+  for (const p of [page, facing.page]) {
+    orderPanels(p, project.binding);
+    assignPanels(p);
+    sortLines(p, project.binding);
+  }
   // A panel across the gutter needs the two pages to be one CSP page.
   setSpreadPage(project, page, firstAlone, true);
   return twin;
