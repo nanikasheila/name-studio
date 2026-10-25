@@ -3,6 +3,7 @@
 import { pageBalloons } from "./balloon";
 import { maskShape } from "./mask";
 import { opacityFactors, widthFactors } from "./brush";
+import { lineBold, lineFont } from "./fonts";
 import { borderLines, borderWidthMm, dashes, effectStrokes, stacked } from "./koma";
 import { MM_PER_PT, type Brush, type Line, type Page, type Panel, type Point, type Stroke } from "./project";
 import { drawText } from "./render";
@@ -363,11 +364,11 @@ export function drawLineText(ctx: CanvasRenderingContext2D, line: Line, m: MmToP
       text: line.text,
       bbox: line.box,
       fontSizePx: line.fontSizePt * MM_PER_PT,
-      fontName: null,
+      fontName: lineFont(line),
       vertical: line.vertical,
       inBalloon: !!line.balloon,
       color: line.inverted ? "#ffffff" : undefined,
-      bold: line.emphasis,
+      bold: lineBold(line),
     },
     { scale: m.scale, offsetX: m.x, offsetY: m.y },
   );

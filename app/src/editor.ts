@@ -5,10 +5,11 @@
 import { maskShape } from "./mask";
 import { FULL_SPEED_MM, followFactor, postCorrect, tiltOf as penTilt, usesMotion } from "./brush";
 import { adjustPressure, penPreferences } from "./pen";
-import { balloonExtent, defaultTailStyle, insideBalloon, resolvedShape, tailGeometry } from "./balloon";
+import { balloonExtent, defaultTailStyle, insideBalloon, resolvedShape, tailGeometry, tailRootAt } from "./balloon";
 import { spreads } from "./pages";
 import { GRID_GAP_MM, MARGIN, MAX_PAGE_GAP_MM, extent, layoutPages, onStage, rowCount, slotAt, toPage, type Slot } from "./layout";
 import { holdPanel, placeHeld } from "./hold";
+import { canvasFont, lineBold, lineFont } from "./fonts";
 import { addBreakout, addDrawnPanel, moveBreakout, spanGutter, stacked } from "./koma";
 import { joinPanels, moveSeam, seamAt, seamBase, seamLines, snapSeam, type Seam } from "./komaedit";
 import {
@@ -183,7 +184,7 @@ interface MoveSnap {
 const FRAME_HANDLES = 8;
 const ROTATE_GAP = 22;
 
-type TailPart = "tip" | "body" | "bend";
+type TailPart = "tip" | "body" | "bend" | "root";
 
 /** A tail of a line under the pointer. */
 interface TailHit {
@@ -207,6 +208,7 @@ const LINK_HANDLE = 5;
 const HANDLE = 5;
 
 export const PANEL_CARRIES_KEY = "namestudio.panelCarries";
+export const BALLOON_TEXT_KEY = "namestudio.balloonTextFollows";
 export const SHOW_NOTES_KEY = "namestudio.showNotes";
 export const SINGLE_PAGE_KEY = "namestudio.singlePage";
 export const CONTINUOUS_KEY = "namestudio.continuous";
@@ -238,6 +240,8 @@ export class PageEditor {
   private sliding: { from: Map<number, Point>; start: number } | null = null;
   /** コマに中身が付いてくる: moving or reshaping a panel takes its contents along. */
   panelCarries = readFlag(PANEL_CARRIES_KEY, true);
+  /** A balloon transformed on its own: its text grows and shrinks with it (off: only the balloon changes). */
+  balloonTextFollows = readFlag(BALLOON_TEXT_KEY, true);
   /** Each panel's memo shown on the page (only on screen, never exported). */
   showNotes = readFlag(SHOW_NOTES_KEY, true);
   penWidthMm = 0.4;
@@ -2407,6 +2411,7 @@ export class PageEditor {
         const geometry = tailGeometry(line, tail);
         if (!geometry) continue;
         if (shown.has(line.id) && near(geometry.middle, 2)) return { lineId: line.id, index, part: "bend" };
+        if (shown.has(line.id) && near(geometry.root, 2)) return { lineId: line.id, index, part: "root" };
         // Along the tail (outside the balloon): root to middle to tip.
         const reach = Math.max(6 / slot.scale, 1.2);
         const close = (a: Point, b: Point) => distanceToSegment(point, a, b) <= reach;
@@ -2438,6 +2443,12 @@ export class PageEditor {
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
+        // 根本: a small square on the outline, to slide the tail along the balloon.
+        const [rx, ry] = at(geometry.root);
+        const r = HANDLE - 1.5;
+        ctx.fillStyle = tail.root === undefined ? "#ffffff" : "rgba(47, 111, 219, 0.35)";
+        ctx.fillRect(rx - r, ry - r, r * 2, r * 2);
+        ctx.strokeRect(rx - r, ry - r, r * 2, r * 2);
       }
       const [tx, ty] = at(tail.tip);
       ctx.fillStyle = "#ffffff";
@@ -2475,7 +2486,7 @@ export class PageEditor {
           ? PageEditor.seamCursor(this.hover.seam)
           : this.hover.kind === "handle"
             ? PageEditor.handleCursor(this.hover.handle)
-            : this.hover.kind === "tail" && this.hover.hit.part === "bend"
+            : this.hover.kind === "tail" && (this.hover.hit.part === "bend" || this.hover.hit.part === "root")
               ? "grab"
               : "move"
         : null;
@@ -2665,8 +2676,9 @@ export class PageEditor {
         const handle = this.frameHandleAt(sx, sy);
         if (handle >= 0) {
           const items = this.selectedItems();
-          // A balloon on its own grows with its text.
-          const base = transformBase(slot.page, items, this.selection?.kind === "line");
+          // A balloon on its own grows with its text, or (as set) changes alone around it.
+          const lone = this.selection?.kind === "line" ? (this.balloonTextFollows ? "withText" : "balloonOnly") : undefined;
+          const base = transformBase(slot.page, items, lone);
           const frame = this.frameGeometry()!;
           this.host.begin();
           if (handle < 4 && (event.ctrlKey || event.metaKey)) {
@@ -3072,6 +3084,12 @@ export class PageEditor {
           if (Math.abs(bend) < 0.4) delete tail.bend;
           else tail.bend = Math.round(bend * 10) / 10;
           this.host.status("しっぽを曲げています（まっすぐ近くで戻ります）");
+        } else if (drag.part === "root") {
+          // Round the balloon: the direction of the pointer from its centre; near the tip's own direction it goes back to following the tip.
+          const root = tailRootAt(line, tail, point);
+          if (root === null) delete tail.root;
+          else tail.root = root;
+          this.host.status("しっぽの根本を動かしています（先の向き近くで元に戻ります）");
         } else {
           tail.tip = drag.part === "body" ? [drag.tip[0] + point[0] - drag.start[0], drag.tip[1] + point[1] - drag.start[1]] : point;
         }
@@ -3221,7 +3239,7 @@ export class PageEditor {
           break;
         }
         // A tip put back inside its balloon takes the tail away.
-        if (line && tail && drag.part !== "bend" && insideBalloon(line, tail.tip)) {
+        if (line && tail && drag.part !== "bend" && drag.part !== "root" && insideBalloon(line, tail.tip)) {
           line.tails = line.tails!.filter((_, i) => i !== drag.index);
           if (!line.tails.length) delete line.tails;
           this.host.status(drag.created ? "" : "しっぽを消しました（元に戻すは Ctrl+Z）");
@@ -3632,7 +3650,7 @@ export class PageEditor {
         // Never smaller than can be read, even when the page is shown small.
         const size = Math.max(line.fontSizePt * MM_PER_PT * slot.scale, 12);
         const pad = 6;
-        style.font = `${line.emphasis ? "bold " : ""}${size}px "Yu Gothic", "Hiragino Sans", "Noto Sans JP", sans-serif`;
+        style.font = canvasFont(lineFont(line), size, lineBold(line));
         style.writingMode = line.vertical ? "vertical-rl" : "horizontal-tb";
         const rows = field.value.replace(/\r\n?/g, "\n").split("\n");
         const longest = Math.max(1, ...rows.map((row) => [...row].length));

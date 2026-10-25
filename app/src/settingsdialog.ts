@@ -1,6 +1,8 @@
 // 設定: the ネーム's own settings (コマ間, kept in its file) and this
 // computer's (the room between spreads, 吸着). Changes apply at once.
-import { $ } from "./dom";
+import { $, element } from "./dom";
+import { fontField } from "./fontpicker";
+import { APP_FONT_LABEL, FONT_ROLES, FONT_ROLE_LABELS, roleFont, setRoleFont } from "./fonts";
 import { PAGE_GAP_KEY, type PageEditor } from "./editor";
 import { GRID_GAP_MM } from "./layout";
 import { gutters, nameKind, setBinding, setGutters, type Project } from "./project";
@@ -84,6 +86,24 @@ export class SettingsDialog {
     this.host.editor.draw();
   }
 
+  /** 用途ごとのフォント: a field for each role, empty for 通常's (or the app's for 通常). */
+  private renderFonts(project: Project | null): void {
+    const box = $("st-fonts");
+    if (box.contains(document.activeElement)) return;
+    box.replaceChildren(
+      ...FONT_ROLES.map((role) => {
+        const fallback = role === "speech" ? APP_FONT_LABEL : `通常と同じ（${roleFont(project?.fonts, "speech") ?? APP_FONT_LABEL}）`;
+        const field = fontField(project?.fonts?.[role] ?? "", fallback, (name) => {
+          this.host.edit((p) => setRoleFont(p, role, name));
+          this.render();
+          this.host.status(name ? `「${FONT_ROLE_LABELS[role]}」のフォントを ${name} にしました` : `「${FONT_ROLE_LABELS[role]}」のフォントの指定をやめました`);
+        });
+        field.querySelectorAll("input, button").forEach((control) => ((control as HTMLInputElement).disabled ||= !project));
+        return element("label", { className: "font-role" }, element("span", { textContent: FONT_ROLE_LABELS[role] }), field);
+      }),
+    );
+  }
+
   private render(): void {
     const project = this.host.project();
     const gaps = project ? gutters(project) : null;
@@ -99,6 +119,7 @@ export class SettingsDialog {
     // 縦スクロール is chosen when the name is made (its pieces are a size of their own).
     binding.value = project ? nameKind(project) : "right";
     binding.disabled = !project || !!project.scroll;
+    this.renderFonts(project);
     const gap = $<HTMLInputElement>("st-page-gap");
     if (document.activeElement !== gap) gap.value = String(this.host.editor.pageGapMm);
     const snap = this.host.editor.snapping;

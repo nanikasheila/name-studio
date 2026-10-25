@@ -2,6 +2,7 @@
 // Rough lines, panels, fills and はみ出し change shape with the transform;
 // dialogue keeps its size and moves with its centre, its tails pointing
 // where they pointed (a balloon transformed on its own grows with its text).
+import { storedOutline } from "./balloon";
 import {
   assignPanels,
   bounds,
@@ -139,15 +140,20 @@ export function toggleItem(items: readonly ItemRef[], ref: ItemRef): ItemRef[] {
 /** The selected things as they were when a transform began. */
 export interface TransformBase {
   strokes: { id: string; points: StrokePoint[]; widthMm: number }[];
-  lines: { id: string; box: BoxMm; fontSizePt: number; balloon?: Point[]; tails?: Point[] }[];
+  lines: { id: string; box: BoxMm; fontSizePt: number; balloon?: Point[]; tails?: Point[]; balloonScale?: [number, number] }[];
   panels?: { id: string; shape: Point[] }[];
   fills?: { id: string; shape: Point[] }[];
   breakouts?: { id: string; shape: Point[] }[];
   /** A balloon transformed on its own: its text grows and shrinks with it. */
   scaleText?: boolean;
+  /** A balloon transformed on its own, its text kept as it is: only the balloon's width and height change. */
+  balloonOnly?: boolean;
 }
 
-export function transformBase(page: Page, items: readonly ItemRef[], scaleText = false): TransformBase {
+/** How a balloon transformed on its own changes: with its text, or the balloon alone. */
+export type LoneBalloon = "withText" | "balloonOnly";
+
+export function transformBase(page: Page, items: readonly ItemRef[], lone?: LoneBalloon): TransformBase {
   const ids = (kind: ItemRef["kind"]) => new Set(items.filter((item) => item.kind === kind).map((item) => item.id));
   const strokes = ids("stroke");
   const lines = ids("line");
@@ -160,7 +166,7 @@ export function transformBase(page: Page, items: readonly ItemRef[], scaleText =
     ...(panels.length ? { panels } : {}),
     ...(fills.length ? { fills } : {}),
     ...(breakouts.length ? { breakouts } : {}),
-    ...(scaleText ? { scaleText } : {}),
+    ...(lone === "withText" ? { scaleText: true } : lone === "balloonOnly" ? { balloonOnly: true } : {}),
     strokes: page.strokes
       .filter((s) => strokes.has(s.id))
       .map((s) => ({ id: s.id, points: s.points.map((p) => [...p] as StrokePoint), widthMm: s.widthMm })),
@@ -172,8 +178,17 @@ export function transformBase(page: Page, items: readonly ItemRef[], scaleText =
         fontSizePt: l.fontSizePt,
         ...(l.balloon ? { balloon: l.balloon.map((p) => [...p] as Point) } : {}),
         ...(l.tails ? { tails: l.tails.map((t) => [...t.tip] as Point) } : {}),
+        ...(l.balloonScale ? { balloonScale: [...l.balloonScale] as [number, number] } : {}),
       })),
   };
+}
+
+/** How much a warp stretches across and down (each on its own). */
+export function warpStretch(w: Warp): [number, number] {
+  if (Array.isArray(w)) return [Math.hypot(w[0], w[1]), Math.hypot(w[2], w[3])];
+  const [x0, y0, x1, y1] = w.box;
+  const [nx0, ny0, nx1, ny1] = bounds(w.corners);
+  return [x1 > x0 ? (nx1 - nx0) / (x1 - x0) : 1, y1 > y0 ? (ny1 - ny0) / (y1 - y0) : 1];
 }
 
 /** The box around the selected things (balloons included). */
@@ -207,11 +222,30 @@ export function transformItems(page: Page, base: TransformBase, w: Warp): void {
     stroke.points = points.map((p) => [...warpPoint(w, p), ...p.slice(2)] as StrokePoint);
     stroke.widthMm = Math.max(0.05, Math.round(widthMm * sizeFactor * 1000) / 1000);
   }
-  for (const { id, box, fontSizePt, balloon, tails } of base.lines) {
+  for (const { id, box, fontSizePt, balloon, tails, balloonScale } of base.lines) {
     const line = page.lines.find((l) => l.id === id);
     if (!line) continue;
     const centre: Point = [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2];
     const [cx, cy] = warpPoint(w, centre);
+    if (base.balloonOnly) {
+      // The text stays as it is; the balloon around it gets wider or taller.
+      const [ax, ay] = warpStretch(w);
+      const [hw, hh] = [(box[2] - box[0]) / 2, (box[3] - box[1]) / 2];
+      line.box = [round3(cx - hw), round3(cy - hh), round3(cx + hw), round3(cy + hh)];
+      if (line.balloonShape === "custom" && balloon) {
+        line.balloon = balloon.map(([x, y]) => [round3(cx + (x - centre[0]) * ax), round3(cy + (y - centre[1]) * ay)]);
+      } else {
+        const [bx, by] = balloonScale ?? [1, 1];
+        const clamp = (value: number) => Math.round(Math.min(Math.max(value, 0.3), 6) * 1000) / 1000;
+        const next: [number, number] = [clamp(bx * ax), clamp(by * ay)];
+        if (next[0] === 1 && next[1] === 1) delete line.balloonScale;
+        else line.balloonScale = next;
+        const outline = storedOutline(line);
+        if (outline) line.balloon = outline;
+      }
+      if (tails && line.tails) line.tails.forEach((tail, i) => tails[i] && (tail.tip = map(tails[i])));
+      continue;
+    }
     // On its own the balloon and its text grow together; with others it keeps its size.
     const k = base.scaleText ? Math.min(Math.max(sizeFactor, 0.2), 8) : 1;
     const [hw, hh] = [((box[2] - box[0]) / 2) * k, ((box[3] - box[1]) / 2) * k];

@@ -5,6 +5,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { CspSubTool } from "./brush";
 import type { ExportReport, ExportRequest, OverwriteCheck } from "./export";
+import type { FontFace } from "./fonts";
 import type { Project } from "./model";
 import type { SheetView } from "./types";
 
@@ -178,6 +179,8 @@ export interface Commands {
   write_text_file: [{ path: string; text: string }, void];
   csp_tool_locations: [void, CspToolLocations];
   read_csp_sub_tools: [{ path: string; materials: string | null }, CspSubTool[]];
+  // The fonts on the computer (fonts.rs)
+  list_fonts: [void, FontFace[]];
   // The app (lib.rs)
   is_release_build: [void, boolean];
   batch_export_task: [void, BatchExport | null];

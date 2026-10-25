@@ -5,6 +5,7 @@ import { call, type Recovery } from "./backend";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask, open } from "@tauri-apps/plugin-dialog";
 import { formatTime } from "./autosave";
+import { setInstalledFonts } from "./fonts";
 import { batchExportTask, runBatchExport } from "./batch";
 import { appVersion, checkForUpdate } from "./updater";
 import { buildRequest, folderOf, summarize, type ExportForm, type Fit } from "./export";
@@ -628,9 +629,21 @@ async function offerRecovery(): Promise<void> {
   }
 }
 
+/** The fonts on this computer, to choose from and to draw and write out dialogue in. */
+async function loadFonts(): Promise<void> {
+  try {
+    setInstalledFonts(await call("list_fonts"));
+    workbench.renderAll();
+  } catch {
+    // In a plain browser: the usual fonts are offered by name.
+  }
+}
+
 async function start(): Promise<void> {
   const version = await appVersion();
   if (version) $("app-version").textContent = `v${version}`;
+  // Before a command-line export too: the dialogue goes to CSP in its fonts.
+  await loadFonts();
   // Started from the command line to write a name out: no update or recovery questions.
   const batch = await batchExportTask();
   if (batch) {

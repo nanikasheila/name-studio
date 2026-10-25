@@ -1,4 +1,5 @@
 // Drawing a name sheet (or part of it) onto a 2D canvas.
+import { canvasFont } from "./fonts";
 import type { LayerView, Rect, SheetView, TextView } from "./types";
 
 /** Sheet pixels → screen pixels: `screen = sheet * scale + offset`. */
@@ -71,11 +72,6 @@ function drawVectors(ctx: CanvasRenderingContext2D, layer: LayerView, t: Transfo
   }
 }
 
-function fontFamily(text: TextView): string {
-  const preferred = text.fontName ? `"${text.fontName}", ` : "";
-  return `${preferred}"Yu Gothic", "Hiragino Sans", "Noto Sans JP", sans-serif`;
-}
-
 /** Draw one text block inside its box: vertical columns right to left, or horizontal lines. */
 export function drawText(ctx: CanvasRenderingContext2D, text: TextView, t: Transform): void {
   if (!text.bbox || !text.text) return;
@@ -91,7 +87,7 @@ export function drawText(ctx: CanvasRenderingContext2D, text: TextView, t: Trans
     return;
   }
   ctx.fillStyle = text.color ?? INK;
-  ctx.font = `${text.bold ? "bold " : ""}${size}px ${fontFamily(text)}`;
+  ctx.font = canvasFont(text.fontName, size, !!text.bold);
   const lines = text.text.replace(/\r\n?/g, "\n").split("\n");
   const pitch = size * 1.15;
   if (!text.vertical) {

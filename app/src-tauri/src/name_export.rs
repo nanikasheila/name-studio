@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use clip_core::RgbaImage;
 use clip_core::raster::decode_png;
 use clip_core::raster::{Filter, resize};
-use clip_core::text::NewText;
+use clip_core::text::{FontName, NewText};
 use clip_core::vector::{NewFrame, NewVectorLine};
 use clip_core::write::raster_page::{
     PageLayer, RasterLayer, RasterWorkWriter, TemplateCanvas, WorkOptions, WorkReport,
@@ -155,7 +155,17 @@ pub(crate) enum LayerMeta {
         /// 8-bit RGB; absent keeps the template text's colour.
         #[serde(default)]
         color: Option<[u8; 3]>,
+        /// Absent keeps the template text's font.
+        #[serde(default)]
+        font: Option<FontMeta>,
     },
+}
+
+/// A font by the name CSP shows and its PostScript name.
+#[derive(Deserialize)]
+pub(crate) struct FontMeta {
+    name: String,
+    postscript: String,
 }
 
 #[derive(Deserialize)]
@@ -246,12 +256,17 @@ fn page_layer<'a>(
             font_size_pt,
             vertical,
             color,
+            font,
         } => PageLayer::Text(NewText {
             text,
             frame: frame.map(|value| value.round() as i32),
             font_size_pt,
             vertical,
             color,
+            font: font.map(|font| FontName {
+                name: font.name,
+                postscript: font.postscript,
+            }),
         }),
     })
 }

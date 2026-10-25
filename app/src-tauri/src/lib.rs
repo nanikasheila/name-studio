@@ -9,12 +9,14 @@
 //!
 //! Commands by what they are for: [`viewer`] (the open sheet), [`project_io`]
 //! (loading, saving, autosave and versions), [`name_export`] (CSP pages and
-//! works), [`files`] (CSP's tools, PDF and script); [`ipc`] reads the raw
+//! works), [`files`] (CSP's tools, PDF and script), [`fonts`] (the fonts on
+//! the computer); [`ipc`] reads the raw
 //! request bodies they share.
 
 pub mod batch;
 pub mod errorlog;
 mod files;
+mod fonts;
 mod ipc;
 mod name_export;
 mod project_io;
@@ -130,6 +132,7 @@ pub fn run() {
             files::write_text_file,
             files::csp_tool_locations,
             files::read_csp_sub_tools,
+            fonts::list_fonts,
             is_release_build,
             batch_export_task,
             end_batch_export

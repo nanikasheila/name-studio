@@ -100,12 +100,18 @@
                 70
               ],
               "style": "bubbles",
-              "bend": -1.5
+              "bend": -1.5,
+              "root": 1.25
             }
           ],
           "linkTo": "page1-line2",
           "inverted": true,
           "emphasis": true,
+          "balloonScale": [
+            0.8,
+            1.2
+          ],
+          "font": "I-OTFアンチックStd B",
           "mask": true
         }
       ],
@@ -456,12 +462,18 @@
                         70
                       ],
                       "style": "bubbles",
-                      "bend": -1.5
+                      "bend": -1.5,
+                      "root": 1.25
                     }
                   ],
                   "linkTo": "page9-line2",
                   "inverted": true,
                   "emphasis": true,
+                  "balloonScale": [
+                    0.8,
+                    1.2
+                  ],
+                  "font": "I-OTFアンチックStd B",
                   "mask": true
                 }
               ],
@@ -695,12 +707,18 @@
                 70
               ],
               "style": "bubbles",
-              "bend": -1.5
+              "bend": -1.5,
+              "root": 1.25
             }
           ],
           "linkTo": "page1-line2",
           "inverted": true,
           "emphasis": true,
+          "balloonScale": [
+            0.8,
+            1.2
+          ],
+          "font": "I-OTFアンチックStd B",
           "mask": true
         }
       ],
@@ -789,5 +807,13 @@
     "down": 7.5
   },
   "scroll": true,
+  "fonts": {
+    "speech": "I-OTFアンチックStd B",
+    "thought": "游明朝 Demibold",
+    "narration": "BIZ UD明朝 Medium",
+    "sfx": "メイリオ",
+    "aside": "BIZ UDゴシック",
+    "emphasis": "游ゴシック Bold"
+  },
   "nextId": 42
 }

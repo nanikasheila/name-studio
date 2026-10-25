@@ -61,6 +61,9 @@ pub struct Project {
     /// top to bottom, with no spreads.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scroll: Option<bool>,
+    /// 用途ごとのフォント: the typeface each kind of line (and 強調) is set in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fonts: Option<LineFonts>,
     /// Next number used by [`Project::new_id`]; ids are never reused.
     pub next_id: u64,
 }
@@ -265,6 +268,25 @@ pub struct StickyLink {
 pub struct Gutters {
     pub across: f64,
     pub down: f64,
+}
+
+/// 用途ごとのフォント: a font name (as CLIP STUDIO PAINT shows it) for each
+/// kind of line, and for lines marked 強調. None: the usual one (セリフ's, else the app's).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LineFonts {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speech: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thought: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub narration: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sfx: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aside: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emphasis: Option<String>,
 }
 
 /// 構成補助: what the name is aimed at, to compare the page split with.
@@ -503,6 +525,10 @@ pub struct Tail {
     /// 曲がり: how far (mm) the middle of the tail is pushed to its left.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bend: Option<f64>,
+    /// 根本: the direction (radians from the balloon's centre, 0 right, π/2
+    /// down) where it leaves the balloon; none is towards the tip.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root: Option<f64>,
 }
 
 /// セリフ and other text placed on a page.
@@ -541,6 +567,14 @@ pub struct Line {
     /// コマ枠でマスク: the balloon is cut off at the border of its panel.
     #[serde(default, skip_serializing_if = "is_default")]
     pub mask: bool,
+    /// フキダシの大きさ: its width and height as shares of the usual size
+    /// for its text, when changed without the text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub balloon_scale: Option<[f64; 2]>,
+    /// フォント for this line alone (as CLIP STUDIO PAINT names it); none
+    /// is the one for its kind in [`Project::fonts`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font: Option<String>,
 }
 
 /// A rough line (ラフ).
@@ -827,6 +861,7 @@ impl Project {
             images: Vec::new(),
             gutters: None,
             scroll: None,
+            fonts: None,
             next_id: 1,
         }
     }

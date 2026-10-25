@@ -70,10 +70,12 @@ function fullPage(id: string): Full<Project["pages"][number]> {
           [42, 62],
         ],
         balloonShape: "cloud",
-        tails: [{ tip: [50, 70], style: "bubbles", bend: -1.5 }],
+        tails: [{ tip: [50, 70], style: "bubbles", bend: -1.5, root: 1.25 }],
         linkTo: `${id}-line2`,
         inverted: true,
         emphasis: true,
+        balloonScale: [0.8, 1.2],
+        font: "I-OTFアンチックStd B",
         mask: true,
       },
     ],
@@ -200,6 +202,7 @@ export const FULL_PROJECT: Full<Project> = {
   images: [{ id: "image1", name: "駅.jpg", mime: "image/jpeg", dataBase64: "/9j/4AAQ", widthPx: 400, heightPx: 300 }],
   gutters: { across: 3, down: 7.5 },
   scroll: true,
+  fonts: { speech: "I-OTFアンチックStd B", thought: "游明朝 Demibold", narration: "BIZ UD明朝 Medium", sfx: "メイリオ", aside: "BIZ UDゴシック", emphasis: "游ゴシック Bold" },
   nextId: 42,
 };
 
