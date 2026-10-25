@@ -8,6 +8,7 @@ import { normalize } from "./project";
 import { projectBody } from "./projectjson";
 import { applyTakeBack, planTakeBack, takeBackSummary } from "./readback";
 import { cspPageOf, pageSetup, setupProblem } from "./csppage";
+import { installedFont } from "./fonts";
 import type { Project } from "./model";
 
 /** The template page and work to write with, and pages to copy layers from: the given ones, or with --builtin those made from the name's CSP page settings. */
@@ -16,7 +17,7 @@ async function templatesFor(task: BatchExport, project: Project): Promise<{ temp
     if (!task.template) throw new Error("--template（ページのひな形 .clip）がありません");
     return { template: task.template, workTemplate: task.workTemplate, donors: [] };
   }
-  const setup = pageSetup(project, cspPageOf(project), { title: task.workName ?? project.title, storyIndex: task.storyIndex ?? project.storyIndex ?? null, author: project.author });
+  const setup = pageSetup(project, cspPageOf(project), { title: task.workName ?? project.title, storyIndex: task.storyIndex ?? project.storyIndex ?? null, author: project.author }, (name) => installedFont(name)?.postscript);
   const problem = setupProblem(setup);
   if (problem) throw new Error(problem);
   const built = await call("prepare_builtin_template", { setup });
