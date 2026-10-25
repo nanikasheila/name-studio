@@ -22,10 +22,17 @@ use super::page::{
     mirror_nombre, story_layers, update_nombre,
 };
 use super::schema::column_names;
+use super::story::{
+    ATTR_STORY_PART, Align, Part, array_parts, bytes, edit_story_blobs, em_px, i32s, item, page_number_text,
+    resize_block, resolution, set_run_length, set_string_array, string_array, text_width,
+};
 use crate::clip::{round_half_even, to_pixels};
 use crate::error::{CspError, Result};
 use crate::raster::{Filter, resize};
-use crate::text::{ATTR_BBOX, ATTR_BLOCK_SIZE, ATTR_FONT_NAME, ATTR_ORIGIN, ATTR_QUAD, FontName, build_tlv, parse_tlv};
+use crate::text::{
+    ATTR_BBOX, ATTR_BLOCK_SIZE, ATTR_COLOR, ATTR_FONT_NAME, ATTR_FONT_SIZE, ATTR_ORIGIN, ATTR_QUAD, FontName,
+    split_attribute_array,
+};
 
 /// An empty single page (A3 canvas, B4 仕上がり, 600 dpi, left page).
 pub const BLANK_PAGE: &[u8] = include_bytes!("../../assets/blank-page.clip");
@@ -33,6 +40,9 @@ pub const BLANK_PAGE: &[u8] = include_bytes!("../../assets/blank-page.clip");
 pub const BLANK_PARTS: &[u8] = include_bytes!("../../assets/blank-parts.clip");
 /// A work listing one page.
 pub const BLANK_WORK: &[u8] = include_bytes!("../../assets/blank-work.cmc");
+/// The layer effects CSP gave its (ノンブル) with フチ 0.5 mm at 600 dpi
+/// (`LayerEffectInfo`: the フチ on, the other effects off).
+const NOMBRE_EDGE: &[u8] = include_bytes!("../../assets/nombre-edge.bin");
 
 /// File names of a built template, in its folder.
 pub const PAGE_FILE: &str = "page.clip";
@@ -85,6 +95,161 @@ pub struct PageSetup {
     /// None keeps the built-in one.
     #[serde(default)]
     pub font: Option<StoryFont>,
+    /// サブタイトル, where the 作品情報 go, ページ番号 and a shown ノンブル.
+    #[serde(default)]
+    pub story: StoryLayout,
+}
+
+/// Where a 作品情報 text goes under the 仕上がり: CSP's 左下・下・右下.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StoryPosition {
+    #[default]
+    Left,
+    Center,
+    Right,
+}
+
+impl StoryPosition {
+    /// `ComicStory*Position`.
+    fn column(self) -> i64 {
+        match self {
+            StoryPosition::Left => 1,
+            StoryPosition::Center => 2,
+            StoryPosition::Right => 3,
+        }
+    }
+
+    fn align(self) -> Align {
+        Align::of_position(self.column())
+    }
+}
+
+fn center() -> StoryPosition {
+    StoryPosition::Center
+}
+
+fn right() -> StoryPosition {
+    StoryPosition::Right
+}
+
+/// The rest of CSP's 作品情報 and ノンブル settings. The default is what
+/// CSP's new works have: 作品名 左下, 作者名 下, no ページ番号, the hidden
+/// ノンブル.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoryLayout {
+    /// サブタイトル, after 作品名 and 話数.
+    #[serde(default)]
+    pub subtitle: String,
+    #[serde(default)]
+    pub title_position: StoryPosition,
+    #[serde(default = "center")]
+    pub author_position: StoryPosition,
+    /// ページ番号 in the 作品情報 (`7ページ`); none shows none.
+    #[serde(default)]
+    pub page_number: Option<PageNumber>,
+    /// A ノンブル printed on the page, in place of the hidden one.
+    #[serde(default)]
+    pub nombre: Option<ShownNombre>,
+}
+
+impl Default for StoryLayout {
+    fn default() -> Self {
+        StoryLayout {
+            subtitle: String::new(),
+            title_position: StoryPosition::Left,
+            author_position: StoryPosition::Center,
+            page_number: None,
+            nombre: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PageNumber {
+    /// The first page's number.
+    pub start: i64,
+    #[serde(default = "right")]
+    pub position: StoryPosition,
+}
+
+/// Where a shown ノンブル goes, from the 基本枠: above or below it, on the
+/// binding side (内側), in the middle or on the other side (外側).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum NombrePlace {
+    TopInner,
+    Top,
+    TopOuter,
+    BottomInner,
+    Bottom,
+    BottomOuter,
+}
+
+impl NombrePlace {
+    /// `ComicStoryNombrePosition`.
+    fn column(self) -> i64 {
+        match self {
+            NombrePlace::TopInner => 1,
+            NombrePlace::Top => 2,
+            NombrePlace::TopOuter => 3,
+            NombrePlace::BottomInner => 4,
+            NombrePlace::Bottom => 5,
+            NombrePlace::BottomOuter => 6,
+        }
+    }
+
+    fn top(self) -> bool {
+        self.column() <= 3
+    }
+
+    fn align(self) -> Align {
+        match self.column() {
+            1 | 4 => Align::End,
+            2 | 5 => Align::Middle,
+            _ => Align::Start,
+        }
+    }
+}
+
+fn nombre_offset() -> [f64; 2] {
+    [0.0, 5.0]
+}
+
+fn nombre_size() -> f64 {
+    9.0
+}
+
+/// A ノンブル printed on the page (CSP's ノンブル, not the hidden one).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShownNombre {
+    pub place: NombrePlace,
+    /// 白 rather than 黒.
+    #[serde(default)]
+    pub white: bool,
+    /// フチ width (mm); none: no フチ.
+    #[serde(default)]
+    pub edge_mm: Option<f64>,
+    /// フォーマット: the text before and after the number.
+    #[serde(default)]
+    pub prefix: String,
+    #[serde(default)]
+    pub suffix: String,
+    /// 基本枠との間隔: 横 (from the 基本枠's side, inwards) and 縦.
+    #[serde(default = "nombre_offset")]
+    pub offset_mm: [f64; 2],
+    /// サイズ (pt).
+    #[serde(default = "nombre_size")]
+    pub size_pt: f64,
+}
+
+impl ShownNombre {
+    fn text(&self, number: i64) -> String {
+        format!("{}{number}{}", self.prefix, self.suffix)
+    }
 }
 
 /// The largest side CSP takes, in px.
@@ -130,6 +295,27 @@ impl PageSetup {
         if self.story_index.is_some_and(|index| index < 0) || self.nombre_start < 0 {
             return fail("話数とノンブルの開始番号は 0 以上にしてください");
         }
+        if self.story.page_number.as_ref().is_some_and(|number| number.start < 0) {
+            return fail("ページ番号の開始番号は 0 以上にしてください");
+        }
+        if let Some(nombre) = &self.story.nombre {
+            if !(nombre.size_pt.is_finite() && (4.0..=72.0).contains(&nombre.size_pt)) {
+                return fail("ノンブルの大きさは 4〜72 pt にしてください");
+            }
+            if nombre
+                .edge_mm
+                .is_some_and(|edge| !(edge.is_finite() && (0.0..=5.0).contains(&edge)))
+            {
+                return fail("ノンブルのフチは 0〜5 mm にしてください");
+            }
+            if !nombre
+                .offset_mm
+                .iter()
+                .all(|offset| offset.is_finite() && offset.abs() <= 100.0)
+            {
+                return fail("ノンブルの基本枠との間隔は ±100 mm までにしてください");
+            }
+        }
         Ok(())
     }
 
@@ -141,12 +327,18 @@ impl PageSetup {
         (self.px(self.canvas_mm[0]), self.px(self.canvas_mm[1]))
     }
 
-    /// The 作品情報 line: 作品名 and 話数 as CSP writes them.
+    /// The 作品情報 line: 作品名, 話数 and サブタイトル as CSP writes them.
     pub fn story_line(&self) -> String {
-        match self.story_index {
-            Some(index) => format!("{} {index}話", self.title.trim()),
-            None => self.title.trim().to_owned(),
+        let mut line = self.title.trim().to_owned();
+        if let Some(index) = self.story_index {
+            line.push_str(&format!(" {index}話"));
         }
+        let subtitle = self.story.subtitle.trim();
+        if !subtitle.is_empty() {
+            line.push(' ');
+            line.push_str(subtitle);
+        }
+        line
     }
 }
 
@@ -257,8 +449,14 @@ pub fn apply_setup(editor: &mut ClipEditor, setup: &PageSetup) -> Result<()> {
     }
     let old = Frames::of_page(db)?;
     let new = Frames::of_setup(setup);
+    if setup.story.page_number.is_some() {
+        add_page_number(db)?;
+    }
+    if let Some(nombre) = &setup.story.nombre {
+        show_nombre(db, nombre, setup.nombre_start, setup.resolution)?;
+    }
     set_story_texts(db, setup)?;
-    place_story_texts(db, &old, &new)?;
+    place_story_texts(db, &old, &new, setup)?;
     drop_text_images(db)?;
     set_canvas(db, setup)?;
     if let Some(font) = &setup.font {
@@ -318,6 +516,52 @@ fn story_values(setup: &PageSetup) -> Vec<(&'static str, Value)> {
     ];
     if let Some(index) = setup.story_index {
         values.push(("ComicStoryStoryIndex", Value::Integer(index)));
+    }
+    let story = &setup.story;
+    values.extend([
+        ("ComicStorySubTitle", Value::Text(story.subtitle.trim().to_owned())),
+        ("ComicStoryStoryPosition", Value::Integer(story.title_position.column())),
+        (
+            "ComicStoryAuthorPosition",
+            Value::Integer(story.author_position.column()),
+        ),
+        (
+            "ComicStoryUsePageNumber",
+            Value::Integer(story.page_number.is_some() as i64),
+        ),
+        (
+            "ComicStoryUseShownNombre",
+            Value::Integer(story.nombre.is_some() as i64),
+        ),
+        (
+            "ComicStoryUseHiddenNombre",
+            Value::Integer(story.nombre.is_none() as i64),
+        ),
+    ]);
+    if let Some(number) = &story.page_number {
+        values.push(("ComicStoryPageNumberStart", Value::Integer(number.start)));
+        values.push(("ComicStoryPageNumberPosition", Value::Integer(number.position.column())));
+    }
+    if let Some(nombre) = &story.nombre {
+        values.extend([
+            ("ComicStoryNombrePosition", Value::Integer(nombre.place.column())),
+            ("ComicStoryNombrePrefix", Value::Text(nombre.prefix.clone())),
+            ("ComicStoryNombreSuffix", Value::Text(nombre.suffix.clone())),
+            ("ComicStoryNombreColor", Value::Integer(nombre.white as i64)),
+            (
+                "ComicStoryNombreUseEdge",
+                Value::Integer(nombre.edge_mm.is_some() as i64),
+            ),
+            ("ComicStoryNombreFontSize", Value::Real(nombre.size_pt)),
+            ("ComicStoryXPageNombreOffset", Value::Real(nombre.offset_mm[0])),
+            ("ComicStoryXPageNombreOffsetUnit", Value::Integer(2)),
+            ("ComicStoryYPageNombreOffset", Value::Real(nombre.offset_mm[1])),
+            ("ComicStoryYPageNombreOffsetUnit", Value::Integer(2)),
+        ]);
+        if let Some(edge) = nombre.edge_mm {
+            values.push(("ComicStoryNombreEdgeWidth", Value::Real(edge)));
+            values.push(("ComicStoryNombreEdgeUnit", Value::Integer(2)));
+        }
     }
     if let Some(font) = &setup.font {
         values.push(("ComicStoryNombreFont", Value::Text(font.name.clone())));
@@ -397,79 +641,173 @@ fn start_page(setup: &PageSetup) -> i64 {
     (!setup.first_page_left) as i64
 }
 
-/// The parts of the 作品情報 text layer: its first block (作品名 and 話数)
-/// and the second (作者名).
-#[derive(Clone, Copy, PartialEq)]
-enum Part {
-    Title,
-    Author,
-    Nombre,
-}
-
-/// One text attribute blob of a story info layer and the part it is for:
-/// (column, block index or none for a single block, part).
-type Blob = (&'static str, Option<usize>, Part);
-
-fn blobs(info: i64) -> Vec<Blob> {
-    if info == STORY_INFO {
-        vec![
-            ("TextLayerAttributes", None, Part::Title),
-            ("TextLayerAttributesArray", Some(0), Part::Author),
-            ("TextLayerAddAttributesV01", Some(0), Part::Title),
-            ("TextLayerAddAttributesV01", Some(1), Part::Author),
-        ]
-    } else {
-        vec![
-            ("TextLayerAttributes", None, Part::Nombre),
-            ("TextLayerAddAttributesV01", Some(0), Part::Nombre),
-        ]
+/// Rewrite the blocks of one attributes array column.
+fn edit_array(db: &Connection, layer_id: i64, column: &str, edit: &dyn Fn(&mut Vec<TextItems>)) -> Result<()> {
+    if !has_column(db, "Layer", column)? {
+        return Ok(());
     }
-}
-
-/// Apply `edit` to the TLV items of each blob of one story info layer.
-fn edit_story_blobs(
-    db: &Connection,
-    layer_id: i64,
-    info: i64,
-    edit: &dyn Fn(Part, bool, TextItems) -> Result<TextItems>,
-) -> Result<()> {
-    for (column, block, part) in blobs(info) {
-        if !has_column(db, "Layer", column)? {
-            continue;
-        }
-        let blob: Value = db.query_row(
-            &format!("SELECT \"{column}\" FROM Layer WHERE MainId = ?1"),
-            [layer_id],
-            |row| row.get(0),
-        )?;
-        let Value::Blob(blob) = blob else { continue };
-        let owned = |bytes: &[u8]| -> Result<TextItems> {
-            Ok(parse_tlv(bytes)?
+    let blob: Value = db.query_row(
+        &format!("SELECT \"{column}\" FROM Layer WHERE MainId = ?1"),
+        [layer_id],
+        |row| row.get(0),
+    )?;
+    let Value::Blob(blob) = blob else { return Ok(()) };
+    let mut blocks: Vec<TextItems> = Vec::new();
+    for block in split_attribute_array(&blob)? {
+        blocks.push(
+            crate::text::parse_tlv(block)?
                 .into_iter()
                 .map(|(tag, value)| (tag, value.to_vec()))
+                .collect(),
+        );
+    }
+    edit(&mut blocks);
+    let joined: Vec<u8> = blocks
+        .iter()
+        .flat_map(|items| {
+            let block = crate::text::build_tlv(items);
+            let mut entry = (block.len() as u32).to_le_bytes().to_vec();
+            entry.extend(block);
+            entry
+        })
+        .collect();
+    db.execute(
+        &format!("UPDATE Layer SET \"{column}\" = ?1 WHERE MainId = ?2"),
+        (joined, layer_id),
+    )?;
+    Ok(())
+}
+
+fn with_part(items: &TextItems, part: Part) -> TextItems {
+    items
+        .iter()
+        .map(|(tag, value)| match *tag {
+            ATTR_STORY_PART => (*tag, bytes(&[part.code()])),
+            _ => (*tag, value.clone()),
+        })
+        .collect()
+}
+
+/// Give the 作品情報 a ページ番号: a block after the 作者名's, like it, as CSP
+/// adds it (its text and place are set with the others).
+fn add_page_number(db: &Connection) -> Result<()> {
+    for (layer_id, _) in story_layers(db, STORY_INFO)? {
+        if array_parts(db, layer_id)?.contains(&Part::PageNumber) {
+            continue;
+        }
+        for column in ["TextLayerAttributesArray", "TextLayerAddAttributesV01"] {
+            edit_array(db, layer_id, column, &|blocks| {
+                let author = blocks.iter().rposition(|items| {
+                    item(items, ATTR_STORY_PART).map(i32s).as_deref() == Some(&[Part::Author.code()])
+                });
+                if let Some(author) = author.or(blocks.len().checked_sub(1)) {
+                    let block = with_part(&blocks[author], Part::PageNumber);
+                    blocks.push(block);
+                }
+            })?;
+        }
+        if let Some(mut strings) = string_array(db, layer_id)? {
+            strings.push(String::new());
+            set_string_array(db, layer_id, &strings)?;
+        }
+    }
+    Ok(())
+}
+
+/// Make the hidden ノンブル a shown one: its part, size and colour, with the
+/// first page's text (placed with the others).
+fn show_nombre(db: &Connection, nombre: &ShownNombre, start: i64, page_resolution: f64) -> Result<()> {
+    let resolution = resolution(db)?;
+    let text = nombre.text(start);
+    let units = text.encode_utf16().count();
+    let size = round_half_even(nombre.size_pt * 100.0);
+    for (layer_id, _) in story_layers(db, NOMBRE_INFO)? {
+        db.execute(
+            "UPDATE Layer SET TextLayerString = ?1 WHERE MainId = ?2",
+            (text.as_bytes(), layer_id),
+        )?;
+        edit_story_blobs(db, layer_id, NOMBRE_INFO, &|_, counted, items| {
+            let old = item(&items, ATTR_FONT_SIZE)
+                .map(i32s)
+                .and_then(|values| values.first().copied())
+                .filter(|old| *old > 0)
+                .unwrap_or(600);
+            let ratio = size as f64 / old as f64;
+            let scale = |values: Vec<i64>| -> Vec<u8> {
+                bytes(
+                    &values
+                        .into_iter()
+                        .map(|value| round_half_even(value as f64 * ratio))
+                        .collect::<Vec<_>>(),
+                )
+            };
+            let items: TextItems = items
+                .into_iter()
+                .map(|(tag, value)| match tag {
+                    ATTR_STORY_PART => (tag, bytes(&[Part::Nombre.code()])),
+                    ATTR_FONT_SIZE if value.len() == 4 => (tag, bytes(&[size])),
+                    ATTR_COLOR if value.len() == 12 => (tag, vec![if nombre.white { 0xff } else { 0 }; 12]),
+                    ATTR_BLOCK_SIZE | ATTR_QUAD | ATTR_ORIGIN if value.len() % 4 == 0 => (tag, scale(i32s(&value))),
+                    ATTR_BBOX if value.len() == 16 => {
+                        let [x0, y0, x1, y1] = i32s(&value)[..] else {
+                            unreachable!()
+                        };
+                        (
+                            tag,
+                            bytes(&[x0, y0, x1, y0 + round_half_even((y1 - y0) as f64 * ratio)]),
+                        )
+                    }
+                    _ => (tag, value),
+                })
+                .collect();
+            let width = text_width(&text, em_px(&items, resolution));
+            Ok(set_run_length(items, units, counted)
+                .into_iter()
+                .map(|(tag, value)| resize_block(tag, value, width, Align::Start))
                 .collect())
-        };
-        // The add-attributes runs carry no character counts.
-        let counted = column != "TextLayerAddAttributesV01";
-        let value = match block {
-            None => build_tlv(&edit(part, counted, owned(&blob)?)?),
-            Some(index) => {
-                let mut blocks: Vec<Vec<u8>> = crate::text::split_attribute_array(&blob)?
-                    .into_iter()
-                    .map(<[u8]>::to_vec)
-                    .collect();
-                let Some(target) = blocks.get_mut(index) else { continue };
-                *target = build_tlv(&edit(part, counted, owned(target)?)?);
-                blocks
-                    .into_iter()
-                    .flat_map(|block| {
-                        let mut entry = (block.len() as u32).to_le_bytes().to_vec();
-                        entry.extend(block);
-                        entry
-                    })
-                    .collect()
-            }
-        };
+        })?;
+        drop_render_cache(db, layer_id)?;
+        if let Some(edge) = nombre.edge_mm {
+            // In px of the page made (the template's resolution changes after this).
+            set_edge(db, layer_id, edge / 25.4 * page_resolution, nombre.white)?;
+        }
+    }
+    Ok(())
+}
+
+/// Give a layer CSP's フチ (a layer effect, not a text attribute): `width`
+/// px, black around white text and white around black.
+fn set_edge(db: &Connection, layer_id: i64, width: f64, white_text: bool) -> Result<()> {
+    let mut info = NOMBRE_EDGE.to_vec();
+    // After the size, the count and the name `EffectEdge`: on, width, colour.
+    let at = 4 + 4 + 4 + "EffectEdge".len() * 2;
+    if info.get(at..at + 4) != Some(&[0, 0, 0, 1]) {
+        return Err(CspError::format("Unexpected layer effect template"));
+    }
+    info[at + 4..at + 12].copy_from_slice(&width.to_be_bytes());
+    let channel: u32 = if white_text { 0 } else { 255 };
+    for index in 0..3 {
+        let start = at + 12 + index * 4;
+        info[start..start + 4].copy_from_slice(&channel.to_be_bytes());
+    }
+    let mut values: Vec<(&str, Value)> = [
+        "EffectLayerRenderType",
+        "EffectRenderType",
+        "EffectReferAreaType",
+        "EffectSetUpdateRectType",
+        "EffectOffscreenFixType",
+        "EffectOffscreenMoveType",
+    ]
+    .into_iter()
+    .map(|column| (column, Value::Integer(10)))
+    .collect();
+    values.push(("LayerEffectAttached", Value::Integer(1)));
+    values.push(("LayerEffectEdgeNewRender", Value::Integer(1)));
+    values.push(("LayerEffectInfo", Value::Blob(info)));
+    for (column, value) in values {
+        if !has_column(db, "Layer", column)? {
+            db.execute(&format!("ALTER TABLE Layer ADD COLUMN \"{column}\""), [])?;
+        }
         db.execute(
             &format!("UPDATE Layer SET \"{column}\" = ?1 WHERE MainId = ?2"),
             (value, layer_id),
@@ -478,114 +816,52 @@ fn edit_story_blobs(
     Ok(())
 }
 
-fn i32s(value: &[u8]) -> Vec<i64> {
-    value
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|bytes| i32::from_le_bytes(*bytes) as i64)
-        .collect()
-}
-
-fn bytes(values: &[i64]) -> Vec<u8> {
-    values.iter().flat_map(|value| (*value as i32).to_le_bytes()).collect()
-}
-
-fn item(items: &TextItems, tag: u32) -> Option<&[u8]> {
-    items
-        .iter()
-        .find(|(id, _)| *id == tag)
-        .map(|(_, value)| value.as_slice())
-}
-
-/// Font size in px of a story text (TLV 0x20 is pt × 100 at the canvas resolution).
-fn em_px(items: &TextItems, resolution: f64) -> f64 {
-    let points = item(items, crate::text::ATTR_FONT_SIZE)
-        .filter(|value| value.len() == 4)
-        .map(|value| i32::from_le_bytes(value.try_into().unwrap()) as f64 / 100.0)
-        .unwrap_or(6.0);
-    points * resolution / 72.0
-}
-
-/// The width CSP gives a story text: a full-width character is one em; the
-/// space, digits and other ASCII are narrower (as measured on CSP's own).
-fn text_width(text: &str, em: f64) -> i64 {
-    let ems: f64 = text
-        .chars()
-        .map(|character| match character {
-            ' ' => 0.26,
-            character if character.is_ascii() => 0.62,
-            _ => 1.0,
-        })
-        .sum();
-    round_half_even(ems * em).max(1)
-}
-
-/// Write the 作品名・話数 and 作者名 into the 作品情報 layer: the strings,
-/// their style runs' lengths and the blocks' widths (the 作品名 keeps its
-/// left edge, the 作者名 its middle). CSP draws them afresh.
+/// Write the 作品名・話数・サブタイトル, 作者名 and ページ番号 into the 作品情報
+/// layer: the strings, their style runs' lengths and the blocks' widths.
+/// CSP draws them afresh.
 fn set_story_texts(db: &Connection, setup: &PageSetup) -> Result<()> {
-    let resolution = match canvas_value(db, "CanvasResolution")? {
-        Some(Value::Real(number)) => number,
-        Some(Value::Integer(number)) => number as f64,
-        _ => return Err(CspError::format("Canvas has no resolution")),
-    };
+    let resolution = resolution(db)?;
     let title = setup.story_line();
     let author = setup.author.trim().to_owned();
+    // The page is the first one.
+    let page = setup
+        .story
+        .page_number
+        .as_ref()
+        .map(|number| page_number_text(number.start));
     for (layer_id, _) in story_layers(db, STORY_INFO)? {
         db.execute(
             "UPDATE Layer SET TextLayerString = ?1 WHERE MainId = ?2",
             (title.as_bytes(), layer_id),
         )?;
-        if has_column(db, "Layer", "TextLayerStringArray")? {
-            let mut array = (author.len() as u32).to_le_bytes().to_vec();
-            array.extend(author.as_bytes());
-            db.execute(
-                "UPDATE Layer SET TextLayerStringArray = ?1 WHERE MainId = ?2 AND TextLayerStringArray IS NOT NULL",
-                (array, layer_id),
-            )?;
+        if let Some(mut strings) = string_array(db, layer_id)? {
+            let parts = array_parts(db, layer_id)?;
+            strings.resize(parts.len().max(strings.len()), String::new());
+            for (index, part) in parts.iter().enumerate() {
+                match (part, &page) {
+                    (Part::Author, _) => strings[index] = author.clone(),
+                    (Part::PageNumber, Some(page)) => strings[index] = page.clone(),
+                    _ => {}
+                }
+            }
+            set_string_array(db, layer_id, &strings)?;
         }
         edit_story_blobs(db, layer_id, STORY_INFO, &|part, counted, items| {
-            let text = if part == Part::Author { &author } else { &title };
-            let units = text.encode_utf16().count() as u32;
+            let text = match (part, &page) {
+                (Part::Title, _) => &title,
+                (Part::Author, _) => &author,
+                (Part::PageNumber, Some(page)) => page,
+                _ => return Ok(items),
+            };
             let width = text_width(text, em_px(&items, resolution));
-            Ok(items
+            Ok(set_run_length(items, text.encode_utf16().count(), counted)
                 .into_iter()
-                .map(|(tag, mut value)| {
-                    if tag == 0x0b && counted && value.len() >= 12 && value[0..4] == 1u32.to_le_bytes() {
-                        value[8..12].copy_from_slice(&units.to_le_bytes());
-                    }
-                    (tag, value)
-                })
-                .map(|(tag, value)| resize_block(tag, value, width, part == Part::Author))
+                .map(|(tag, value)| resize_block(tag, value, width, Align::Start))
                 .collect())
         })?;
         drop_render_cache(db, layer_id)?;
     }
     Ok(())
-}
-
-/// One item of a text block `width` px wide: its bbox (keeping the left
-/// edge, or the middle with `centred`), block size and quad.
-fn resize_block(tag: u32, value: Vec<u8>, width: i64, centred: bool) -> (u32, Vec<u8>) {
-    match tag {
-        ATTR_BBOX if value.len() == 16 => {
-            let [x0, y0, x1, y1] = i32s(&value)[..] else {
-                unreachable!()
-            };
-            let x0 = if centred { (x0 + x1 - width).div_euclid(2) } else { x0 };
-            (tag, bytes(&[x0, y0, x0 + width, y1]))
-        }
-        ATTR_BLOCK_SIZE if value.len() == 8 => (tag, bytes(&[width, i32s(&value)[1]])),
-        ATTR_QUAD if value.len() == 32 => {
-            let mut quad = i32s(&value);
-            for index in [2, 4] {
-                quad[index] = quad[0] + width * 100;
-            }
-            (tag, bytes(&quad))
-        }
-        _ => (tag, value),
-    }
 }
 
 fn layer_offset(db: &Connection, layer_id: i64) -> Result<(i64, i64)> {
@@ -597,20 +873,55 @@ fn layer_offset(db: &Connection, layer_id: i64) -> Result<(i64, i64)> {
     Ok((x.unwrap_or(0), y.unwrap_or(0)))
 }
 
+/// Where a 作品情報 part goes: its position and its row there (items at one
+/// position stack up: ページ番号, 作品名, 作者名), and how many rows the
+/// tallest stack has.
+fn story_rows(story: &StoryLayout) -> (impl Fn(Part) -> Option<(StoryPosition, i64)>, i64) {
+    let order = [
+        (
+            Part::PageNumber,
+            story.page_number.as_ref().map(|number| number.position),
+        ),
+        (Part::Title, Some(story.title_position)),
+        (Part::Author, Some(story.author_position)),
+    ];
+    let row = move |part: Part| {
+        let at = order.iter().position(|(one, _)| *one == part)?;
+        let position = order[at].1?;
+        let above = order[..at].iter().filter(|(_, other)| *other == Some(position)).count();
+        Some((position, above as i64))
+    };
+    let rows = order
+        .iter()
+        .filter_map(|(_, position)| *position)
+        .map(|position| order.iter().filter(|(_, other)| *other == Some(position)).count())
+        .max()
+        .unwrap_or(1) as i64;
+    (row, rows)
+}
+
 /// Move the story info texts from the template's frames to the new ones,
-/// scaled by the change of resolution: the 作品情報 below the 仕上がり (the
-/// 作品名 from its left edge, the 作者名 from its middle), the hidden ノンブル
-/// at the binding edge of the 仕上がり, level with the bottom of the 基本枠.
-fn place_story_texts(db: &Connection, old: &Frames, new: &Frames) -> Result<()> {
+/// scaled by the change of resolution: the 作品情報 under the 仕上がり (at its
+/// left edge, middle or right edge), the hidden ノンブル at the binding edge
+/// of the 仕上がり, level with the bottom of the 基本枠, and a shown one above
+/// or below the 基本枠.
+fn place_story_texts(db: &Connection, old: &Frames, new: &Frames, setup: &PageSetup) -> Result<()> {
     let scale = new.resolution / old.resolution;
     let at = |anchor_old: i64, anchor_new: i64, value: i64| {
         anchor_new + round_half_even((value - anchor_old) as f64 * scale)
     };
-    // CSP puts 作品名 and 作者名 about 6 mm under the 仕上がり (its pages of
-    // A3/B4 and A4/B5 agree). When the canvas has no room there (a canvas of
-    // 仕上がり + 裁ち落とし), they go up, inside the canvas, so they can be seen.
+    let px = |mm: f64| to_pixels(mm, "mm", new.resolution);
+    // CSP puts the first row about 6 mm under the 仕上がり (its pages of A3/B4
+    // and A4/B5 agree), a row a line high. When the canvas has no room there
+    // (a canvas of 仕上がり + 裁ち落とし), they go up, inside the canvas, so they
+    // can be seen.
     let margin = round_half_even(STORY_MARGIN_MM / 25.4 * new.resolution);
-    let below = |y0: i64, height: i64| at(old.trim[3], new.trim[3], y0).min(new.height - margin - height);
+    let (row_of, rows) = story_rows(&setup.story);
+    let below = |y0: i64, height: i64, row: i64| {
+        let first = at(old.trim[3], new.trim[3], y0);
+        let lift = (first + rows * height - (new.height - margin)).max(0);
+        first + row * height - lift
+    };
     for info in [STORY_INFO, NOMBRE_INFO] {
         for (layer_id, _) in story_layers(db, info)? {
             let (dx, dy) = layer_offset(db, layer_id)?;
@@ -625,19 +936,39 @@ fn place_story_texts(db: &Connection, old: &Frames, new: &Frames) -> Result<()> 
                             let (x0, y0, x1, y1) = (x0 + dx, y0 + dy, x1 + dx, y1 + dy);
                             let width = round_half_even((x1 - x0) as f64 * scale);
                             let height = round_half_even((y1 - y0) as f64 * scale);
-                            let (x0, y0) = match part {
-                                Part::Title => (at(old.trim[0], new.trim[0], x0), below(y0, height)),
-                                Part::Author => {
-                                    let (old_mid, new_mid) =
-                                        ((old.trim[0] + old.trim[2]) / 2, (new.trim[0] + new.trim[2]) / 2);
-                                    let middle = at(old_mid, new_mid, (x0 + x1) / 2);
-                                    (middle - width / 2, below(y0, height))
-                                }
-                                // A left page: the binding edge is on the right.
-                                Part::Nombre => (
+                            let along = |align: Align, from: i64, to: i64| match align {
+                                Align::Start => from,
+                                Align::Middle => (from + to) / 2 - width / 2,
+                                Align::End => to - width,
+                            };
+                            let (x0, y0) = match (part, &setup.story.nombre) {
+                                (Part::Nombre, None) => (
+                                    // A left page: the binding edge is on the right.
                                     at(old.trim[2], new.trim[2], x1) - width,
                                     at(old.basic[3], new.basic[3], y1) - height,
                                 ),
+                                (Part::Nombre, Some(nombre)) => {
+                                    // 内側 is the binding side: the right of a left page.
+                                    let [across, apart] = [px(nombre.offset_mm[0]), px(nombre.offset_mm[1])];
+                                    let x = match nombre.place.align() {
+                                        Align::Start => new.basic[0] + across,
+                                        Align::Middle => along(Align::Middle, new.basic[0], new.basic[2]),
+                                        Align::End => new.basic[2] - across - width,
+                                    };
+                                    let y = if nombre.place.top() {
+                                        new.basic[1] - apart - height
+                                    } else {
+                                        new.basic[3] + apart
+                                    };
+                                    (x, y)
+                                }
+                                (part, _) => match row_of(part) {
+                                    Some((position, row)) => (
+                                        along(position.align(), new.trim[0], new.trim[2]),
+                                        below(y0, height, row),
+                                    ),
+                                    None => (at(old.trim[0], new.trim[0], x0), below(y0, height, 0)),
+                                },
                             };
                             (tag, bytes(&[x0 - dx, y0 - dy, x0 + width - dx, y0 + height - dy]))
                         }

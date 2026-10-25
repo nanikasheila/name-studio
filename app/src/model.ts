@@ -440,6 +440,43 @@ export interface CspPage {
   font?: string;
   /** 縦スクロール: the pieces joined one under the other into tall pages (as many as CSP's largest side holds) rather than a page each. */
   joinPieces?: boolean;
+  /** 作品情報・ノンブルの残りの設定 (CSP の作品基本設定); none: CSP's defaults (作品名 左下, 作者名 下, ページ番号なし, 隠しノンブル). */
+  story?: CspStory;
+}
+
+/** Where a 作品情報 text goes under the 仕上がり: 左下・下・右下. */
+export type StoryPosition = "left" | "center" | "right";
+
+/** CSP's 作品情報 and ノンブル settings besides 作品名・話数・作者名. */
+export interface CspStory {
+  /** サブタイトル, after 作品名 and 話数. */
+  subtitle?: string;
+  /** none: left. */
+  titlePosition?: StoryPosition;
+  /** none: center. */
+  authorPosition?: StoryPosition;
+  /** ページ番号 in the 作品情報 (`7ページ`) from `start`; none: not shown. Its position, none: right. */
+  pageNumber?: { start: number; position?: StoryPosition };
+  /** A ノンブル printed on the page in place of the hidden one (at the binding edge, in the bleed). */
+  nombre?: ShownNombre;
+}
+
+/** Where a shown ノンブル goes: above or below the 基本枠, on the binding side (内側), in the middle or the other side (外側). */
+export type NombrePlace = "top-inner" | "top" | "top-outer" | "bottom-inner" | "bottom" | "bottom-outer";
+
+export interface ShownNombre {
+  place: NombrePlace;
+  /** 白 rather than 黒. */
+  white?: boolean;
+  /** フチ width (mm); none: no フチ. */
+  edgeMm?: number;
+  /** フォーマット: the text before and after the number. */
+  prefix?: string;
+  suffix?: string;
+  /** 基本枠との間隔 (mm): 横 (inwards), 縦; none: [0, 5]. */
+  offsetMm?: [number, number];
+  /** サイズ (pt); none: 9. */
+  sizePt?: number;
 }
 
 /** 作品の既定: the sizes and line widths a name draws with; none: the app's (style.ts). */

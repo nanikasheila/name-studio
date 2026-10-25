@@ -60,5 +60,18 @@
     "touched",
     "intersection",
     "whole"
+  ],
+  "storyPosition": [
+    "left",
+    "center",
+    "right"
+  ],
+  "nombrePlace": [
+    "top-inner",
+    "top",
+    "top-outer",
+    "bottom-inner",
+    "bottom",
+    "bottom-outer"
   ]
 }

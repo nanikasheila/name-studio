@@ -5,7 +5,9 @@ use std::path::Path;
 use clip_core::offscreen::OffscreenParameters;
 use clip_core::text::{NewText, parse_tlv};
 use clip_core::vector::NewVectorLine;
-use clip_core::write::blank::{PageSetup, StoryFont, write_builtin_template};
+use clip_core::write::blank::{
+    NombrePlace, PageNumber, PageSetup, ShownNombre, StoryFont, StoryLayout, StoryPosition, write_builtin_template,
+};
 use clip_core::write::raster_page::{PageLayer, RasterLayer, RasterWorkWriter, WorkOptions};
 use clip_core::write::split::DEFAULT_NAME_PATTERN;
 use clip_core::write::verify::{ExpectedLayer, check_clip, verify_page, verify_work};
@@ -28,6 +30,7 @@ fn commercial() -> PageSetup {
         author: "だれか".into(),
         nombre_start: 1,
         font: None,
+        story: StoryLayout::default(),
     }
 }
 
@@ -50,6 +53,7 @@ fn small_left() -> PageSetup {
             name: "BIZ UDゴシック".into(),
             postscript: "BIZ-UDGothic".into(),
         }),
+        story: StoryLayout::default(),
     }
 }
 
@@ -358,6 +362,260 @@ fn writes_a_work_with_editable_layers_from_the_built_template() {
     assert_eq!(project.pages.len(), 2);
 }
 
+/// G1 / G2, made in CSP EX 5.1.4: a 60 × 80 mm 仕上がり (= 基本枠) on a
+/// 70 × 90 mm canvas at 600 dpi, with サブタイトル, ページ番号 from 7 and a
+/// white ノンブル `p.1-` 3 mm from the 基本枠.
+fn shown(place: NombrePlace, position: StoryPosition) -> PageSetup {
+    PageSetup {
+        canvas_mm: [70.0, 90.0],
+        trim_mm: [60.0, 80.0],
+        basic_mm: [60.0, 80.0],
+        title: "G1".into(),
+        story_index: None,
+        author: "作者".into(),
+        story: StoryLayout {
+            subtitle: "サブ".into(),
+            title_position: position,
+            author_position: position,
+            page_number: Some(PageNumber { start: 7, position }),
+            nombre: Some(ShownNombre {
+                place,
+                white: true,
+                edge_mm: Some(0.5),
+                prefix: "p.".into(),
+                suffix: "-".into(),
+                offset_mm: [0.0, 3.0],
+                size_pt: 9.0,
+            }),
+        },
+        ..commercial()
+    }
+}
+
+/// (part, text, canvas bbox, font size) of every block of the story info layers of `kind`.
+fn story_parts(path: &Path, kind: i64) -> Vec<(i32, String, [i32; 4], i32)> {
+    let document = ClipDocument::read(path).unwrap();
+    let mut statement = document
+        .database()
+        .prepare(
+            "SELECT TextLayerString, TextLayerAttributes, TextLayerStringArray, TextLayerAttributesArray,
+                    LayerOffsetX, LayerOffsetY FROM Layer WHERE ComicStoryInfoType = ?1 ORDER BY MainId",
+        )
+        .unwrap();
+    let rows: Vec<StoryRow> = statement
+        .query_map([kind], |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+            ))
+        })
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    let split = |blob: &[u8]| {
+        let mut parts = Vec::new();
+        let mut at = 0;
+        while at < blob.len() {
+            let size = u32::from_le_bytes(blob[at..at + 4].try_into().unwrap()) as usize;
+            parts.push(blob[at + 4..at + 4 + size].to_vec());
+            at += 4 + size;
+        }
+        parts
+    };
+    let block = |text: String, attributes: &[u8], dx: i32, dy: i32| {
+        let items = parse_tlv(attributes).unwrap();
+        let value = |tag: u32| items.iter().find(|(id, _)| *id == tag).unwrap().1;
+        let n = |bytes: &[u8], at: usize| i32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
+        let bbox = value(0x2a);
+        (
+            n(value(0x2e), 0),
+            text,
+            [n(bbox, 0) + dx, n(bbox, 4) + dy, n(bbox, 8) + dx, n(bbox, 12) + dy],
+            n(value(0x20), 0),
+        )
+    };
+    let mut blocks = Vec::new();
+    for (text, attributes, strings, array, dx, dy) in rows {
+        blocks.push(block(String::from_utf8(text).unwrap(), &attributes, dx, dy));
+        if let (Some(strings), Some(array)) = (strings, array) {
+            for (text, attributes) in split(&strings).into_iter().zip(split(&array)) {
+                blocks.push(block(String::from_utf8(text).unwrap(), &attributes, dx, dy));
+            }
+        }
+    }
+    blocks
+}
+
+fn canvas_texts(path: &Path, columns: &str) -> Vec<String> {
+    let document = ClipDocument::read(path).unwrap();
+    let count = columns.split(',').count();
+    document
+        .database()
+        .query_row(&format!("SELECT {columns} FROM Canvas"), [], |row| {
+            (0..count).map(|index| row.get::<_, String>(index)).collect()
+        })
+        .unwrap()
+}
+
+#[test]
+fn lays_out_the_story_info_and_a_shown_nombre_as_csp_does() {
+    let close = |a: i32, b: i32| (a - b).abs() <= 1;
+    // G1: everything at 左下, the ノンブル 上部内側 (the right of a left page).
+    // CSP put the 作品情報 past the bottom of G1's canvas; on a canvas 20 mm
+    // taller they are where it had them, from the 仕上がり.
+    let folder = tempfile::tempdir().unwrap();
+    let setup = PageSetup {
+        canvas_mm: [70.0, 110.0],
+        ..shown(NombrePlace::TopInner, StoryPosition::Left)
+    };
+    let built = write_builtin_template(&setup, folder.path()).unwrap();
+    let page = ClipDocument::read(&built.page).unwrap();
+    assert_eq!((page.canvas.width_px, page.canvas.height_px), (1654, 2598));
+    let lower = (2598 - 2126) / 2;
+    let story = story_parts(&built.page, 1);
+    let texts: Vec<(i32, &str)> = story.iter().map(|(part, text, _, _)| (*part, text.as_str())).collect();
+    assert_eq!(texts, [(1, "G1 サブ"), (2, "作者"), (4, "7ページ")]);
+    // Rows a line (50 px) high from 6 mm under the 仕上がり: ページ番号, 作品名, 作者名.
+    let bbox = |part: i32| story.iter().find(|block| block.0 == part).unwrap().2;
+    for (part, y) in [(4, 2150), (1, 2200), (2, 2250)] {
+        let [x0, y0, _, y1] = bbox(part);
+        assert!(
+            x0 == 118 && close(y0, y + lower) && y1 - y0 == 50,
+            "{part}: {:?}",
+            bbox(part)
+        );
+    }
+    let nombre = story_parts(&built.page, 2);
+    assert_eq!(nombre.len(), 1);
+    let (part, text, [_, y0, x1, y1], size) = &nombre[0];
+    assert_eq!((*part, text.as_str(), *size), (16, "p.1-", 900));
+    assert!(
+        *x1 == 1535 && close(*y0, -29 + lower) && *y1 == 47 + lower,
+        "{nombre:?}"
+    );
+    assert_eq!(
+        canvas_ints(
+            &built.page,
+            "ComicStoryStoryPosition, ComicStoryAuthorPosition, ComicStoryUsePageNumber, ComicStoryPageNumberStart, \
+             ComicStoryPageNumberPosition, ComicStoryUseShownNombre, ComicStoryUseHiddenNombre, ComicStoryNombrePosition, \
+             ComicStoryNombreColor, ComicStoryNombreUseEdge"
+        ),
+        [1, 1, 1, 7, 1, 1, 0, 1, 1, 1]
+    );
+    assert_eq!(
+        canvas_texts(
+            &built.page,
+            "ComicStorySubTitle, ComicStoryNombrePrefix, ComicStoryNombreSuffix"
+        ),
+        ["サブ", "p.", "-"]
+    );
+    // フチ is the layer's effect, as CSP gave G1's: 0.5 mm at 600 dpi, black around white.
+    let (attached, info): (i64, Vec<u8>) = page
+        .database()
+        .query_row(
+            "SELECT LayerEffectAttached, LayerEffectInfo FROM Layer WHERE ComicStoryInfoType = 2",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    let edge = std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/nombre-edge.bin")).unwrap();
+    assert_eq!((attached, info), (1, edge));
+    assert!(check_clip(&built.page).ok());
+    // On G1's own canvas the three rows go up, inside it, in the same order.
+    let folder = tempfile::tempdir().unwrap();
+    let built = write_builtin_template(&shown(NombrePlace::TopInner, StoryPosition::Left), folder.path()).unwrap();
+    let story = story_parts(&built.page, 1);
+    let bbox = |part: i32| story.iter().find(|block| block.0 == part).unwrap().2;
+    assert!(
+        bbox(4)[3] == bbox(1)[1] && bbox(1)[3] == bbox(2)[1] && bbox(2)[3] < 2126,
+        "{story:?}"
+    );
+
+    // G2: everything at 右下, the ノンブル 下部外側 (the left of a left page).
+    let folder = tempfile::tempdir().unwrap();
+    let built = write_builtin_template(&shown(NombrePlace::BottomOuter, StoryPosition::Right), folder.path()).unwrap();
+    let story = story_parts(&built.page, 1);
+    for (part, _, [_, _, x1, _], _) in &story {
+        assert_eq!(*x1, 1535, "{part}: {story:?}");
+    }
+    let nombre = story_parts(&built.page, 2);
+    let [x0, y0, _, y1] = nombre[0].2;
+    assert!(x0 == 118 && y0 == 2079 && close(y1, 2155), "{nombre:?}");
+}
+
+#[test]
+fn numbers_each_page_of_a_work_with_a_shown_nombre() {
+    let folder = tempfile::tempdir().unwrap();
+    let setup = PageSetup {
+        resolution: 150.0,
+        ..shown(NombrePlace::Bottom, StoryPosition::Center)
+    };
+    let built = write_builtin_template(&setup, &folder.path().join("template")).unwrap();
+    let mut writer = RasterWorkWriter::new(WorkOptions {
+        template: built.page.clone(),
+        out_dir: folder.path().join("out"),
+        name_pattern: DEFAULT_NAME_PATTERN.into(),
+        work: Some(("確認".into(), built.work.clone())),
+        story_index: None,
+        inputs: Vec::new(),
+        donor_sources: vec![built.parts.clone()],
+        draft_layers: Vec::new(),
+        layer_looks: Vec::new(),
+        frame_folders: false,
+        right_binding: None,
+    })
+    .unwrap();
+    let blank = RgbaImage::transparent(writer.canvas.width_px, writer.canvas.height_px);
+    let layers = vec![PageLayer::Raster(RasterLayer {
+        name: "ラフ".into(),
+        image: blank,
+    })];
+    let first = writer.write_page(&layers, None, false).unwrap();
+    let second = writer.write_page(&layers, None, false).unwrap();
+    let spread = writer.write_page(&layers, None, true).unwrap();
+    let report = writer.finish().unwrap();
+    let texts = |path: &Path, kind: i64| -> Vec<String> {
+        let mut texts: Vec<String> = story_parts(path, kind)
+            .into_iter()
+            .filter(|(part, ..)| *part == 4 || *part == 16)
+            .map(|(_, text, ..)| text)
+            .collect();
+        texts.sort();
+        texts
+    };
+    assert_eq!(
+        (texts(&first, 1), texts(&first, 2)),
+        (vec!["7ページ".to_owned()], vec!["p.1-".to_owned()])
+    );
+    assert_eq!(
+        (texts(&second, 1), texts(&second, 2)),
+        (vec!["8ページ".to_owned()], vec!["p.2-".to_owned()])
+    );
+    assert_eq!(
+        (texts(&spread, 1), texts(&spread, 2)),
+        (
+            vec!["10ページ".to_owned(), "9ページ".to_owned()],
+            vec!["p.3-".to_owned(), "p.4-".to_owned()]
+        )
+    );
+    // 下部: in the middle of the 基本枠 on either side.
+    let page = ClipDocument::read(&second).unwrap();
+    let [x0, _, x1, _] = story_parts(&second, 2)[0].2;
+    assert!(
+        ((x0 + x1) as i64 / 2 - page.canvas.width_px / 2).abs() <= 1,
+        "{x0}..{x1}"
+    );
+    for path in [&first, &second, &spread] {
+        assert!(check_clip(path).ok());
+    }
+    let check = verify_work(&report.work.unwrap(), Some(&report.pages));
+    assert!(check.problems.is_empty(), "{:?}", check.problems);
+}
+
 #[test]
 fn refuses_settings_csp_cannot_make() {
     let check = |change: &dyn Fn(&mut PageSetup)| {
@@ -370,5 +628,8 @@ fn refuses_settings_csp_cannot_make() {
     assert!(check(&|setup| setup.basic_offset_mm = [60.0, 0.0]).contains("基本枠"));
     assert!(check(&|setup| setup.title = " ".into()).contains("作品名"));
     assert!(check(&|setup| setup.canvas_mm = [2000.0, 2000.0]).contains("大きすぎ"));
+    let mut nombre = shown(NombrePlace::Top, StoryPosition::Left);
+    nombre.story.nombre.as_mut().unwrap().size_pt = 200.0;
+    assert!(nombre.check().unwrap_err().to_string().contains("ノンブルの大きさ"));
     assert!(commercial().check().is_ok() && small_left().check().is_ok());
 }
