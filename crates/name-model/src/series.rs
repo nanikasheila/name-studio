@@ -65,6 +65,11 @@ pub struct SeriesShared {
     pub rough_layers: Vec<RoughLayer>,
 }
 
+/// A path from the series' folder, on any system: no root ("/x", "\\x") and no drive ("C:x").
+fn is_relative(path: &str) -> bool {
+    !(path.starts_with(['/', '\\']) || path.as_bytes().get(1) == Some(&b':') || Path::new(path).has_root())
+}
+
 impl Series {
     pub fn from_json(text: &str) -> Result<Self, ProjectError> {
         let series: Series = serde_json::from_str(text).map_err(ProjectError::Json)?;
@@ -76,7 +81,7 @@ impl Series {
             ));
         }
         for episode in &series.episodes {
-            if episode.path.trim().is_empty() || Path::new(&episode.path).is_absolute() {
+            if episode.path.trim().is_empty() || !is_relative(&episode.path) {
                 problems.push(format!("話「{}」のファイルの場所が正しくありません", episode.title));
             }
         }
@@ -116,6 +121,7 @@ mod tests {
         assert!(Series::from_json(&text(1, "1話.namestudio")).is_ok());
         assert!(Series::from_json(&text(2, "1話.namestudio")).is_err());
         assert!(Series::from_json(&text(1, "/abs/1話.namestudio")).is_err());
+        assert!(Series::from_json(&text(1, "C:/abs/1話.namestudio")).is_err());
     }
 
     #[test]
