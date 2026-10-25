@@ -232,8 +232,10 @@ fn parse_names(table: &[u8]) -> Vec<Name> {
         let (text, rank, language) = match (platform, encoding) {
             (3, 0 | 1 | 10) | (0, _) => {
                 let units: Vec<u16> = bytes
-                    .chunks_exact(2)
-                    .map(|pair| u16::from_be_bytes([pair[0], pair[1]]))
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|&pair| u16::from_be_bytes(pair))
                     .collect();
                 let rank = match language {
                     JAPANESE => 3,
