@@ -3,6 +3,7 @@
 // screen, the PDF and the CSP vector layers all show the same.
 
 import type { Panel, Point } from "./model";
+import { panelLineMm } from "./style";
 
 /** Twice the area of a polygon, positive when it runs anticlockwise (y up) / clockwise on the page (y down). */
 function area2(points: readonly Point[]): number {
@@ -135,6 +136,6 @@ export function clipOpen(points: readonly Point[], clip: readonly Point[]): Poin
  */
 export function maskShape(panel: Panel): Point[] | null {
   if (!isConvex(panel.shape)) return null;
-  const border = panel.border === "thick" ? 1.2 : panel.border === "none" ? 0 : 0.6;
+  const border = panel.border === "none" ? 0 : panelLineMm(panel);
   return insetConvex(panel.shape, border / 2);
 }

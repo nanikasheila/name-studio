@@ -60,7 +60,8 @@
             2.5,
             3.5
           ],
-          "spread": "spread1"
+          "spread": "spread1",
+          "lineMm": 0.8
         }
       ],
       "lines": [
@@ -422,7 +423,8 @@
                     2.5,
                     3.5
                   ],
-                  "spread": "spread1"
+                  "spread": "spread1",
+                  "lineMm": 0.8
                 }
               ],
               "lines": [
@@ -668,7 +670,8 @@
           2.5,
           3.5
         ],
-        "spread": "spread1"
+        "spread": "spread1",
+        "lineMm": 0.8
       },
       "lines": [
         {
@@ -814,6 +817,18 @@
     "sfx": "メイリオ",
     "aside": "BIZ UDゴシック",
     "emphasis": "游ゴシック Bold"
+  },
+  "style": {
+    "fontPt": {
+      "speech": 14,
+      "thought": 13.5,
+      "narration": 12,
+      "sfx": 20,
+      "aside": 9
+    },
+    "panelLineMm": 0.5,
+    "thickLineMm": 1.4,
+    "balloonLineMm": 0.25
   },
   "nextId": 42
 }

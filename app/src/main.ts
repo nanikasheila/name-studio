@@ -11,6 +11,7 @@ import { appVersion, checkForUpdate } from "./updater";
 import { buildRequest, folderOf, summarize, type ExportForm, type Fit } from "./export";
 import { dialogueByPage, effectiveVisibility, initiallyHidden, spreads } from "./pages";
 import { drawSheet, type PlacedImage, type Transform } from "./render";
+import { applyNewNameDefaults } from "./namedefaults";
 import { newProject, STRUCTURES, type Project } from "./project";
 import { adoptShape, libraryShapes } from "./shapes";
 import type { LayerView, PageCell, SheetView } from "./types";
@@ -578,12 +579,13 @@ $("new-project").addEventListener("click", async () => {
       const title = $<HTMLInputElement>("nn-title").value.trim() || "新しいネーム";
       const kind = $<HTMLSelectElement>("nn-binding").value;
       const project = newProject(title, pages, kind === "left" || kind === "scroll" ? kind : "right");
+      const usedDefaults = applyNewNameDefaults(project);
       if ($<HTMLInputElement>("nn-target").checked) project.plan = { targetPages: pages };
       const kept = libraryShapes().find((s) => s.id === shape.value);
       if (kept) adoptShape(project, kept);
       else if (shape.value) project.plan = { ...(project.plan ?? {}), structure: shape.value };
       showWorkspace("editor");
-      workbench.show(project, null, `${pages} ページの白紙のネーム「${title}」を作りました`);
+      workbench.show(project, null, `${pages} ページの白紙のネーム「${title}」を作りました${usedDefaults ? "（設定の「新しいネームの既定」を使いました）" : ""}`);
     },
     { once: true },
   );

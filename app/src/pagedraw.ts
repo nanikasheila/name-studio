@@ -7,6 +7,7 @@ import { lineBold, lineFont } from "./fonts";
 import { borderLines, borderWidthMm, dashes, effectStrokes, stacked } from "./koma";
 import { MM_PER_PT, type Brush, type Line, type Page, type Panel, type Point, type Stroke } from "./project";
 import { drawText } from "./render";
+import { balloonLineMm } from "./style";
 
 /** Page millimetres → canvas pixels: `px = mm * scale + offset`. */
 export interface MmToPx {
@@ -17,8 +18,6 @@ export interface MmToPx {
 
 export const INK = "#1b1a18";
 /** Line widths on the manuscript, in mm. */
-export const PANEL_LINE_MM = 0.6;
-export const BALLOON_LINE_MM = 0.3;
 
 export function tracePath(ctx: CanvasRenderingContext2D, points: readonly (readonly number[])[], m: MmToPx, close: boolean): void {
   ctx.beginPath();
@@ -281,7 +280,7 @@ export function drawPanelBorders(
 
 /** Balloons of a page: tails, links, shapes, 白抜き. */
 export function drawBalloons(ctx: CanvasRenderingContext2D, page: Page, m: MmToPx, minWidthPx = 0.8): void {
-  const width = Math.max(BALLOON_LINE_MM * m.scale, minWidthPx);
+  const width = Math.max(balloonLineMm() * m.scale, minWidthPx);
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
   for (const balloon of pageBalloons(page)) {

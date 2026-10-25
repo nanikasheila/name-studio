@@ -55,3 +55,21 @@ describe("用途ごとのフォント", () => {
     expect(fontChoices()).toEqual([ANTIQUE.name, GOTHIC_BOLD.name]);
   });
 });
+
+describe("フォントの一覧", () => {
+  it("lists recently used fonts first, then Japanese ones, then the others, narrowed by what is typed", async () => {
+    const { fontGroups } = await import("./fontpicker");
+    const ARIAL = { name: "Arial Bold", families: ["Arial"], postscript: "Arial-BoldMT", weight: 700, italic: false, japanese: false };
+    setInstalledFonts([ANTIQUE, GOTHIC_BOLD, ARIAL]);
+    const choices = fontChoices();
+    expect(fontGroups("", choices, ["Arial Bold", "消えた書体"])).toEqual([
+      { title: "最近使ったフォント", names: ["Arial Bold"] },
+      { title: "日本語のフォント", names: [ANTIQUE.name, GOTHIC_BOLD.name] },
+      { title: "ほかのフォント", names: ["Arial Bold"] },
+    ]);
+    // By the English family and the PostScript name too.
+    expect(fontGroups("yu gothic", choices, []).flatMap((group) => group.names)).toEqual([GOTHIC_BOLD.name]);
+    expect(fontGroups("iwaant", choices, []).flatMap((group) => group.names)).toEqual([ANTIQUE.name]);
+    expect(fontGroups("ない", choices, [])).toEqual([]);
+  });
+});

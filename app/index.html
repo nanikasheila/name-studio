@@ -12,7 +12,7 @@
       <button id="new-project" class="with-icon labelled" title="白紙のネームを作る"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.5h6.5L15 6v11.5H5z"/><path d="M11.5 2.5V6H15M10 9v6M7 12h6"/></svg><span>新しいネーム</span></button>
       <button id="save" class="editor-only with-icon labelled" title="保存（Ctrl+S）。編集中は自動でも保存します" hidden><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 3.5h10l3 3v10h-13z"/><path d="M6.5 3.5v4h6v-4M6 16.5v-5h8v5"/></svg><span>保存</span></button>
       <button id="versions" class="editor-only with-icon labelled" title="版の履歴: 前の状態に戻す、自動保存の設定" hidden><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 10a6.5 6.5 0 1 0 2-4.7"/><path d="M3 3.5v3h3M10 6.5V10l2.5 2"/></svg><span>履歴</span></button>
-      <button id="settings" class="editor-only with-icon labelled" title="設定: コマ間、ページの間隔、吸着（グリッド・ほかのコマの線）" hidden><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M8.6 2.5h2.8l.4 2.1 1.5.9 2-.8 1.4 2.4-1.6 1.4v1.8l1.6 1.4-1.4 2.4-2-.8-1.5.9-.4 2.1H8.6l-.4-2.1-1.5-.9-2 .8-1.4-2.4 1.6-1.4V9.1L3.3 7.7l1.4-2.4 2 .8 1.5-.9z"/><circle cx="10" cy="10" r="2.4"/></svg><span>設定</span></button>
+      <button id="settings" class="editor-only with-icon labelled" title="設定: コマ割り・セリフとフキダシ・フォント・読む向き（このネーム）、表示・操作・吸着・保存（この PC）" hidden><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M8.6 2.5h2.8l.4 2.1 1.5.9 2-.8 1.4 2.4-1.6 1.4v1.8l1.6 1.4-1.4 2.4-2-.8-1.5.9-.4 2.1H8.6l-.4-2.1-1.5-.9-2 .8-1.4-2.4 1.6-1.4V9.1L3.3 7.7l1.4-2.4 2 .8 1.5-.9z"/><circle cx="10" cy="10" r="2.4"/></svg><span>設定</span></button>
       <button id="shortcuts" class="editor-only with-icon labelled" title="ショートカットキーの割り当て" hidden><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="5" width="16" height="10" rx="1.5"/><path d="M5 8h1M8 8h1M11 8h1M14 8h1M5 11h1M14 11h1M8 11h4"/></svg><span>キー設定</span></button>
       <button id="pen-settings" class="editor-only with-icon labelled" title="ペンタブレットの設定: 筆圧、傾き、消しゴム側、サイドボタン、タッチ操作、カーソル" hidden><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="4" width="15" height="12" rx="1.5"/><path d="M7 13l1-3 5-5 2 2-5 5z"/></svg><span>ペン設定</span></button>
       <span id="file-name" class="file-name">ファイルが開かれていません</span>
@@ -356,50 +356,141 @@
     </dialog>
     <dialog id="settings-dialog" class="export settings">
       <form method="dialog">
-        <h2>設定</h2>
-        <section>
-          <h3>このネーム <small>（ネームのファイルに保存）</small></h3>
-          <div class="setting-row">
-            <span>コマ間</span>
-            <label>左右 <input type="number" id="st-gutter-across" min="0" max="40" step="0.5" /> mm</label>
-            <label>上下 <input type="number" id="st-gutter-down" min="0" max="40" step="0.5" /> mm</label>
+        <div class="settings-head">
+          <h2>設定</h2>
+          <input type="search" id="st-search" placeholder="設定を探す（例: 太さ、フォント、吸着）" aria-label="設定を探す" autocomplete="off" />
+        </div>
+        <div class="settings-body">
+          <nav id="st-nav" class="settings-nav" aria-label="設定の分類"></nav>
+          <div id="st-panes" class="settings-panes">
+            <section class="settings-pane" data-pane="koma" data-scope="name" data-title="コマ割り">
+              <h3>コマ割り <small>このネーム（ファイルに保存）</small></h3>
+              <div class="setting-item" data-keys="コマ間 間白 すき間 ガター 間隔">
+                <div class="setting-row">
+                  <span>コマ間</span>
+                  <label>左右 <input type="number" id="st-gutter-across" min="0" max="40" step="0.5" /> mm</label>
+                  <label>上下 <input type="number" id="st-gutter-down" min="0" max="40" step="0.5" /> mm</label>
+                </div>
+                <p class="hint">コマを割るとき、コマ割りの型、台本からコマを作るときの間の広さです。今あるコマは変わりません。</p>
+              </div>
+              <div class="setting-item" data-keys="枠線 太さ 線幅 コマ枠 太枠 線の太さ">
+                <div class="setting-row">
+                  <span>枠線の太さ</span>
+                  <label>通常 <input type="number" id="st-panel-line" min="0.05" max="5" step="0.05" /> mm</label>
+                  <label>太枠 <input type="number" id="st-thick-line" min="0.05" max="5" step="0.05" /> mm</label>
+                </div>
+                <p class="hint">太さを決めていないコマの枠線です（破線・波線は通常の太さ）。画面・PDF・CSP の書き出しに効きます。1 つのコマだけ変えるときは、コマを選んで右の欄の「枠線の太さ」で。</p>
+              </div>
+            </section>
+            <section class="settings-pane" data-pane="lines" data-scope="name" data-title="セリフ・フキダシ">
+              <h3>セリフ・フキダシ <small>このネーム（ファイルに保存）</small></h3>
+              <div class="setting-item" data-keys="文字の大きさ 文字サイズ フォントサイズ pt ポイント 既定">
+                <h4>文字の大きさの既定（pt）</h4>
+                <div id="st-font-sizes" class="kind-grid"></div>
+                <p class="hint">新しいセリフ、台本の取り込みのセリフの大きさです。変えると、既定の大きさのままだった同じ種類のセリフも変わります。</p>
+              </div>
+              <div class="setting-item" data-keys="フキダシ 形 既定 楕円 雲 トゲ">
+                <h4>フキダシの形の既定</h4>
+                <div id="st-shapes" class="kind-grid"></div>
+                <p class="hint">右の欄の「「セリフ」の既定にする」と同じです。既定の形のままだった同じ種類のセリフも変わります。</p>
+              </div>
+              <div class="setting-item" data-keys="フキダシ 線 太さ 線幅">
+                <div class="setting-row">
+                  <span>フキダシの線</span>
+                  <label><input type="number" id="st-balloon-line" min="0.05" max="5" step="0.05" /> mm</label>
+                </div>
+                <p class="hint">フキダシとしっぽの線の太さです。画面・PDF・CSP の書き出しに効きます。</p>
+              </div>
+            </section>
+            <section class="settings-pane" data-pane="fonts" data-scope="name" data-title="フォント">
+              <h3>フォント <small>このネーム（ファイルに保存）</small></h3>
+              <div class="setting-item" data-keys="フォント 書体 用途 通常 強調 モノローグ ナレーション 描き文字 小書き">
+                <div id="st-fonts" class="font-roles"></div>
+                <p class="hint">セリフの種類ごと（と「太字（強調）」にしたセリフ）の書体です。空欄は「通常」と同じ。▾ で、この PC のフォントをその書体で並べた一覧から選べます（文字を打つと絞り込み）。CSP へはテキストレイヤーのフォントとして書き出します（この PC にあるフォントのとき）。1 つのセリフだけ変えるときは、右の欄の「フォント」で。</p>
+              </div>
+            </section>
+            <section class="settings-pane" data-pane="binding" data-scope="name" data-title="読む向き">
+              <h3>読む向き <small>このネーム（ファイルに保存）</small></h3>
+              <div class="setting-item" data-keys="読む向き 綴じ 右綴じ 左綴じ 縦書き 横書き 縦スクロール Webtoon">
+                <div class="setting-row">
+                  <span>読む向き</span>
+                  <select id="st-binding">
+                    <option value="right">右綴じ（右から左へ・縦書き）</option>
+                    <option value="left">左綴じ（左から右へ・横書き）</option>
+                    <option value="scroll" disabled>縦スクロール（上から下へ・横書き）</option>
+                  </select>
+                </div>
+                <label class="check"><input type="checkbox" id="st-binding-text" checked /> セリフの縦書き・横書きも合わせる</label>
+                <p class="hint">見開きの左右、コマとセリフを読む順、しっぽの向き、台本から並べる向きが変わります。CSP の作品の綴じ方は書き出しに使うテンプレートの作品に従います。縦スクロール（Webtoon）は新しいネームを作るときに選びます。</p>
+              </div>
+            </section>
+            <section class="settings-pane" data-pane="view" data-scope="pc" data-title="表示">
+              <h3>表示 <small>この PC</small></h3>
+              <div class="setting-item" data-keys="ページ 間隔 連続 すき間">
+                <div class="setting-row">
+                  <span>ページの間隔</span>
+                  <label><input type="number" id="st-page-gap" min="0" max="100" step="1" /> mm</label>
+                </div>
+                <p class="hint">「連続」で並べた見開きと見開きの間です。0 でくっつけます。</p>
+              </div>
+              <div class="setting-item" data-keys="メモ コマのメモ 演出 表示">
+                <label class="check"><input type="checkbox" id="st-show-notes" /> コマのメモをページの上に出す</label>
+                <p class="hint">画面だけで、書き出しには入りません。紙面の上の「コマのメモ」と同じです。</p>
+              </div>
+            </section>
+            <section class="settings-pane" data-pane="edit" data-scope="pc" data-title="操作">
+              <h3>操作 <small>この PC</small></h3>
+              <div class="setting-item" data-keys="コマ 動かす 中身 一緒 セリフ ラフ線">
+                <label class="check"><input type="checkbox" id="st-panel-carries" /> コマを動かす・形を変えるとき、中のセリフとラフ線も一緒に</label>
+              </div>
+              <div class="setting-item" data-keys="フキダシ 変形 文字の大きさ 追従 フォントサイズ">
+                <label class="check"><input type="checkbox" id="st-balloon-text" /> フキダシを変形すると文字の大きさも変える</label>
+                <p class="hint">切ると、変形の枠でフキダシだけ広げたり細くしたりでき、文字の大きさはそのままです。</p>
+              </div>
+            </section>
+            <section class="settings-pane" data-pane="snap" data-scope="pc" data-title="吸着">
+              <h3>吸着 <small>この PC</small></h3>
+              <div class="setting-item" data-keys="吸着 スナップ 水平 垂直 角">
+                <label class="check"><input type="checkbox" id="st-snap-axis" /> 水平・垂直（隣の角とそろえる）</label>
+              </div>
+              <div class="setting-item" data-keys="吸着 スナップ コマ 線 コマ間">
+                <label class="check"><input type="checkbox" id="st-snap-panels" /> ほかのコマの線（コマ間ぶん離れた所にも）</label>
+              </div>
+              <div class="setting-item" data-keys="吸着 スナップ 基本枠 裁ち切り 用紙">
+                <label class="check"><input type="checkbox" id="st-snap-frame" /> 基本枠・裁ち切り線・用紙の端</label>
+              </div>
+              <div class="setting-item" data-keys="吸着 スナップ グリッド 方眼 間隔">
+                <div class="setting-row">
+                  <label class="check"><input type="checkbox" id="st-snap-grid" /> グリッド</label>
+                  <label>間隔 <input type="number" id="st-grid-mm" min="1" max="50" step="0.5" /> mm</label>
+                </div>
+                <p class="hint">コマを動かす・角や辺を動かす・拡大縮小する・コマを描くときに効きます。吸い付いた線は点線で出ます。ドラッグ中に Alt を押している間は吸着しません。</p>
+              </div>
+            </section>
+            <section class="settings-pane" data-pane="save" data-scope="pc" data-title="保存">
+              <h3>保存 <small>この PC</small></h3>
+              <div class="setting-item" data-keys="自動保存 上書き 保存 ファイル">
+                <label class="check"><input type="checkbox" id="st-autosave" /> 編集をやめて 3 秒たつと、ネームデータのファイルに自動で上書き保存する</label>
+                <p class="hint">切っても、履歴（バージョン）には自動で残ります。「履歴」と同じ設定です。</p>
+              </div>
+            </section>
+            <section class="settings-pane" data-pane="more" data-scope="pc" data-title="ペン・キー">
+              <h3>ペン・キー <small>この PC</small></h3>
+              <div class="setting-item" data-keys="ペン タブレット 筆圧 傾き 消しゴム サイドボタン タッチ カーソル">
+                <div class="setting-row"><span>ペンタブレット</span><button type="button" id="st-open-pen">ペン設定を開く…</button></div>
+                <p class="hint">筆圧カーブ（下限・上限）、傾き、消しゴム側、サイドボタン、タッチ操作、カーソル。</p>
+              </div>
+              <div class="setting-item" data-keys="ショートカット キー 割り当て 左手デバイス">
+                <div class="setting-row"><span>ショートカット</span><button type="button" id="st-open-keys">キー設定を開く…</button></div>
+              </div>
+            </section>
+            <p id="st-nothing" class="hint settings-nothing" hidden>合う設定がありません。</p>
           </div>
-          <p class="hint">コマを割るとき、コマ割りの型、台本からコマを作るときの間の広さです。今あるコマは変わりません。</p>
-          <div class="setting-row">
-            <span>読む向き</span>
-            <select id="st-binding">
-              <option value="right">右綴じ（右から左へ・縦書き）</option>
-              <option value="left">左綴じ（左から右へ・横書き）</option>
-              <option value="scroll" disabled>縦スクロール（上から下へ・横書き）</option>
-            </select>
-            <label class="check"><input type="checkbox" id="st-binding-text" checked /> セリフの縦書き・横書きも合わせる</label>
-          </div>
-          <p class="hint">見開きの左右、コマとセリフを読む順、しっぽの向き、台本から並べる向きが変わります。CSP の作品の綴じ方は書き出しに使うテンプレートの作品に従います。縦スクロール（Webtoon）は新しいネームを作るときに選びます。</p>
-          <h4>フォント（用途ごと）</h4>
-          <div id="st-fonts" class="font-roles"></div>
-          <p class="hint">セリフの種類ごと（と「太字（強調）」にしたセリフ）の書体です。空欄は「通常」と同じ。この PC のフォントから選ぶか、名前を入れます。CSP へはテキストレイヤーのフォントとして書き出します（この PC にあるフォントのとき）。1 つのセリフだけ変えるときは、右の欄の「フォント」で。</p>
-        </section>
-        <section>
-          <h3>表示 <small>（この PC）</small></h3>
-          <div class="setting-row">
-            <span>ページの間隔</span>
-            <label><input type="number" id="st-page-gap" min="0" max="100" step="1" /> mm</label>
-          </div>
-          <p class="hint">「連続」で並べた見開きと見開きの間です。0 でくっつけます。</p>
-        </section>
-        <section>
-          <h3>吸着 <small>（この PC）</small></h3>
-          <label class="check"><input type="checkbox" id="st-snap-axis" /> 水平・垂直（隣の角とそろえる）</label>
-          <label class="check"><input type="checkbox" id="st-snap-panels" /> ほかのコマの線（コマ間ぶん離れた所にも）</label>
-          <label class="check"><input type="checkbox" id="st-snap-frame" /> 基本枠・裁ち切り線・用紙の端</label>
-          <div class="setting-row">
-            <label class="check"><input type="checkbox" id="st-snap-grid" /> グリッド</label>
-            <label>間隔 <input type="number" id="st-grid-mm" min="1" max="50" step="0.5" /> mm</label>
-          </div>
-          <p class="hint">コマを動かす・角や辺を動かす・拡大縮小する・コマを描くときに効きます。吸い付いた線は点線で出ます。ドラッグ中に Alt を押している間は吸着しません。</p>
-        </section>
-        <div class="actions">
+        </div>
+        <div class="actions settings-actions">
+          <button type="button" id="st-save-defaults" title="コマ間・枠線とフキダシの太さ・文字の大きさ・フキダシの形・フォントを、これから作る新しいネームにも使う">新しいネームの既定にする</button>
           <button type="button" id="st-reset">この PC の設定を初期に戻す</button>
+          <span class="spacer"></span>
           <button value="cancel" formnovalidate>閉じる</button>
         </div>
       </form>
