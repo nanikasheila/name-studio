@@ -30,6 +30,9 @@ export interface BuiltTemplate {
 /** The usual bleed (裁ち落とし) of a commercial manuscript. */
 const USUAL_BLEED_MM = 5;
 
+/** The largest side CSP takes, in px. */
+const MAX_SIDE_PX = 30000;
+
 /** The CSP page of the same size and frames as the name's own page, at 600 dpi. */
 export function pageFromFormat(format: PageFormat): CspPage {
   const room = Math.min(format.canvasMm[0] - format.trimMm[0], format.canvasMm[1] - format.trimMm[1]) / 2;
@@ -103,13 +106,36 @@ export interface StoryInfo {
   author: string;
 }
 
-/** The settings the Rust side makes the page and work with. */
+/**
+ * 縦スクロール with its pieces joined: how many pieces go one under the other
+ * on a CSP page, as many as CSP's largest side holds; otherwise 1.
+ */
+export function piecesPerPage(project: Pick<Project, "scroll" | "pages">, page: CspPage): number {
+  if (!project.scroll || !page.joinPieces) return 1;
+  const piecePx = Math.ceil((page.canvasMm[1] * page.resolution) / 25.4);
+  return Math.max(1, Math.min(project.pages.length, Math.floor(MAX_SIDE_PX / piecePx)));
+}
+
+/** The CSP page that holds `pieces` pieces of `page` one under the other: taller by the pieces below the first. */
+export function joinedPage(page: CspPage, pieces: number): CspPage {
+  if (pieces <= 1) return page;
+  const more = (pieces - 1) * page.canvasMm[1];
+  return {
+    ...page,
+    canvasMm: [page.canvasMm[0], page.canvasMm[1] + more],
+    trimMm: [page.trimMm[0], page.trimMm[1] + more],
+    basicMm: [page.basicMm[0], page.basicMm[1] + more],
+  };
+}
+
+/** The settings the Rust side makes the page and work with (縦スクロール with joined pieces: the tall page). */
 export function pageSetup(
   project: Project,
-  page: CspPage,
+  piece: CspPage,
   story: StoryInfo,
   postscriptOf: (font: string) => string | undefined = () => undefined,
 ): PageSetup {
+  const page = joinedPage(piece, piecesPerPage(project, piece));
   return {
     canvasMm: [...page.canvasMm],
     resolution: page.resolution,
@@ -126,9 +152,6 @@ export function pageSetup(
     font: page.font ? { name: page.font, postscript: postscriptOf(page.font) ?? page.font } : null,
   };
 }
-
-/** The largest side CSP takes, in px. */
-const MAX_SIDE_PX = 30000;
 
 /** Why CSP cannot make this page, or null (the Rust side checks the same). */
 export function setupProblem(setup: PageSetup): string | null {

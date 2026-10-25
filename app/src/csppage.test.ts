@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cspPageOf, pageFromFormat, pageSetup, pixelSize, presetOf, setupProblem, withPreset } from "./csppage";
+import { cspPageOf, joinedPage, pageFromFormat, pageSetup, piecesPerPage, pixelSize, presetOf, setupProblem, withPreset } from "./csppage";
 import { newProject, scrollPageFormat } from "./project";
 
 describe("CSP のページ設定", () => {
@@ -54,5 +54,22 @@ describe("CSP のページ設定", () => {
     expect(setupProblem({ ...setup, basicOffsetMm: [70, 0] })).toContain("基本枠");
     expect(setupProblem({ ...setup, canvasMm: [2000, 2000] })).toContain("大きすぎ");
     expect(setupProblem({ ...setup, bleedMm: -1 })).toContain("裁ち落とし");
+  });
+
+  it("joins the pieces of a 縦スクロール into pages as tall as CSP allows", () => {
+    const project = newProject("縦", 12, "scroll");
+    const piece = { ...cspPageOf(project), joinPieces: true };
+    // 240 mm at 600 dpi is 5,669 px: five of them stay under 30,000 px.
+    expect(piecesPerPage(project, piece)).toBe(5);
+    expect(piecesPerPage(project, { ...piece, resolution: 350 })).toBe(9);
+    expect(piecesPerPage(project, { ...piece, joinPieces: undefined })).toBe(1);
+    expect(piecesPerPage({ ...project, scroll: undefined }, piece)).toBe(1);
+    // Never more than the name has.
+    expect(piecesPerPage(newProject("縦", 2, "scroll"), piece)).toBe(2);
+    const tall = pageSetup(project, piece, { title: "x", storyIndex: null, author: "" });
+    expect(tall.canvasMm[1]).toBeCloseTo(piece.canvasMm[1] * 5);
+    expect(tall.trimMm[1]).toBeCloseTo(piece.trimMm[1] + 4 * piece.canvasMm[1]);
+    expect(pixelSize(joinedPage(piece, 5))[1]).toBeLessThanOrEqual(30000);
+    expect(setupProblem(tall)).toBeNull();
   });
 });

@@ -19,7 +19,7 @@ import { ISSUE_LABELS, checkName, issueSummary } from "./namecheck";
 import type { Project, RoughImage } from "./project";
 import { $, element } from "./dom";
 import { readText, writeText } from "./settings";
-import { cspPageOf, firstPageLeft, pageSetup, pixelSize, presetOf, PRESETS, setupProblem, withPreset } from "./csppage";
+import { cspPageOf, firstPageLeft, joinedPage, pageSetup, piecesPerPage, pixelSize, presetOf, PRESETS, setupProblem, withPreset } from "./csppage";
 import type { CspPage } from "./model";
 import { fontField } from "./fontpicker";
 import { installedFont } from "./fonts";
@@ -90,6 +90,8 @@ interface Templates {
   template: string;
   workTemplate: string;
   donors: string[];
+  /** 縦スクロール, joined: pieces on each page of the built-in template. */
+  pieces?: number;
 }
 
 
@@ -170,7 +172,7 @@ export class ExportDialog {
       this.showPage();
     });
     for (const [id] of PAGE_FIELDS) $(id).addEventListener("input", () => this.pageChanged());
-    for (const id of ["ne-dpi", "ne-first-side", "ne-nombre-start"]) $(id).addEventListener("change", () => this.pageChanged());
+    for (const id of ["ne-dpi", "ne-first-side", "ne-nombre-start", "ne-join-pieces"]) $(id).addEventListener("change", () => this.pageChanged());
     $("ne-run").addEventListener("click", () => void this.run());
     $("ne-update").addEventListener("click", () => void this.update());
     $("ne-readback").addEventListener("click", () => void this.readBack());
@@ -349,6 +351,8 @@ export class ExportDialog {
     const start = $<HTMLInputElement>("ne-nombre-start").valueAsNumber;
     if (Number.isInteger(start) && start !== 1) next.nombreStart = start;
     else delete next.nombreStart;
+    if (project?.scroll && $<HTMLInputElement>("ne-join-pieces").checked) next.joinPieces = true;
+    else delete next.joinPieces;
     return next;
   }
 
@@ -365,6 +369,8 @@ export class ExportDialog {
     dpi.value = String(page.resolution);
     $<HTMLSelectElement>("ne-first-side").value = firstPageLeft(project, page) ? "left" : "right";
     $<HTMLInputElement>("ne-nombre-start").value = String(page.nombreStart ?? 1);
+    $<HTMLInputElement>("ne-join-pieces").checked = !!page.joinPieces;
+    for (const row of document.querySelectorAll<HTMLElement>(".ne-join")) row.hidden = !project.scroll;
     $<HTMLInputElement>("ne-author").value = this.author;
     $("ne-binding-label").textContent = project.scroll ? "縦スクロール（左綴じとして作ります）" : project.binding === "left" ? "左綴じ（ネームの綴じ方）" : "右綴じ（ネームの綴じ方）";
     $("ne-story-font").replaceChildren(
@@ -384,6 +390,9 @@ export class ExportDialog {
     $<HTMLSelectElement>("ne-preset").value = presetOf(this.page) ?? "";
     const [w, h] = pixelSize(this.page);
     $("ne-px").textContent = `${w} × ${h} px`;
+    const project = this.host.project();
+    const pieces = project ? piecesPerPage(project, this.page) : 1;
+    $("ne-join-info").textContent = pieces > 1 ? `${pieces} 区切りで 1 ページ（${w} × ${pixelSize(joinedPage(this.page, pieces))[1]} px、${Math.ceil(project!.pages.length / pieces)} ページ）` : "";
   }
 
   /**
@@ -406,7 +415,7 @@ export class ExportDialog {
         p.author = author;
       });
     }
-    return { template: built.page, workTemplate: built.work, donors: [built.parts] };
+    return { template: built.page, workTemplate: built.work, donors: [built.parts], pieces: piecesPerPage(project, page) };
   }
 
   private async run(): Promise<void> {
@@ -460,6 +469,7 @@ export class ExportDialog {
                 "CSP でテキストとベクター線を描いて保存したページを「見本のページ」に選ぶと、直せるレイヤーで書き出せます。",
               { title: "Name Studio", kind: "warning", okLabel: "画像のまま書き出す", cancelLabel: "やめて見本を選ぶ" },
             ),
+          templates.pieces,
         );
         if (!report) {
           this.message("書き出しをやめました。「見本のページ」に、CSP でテキストとベクター線を描いて保存したページ（.clip）を選んでください。");
