@@ -66,7 +66,7 @@ export class StrokeCache {
 
   /** Forget pages not drawn since `keep` (the pages on screen are kept). */
   forget(keep: Set<string>): void {
-    for (const key of this.layers.keys()) if (!keep.has(key.slice(0, key.lastIndexOf("|")))) this.layers.delete(key);
+    for (const key of this.layers.keys()) if (!keep.has(key.slice(0, key.indexOf("|")))) this.layers.delete(key);
   }
 
   clear(): void {
@@ -76,9 +76,10 @@ export class StrokeCache {
   /**
    * Draw the page's lines that go under (or over) the panel borders, as
    * `drawStrokes` would, at `m` on `ctx` (whose transform maps to device pixels).
+   * `layer` keeps the picture of each ラフ線のレイヤー apart, with only its lines.
    */
-  draw(ctx: CanvasRenderingContext2D, page: Page, size: [number, number], m: MmToPx, over: boolean, style: StrokeStyle): void {
-    const strokes = page.strokes.filter((stroke) => !!stroke.over === over);
+  draw(ctx: CanvasRenderingContext2D, page: Page, size: [number, number], m: MmToPx, over: boolean, style: StrokeStyle, layerId = "", only?: Stroke[]): void {
+    const strokes = (only ?? page.strokes).filter((stroke) => !!stroke.over === over);
     if (!strokes.length) return;
     const t = ctx.getTransform();
     const pixelScale = Math.hypot(t.a, t.b);
@@ -87,7 +88,7 @@ export class StrokeCache {
       drawStrokes(ctx, { ...page, strokes }, m, over, style.color, style.minWidthPx, style.brushes);
       return;
     }
-    const key = `${page.id}|${over ? 1 : 0}`;
+    const key = `${page.id}|${layerId}|${over ? 1 : 0}`;
     const content = this.content(strokes, style);
     const now = this.now();
     let layer = this.layers.get(key);

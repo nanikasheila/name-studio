@@ -792,20 +792,20 @@ export function strokeHit(stroke: Stroke, point: Point, radius: number): boolean
 }
 
 /** Remove strokes under the eraser; returns how many went. */
-export function eraseStrokes(page: Page, point: Point, radius: number): number {
+export function eraseStrokes(page: Page, point: Point, radius: number, editable: (stroke: Stroke) => boolean = () => true): number {
   const before = page.strokes.length;
-  page.strokes = page.strokes.filter((stroke) => !strokeHit(stroke, point, radius));
+  page.strokes = page.strokes.filter((stroke) => !editable(stroke) || !strokeHit(stroke, point, radius));
   return before - page.strokes.length;
 }
 
-/** Erase like a CSP vector eraser; returns how many strokes changed. */
-export function eraseWith(project: Project, page: Page, point: Point, radius: number, mode: EraseMode): number {
-  if (mode === "whole") return eraseStrokes(page, point, radius);
+/** Erase like a CSP vector eraser; returns how many strokes changed. Lines not `editable` (a locked layer) stay. */
+export function eraseWith(project: Project, page: Page, point: Point, radius: number, mode: EraseMode, editable: (stroke: Stroke) => boolean = () => true): number {
+  if (mode === "whole") return eraseStrokes(page, point, radius, editable);
   const others = page.strokes.slice();
   let changed = 0;
   const result: Stroke[] = [];
   for (const stroke of page.strokes) {
-    if (stroke.points.length < 2 || !strokeHit(stroke, point, radius)) {
+    if (stroke.points.length < 2 || !editable(stroke) || !strokeHit(stroke, point, radius)) {
       result.push(stroke);
       continue;
     }
@@ -1090,14 +1090,14 @@ export function textAmount(page: Page): number {
 
 /** 囲って消す: remove the parts of rough lines inside `shape` (as CSP deletes
  * a selection on a vector layer); returns how many lines changed. */
-export function eraseInside(project: Project, page: Page, shape: readonly Point[]): number {
+export function eraseInside(project: Project, page: Page, shape: readonly Point[], editable: (stroke: Stroke) => boolean = () => true): number {
   if (shape.length < 3) return 0;
   const [x0, y0, x1, y1] = bounds([...shape]);
   let changed = 0;
   const result: Stroke[] = [];
   for (const stroke of page.strokes) {
     const [sx0, sy0, sx1, sy1] = bounds(stroke.points.map(([x, y]) => [x, y] as Point));
-    const near = sx1 >= x0 && sx0 <= x1 && sy1 >= y0 && sy0 <= y1;
+    const near = editable(stroke) && sx1 >= x0 && sx0 <= x1 && sy1 >= y0 && sy0 <= y1;
     if (!near) {
       result.push(stroke);
       continue;

@@ -19,6 +19,7 @@ import {
   type Point,
   type Project,
 } from "./project";
+import { strokeEditable } from "./roughlayers";
 import { besideCorners, snapBox } from "./snapping";
 import { toggleItem, type ItemRef } from "./transform";
 import { pressFrame } from "./tooltransform";
@@ -466,6 +467,9 @@ const pick: DragHandler<DragOf<"pick">> = {
       items = toggleItem(drag.add.base, drag.add.target);
     } else {
       const picked = pickInside(page, drag.points);
+      // Lines on a hidden or locked layer stay where they are.
+      const project = editor.host.project();
+      if (project) picked.strokes = picked.strokes.filter((id) => strokeEditable(project, page.strokes.find((stroke) => stroke.id === id) ?? {}));
       const found: ItemRef[] = [
         ...picked.panels.map((id) => ({ kind: "panel" as const, id })),
         ...picked.strokes.map((id) => ({ kind: "stroke" as const, id })),

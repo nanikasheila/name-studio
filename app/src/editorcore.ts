@@ -124,7 +124,8 @@ export type ToolDrag =
       add?: { base: ItemRef[]; target: ItemRef | null };
     }
   | { kind: "eraseLasso"; slot: Slot; points: Point[] }
-  | { kind: "erase"; slot: Slot; erased: number }
+  /** `last`: where the eraser was (on page `at`), to erase all the way between moves. */
+  | { kind: "erase"; slot: Slot; erased: number; last?: Point; at?: number }
   | {
       kind: "swap";
       slot: Slot;
@@ -243,6 +244,8 @@ export interface EditorCore {
   readonly eraseMode: EditorEraseMode;
   readonly fillTone: FillTone;
   readonly penWidthMm: number;
+  /** The ラフ線のレイヤー the pen draws on. */
+  readonly roughLayer: string;
   guides: Guides | null;
 
   /** Start a drag: it gets the pointer's moves until it is let go. */

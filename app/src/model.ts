@@ -130,6 +130,20 @@ export interface Stroke {
   brush?: string;
   /** Start / end left by an eraser: no 入り抜き there. */
   cut?: [boolean, boolean];
+  /** The ラフ線のレイヤー it is on (`RoughLayer.id`); none (or one gone) is the first layer. */
+  layer?: string;
+}
+
+/** ラフ線のレイヤー: rough lines kept apart (人物・背景・効果…), shown, faded and locked together. */
+export interface RoughLayer {
+  id: string;
+  name: string;
+  /** Not shown on the page (written to CSP hidden). */
+  hidden?: boolean;
+  /** 0.1..1; none is 1. */
+  opacity?: number;
+  /** Not drawn on, erased or picked. */
+  locked?: boolean;
 }
 
 export type BrushKind = "pen" | "eraser";
@@ -365,6 +379,8 @@ export interface Project {
   style?: NameStyle;
   /** CSP のページ設定: what CSP pages are made with when no CSP-made template is chosen; none: from the name's page (csppage.ts). */
   cspPage?: CspPage;
+  /** ラフ線のレイヤー, bottom first; none is one layer (ROUGH_BASE). */
+  roughLayers?: RoughLayer[];
   nextId: number;
 }
 

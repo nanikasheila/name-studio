@@ -166,6 +166,21 @@ button.danger { color: #c0392b; }
 .layer-detail { flex: 1; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .layer-empty { color: var(--muted); font-size: 12px; padding: 4px 12px 4px 34px; }
 .layer-hint { padding: 8px 12px; font-size: 11px; color: var(--muted); }
+.rough-list { border-bottom: 1px solid var(--line, #ddd); padding-bottom: 4px; margin-bottom: 2px; }
+.rough-head { display: flex; align-items: center; justify-content: space-between; padding-right: 8px; }
+.rough-head button, .rough-menu button { border: none; background: none; padding: 0 3px; min-height: 0; font-size: 12px; cursor: pointer; color: inherit; }
+.rough-head button:disabled, .rough-menu button:disabled { opacity: 0.3; cursor: default; }
+.rough-row { display: flex; align-items: center; gap: 4px; padding: 3px 8px; cursor: pointer; user-select: none; font-size: 13px; }
+.rough-row:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.rough-row.selected { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 3px 0 0 var(--accent); }
+.rough-row.hidden-layer .layer-name, .rough-row.hidden-layer .layer-detail { opacity: 0.45; }
+.rough-lock { opacity: 0.35; }
+.rough-lock.on { opacity: 1; }
+.rough-row input.rough-opacity { width: 56px; flex: none; min-height: 0; padding: 0; }
+.rough-menu { display: flex; }
+.rough-rename { width: 7em; font-size: 13px; padding: 0 2px; min-height: 0; }
+.rough-tools { padding: 2px 8px; }
+.rough-tools button { font-size: 12px; }
 .script-line { padding: 4px 12px; cursor: pointer; line-height: 1.5; }
 .script-line:hover, .script-line.current { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .script-line .who { font-weight: bold; margin-right: 0.4em; }

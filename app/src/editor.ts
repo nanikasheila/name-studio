@@ -29,6 +29,7 @@ import {
 import { INK, drawBalloons, drawLineText, drawPageFills, drawPanelBorders, drawPanelFills, drawStroke, drawStrokes, onTipLoaded, tracePath } from "./pagedraw";
 import { corners, imageOf, opacityOf, pictureOf, REFERENCE_HANDLE } from "./references";
 import { StrokeCache } from "./strokecache";
+import { opacityOfLayer, ROUGH_BASE, roughLayersOf, shownStrokes, strokeEditable, strokesOn } from "./roughlayers";
 import {
   stickyAnchor,
   assignPanels,
@@ -162,6 +163,8 @@ export class PageEditor {
   /** Each panel's memo shown on the page (only on screen, never exported). */
   showNotes = readFlag(SHOW_NOTES_KEY, true);
   penWidthMm = 0.4;
+  /** The ラフ線のレイヤー the pen draws on (ROUGH_BASE when the name has one layer). */
+  roughLayer = ROUGH_BASE;
   /** Brushes in use (ids in the project); null is the plain pen / eraser. */
   penBrush: string | null = null;
   eraserBrush: string | null = null;
@@ -1089,6 +1092,10 @@ export class PageEditor {
 
   /** The page as shown: without what the レイヤー list hides. */
   private visiblePage(page: Page): Page {
+    // Lines on a hidden ラフ線のレイヤー.
+    const project = this.host.project();
+    const strokes = project ? shownStrokes(project, page.strokes) : page.strokes;
+    if (strokes !== page.strokes) page = { ...page, strokes };
     if (!this.hidden.size) return page;
     const shown = <T extends { id: string }>(kind: string, list: T[]) => list.filter((item) => !this.hidden.has(`${kind}:${item.id}`));
     return {
@@ -1158,7 +1165,18 @@ export class PageEditor {
     const brushes = this.host.project()?.brushes ?? [];
     const strokeColor = (stroke: Stroke) => (this.isSelected(page, "stroke", stroke.id) ? ACCENT : "#3a3834");
     const style = { color: strokeColor, minWidthPx: 0.7, brushes };
-    this.strokeCache.draw(ctx, page, project.pageFormat.canvasMm, m, false, style);
+    const roughs = roughLayersOf(project);
+    // Each ラフ線のレイヤー at its own opacity (hidden ones are not in `page`).
+    const drawRoughs = (over: boolean) => {
+      for (const layer of roughs) {
+        const strokes = strokesOn(project, page.strokes, layer);
+        if (!strokes.length) continue;
+        ctx.globalAlpha = opacityOfLayer(layer);
+        this.strokeCache.draw(ctx, page, project.pageFormat.canvasMm, m, over, style, roughs.length > 1 ? layer.id : "", strokes);
+      }
+      ctx.globalAlpha = 1;
+    };
+    drawRoughs(false);
     drawPanelFills(ctx, page, m);
     drawPageFills(ctx, page, m, (id) => (this.isSelected(page, "fill", id) ? ACCENT : null));
     const selectedPanels = page.panels.filter((panel) => this.isSelected(page, "panel", panel.id));
@@ -1168,7 +1186,7 @@ export class PageEditor {
       ctx.fill();
     }
     drawPanelBorders(ctx, page, m, (panel) => (selectedPanels.includes(panel) ? ACCENT : INK));
-    this.strokeCache.draw(ctx, page, project.pageFormat.canvasMm, m, true, style);
+    drawRoughs(true);
 
     // はみ出し: shown by a dashed outline (only here, not in exports).
     for (const breakout of page.breakouts) {
@@ -2201,7 +2219,10 @@ export class PageEditor {
     const selected = this.selection?.kind === "line" && this.selection.pageId === page.id ? this.selection.id : null;
     const line = under.find((id) => id === selected) ?? under[0];
     if (line) return { kind: "line", pageId: page.id, id: line };
+    const project = this.host.project();
     for (const stroke of [...page.strokes].reverse()) {
+      // Lines on a locked layer are not picked.
+      if (project && !strokeEditable(project, stroke)) continue;
       if (strokeHit(stroke, point, tolerance)) return { kind: "stroke", pageId: page.id, id: stroke.id };
     }
     for (const fill of [...(page.fills ?? [])].reverse()) {
@@ -2576,6 +2597,9 @@ export class PageEditor {
       },
       get fillTone() {
         return editor.fillTone;
+      },
+      get roughLayer() {
+        return editor.roughLayer;
       },
       get penWidthMm() {
         return editor.penWidthMm;

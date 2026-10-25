@@ -140,7 +140,8 @@
           "cut": [
             true,
             false
-          ]
+          ],
+          "layer": "rough2"
         }
       ],
       "roughs": [
@@ -503,7 +504,8 @@
                   "cut": [
                     true,
                     false
-                  ]
+                  ],
+                  "layer": "rough2"
                 }
               ],
               "roughs": [
@@ -749,7 +751,8 @@
           "cut": [
             true,
             false
-          ]
+          ],
+          "layer": "rough2"
         }
       ],
       "fills": [
@@ -855,5 +858,21 @@
     "font": "BIZ UDゴシック",
     "joinPieces": true
   },
+  "roughLayers": [
+    {
+      "id": "rough",
+      "name": "ラフ線",
+      "hidden": false,
+      "opacity": 1,
+      "locked": false
+    },
+    {
+      "id": "rough2",
+      "name": "人物",
+      "hidden": true,
+      "opacity": 0.5,
+      "locked": true
+    }
+  ],
   "nextId": 42
 }

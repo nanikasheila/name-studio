@@ -4,6 +4,7 @@
 import type { DragHandler, DragOf, EditorCore, Press } from "./editorcore";
 import { toPage, type Slot } from "./layout";
 import { eraseInside, eraseWith, type Point } from "./project";
+import { strokeEditable } from "./roughlayers";
 
 export function pressEraser(editor: EditorCore, { slot, point }: Press): void {
   if (editor.eraseMode === "lasso") {
@@ -20,7 +21,17 @@ function erase(editor: EditorCore, drag: DragOf<"erase">, slot: Slot, point: Poi
   const project = editor.host.project();
   if (!project) return;
   const mode = editor.eraseMode === "lasso" ? "whole" : editor.eraseMode;
-  drag.erased += eraseWith(project, slot.page, point, editor.eraserRadiusPx(slot.scale) / slot.scale, mode);
+  const radius = editor.eraserRadiusPx(slot.scale) / slot.scale;
+  // A quick move skips past thin lines: erase along the way, a radius at a time.
+  const from = drag.last && drag.at === slot.index ? drag.last : point;
+  const steps = Math.min(64, Math.max(1, Math.ceil(Math.hypot(point[0] - from[0], point[1] - from[1]) / radius)));
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const along: Point = [from[0] + (point[0] - from[0]) * t, from[1] + (point[1] - from[1]) * t];
+    drag.erased += eraseWith(project, slot.page, along, radius, mode, (stroke) => strokeEditable(project, stroke));
+  }
+  drag.last = point;
+  drag.at = slot.index;
 }
 
 const eraseDrag: DragHandler<DragOf<"erase">> = {
@@ -41,7 +52,7 @@ const eraseLasso: DragHandler<DragOf<"eraseLasso">> = {
   },
   end(editor, drag, project) {
     editor.host.begin();
-    const changed = eraseInside(project, drag.slot.page, drag.points);
+    const changed = eraseInside(project, drag.slot.page, drag.points, (stroke) => strokeEditable(project, stroke));
     if (changed) {
       editor.host.commit();
       editor.host.status(`囲んだ中の線を消しました（${changed} 本）`);

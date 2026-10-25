@@ -28,12 +28,14 @@ import {
   type BoxMm,
   type Brush,
   type Page,
+  type RoughLayer,
   type Project,
   type RoughImage,
   type StrokePoint,
   wantsSpread,
 } from "./project";
 import { drawPanelMask, panelFolders } from "./panelfolders";
+import { layerOf, opacityOfLayer, roughExportNames, roughLayersOf, shownStrokes, strokesOn } from "./roughlayers";
 import { decodePicture, opacityOf, usedImages } from "./references";
 import { sceneSpans } from "./story";
 import { balloonLineMm, linePitch, lineSpacing, useStyle } from "./style";
@@ -154,6 +156,8 @@ const NO_FRAME_FOLDER =
 
 /** The rough's layers (the name sheet's rough image too): what is inked over in CSP. */
 export const ROUGH_LAYERS = [LAYER_NAMES.strokes, LAYER_NAMES.overStrokes, "ラフ（ネーム用紙）"];
+/** The rough image of the name sheet (Rust side). */
+const SHEET_ROUGH_NAME = ROUGH_LAYERS[2];
 
 export function partCount(page: Page, kind: LayerKind): number {
   switch (kind) {
@@ -564,6 +568,27 @@ export async function exportToCsp(
   if (notes) request = { ...request, draftLayers: [...(request.draftLayers ?? []), NOTES_LAYER_NAME] };
   const pictures = await decodeReferences(project);
   if (pictures.size) request = { ...request, draftLayers: [...(request.draftLayers ?? []), REFERENCE_LAYER_NAME] };
+  // ラフ線のレイヤー: each its own CSP layer (one layer: ラフ線 and はみ出し（ラフ線）, as always).
+  const roughSet = roughLayersOf(project);
+  const roughNames = roughExportNames(project, [
+    ...LAYER_ORDER.filter((kind) => kind !== "strokes" && kind !== "overStrokes").map((kind) => LAYER_NAMES[kind]),
+    FRAME_FOLDER_NAME,
+    INK_LAYER_NAME,
+    NOTES_LAYER_NAME,
+    REFERENCE_LAYER_NAME,
+    SHEET_ROUGH_NAME,
+  ]);
+  const roughName = (layer: RoughLayer, kind: LayerKind) => roughNames.get(layer.id)![kind === "overStrokes" ? "over" : "under"];
+  // はみ出し layers for the first layer, as always, and the others that have lines over the borders.
+  const overLayers = roughSet.filter((layer) => layer.id === layerOf(project, {}).id || project.pages.some((page) => strokesOn(project, page.strokes, layer).some((stroke) => stroke.over)));
+  const onLayer = <T extends { page: Page }>(place: T, layer: RoughLayer): T => ({ ...place, page: { ...place.page, strokes: strokesOn(project, place.page.strokes, layer) } });
+  if (request.draftLayers?.includes(LAYER_NAMES.strokes)) {
+    request = { ...request, draftLayers: [...request.draftLayers, ...[...roughNames.values()].flatMap(({ under, over }) => [under, over])] };
+  }
+  const looks = roughSet
+    .filter((layer) => layer.hidden || opacityOfLayer(layer) < 1)
+    .flatMap((layer) => [roughName(layer, "strokes"), roughName(layer, "overStrokes")].map((name) => ({ name, opacity: opacityOfLayer(layer), hidden: !!layer.hidden })));
+  if (looks.length) request = { ...request, layerLooks: looks };
   // The name's binding, not the template's: a left-bound name may start from a right-bound work.
   request = { ...request, rightBinding: !project.scroll && project.binding === "right" };
   const start = await call("begin_name_export", { request });
@@ -652,15 +677,17 @@ export async function exportToCsp(
         if (form !== "raster") {
           const toOverlay = overlay.width / pageWidth;
           for (const { page, m, right } of placed) {
-            // CSP draws these itself when the page is opened; the thumbnail does not.
-            clipped(overlayCtx, toOverlay, right, () => drawPart(overlayCtx, page, kind, scaled(m, toOverlay), project.brushes));
+            // CSP draws these itself when the page is opened; the thumbnail does not (nor hidden rough layers).
+            const shown = { ...page, strokes: shownStrokes(project, page.strokes) };
+            clipped(overlayCtx, toOverlay, right, () => drawPart(overlayCtx, shown, kind, scaled(m, toOverlay), project.brushes));
           }
         }
         if (kind === "strokes" && masks) {
           // The rough in each panel's folder, under its mask; a stroke in no panel stays on top of the page.
           const { folders, loose } = panelFolders(placed, project.pageFormat);
-          if (loose.some((strokes) => strokes.length)) {
-            layers.push(await part(kind, placed.map((place, index) => ({ ...place, page: { ...place.page, strokes: loose[index] } })), LAYER_NAMES[kind]));
+          for (const layer of roughSet) {
+            const pages = placed.map((place, index) => onLayer({ ...place, page: { ...place.page, strokes: loose[index] } }, layer));
+            if (pages.some(({ page }) => page.strokes.length)) layers.push(await part(kind, pages, roughName(layer, kind)));
           }
           for (const folder of folders) {
             ctx.clearRect(0, 0, width, height);
@@ -668,10 +695,18 @@ export async function exportToCsp(
             const mask = await encode(drawing, "image/png");
             pngs.push(mask);
             const children: LayerMeta[] = [];
-            const pages = folder.parts.map(({ page, m, right, strokes }) => ({ page: { ...page, strokes }, m, right }));
-            if (pages.some(({ page }) => page.strokes.length)) children.push(await part(kind, pages, LAYER_NAMES[kind]));
+            for (const layer of roughSet) {
+              const pages = folder.parts.map(({ page, m, right, strokes }) => onLayer({ page: { ...page, strokes }, m, right }, layer));
+              if (pages.some(({ page }) => page.strokes.length)) children.push(await part(kind, pages, roughName(layer, kind)));
+            }
             children.push({ kind: "raster", name: INK_LAYER_NAME, length: 0 });
             layers.push({ kind: "folder", name: folder.name, maskLength: mask.length, children });
+          }
+          continue;
+        }
+        if (kind === "strokes" || kind === "overStrokes") {
+          for (const layer of kind === "strokes" ? roughSet : overLayers) {
+            layers.push(await part(kind, placed.map((place) => onLayer(place, layer)), roughName(layer, kind)));
           }
           continue;
         }

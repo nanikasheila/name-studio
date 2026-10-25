@@ -437,6 +437,7 @@ fn a_left_bound_name_stays_left_bound_from_a_right_bound_work() {
         inputs: Vec::new(),
         donor_sources: Vec::new(),
         draft_layers: Vec::new(),
+        layer_looks: Vec::new(),
         frame_folders: false,
         right_binding,
     };
@@ -479,6 +480,7 @@ fn writes_whole_page_raster_layers_into_a_work() {
         inputs: Vec::new(),
         donor_sources: Vec::new(),
         draft_layers: Vec::new(),
+        layer_looks: Vec::new(),
         frame_folders: false,
         right_binding: None,
     })
@@ -542,6 +544,7 @@ fn writes_whole_page_raster_layers_into_a_work() {
         inputs: Vec::new(),
         donor_sources: Vec::new(),
         draft_layers: Vec::new(),
+        layer_looks: Vec::new(),
         frame_folders: false,
         right_binding: None,
     });
@@ -567,6 +570,7 @@ fn writes_vector_and_text_layers_copied_from_the_sheet() {
         inputs: vec![sheet_path.clone()],
         donor_sources,
         draft_layers: Vec::new(),
+        layer_looks: Vec::new(),
         frame_folders: false,
         right_binding: None,
     };
@@ -705,6 +709,7 @@ fn checks_written_pages_and_works() {
         inputs: vec![sheet_path.clone()],
         donor_sources: vec![sheet_path.clone()],
         draft_layers: vec!["ラフ".into()],
+        layer_looks: Vec::new(),
         frame_folders: false,
         right_binding: None,
     })
@@ -953,6 +958,7 @@ fn writes_spread_pages() {
         inputs: Vec::new(),
         donor_sources: Vec::new(),
         draft_layers: Vec::new(),
+        layer_looks: Vec::new(),
         frame_folders: false,
         right_binding: None,
     })
@@ -1049,6 +1055,7 @@ fn writes_panels_as_a_frame_folder_copied_from_a_finished_page() {
         inputs: vec![finished.clone()],
         donor_sources: vec![finished.clone()],
         draft_layers: Vec::new(),
+        layer_looks: Vec::new(),
         frame_folders,
         right_binding: None,
     };
@@ -1168,6 +1175,7 @@ fn writes_a_panel_as_a_folder_with_a_layer_mask() {
         inputs: vec![sheet_path.clone()],
         donor_sources: vec![sheet_path],
         draft_layers: vec!["ラフ線".into()],
+        layer_looks: Vec::new(),
         frame_folders: false,
         right_binding: None,
     })
@@ -1278,6 +1286,60 @@ fn writes_a_panel_as_a_folder_with_a_layer_mask() {
 }
 
 #[test]
+fn writes_rough_layers_hidden_and_fainter_as_set() {
+    use clip_core::write::raster_page::{LayerLook, PageLayer, RasterLayer, RasterWorkWriter, WorkOptions};
+    let folder = tempfile::tempdir().unwrap();
+    let template_path = template(folder.path());
+    let raster = |name: &str| {
+        let mut image = RgbaImage::transparent(400, 560);
+        image.pixels[3] = 255;
+        PageLayer::Raster(RasterLayer {
+            name: name.into(),
+            image,
+        })
+    };
+    let mut writer = RasterWorkWriter::new(WorkOptions {
+        template: template_path,
+        out_dir: folder.path().join("out"),
+        name_pattern: DEFAULT_NAME_PATTERN.into(),
+        work: None,
+        story_index: None,
+        inputs: Vec::new(),
+        donor_sources: Vec::new(),
+        draft_layers: vec!["人物".into(), "背景".into()],
+        layer_looks: vec![
+            LayerLook {
+                name: "人物".into(),
+                opacity: 0.5,
+                hidden: true,
+            },
+            LayerLook {
+                name: "効果".into(),
+                opacity: 0.25,
+                hidden: false,
+            },
+        ],
+        frame_folders: false,
+        right_binding: None,
+    })
+    .unwrap();
+    let page = writer
+        .write_page(&[raster("人物"), raster("背景"), raster("効果")], None, false)
+        .unwrap();
+    writer.finish().unwrap();
+    let written = ClipDocument::read(&page).unwrap();
+    let look = |name: &str| {
+        let layer = written.root.children.iter().find(|layer| layer.name == name).unwrap();
+        let row = written.layer_row(layer.main_id).unwrap();
+        (row.int("LayerOpacity"), row.int("LayerVisibility") & 1)
+    };
+    // 下描き at half, then the layer's own opacity; hidden only where asked.
+    assert_eq!(look("人物"), (64, 0));
+    assert_eq!(look("背景"), (128, 1));
+    assert_eq!(look("効果"), (64, 1));
+}
+
+#[test]
 fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
     use clip_core::text::NewText;
     use clip_core::vector::NewVectorLine;
@@ -1296,6 +1358,7 @@ fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
         inputs: vec![sheet_path.clone()],
         donor_sources: vec![sheet_path.clone()],
         draft_layers: vec!["メモ（ネーム）".into()],
+        layer_looks: Vec::new(),
         frame_folders: false,
         right_binding: None,
     })
@@ -1406,6 +1469,7 @@ fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
         inputs: vec![sheet_path.clone()],
         donor_sources: vec![sheet_path.clone()],
         draft_layers: Vec::new(),
+        layer_looks: Vec::new(),
         frame_folders: false,
         right_binding: None,
     })

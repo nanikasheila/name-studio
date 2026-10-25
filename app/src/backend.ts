@@ -41,6 +41,13 @@ export interface NameExportStart extends TemplateCanvas {
   spreadProblem: string | null;
 }
 
+/** How a layer looks in CSP: its opacity (0..1, times the 下描き half) and whether it is hidden. */
+export interface LayerLook {
+  name: string;
+  opacity: number;
+  hidden: boolean;
+}
+
 export interface CspExportRequest {
   template: string;
   outDir: string;
@@ -52,6 +59,8 @@ export interface CspExportRequest {
   donors: string[];
   /** Layers (by name) written as 下描き layers at half opacity: `ROUGH_LAYERS` to ink over the rough. */
   draftLayers?: string[];
+  /** Layers (by name) written hidden or fainter: the ラフ線のレイヤー as set in the name. */
+  layerLooks?: LayerLook[];
   /** Panels as a コマ枠フォルダー (copied from a finished page among the donors), with an empty layer in it to ink on. */
   frameFolders?: boolean;
   /** The name's binding (true: right-bound), written over the template's in the work and its pages. */

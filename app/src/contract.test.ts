@@ -92,6 +92,7 @@ function fullPage(id: string): Full<Project["pages"][number]> {
         over: true,
         brush: "brush1",
         cut: [true, false],
+        layer: "rough2",
       },
     ],
     roughs: [{ id: `${id}-rough1`, layerId: 12, layerName: "ラフ", sheetCrop: [1, 2, 300, 400], box: [0, 0, 182, 257] }],
@@ -217,6 +218,10 @@ export const FULL_PROJECT: Full<Project> = {
     font: "BIZ UDゴシック",
     joinPieces: true,
   },
+  roughLayers: [
+    { id: "rough", name: "ラフ線", hidden: false, opacity: 1, locked: false },
+    { id: "rough2", name: "人物", hidden: true, opacity: 0.5, locked: true },
+  ],
   nextId: 42,
 };
 

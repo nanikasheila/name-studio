@@ -14,7 +14,7 @@
 use std::path::{Path, PathBuf};
 
 use rusqlite::types::Value;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::cmc::{work_canvas_values, write_cmc};
 use super::editor::ClipEditor;
@@ -304,6 +304,35 @@ pub(crate) fn make_draft(editor: &ClipEditor, id: i64) -> Result<()> {
     Ok(())
 }
 
+/// How a layer is written: its opacity (0..1, times what it has, such as a
+/// 下描き layer's half) and whether it is hidden.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LayerLook {
+    pub name: String,
+    pub opacity: f64,
+    #[serde(default)]
+    pub hidden: bool,
+}
+
+/// Give a written layer its look.
+fn apply_look(editor: &ClipEditor, id: i64, look: &LayerLook) -> Result<()> {
+    if look.opacity < 1.0 {
+        editor.db.execute(
+            "UPDATE Layer SET LayerOpacity = MAX(1, CAST(ROUND(LayerOpacity * ?1) AS INTEGER)) WHERE MainId = ?2",
+            rusqlite::params![look.opacity.clamp(0.0, 1.0), id],
+        )?;
+    }
+    if look.hidden {
+        // Bit 0 shows the layer; the others (its mask in use) stay.
+        editor.db.execute(
+            "UPDATE Layer SET LayerVisibility = LayerVisibility & ~1 WHERE MainId = ?1",
+            [id],
+        )?;
+    }
+    Ok(())
+}
+
 /// Make `editor` able to hold the donor's layers (its tables, columns and
 /// brush styles), once per donor document.
 pub(crate) fn prepare_for(editor: &ClipEditor, donor: &PartDonors) -> Result<()> {
@@ -499,6 +528,7 @@ struct PageBuilder<'a> {
     height: u32,
     composite: RgbaImage,
     draft_layers: &'a [String],
+    looks: &'a [LayerLook],
 }
 
 impl PageBuilder<'_> {
@@ -591,6 +621,9 @@ impl PageBuilder<'_> {
         if self.draft_layers.iter().any(|draft| *draft == layer_name(layer)) {
             make_draft(editor, id)?;
         }
+        if let Some(look) = self.looks.iter().find(|look| look.name == layer_name(layer)) {
+            apply_look(editor, id, look)?;
+        }
         Ok(id)
     }
 }
@@ -612,6 +645,7 @@ pub fn write_name_page(
     canvas_values: &Values,
     first_right: bool,
     draft_layers: &[String],
+    looks: &[LayerLook],
 ) -> Result<Vec<i64>> {
     let source = ClipDocument::read(template)?;
     let (width, height) = (source.canvas.width_px as u32, source.canvas.height_px as u32);
@@ -640,6 +674,7 @@ pub fn write_name_page(
             pixels: [255, 255, 255, 255].repeat(width as usize * height as usize),
         },
         draft_layers,
+        looks,
     };
     let mut ids = Vec::new();
     for layer in layers {
@@ -711,6 +746,8 @@ pub struct WorkOptions {
     /// Layers (by name) made 下描き (draft) layers at half opacity: the
     /// rough, to ink over in CSP without it being filled against or printed.
     pub draft_layers: Vec<String>,
+    /// Layers (by name) written fainter or hidden.
+    pub layer_looks: Vec<LayerLook>,
     /// Look for a コマ枠フォルダー to copy (in a finished page among the donors).
     pub frame_folders: bool,
     /// The book's binding (true: right-bound), written over the template's
@@ -879,6 +916,7 @@ impl RasterWorkWriter {
             &self.canvas_values,
             first_right,
             &self.options.draft_layers,
+            &self.options.layer_looks,
         )?;
         self.next_index += if spread { 2 } else { 1 };
         self.pages.push(output.clone());

@@ -6,9 +6,16 @@ import type { DragHandler, DragOf, EditorCore, Press } from "./editorcore";
 import { toPage } from "./layout";
 import { adjustPressure, penPreferences } from "./pen";
 import { addStroke, insidePolygon, splitOverPages, type StrokePoint } from "./project";
+import { layerOf, ROUGH_BASE } from "./roughlayers";
 import { densify, straightEnd } from "./transform";
 
-export function pressPen(editor: EditorCore, { event, slot, point }: Press): void {
+export function pressPen(editor: EditorCore, { event, project, slot, point }: Press): void {
+  // A hidden or locked ラフ線のレイヤー is not drawn on.
+  const layer = layerOf(project, { layer: editor.roughLayer });
+  if (layer.hidden || layer.locked) {
+    editor.host.status(`レイヤー「${layer.name}」は${layer.hidden ? "隠して" : "ロックして"}います。レイヤーの欄で${layer.hidden ? "目を開ける" : "ロックを外す"}か、ほかのレイヤーを選んでください`);
+    return;
+  }
   // Keep tilt and speed only for brushes that change with them.
   const motion = usesMotion(editor.brush("pen"));
   const first: StrokePoint = motion ? [...point, pressureOf(event), tiltOf(event), 0] : [...point, pressureOf(event)];
@@ -81,6 +88,7 @@ const pen: DragHandler<DragOf<"pen">> = {
         return editor.facingSlot(sa)?.index === b ? (sa.x + editor.gutterOf(sa, sb) * sa.scale - from.x) / from.scale : null;
       },
     );
+    const layer = layerOf(project, { layer: editor.roughLayer }).id;
     let added = 0;
     for (const [index, run] of runs.entries()) {
       const target = slotOf(run.page);
@@ -90,6 +98,7 @@ const pen: DragHandler<DragOf<"pen">> = {
       if (!stroke) continue;
       added++;
       if (over && target.index === drag.slot.index) stroke.over = true;
+      if (layer !== ROUGH_BASE) stroke.layer = layer;
       const cut: [boolean, boolean] = [index > 0, index < runs.length - 1];
       if (cut[0] || cut[1]) stroke.cut = cut;
     }
