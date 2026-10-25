@@ -119,12 +119,19 @@ describe("editable layers", () => {
     expect(vertical).toMatchObject({ kind: "text", text: "はじめ\nまして" });
     // 9 pt on the name at 10 px/mm is 31.75 px: 9 pt at 254 dpi.
     expect(vertical.kind === "text" && vertical.fontSizePt).toBeCloseTo(9);
-    // Two columns at CSP's pitch need more than the 100 px box: the frame
-    // grows to the left, keeping the right edge where vertical text starts.
+    // CSP sets vertical text from the frame's left edge, each column with
+    // its gap on the right: the frame holds two columns at CSP's pitch, the
+    // first one ending at the box's right edge (300 px).
     const frame = (layer: LayerMeta) => (layer.kind === "text" ? layer.frame : []);
     const [vx0, vy0, vx1, vy1] = frame(vertical);
-    expect([vy0, vx1, vy1]).toEqual([150, 300, 450]);
-    expect(vx0).toBeCloseTo(300 - 2 * 31.75 * 1.8);
+    expect([vy0, vy1]).toEqual([150, 450]);
+    expect(vx0).toBeCloseTo(300 - (1.8 + 1) * 31.75);
+    expect(vx1 - vx0).toBeCloseTo(2 * 1.8 * 31.75);
+    // One column: the frame starts one character left of the box's right edge (500 px).
+    said.text = "セリフ";
+    said.box = [10, 10, 40, 40];
+    const single = frame(textLayers(page, m, 254).find((layer) => layer.kind === "text" && layer.vertical)!);
+    expect(single[0]).toBeCloseTo(500 - 31.75);
     expect(vertical).not.toHaveProperty("color");
     across.inverted = true;
     expect(textLayers(page, m, 254).find((layer) => layer.kind === "text" && !layer.vertical)).toMatchObject({ color: [255, 255, 255] });

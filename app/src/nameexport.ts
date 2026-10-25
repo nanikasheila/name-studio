@@ -380,9 +380,10 @@ const CSP_CHAR_ADVANCE = 1.1;
 /**
  * Each line of dialogue as a CSP text layer: its box in template px and its
  * size in CSP pt (pt of the template's resolution). CSP hides what does not
- * fit its frame, so the frame grows away from where the text starts (down
- * and left for vertical, down and right for horizontal) to hold every line
- * at CSP's own spacing, never smaller than the box.
+ * fit its frame, so the frame holds every line at CSP's own spacing: down and
+ * right of the box's top left for horizontal text (never smaller than the
+ * box), and for vertical text placed so the first column starts at the box's
+ * top right, as on the name.
  */
 export function textLayers(page: Page, m: MmToPx, resolution: number): LayerMeta[] {
   return page.lines
@@ -395,8 +396,13 @@ export function textLayers(page: Page, m: MmToPx, resolution: number): LayerMeta
       const font = cspFont(line);
       const across = lines.length * size * CSP_LINE_PITCH;
       const along = Math.max(...lines.map((text) => [...text].length)) * size * CSP_CHAR_ADVANCE;
+      // CSP lays vertical text out from the frame's left edge, each column
+      // with its line gap on its right: the first column is set from the
+      // box's right edge when the frame's left edge is where the last one
+      // starts (and the frame holds every column's gap).
+      const left = x1 - ((lines.length - 1) * CSP_LINE_PITCH + 1) * size;
       const frame: [number, number, number, number] = line.vertical
-        ? [Math.min(x0, x1 - across), y0, x1, Math.max(y1, y0 + along)]
+        ? [left, y0, left + across, Math.max(y1, y0 + along)]
         : [x0, y0, Math.max(x1, x0 + along), Math.max(y1, y0 + across)];
       return {
         kind: "text",
