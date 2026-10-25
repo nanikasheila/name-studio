@@ -21,6 +21,7 @@ mod ipc;
 mod name_export;
 mod project_io;
 pub mod sheet;
+mod updates;
 mod viewer;
 
 use std::path::Path;
@@ -135,6 +136,7 @@ pub fn run() {
             files::read_csp_sub_tools,
             fonts::list_fonts,
             is_release_build,
+            updates::install_release,
             batch_export_task,
             end_batch_export
         ])

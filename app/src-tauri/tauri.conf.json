@@ -27,7 +27,7 @@
         "style-src": "'self' 'unsafe-inline'",
         "img-src": "'self' data: blob:",
         "font-src": "'self' data:",
-        "connect-src": "ipc: http://ipc.localhost",
+        "connect-src": "ipc: http://ipc.localhost https://api.github.com",
         "object-src": "'none'",
         "base-uri": "'none'",
         "form-action": "'none'"
@@ -38,7 +38,7 @@
         "style-src": "'self' 'unsafe-inline'",
         "img-src": "'self' data: blob:",
         "font-src": "'self' data:",
-        "connect-src": "ipc: http://ipc.localhost ws://localhost:1420",
+        "connect-src": "ipc: http://ipc.localhost https://api.github.com ws://localhost:1420",
         "object-src": "'none'",
         "base-uri": "'none'",
         "form-action": "'none'"

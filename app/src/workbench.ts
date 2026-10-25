@@ -243,6 +243,7 @@ export class Workbench {
       autosaveChanged: () => this.autosaver.notify(),
       openPenSettings: () => this.penDialog.open(),
       openShortcuts: () => this.shortcutDialog.open(),
+      prepareRestart: () => this.confirmDiscard(),
     });
     // The page takes whatever room the strip and the side panels leave.
     new ResizeObserver(() => this.editor.resize()).observe($("editor-canvas").parentElement!);

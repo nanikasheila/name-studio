@@ -2,7 +2,9 @@
 // kept in its file) and this computer's (表示, 操作, 吸着, 保存, ペン・キー),
 // one kind at a time from the list on the left, or all that match what is
 // typed in the search box. Changes apply at once.
+import { ask } from "@tauri-apps/plugin-dialog";
 import { autosaveToFile, setAutosaveToFile } from "./autosave";
+import { call } from "./backend";
 import { SHAPE_LABELS } from "./balloon";
 import { $, choice, element } from "./dom";
 import { fontField } from "./fontpicker";
@@ -13,6 +15,7 @@ import type { BalloonShape, LineKind } from "./model";
 import { saveNewNameDefaults } from "./namedefaults";
 import { KIND_LABELS, gutters, nameKind, setBinding, setDefaultLineSize, setDefaultShape, setGutters, setLineSpacing, type Project } from "./project";
 import { readText, writeFlag, writeNumber, writeText } from "./settings";
+import { appVersion, installRelease, releases, setUpdatesPaused, updatesPaused } from "./updater";
 import { DEFAULT_SNAP, MAX_GRID_MM, MIN_GRID_MM, saveSnap, type SnapSettings } from "./snapping";
 import {
   APP_BALLOON_LINE_MM,
@@ -40,6 +43,8 @@ export interface SettingsHost {
   autosaveChanged(): void;
   openPenSettings(): void;
   openShortcuts(): void;
+  /** Before the app is closed for another version: false to stay. */
+  prepareRestart(): Promise<boolean>;
 }
 
 const SNAP_BOXES: [keyof SnapSettings, string][] = [
@@ -132,6 +137,26 @@ export class SettingsDialog {
     $<HTMLInputElement>("st-autosave").addEventListener("change", (event) => {
       setAutosaveToFile((event.target as HTMLInputElement).checked);
       this.host.autosaveChanged();
+    });
+    $<HTMLInputElement>("st-auto-update").addEventListener("change", (event) => {
+      setUpdatesPaused(!(event.target as HTMLInputElement).checked);
+      this.host.status(updatesPaused() ? "自動更新を止めました" : "自動更新を入れました（次の起動から）");
+    });
+    const release = $<HTMLSelectElement>("st-release");
+    release.addEventListener("focus", () => void this.loadReleases());
+    release.addEventListener("change", () => {
+      $<HTMLButtonElement>("st-install-release").disabled = !release.value || release.value === this.version;
+    });
+    $("st-install-release").addEventListener("click", async () => {
+      const version = release.value;
+      if (!version) return;
+      const sure = await ask(`版 ${version} に入れ替えて、アプリを起動し直します。\n\n入れ替えたあとは自動更新を止めます（設定の「更新」でまた入れられます）。`, {
+        title: "Name Studio",
+        kind: "warning",
+        okLabel: "入れ替える",
+        cancelLabel: "やめる",
+      });
+      if (sure) await installRelease(version, { status: (message) => this.host.status(message), prepare: () => this.host.prepareRestart() });
     });
     $("st-open-pen").addEventListener("click", () => this.host.openPenSettings());
     $("st-open-keys").addEventListener("click", () => this.host.openShortcuts());
@@ -359,6 +384,7 @@ export class SettingsDialog {
     $<HTMLInputElement>("st-panel-carries").checked = this.host.editor.panelCarries;
     $<HTMLInputElement>("st-balloon-text").checked = this.host.editor.balloonTextFollows;
     $<HTMLInputElement>("st-autosave").checked = autosaveToFile();
+    $<HTMLInputElement>("st-auto-update").checked = !updatesPaused();
     const snap = this.host.editor.snapping;
     for (const [key, id] of SNAP_BOXES) $<HTMLInputElement>(id).checked = snap[key] as boolean;
     const grid = $<HTMLInputElement>("st-grid-mm");
@@ -367,4 +393,39 @@ export class SettingsDialog {
     $<HTMLButtonElement>("st-save-defaults").disabled = !project;
     this.filter();
   }
+
+  private version = "";
+  private releasesLoaded = false;
+
+  /** 前の版に戻す: the releases that can be put in, once per opening of the list. */
+  private async loadReleases(): Promise<void> {
+    if (this.releasesLoaded) return;
+    this.releasesLoaded = true;
+    const select = $<HTMLSelectElement>("st-release");
+    const note = $("st-release-note");
+    this.version = await appVersion();
+    if (!(await call("is_release_build").catch(() => false))) {
+      select.replaceChildren(element("option", { value: "", textContent: "（手元でビルドした版では使えません）" }));
+      return;
+    }
+    select.replaceChildren(element("option", { value: "", textContent: "読み込み中…" }));
+    try {
+      const list = await releases();
+      select.replaceChildren(
+        element("option", { value: "", textContent: "版を選ぶ" }),
+        ...list.map((release) =>
+          element("option", {
+            value: release.version,
+            textContent: `v${release.version}（${release.date}）${release.version === this.version ? " ← 今の版" : ""} ${release.title}`.trim(),
+          }),
+        ),
+      );
+      note.textContent = `今の版は v${this.version} です。選んだ版へ入れ替えます（作業は保存してから）。入れ替えると自動更新は止まります。`;
+    } catch (error) {
+      this.releasesLoaded = false;
+      select.replaceChildren(element("option", { value: "", textContent: "（版の一覧を読めませんでした）" }));
+      note.textContent = `${error}`;
+    }
+  }
+
 }

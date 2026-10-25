@@ -1,2 +1,4 @@
 # Written by app/src/contract.test.ts and compared byte for byte on every OS.
 crates/name-model/tests/fixtures/*.json text eol=lf
+# Names saved by earlier versions: compared with the current sample byte for byte.
+crates/name-model/tests/fixtures/past/* text eol=lf

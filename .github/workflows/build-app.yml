@@ -49,6 +49,16 @@ jobs:
           npm ci
           npx tauri build --bundles nsis
 
+      # The release build itself, before anyone gets it: its window opens a name
+      # and writes it out for CSP (as the CI's app check does on pull requests).
+      - name: A template page
+        run: cargo run -p clip-core --features fixtures --example fixture_page -- "${{ runner.temp }}/app-check/page.clip"
+
+      - name: The release build starts and writes a name out
+        working-directory: app
+        shell: bash
+        run: node e2e/realapp.mjs "$RUNNER_TEMP/app-check"
+
       - name: Collect release files
         shell: bash
         env:
