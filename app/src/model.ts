@@ -363,7 +363,34 @@ export interface Project {
   fonts?: LineFonts;
   /** 作品の既定: sizes and line widths new things get (and borders without their own width). */
   style?: NameStyle;
+  /** CSP のページ設定: what CSP pages are made with when no CSP-made template is chosen; none: from the name's page (csppage.ts). */
+  cspPage?: CspPage;
   nextId: number;
+}
+
+/**
+ * CSP のページ設定 (lengths in mm): the CLIP STUDIO PAINT page a name is
+ * written out on without a CSP-made template. The name's basic frame is
+ * fitted to this page's.
+ */
+export interface CspPage {
+  /** キャンバス (用紙). */
+  canvasMm: [number, number];
+  /** 仕上がり (製本). */
+  trimMm: [number, number];
+  /** 裁ち落とし幅. */
+  bleedMm: number;
+  /** 基本枠 and its offset from the middle. */
+  basicMm: [number, number];
+  basicOffsetMm: [number, number];
+  /** 解像度 (dpi). */
+  resolution: number;
+  /** Whether the first page is a left page; none: as the binding has it (a manga's on the left). */
+  firstPageLeft?: boolean;
+  /** ノンブルの開始番号; none: 1. */
+  nombreStart?: number;
+  /** 作品情報・ノンブルのフォント (as CSP names it); none: the built-in one (ＭＳ ゴシック). */
+  font?: string;
 }
 
 /** 作品の既定: the sizes and line widths a name draws with; none: the app's (style.ts). */

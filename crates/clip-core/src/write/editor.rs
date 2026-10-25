@@ -271,7 +271,15 @@ pub struct ClipEditor {
 
 impl ClipEditor {
     pub fn open(template: impl AsRef<Path>) -> Result<Self> {
-        let container = CsfContainer::read(template)?;
+        Self::from_container(CsfContainer::read(template)?)
+    }
+
+    /// Open a .clip held in memory (such as a page built into the program).
+    pub fn from_bytes(data: Vec<u8>) -> Result<Self> {
+        Self::from_container(CsfContainer::parse(data)?)
+    }
+
+    fn from_container(container: CsfContainer) -> Result<Self> {
         let sqlite = container.sqlite_bytes()?;
         let mut db = Connection::open_in_memory()?;
         db.deserialize_read_exact("main", sqlite, sqlite.len(), false)?;

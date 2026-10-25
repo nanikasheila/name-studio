@@ -14,17 +14,16 @@ use rusqlite::Connection;
 use rusqlite::types::Value;
 use serde::Serialize;
 
+use super::canvas::resize_offscreens;
 use super::editor::ClipEditor;
-use super::offscreen::encode_offscreen_image;
 use super::page::{
     FOR_RIGHT_PAGE, LEFT_PAGE_FLAG, NOMBRE_INFO, RIGHT_PAGE_FLAG, STORY_INFO, TextItems, canvas_value,
     drop_render_cache, edit_text_blocks, has_column, layer_offset_x, map_bbox_x, story_layers,
 };
-use super::schema::text_of;
 use super::{Values, set_value};
 use crate::clip::{ClipDocument, round_half_even};
 use crate::error::{CspError, Result};
-use crate::offscreen::{BLOCK_SIZE, OffscreenParameters, RgbaImage, decode_offscreen_image};
+use crate::offscreen::RgbaImage;
 use crate::raster::{Filter, decode_png, resize};
 
 /// CropFrameOptionFlag of the spreads CSP EX 5 makes (no page side bit).
@@ -148,158 +147,18 @@ fn set_spread_canvas(db: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// Mipmap level sizes from a base size: each level is half of the one
-/// before, rounded down.
-fn levels(base: i64) -> Vec<i64> {
-    let mut result = vec![base];
-    while result.len() < 16 && *result.last().unwrap() > 1 {
-        result.push(result.last().unwrap() / 2);
-    }
-    result
-}
-
-fn padded(size: i64) -> i64 {
-    (size + BLOCK_SIZE as i64 - 1) / BLOCK_SIZE as i64 * BLOCK_SIZE as i64
-}
-
-/// Widen every offscreen sized by the canvas: render mipmaps (the root's at
-/// the exact canvas size, the layers' padded to whole blocks) at every
-/// level. Layer thumbnails and text render caches keep their size. What an
+/// Widen every offscreen sized by the canvas to the spread. What an
 /// offscreen showed is kept on the left and repeated on the right (a blank
 /// paper stays blank on both pages).
-fn widen_offscreens(editor: &mut ClipEditor, (width, height): (i64, i64), new_width: i64) -> Result<()> {
-    let families = [
-        (levels(width), levels(height), levels(new_width)),
-        (levels(padded(width)), levels(padded(height)), levels(padded(new_width))),
-    ];
-    let rows: Vec<(i64, Vec<u8>, Value)> = {
-        let mut statement = editor
-            .db
-            .prepare("SELECT MainId, Attribute, BlockData FROM Offscreen")?;
-        statement
-            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
-            .collect::<std::result::Result<_, _>>()?
-    };
-    for (id, attribute, block) in rows {
-        let Ok(parameters) = OffscreenParameters::parse(&attribute) else {
-            continue;
-        };
-        let size = (parameters.width as i64, parameters.height as i64);
-        let Some(target) = families.iter().find_map(|(widths, heights, new)| {
-            (0..widths.len().min(heights.len()))
-                .find(|level| (widths[*level], heights[*level]) == size)
-                .map(|level| new[level])
-        }) else {
-            continue;
-        };
-        let external = text_of(&block);
-        let old = decode_offscreen_image(&attribute, editor.externals.get(&external))?;
-        let mut widened = OffscreenParameters {
-            width: target as u32,
-            blocks_x: (target as u32).div_ceil(BLOCK_SIZE as u32),
-            ..parameters
-        };
-        let mut image = RgbaImage::transparent(widened.width, widened.height);
-        if let Some(old) = old.filter(|old| !old.is_transparent()) {
+fn widen_offscreens(editor: &mut ClipEditor, size: (i64, i64), new_width: i64) -> Result<()> {
+    resize_offscreens(editor, size, (new_width, size.1), &|old, width, height| {
+        let mut image = RgbaImage::transparent(width, height);
+        if let Some(old) = old {
             image.paste(&old, 0, 0);
             image.paste(&old, old.width as i64, 0);
         }
-        let payload = encode_offscreen_image(&image, &widened)?;
-        let attribute = widened_attribute(&attribute, &parameters, &mut widened, &payload)?;
-        editor
-            .db
-            .execute("UPDATE Offscreen SET Attribute = ?1 WHERE MainId = ?2", (attribute, id))?;
-        // CSP stores only some levels' pixels and makes the rest when it
-        // opens the page; an offscreen stays without pixels when it had none.
-        if editor.externals.get(&external).is_some() {
-            editor.externals.insert(external, payload);
-        }
-    }
-    Ok(())
-}
-
-/// The offscreen attribute starts with four u32: its own length, then the
-/// lengths of the Parameter, InitColor and BlockSize sections.
-const ATTRIBUTE_HEADER: usize = 16;
-const BLOCK_SIZE_HEADER: u32 = 12;
-
-/// The offscreen attribute for the wider size: the Parameter section's width
-/// and block columns, and the BlockSize section (block count, then each
-/// block record's length in the payload) rebuilt for `payload`.
-fn widened_attribute(
-    attribute: &[u8],
-    old: &OffscreenParameters,
-    new: &mut OffscreenParameters,
-    payload: &[u8],
-) -> Result<Vec<u8>> {
-    let malformed = || CspError::format("オフスクリーンの属性の形式が分かりません");
-    let be = |at: usize| -> Result<u32> {
-        Ok(u32::from_be_bytes(
-            attribute.get(at..at + 4).ok_or_else(malformed)?.try_into().unwrap(),
-        ))
-    };
-    if be(0)? as usize != ATTRIBUTE_HEADER {
-        return Err(malformed());
-    }
-    let (parameter_length, init_length, block_length) = (be(4)? as usize, be(8)? as usize, be(12)? as usize);
-    let block_start = ATTRIBUTE_HEADER + parameter_length + init_length;
-    if block_start + block_length != attribute.len() {
-        return Err(malformed());
-    }
-    let mut result = attribute[..block_start].to_vec();
-    // Parameter: name, then width, height, blocks_x, blocks_y, ...
-    let (_, values) = crate::bytes::utf16_name(attribute, ATTRIBUTE_HEADER)?;
-    result[values..values + 4].copy_from_slice(&new.width.to_be_bytes());
-    result[values + 8..values + 12].copy_from_slice(&new.blocks_x.to_be_bytes());
-    // BlockSize: name, then 12, the block count, 4, and one u32 per block.
-    let section = &attribute[block_start..];
-    let (name, after_name) = crate::bytes::utf16_name(section, 0)?;
-    let count = (old.blocks_x * old.blocks_y) as usize;
-    let field = |at: usize| {
-        section
-            .get(at..at + 4)
-            .map(|bytes| u32::from_be_bytes(bytes.try_into().unwrap()))
-    };
-    if name != "BlockSize"
-        || field(after_name) != Some(BLOCK_SIZE_HEADER)
-        || field(after_name + 4) != Some(count as u32)
-        || section.len() != after_name + 12 + 4 * count
-    {
-        return Err(malformed());
-    }
-    let sizes = record_lengths(payload)?;
-    if sizes.len() != (new.blocks_x * new.blocks_y) as usize {
-        return Err(malformed());
-    }
-    let mut block = section[..after_name].to_vec();
-    block.extend(BLOCK_SIZE_HEADER.to_be_bytes());
-    block.extend((sizes.len() as u32).to_be_bytes());
-    block.extend(4u32.to_be_bytes());
-    for size in &sizes {
-        block.extend(size.to_be_bytes());
-    }
-    result[12..16].copy_from_slice(&(block.len() as u32).to_be_bytes());
-    result.extend(block);
-    Ok(result)
-}
-
-/// The length of each block record of an offscreen payload, in order.
-fn record_lengths(payload: &[u8]) -> Result<Vec<u32>> {
-    let records = crate::offscreen::block_records(payload)?;
-    let mut lengths = Vec::with_capacity(records.len());
-    let mut at = 8;
-    for _ in &records {
-        let length = u32::from_be_bytes(
-            payload
-                .get(at..at + 4)
-                .ok_or_else(|| CspError::format("block record overruns the payload"))?
-                .try_into()
-                .unwrap(),
-        );
-        lengths.push(length);
-        at += length as usize;
-    }
-    Ok(lengths)
+        image
+    })
 }
 
 /// A blank (white) preview as wide as the spread, at the template's scale.

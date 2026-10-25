@@ -7,6 +7,22 @@ import { checkSummary, dialogueUpdateSummary, exportToCsp, imagesNote, missingEd
 import { normalize } from "./project";
 import { projectBody } from "./projectjson";
 import { applyTakeBack, planTakeBack, takeBackSummary } from "./readback";
+import { cspPageOf, pageSetup, setupProblem } from "./csppage";
+import type { Project } from "./model";
+
+/** The template page and work to write with, and pages to copy layers from: the given ones, or with --builtin those made from the name's CSP page settings. */
+async function templatesFor(task: BatchExport, project: Project): Promise<{ template: string; workTemplate: string | null; donors: string[] }> {
+  if (!task.builtin) {
+    if (!task.template) throw new Error("--template（ページのひな形 .clip）がありません");
+    return { template: task.template, workTemplate: task.workTemplate, donors: [] };
+  }
+  const setup = pageSetup(project, cspPageOf(project), { title: task.workName ?? project.title, storyIndex: task.storyIndex ?? project.storyIndex ?? null, author: project.author });
+  const problem = setupProblem(setup);
+  if (problem) throw new Error(problem);
+  const built = await call("prepare_builtin_template", { setup });
+  // A work only when it is given a name.
+  return { template: built.page, workTemplate: task.workName ? (task.workTemplate ?? built.work) : null, donors: [built.parts] };
+}
 
 /** The export the app was started for (or why its arguments are wrong), or null for a normal start. */
 export async function batchExportTask(): Promise<BatchExport | { error: string } | null> {
@@ -34,17 +50,18 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
     const overwrite = await call("check_export_target", { outDir: task.outDir }).catch(() => null);
     // As when the window opens a file: empty lists are left out of the saved JSON.
     const project = normalize(await call("load_project", { path: task.project }));
+    const templates = await templatesFor(task, project);
     if (task.readDialogue) {
       const units = await readCspDialogue(
         project,
         {
-          template: task.template,
+          template: templates.template,
           outDir: task.outDir,
           workTemplate: null,
           workName: null,
           storyIndex: null,
           inputs: [task.project, project.source?.path].filter((path): path is string => !!path),
-          donors: [...(task.donors ?? []), project.source?.path].filter((path): path is string => !!path),
+          donors: [...(task.donors ?? []), project.source?.path, ...templates.donors].filter((path): path is string => !!path),
         },
         status,
       );
@@ -62,13 +79,13 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
       const summary = await updateCspDialogue(
         project,
         {
-          template: task.template,
+          template: templates.template,
           outDir: task.outDir,
           workTemplate: null,
           workName: null,
           storyIndex: null,
           inputs: [task.project, project.source?.path].filter((path): path is string => !!path),
-          donors: [...(task.donors ?? []), project.source?.path].filter((path): path is string => !!path),
+          donors: [...(task.donors ?? []), project.source?.path, ...templates.donors].filter((path): path is string => !!path),
           notes: task.notes !== false,
         },
         status,
@@ -80,13 +97,13 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
       const report = await exportToCsp(
         project,
         {
-          template: task.template,
+          template: templates.template,
           outDir: task.outDir,
-          workTemplate: task.workTemplate,
+          workTemplate: templates.workTemplate,
           workName: task.workName,
           storyIndex: task.storyIndex,
           inputs: [task.project, project.source?.path].filter((path): path is string => !!path),
-          donors: [...(task.donors ?? []), project.source?.path].filter((path): path is string => !!path),
+          donors: [...(task.donors ?? []), project.source?.path, ...templates.donors].filter((path): path is string => !!path),
           draftLayers: task.draftRough === false ? [] : ROUGH_LAYERS,
           frameFolders: task.frameFolders === true,
           notes: task.notes !== false,

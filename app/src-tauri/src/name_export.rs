@@ -8,6 +8,7 @@ use clip_core::raster::decode_png;
 use clip_core::raster::{Filter, resize};
 use clip_core::text::{FontName, NewText};
 use clip_core::vector::{NewFrame, NewVectorLine};
+use clip_core::write::blank::{BuiltTemplate, PageSetup, write_builtin_template};
 use clip_core::write::raster_page::{
     PageLayer, RasterLayer, RasterWorkWriter, TemplateCanvas, WorkOptions, WorkReport,
 };
@@ -95,6 +96,23 @@ pub(crate) async fn begin_name_export(
     };
     *state.name_export.lock().map_err(lock_error)? = Some(writer);
     Ok(start)
+}
+
+/// Make the built-in template for `setup` (a page, its parts to copy and a
+/// work) in the app's data folder: exports set up in the tool, without a
+/// CSP-made template, start from it.
+#[tauri::command]
+pub(crate) async fn prepare_builtin_template(app: tauri::AppHandle, setup: PageSetup) -> Result<BuiltTemplate, String> {
+    let folder = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|error| error.to_string())?
+        .join("builtin-template");
+    tauri::async_runtime::spawn_blocking(move || {
+        write_builtin_template(&setup, &folder).map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 /// A rough image of the source sheet and where it goes on the page (template px).

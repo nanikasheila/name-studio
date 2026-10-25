@@ -1,7 +1,9 @@
 // The built app, for real: its window opens a small name and writes it out
 // for CSP from the command line (--export-csp), so what only the real window
 // has (the WebView, its Content-Security-Policy, the calls to the Rust side)
-// is checked too. Needs the release build and a template page:
+// is checked too, once with a CSP-made template page and once with the one
+// the app makes from its own settings (--builtin, with a work). Needs the
+// release build and a template page:
 //   npx tauri build --no-bundle
 //   cargo run -p clip-core --features fixtures --example fixture_page -- <dir>/page.clip
 //   node e2e/realapp.mjs <dir>
@@ -33,23 +35,31 @@ page.memo = "メモ";
 await server.close();
 const name = join(dir, "test.namestudio");
 writeFileSync(name, projectJson(project));
-const out = join(dir, "out");
-rmSync(out, { recursive: true, force: true });
-mkdirSync(out);
-
-const run = spawnSync(app, ["--export-csp", name, "--template", join(dir, "page.clip"), "--out", out], { timeout: 180000, encoding: "utf8" });
-const reportPath = join(out, "name-studio-export.json");
-const report = existsSync(reportPath) ? JSON.parse(readFileSync(reportPath, "utf8").replace(/^﻿/, "")) : null;
 const failures = [];
 const check = (ok, what) => {
   console.log(`${ok ? "ok  " : "FAIL"} ${what}`);
   if (!ok) failures.push(what);
 };
-check(run.status === 0, `the app exits cleanly (${run.status ?? run.error?.message})`);
-check(report?.ok === true, `the export reports success (${report?.error ?? report?.summary?.join(" / ") ?? "no report"})`);
-check(report?.pages?.length === 3 && report.pages.every((path) => existsSync(path)), "it wrote the three pages");
-check(report?.checks?.every((c) => c.problems.length === 0) ?? false, "each page reads back as sent");
-if (failures.length) {
-  console.error(run.stderr);
-  process.exit(1);
+
+/** Export with `args`; the report, after checking the app and its pages. */
+function exportWith(label, args) {
+  const out = join(dir, label);
+  rmSync(out, { recursive: true, force: true });
+  mkdirSync(out);
+  const run = spawnSync(app, ["--export-csp", name, ...args, "--out", out], { timeout: 180000, encoding: "utf8" });
+  const reportPath = join(out, "name-studio-export.json");
+  const report = existsSync(reportPath) ? JSON.parse(readFileSync(reportPath, "utf8").replace(/^\uFEFF/, "")) : null;
+  check(run.status === 0, `${label}: the app exits cleanly (${run.status ?? run.error?.message})`);
+  check(report?.ok === true, `${label}: the export reports success (${report?.error ?? report?.summary?.join(" / ") ?? "no report"})`);
+  check(report?.pages?.length === 3 && report.pages.every((path) => existsSync(path)), `${label}: it wrote the three pages`);
+  check(report?.checks?.every((c) => c.problems.length === 0) ?? false, `${label}: each page reads back as sent`);
+  if (failures.length) console.error(run.stderr);
+  return report;
 }
+
+exportWith("out", ["--template", join(dir, "page.clip")]);
+const builtin = exportWith("builtin", ["--builtin", "--work-name", "通しテスト", "--story-index", "1"]);
+check(!!builtin?.work && existsSync(builtin.work), "builtin: it wrote the work (.cmc)");
+check(builtin?.workCheck?.problems?.length === 0, "builtin: the work reads back as sent");
+check(builtin?.vectorLayers === true && builtin?.textLayers === true, "builtin: the panels and dialogue are editable layers");
+if (failures.length) process.exit(1);

@@ -67,6 +67,10 @@ pub struct Project {
     /// 作品の既定: sizes and line widths new things get (and borders without their own width).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub style: Option<NameStyle>,
+    /// CSP のページ設定: the CSP page the name is written out on when no
+    /// CSP-made template is chosen; none: from the name's page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub csp_page: Option<CspPage>,
     /// Next number used by [`Project::new_id`]; ids are never reused.
     pub next_id: u64,
 }
@@ -309,6 +313,26 @@ pub struct NameStyle {
     /// フキダシの線の太さ (mm).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub balloon_line_mm: Option<f64>,
+}
+
+/// CSP のページ設定 (mm): the CLIP STUDIO PAINT page made without a template.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CspPage {
+    pub canvas_mm: [f64; 2],
+    pub trim_mm: [f64; 2],
+    pub bleed_mm: f64,
+    pub basic_mm: [f64; 2],
+    pub basic_offset_mm: [f64; 2],
+    pub resolution: f64,
+    /// None: as the binding has it (a manga's first page on the left).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_page_left: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nombre_start: Option<i64>,
+    /// 作品情報・ノンブルのフォント, as CSP names it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font: Option<String>,
 }
 
 /// A number for each kind of line.
@@ -904,6 +928,7 @@ impl Project {
             scroll: None,
             fonts: None,
             style: None,
+            csp_page: None,
             next_id: 1,
         }
     }

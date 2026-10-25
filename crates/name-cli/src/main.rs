@@ -18,7 +18,8 @@ usage:
   name-studio-cli decode-time <file.clip>
   name-studio-cli subtools <tool.sut|EditImageTool.todb> [--materials DIR] [--tips]
   name-studio-cli check <file.clip|file.cmc|DIR>...   (self-check written pages; exit 1 on problems)
-  name-studio-cli spread <page.clip> <spread.clip>   (a 見開き page template from a single page)";
+  name-studio-cli spread <page.clip> <spread.clip>   (a 見開き page template from a single page)
+  name-studio-cli blank <setup.json> <folder>   (the built-in template for these settings: page.clip, parts.clip, work.cmc)";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -31,6 +32,7 @@ fn main() -> ExitCode {
         Some("subtools") => subtools(&args[1..]),
         Some("check") => check(&args[1..]),
         Some("spread") => spread(&args[1..]),
+        Some("blank") => blank(&args[1..]),
         _ => {
             eprintln!("{USAGE}");
             ExitCode::from(2)
@@ -47,6 +49,33 @@ fn spread(args: &[String]) -> ExitCode {
     match clip_core::write::spread::make_spread_template(single.as_ref(), output.as_ref()) {
         Ok(layout) => {
             println!("{}", serde_json::to_string(&layout).unwrap_or_default());
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("{error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Write the built-in template for the settings in a JSON file (clip-core
+/// `PageSetup`); prints where its files went.
+fn blank(args: &[String]) -> ExitCode {
+    let [setup, folder] = args else {
+        eprintln!("{USAGE}");
+        return ExitCode::from(2);
+    };
+    let result = std::fs::read_to_string(setup)
+        .map_err(|error| error.to_string())
+        .and_then(|text| {
+            serde_json::from_str::<clip_core::write::blank::PageSetup>(&text).map_err(|error| error.to_string())
+        })
+        .and_then(|setup| {
+            clip_core::write::blank::write_builtin_template(&setup, folder.as_ref()).map_err(|error| error.to_string())
+        });
+    match result {
+        Ok(built) => {
+            println!("{}", serde_json::to_string(&built).unwrap_or_default());
             ExitCode::SUCCESS
         }
         Err(error) => {

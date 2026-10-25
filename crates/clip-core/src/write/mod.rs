@@ -4,6 +4,8 @@
 //! everything this crate does not model is kept as CSP wrote it. Inputs are
 //! only read; outputs go to new files.
 
+pub mod blank;
+pub(crate) mod canvas;
 pub mod cmc;
 pub mod container;
 pub mod editor;

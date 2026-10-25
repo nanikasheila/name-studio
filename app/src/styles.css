@@ -118,6 +118,13 @@ dialog.export::backdrop { background: rgb(0 0 0 / 0.35); }
 .export .actions { display: flex; justify-content: flex-end; gap: 8px; }
 #work-fields[hidden] { display: none; }
 .export .kinds { margin: 10px 0 4px; }
+.export .ne-modes { margin: 12px 0 4px; }
+.export .csp-page { margin-top: 6px; }
+.export .csp-page .mm-pair { grid-column: 2 / -1; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.export .csp-page .mm-pair input[type="number"] { width: 6em; padding: 3px 4px; font: inherit; }
+.export .csp-page .mm-pair select { font: inherit; padding: 3px 4px; }
+.export .csp-page .mm-pair output, .export .csp-page .mm-pair small { color: var(--muted); font-size: 12px; }
+.export .csp-page .mm-pair input:invalid, .export .csp-page .mm-pair input.bad { border-color: #c0392b; }
 
 [hidden] { display: none !important; }
 /* Its controls wrap onto another row rather than run off the window (1400 px with the pen chosen). */

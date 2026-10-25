@@ -328,7 +328,7 @@ pub(crate) fn layer_offset_x(db: &Connection, layer_id: i64) -> Result<i64> {
 /// for left and right pages. CSP moves it when it opens a page whose side
 /// differs from where the template had it, and then marks the page as
 /// modified. The text block's bbox is mirrored across the canvas width.
-fn mirror_nombre(db: &Connection) -> Result<()> {
+pub(crate) fn mirror_nombre(db: &Connection) -> Result<()> {
     let Some(layer_id) = nombre_layer(db)? else {
         return Ok(());
     };
@@ -616,7 +616,7 @@ fn replace_story_index(db: &Connection, old: i64, new: i64) -> Result<()> {
     Ok(())
 }
 
-fn move_run_length(blob: &[u8], delta: i64) -> Result<Vec<u8>> {
+pub(crate) fn move_run_length(blob: &[u8], delta: i64) -> Result<Vec<u8>> {
     if delta == 0 {
         return Ok(blob.to_vec());
     }
