@@ -474,6 +474,39 @@ fn new_text_names_its_font_as_csp_does() {
     let items = parse_tlv(&named).unwrap();
     let value = items.iter().find(|(tag, _)| *tag == 0x39).unwrap().1;
     assert!(value.ends_with(b"YuMin-Demibold"));
+
+    // CSP's own dialogue (the builtin pages' donor) names the font in its run
+    // too, and CSP draws that one: the run is renamed, its flags kept.
+    let named_run = |name: &str| {
+        let mut data = vec![0u8, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x59, 0x40];
+        data.extend((name.encode_utf16().count() as u16).to_le_bytes());
+        data.extend(name.encode_utf16().flat_map(|unit| unit.to_le_bytes()));
+        data
+    };
+    let runs = |data: &[u8]| [1u32.to_le_bytes().to_vec(), run(0, 6, 0x32, data)].concat();
+    let blob = build_tlv(&[
+        (0x0b, runs(&named_run("游明朝 Demibold"))),
+        (0x1f, "游明朝 Demibold".as_bytes().to_vec()),
+        (0x39, donor_font.to_attribute()),
+    ]);
+    text.font = Some(FontName {
+        name: "メイリオ".into(),
+        postscript: "Meiryo".into(),
+    });
+    let meiryo = retarget_text_attributes(&blob, &text).unwrap();
+    let items = parse_tlv(&meiryo).unwrap();
+    let value = items.iter().find(|(tag, _)| *tag == 0x0b).unwrap().1;
+    assert_eq!(
+        value,
+        [1u32.to_le_bytes().to_vec(), run(0, 2, 0x32, &named_run("メイリオ"))].concat()
+    );
+    assert_eq!(
+        parse_text_attributes(&meiryo).unwrap().font_name.as_deref(),
+        Some("メイリオ")
+    );
+    // And the name the tool property shows (0x1f, plain UTF-8).
+    let value = items.iter().find(|(tag, _)| *tag == 0x1f).unwrap().1;
+    assert_eq!(value, "メイリオ".as_bytes());
 }
 
 fn hex(bytes: &[u8]) -> String {
