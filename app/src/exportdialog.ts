@@ -55,6 +55,23 @@ function readDonor(): string {
 type TemplateMode = "builtin" | "file";
 const MODE_KEY = "namestudio.exportTemplateMode";
 
+/** How panels go to CSP (kept on this computer for the next export). */
+type PanelExport = "lines" | "masks" | "frames";
+const PANELS_KEY = "namestudio.exportPanels";
+
+function readPanels(): PanelExport {
+  const value = readText(PANELS_KEY);
+  return value === "masks" || value === "frames" ? value : "lines";
+}
+
+const PANEL_HINTS: Record<PanelExport, string> = {
+  lines: "コマ枠を線で書き、ラフ線はページに 1 枚のレイヤーにします。",
+  masks:
+    "コマごとにフォルダー「コマ1」「コマ2」…を作り、コマの形（はみ出しの範囲を含む）のレイヤーマスクを付けます。コマのラフ線と空の「ペン入れ」レイヤーが中に入り、コマの外に出た線は切らずにマスクで隠すだけです。飛び出させたいところは CSP でマスクを描き足してください。コマ枠の線はフォルダーの上に置きます。",
+  frames:
+    "コマを CSP のコマ枠フォルダー「コマ」にし、中に空の「ペン入れ」レイヤーを入れます（試験中）。コマ枠フォルダーを作って保存した CSP のページを見本に選んでください。",
+};
+
 /** The CSP page's number fields, with where each goes in a `CspPage`. */
 const PAGE_FIELDS: [string, (page: CspPage) => number, (page: CspPage, value: number) => void][] = [
   ["ne-canvas-w", (p) => p.canvasMm[0], (p, v) => (p.canvasMm[0] = v)],
@@ -90,8 +107,8 @@ export class ExportDialog {
   private editable = true;
   /** The rough written as 下描き layers at half opacity, to ink over. */
   private draftRough = true;
-  /** Panels as a コマ枠フォルダー (copied from a finished page), with a layer in it to ink on. */
-  private frameFolders = false;
+  /** How panels go to CSP: border lines only, a folder with a layer mask each, or a コマ枠フォルダー. */
+  private panels: PanelExport = readPanels();
   /** The name's memos as a 下描き layer, to see while inking. */
   private notes = true;
   private busy = false;
@@ -128,8 +145,10 @@ export class ExportDialog {
     $<HTMLInputElement>("ne-notes").addEventListener("change", (event) => {
       this.notes = (event.target as HTMLInputElement).checked;
     });
-    $<HTMLInputElement>("ne-frames").addEventListener("change", (event) => {
-      this.frameFolders = (event.target as HTMLInputElement).checked;
+    $<HTMLSelectElement>("ne-panels").addEventListener("change", (event) => {
+      this.panels = (event.target as HTMLSelectElement).value as PanelExport;
+      writeText(PANELS_KEY, this.panels);
+      this.show();
     });
     for (const mode of ["builtin", "file"] as const) {
       $(`ne-mode-${mode}`).addEventListener("click", () => {
@@ -252,7 +271,8 @@ export class ExportDialog {
     $("ne-clear-donor").hidden = !this.donor;
     $<HTMLInputElement>("ne-editable").checked = this.editable;
     $<HTMLInputElement>("ne-draft").checked = this.draftRough;
-    $<HTMLInputElement>("ne-frames").checked = this.frameFolders;
+    $<HTMLSelectElement>("ne-panels").value = this.panels;
+    $("ne-panels-hint").textContent = PANEL_HINTS[this.panels];
     $<HTMLInputElement>("ne-notes").checked = this.notes;
     $<HTMLInputElement>("ne-make-work").checked = this.form.makeWork;
     $("ne-work-fields").hidden = !this.form.makeWork;
@@ -428,7 +448,8 @@ export class ExportDialog {
             inputs: this.sources(),
             donors: [this.donor, project.source?.path, ...templates.donors].filter((path): path is string => !!path),
             draftLayers: this.draftRough ? ROUGH_LAYERS : [],
-            frameFolders: this.frameFolders,
+            frameFolders: this.panels === "frames",
+            panelMasks: this.panels === "masks",
             notes: this.notes,
           },
           this.editable,

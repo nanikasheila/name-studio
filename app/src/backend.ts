@@ -54,6 +54,8 @@ export interface CspExportRequest {
   draftLayers?: string[];
   /** Panels as a コマ枠フォルダー (copied from a finished page among the donors), with an empty layer in it to ink on. */
   frameFolders?: boolean;
+  /** Each panel as a folder with a レイヤーマスク, holding its rough and an empty layer to ink on (instead of `frameFolders`). */
+  panelMasks?: boolean;
   /** The name's memos as a 下描き image layer on top (on unless false). */
   notes?: boolean;
 }
@@ -115,6 +117,8 @@ export interface BatchExport {
   draftRough?: boolean;
   /** Panels as a コマ枠フォルダー (--frame-folders). */
   frameFolders?: boolean;
+  /** Each panel as a folder with a レイヤーマスク (--panel-masks). */
+  panelMasks?: boolean;
   /** The name's memos as a 下描き layer (on unless --no-notes). */
   notes?: boolean;
   /** Bring the dialogue into the pages there instead (--update-dialogue). */

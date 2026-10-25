@@ -1101,6 +1101,133 @@ fn writes_panels_as_a_frame_folder_copied_from_a_finished_page() {
 }
 
 #[test]
+fn writes_a_panel_as_a_folder_with_a_layer_mask() {
+    use clip_core::LayerKind;
+    use clip_core::offscreen::OffscreenParameters;
+    use clip_core::vector::NewVectorLine;
+    use clip_core::write::raster_page::{PageLayer, RasterLayer, RasterWorkWriter, WorkOptions, page_record};
+    use clip_core::write::verify::{ExpectedLayer, verify_page};
+    let folder = tempfile::tempdir().unwrap();
+    let template_path = template(folder.path());
+    let sheet_path = sheet(folder.path());
+    let mut writer = RasterWorkWriter::new(WorkOptions {
+        template: template_path.clone(),
+        out_dir: folder.path().join("out"),
+        name_pattern: DEFAULT_NAME_PATTERN.into(),
+        work: None,
+        story_index: None,
+        inputs: vec![sheet_path.clone()],
+        donor_sources: vec![sheet_path],
+        draft_layers: vec!["ラフ線".into()],
+        frame_folders: false,
+    })
+    .unwrap();
+    let canvas = writer.canvas;
+    assert_eq!((canvas.width_px, canvas.height_px), (400, 560));
+    // The panel, at half the page's size (as the app sends its images).
+    let mut mask = RgbaImage::transparent(200, 280);
+    for y in 10..100 {
+        for x in 10..150 {
+            mask.pixels[(y * 200 + x) * 4 + 3] = 255;
+        }
+    }
+    // A line that runs out of the panel: kept whole, hidden outside it.
+    let line = NewVectorLine {
+        points: vec![(40.0, 40.0, 1.0), (390.0, 300.0, 1.0)],
+        closed: false,
+        width_px: 3.0,
+    };
+    let layers = vec![
+        PageLayer::Folder {
+            name: "コマ1".into(),
+            mask: Some(mask),
+            children: vec![
+                PageLayer::Vector {
+                    name: "ラフ線".into(),
+                    lines: vec![line],
+                },
+                PageLayer::Raster(RasterLayer {
+                    name: "ペン入れ".into(),
+                    image: RgbaImage::transparent(400, 560),
+                }),
+            ],
+        },
+        PageLayer::Folder {
+            name: "コマ2".into(),
+            mask: None,
+            children: vec![PageLayer::Raster(RasterLayer {
+                name: "ペン入れ".into(),
+                image: RgbaImage::transparent(400, 560),
+            })],
+        },
+    ];
+    let expected: Vec<ExpectedLayer> = layers
+        .iter()
+        .map(|layer| ExpectedLayer::of(layer, canvas.width_px, canvas.height_px))
+        .collect();
+    let page = writer.write_page(&layers, None, false).unwrap();
+    writer.finish().unwrap();
+    let check = verify_page(&page, &expected, &canvas);
+    assert!(check.ok(), "{:?}", check.problems);
+
+    let written = ClipDocument::read(&page).unwrap();
+    let top = &written.root.children;
+    let (first, second) = (&top[top.len() - 2], &top[top.len() - 1]);
+    assert_eq!((first.kind, first.name.as_str()), (LayerKind::Folder, "コマ1"));
+    assert!(first.has_mask && !second.has_mask);
+    let inside: Vec<(&str, LayerKind)> = first
+        .children
+        .iter()
+        .map(|child| (child.name.as_str(), child.kind))
+        .collect();
+    assert_eq!(inside, [("ラフ線", LayerKind::Vector), ("ペン入れ", LayerKind::Raster)]);
+    // Saved as CSP saves a folder with a mask: type 2, mask in use, no colour settings.
+    let row = written.layer_row(first.main_id).unwrap();
+    assert_eq!(
+        (row.int("LayerType"), row.int("LayerFolder"), row.int("LayerVisibility")),
+        (2, 1, 3)
+    );
+    let plain = written.layer_row(second.main_id).unwrap();
+    assert_eq!((plain.int("LayerType"), plain.int("LayerVisibility")), (0, 1));
+    // The rough inside the folder is a 下描き layer, as at the top level.
+    let rough = written.layer_row(first.children[0].main_id).unwrap();
+    assert_eq!(rough.int("LayerOpacity"), 128);
+    // The mask is the page's size, one 8-bit plane, opaque inside the panel only.
+    let attribute: Vec<u8> = written
+        .database()
+        .query_row(
+            "SELECT o.Attribute FROM Mipmap m JOIN MipmapInfo i ON i.MainId = m.BaseMipmapInfo \
+             JOIN Offscreen o ON o.MainId = i.Offscreen WHERE m.MainId = ?1",
+            [row.int("LayerLayerMaskMipmap")],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let parameters = OffscreenParameters::parse(&attribute).unwrap();
+    assert_eq!(
+        (
+            parameters.width,
+            parameters.height,
+            parameters.pixel_kind,
+            parameters.color_planes,
+            parameters.total_planes
+        ),
+        (400, 560, 1, 0, 1)
+    );
+    let pixels = written.layer_mask_pixels(first).unwrap().unwrap();
+    let alpha = |x: usize, y: usize| pixels.pixels[(y * 400 + x) * 4 + 3];
+    assert_eq!((alpha(100, 100), alpha(350, 400), alpha(5, 5)), (255, 0, 0));
+    let (x0, y0, x1, y1) = pixels.alpha_bbox().unwrap();
+    assert!(
+        x0.abs_diff(20) <= 2 && y0.abs_diff(20) <= 2 && x1.abs_diff(300) <= 2 && y1.abs_diff(200) <= 2,
+        "{:?}",
+        (x0, y0, x1, y1)
+    );
+    // What went in is recorded under the folder's name.
+    let record = page_record(&layers, &[]);
+    assert!(record.vectors.contains_key("コマ1/ラフ線"), "{:?}", record.vectors);
+}
+
+#[test]
 fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
     use clip_core::text::NewText;
     use clip_core::vector::NewVectorLine;

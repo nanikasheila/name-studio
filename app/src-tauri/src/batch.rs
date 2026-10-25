@@ -44,6 +44,8 @@ pub struct BatchExport {
     pub draft_rough: bool,
     /// Panels as a コマ枠フォルダー copied from a donor (`--frame-folders`).
     pub frame_folders: bool,
+    /// Each panel as a folder with a レイヤーマスク (`--panel-masks`).
+    pub panel_masks: bool,
     /// The name's memos as a 下描き layer (`--no-notes` leaves them out).
     pub notes: bool,
     /// Bring the dialogue into the pages there instead of writing them (`--update-dialogue`).
@@ -66,6 +68,7 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
     let mut donors = Vec::new();
     let mut draft_rough = true;
     let mut frame_folders = false;
+    let mut panel_masks = false;
     let mut notes = true;
     let mut update_dialogue = false;
     let mut read_dialogue = false;
@@ -89,6 +92,7 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
             "--donor" => donors.push(value()?),
             "--no-draft-rough" => draft_rough = false,
             "--frame-folders" => frame_folders = true,
+            "--panel-masks" => panel_masks = true,
             "--no-notes" => notes = false,
             "--update-dialogue" => update_dialogue = true,
             "--read-dialogue" => read_dialogue = true,
@@ -121,6 +125,7 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
         donors,
         draft_rough,
         frame_folders,
+        panel_masks,
         notes,
         update_dialogue,
         read_dialogue,
@@ -171,7 +176,9 @@ mod tests {
         assert_eq!(batch.donors, vec!["sample.clip".to_owned()]);
         assert_eq!(batch.work_name.as_deref(), Some("第1話"));
         assert_eq!(batch.story_index, Some(1));
-        assert!(batch.draft_rough && !batch.frame_folders && batch.notes && !batch.update_dialogue);
+        assert!(
+            batch.draft_rough && !batch.frame_folders && !batch.panel_masks && batch.notes && !batch.update_dialogue
+        );
         assert_eq!(
             batch.report,
             Path::new("out").join("name-studio-export.json").display().to_string()
@@ -189,12 +196,15 @@ mod tests {
             "o",
             "--no-draft-rough",
             "--frame-folders",
+            "--panel-masks",
             "--no-notes",
             "--update-dialogue",
         ]))
         .unwrap()
         .unwrap();
-        assert!(!batch.draft_rough && batch.frame_folders && !batch.notes && batch.update_dialogue);
+        assert!(
+            !batch.draft_rough && batch.frame_folders && batch.panel_masks && !batch.notes && batch.update_dialogue
+        );
         assert!(!batch.read_dialogue);
         let batch = from_args(args(&[
             "--export-csp",

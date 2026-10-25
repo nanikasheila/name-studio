@@ -905,6 +905,34 @@ export function borderLines(page: Page): BorderLine[] {
 const PAST_CANVAS_MM = 3;
 
 /**
+ * A panel's outline with each 裁ち切り edge that lies on a canvas side moved
+ * past the canvas, so what is drawn there reaches the cut; `sides` gives the
+ * side of each open edge (null when it is not on one, and stays put).
+ */
+export function bleedOutline(panel: Panel, format: PageFormat): { outline: Point[]; sides: (Side | null)[] } {
+  const all: Side[] = ["top", "bottom", "left", "right"];
+  const n = panel.shape.length;
+  const outline = panel.shape.map((point): Point => [point[0], point[1]]);
+  const sides = (panel.openEdges ?? []).map((edge) => {
+    const [a, b] = [panel.shape[edge], panel.shape[(edge + 1) % n]];
+    const side = all.find((side) => onCanvasSide(a, side, format) && onCanvasSide(b, side, format)) ?? null;
+    if (!side) return null;
+    for (const index of [edge, (edge + 1) % n]) {
+      const [x, y] = outline[index];
+      const [w, h] = format.canvasMm;
+      outline[index] = {
+        top: [x, -PAST_CANVAS_MM],
+        bottom: [x, h + PAST_CANVAS_MM],
+        left: [-PAST_CANVAS_MM, y],
+        right: [w + PAST_CANVAS_MM, y],
+      }[side] as Point;
+    }
+    return side;
+  });
+  return { outline, sides };
+}
+
+/**
  * The panels a CSP コマ枠フォルダー can hold as they are drawn here, each
  * with its outline as a frame: a plain border (solid or thick), not an inset
  * or a 見開き half, and not cut by a panel above or a はみ出し. A 裁ち切り
@@ -915,7 +943,6 @@ const PAST_CANVAS_MM = 3;
 export function framePanels(page: Page, format: PageFormat, gutter: Side | null = null): { panel: Panel; outline: Point[] }[] {
   const pieces = new Map<string, number>();
   for (const line of borderLines(page)) pieces.set(line.panel.id, (pieces.get(line.panel.id) ?? 0) + line.points.length);
-  const sides: Side[] = ["top", "bottom", "left", "right"];
   const result: { panel: Panel; outline: Point[] }[] = [];
   for (const panel of page.panels) {
     const border = panel.border ?? "solid";
@@ -923,28 +950,8 @@ export function framePanels(page: Page, format: PageFormat, gutter: Side | null 
     const runs = borderRuns(panel);
     // Cut by a panel above or a はみ出し: the drawn border has other points than its runs.
     if (pieces.get(panel.id) !== runs.reduce((sum, run) => sum + run.points.length, 0)) continue;
-    const n = panel.shape.length;
-    const outline = panel.shape.map((point): Point => [point[0], point[1]]);
-    let framable = true;
-    for (const edge of panel.openEdges ?? []) {
-      const [a, b] = [panel.shape[edge], panel.shape[(edge + 1) % n]];
-      const side = sides.find((side) => onCanvasSide(a, side, format) && onCanvasSide(b, side, format));
-      if (!side || side === gutter) {
-        framable = false;
-        break;
-      }
-      for (const index of [edge, (edge + 1) % n]) {
-        const [x, y] = outline[index];
-        const [w, h] = format.canvasMm;
-        outline[index] = {
-          top: [x, -PAST_CANVAS_MM],
-          bottom: [x, h + PAST_CANVAS_MM],
-          left: [-PAST_CANVAS_MM, y],
-          right: [w + PAST_CANVAS_MM, y],
-        }[side] as Point;
-      }
-    }
-    if (framable) result.push({ panel, outline });
+    const { outline, sides } = bleedOutline(panel, format);
+    if (sides.every((side) => side && side !== gutter)) result.push({ panel, outline });
   }
   return result;
 }

@@ -22,6 +22,7 @@ const LAYER_TYPE_RASTER: i64 = 1;
 const LAYER_TYPE_ROOT: i64 = 256;
 const LAYER_TYPE_STORY_INFO: i64 = 800;
 const LAYER_TYPE_PAPER: i64 = 1584;
+const LAYER_TYPE_MASKED: i64 = 2;
 const FULL_OPACITY: f64 = 256.0;
 const MAX_LAYER_DEPTH: usize = 64;
 
@@ -317,6 +318,14 @@ impl ClipDocument {
         }
     }
 
+    /// A layer mask's pixels (alpha 255 shows the layer), or None without one.
+    pub fn layer_mask_pixels(&self, layer: &ClipLayer) -> Result<Option<RgbaImage>> {
+        match self.base_offscreen(layer.mask_mipmap)? {
+            Some((attribute, payload)) => offscreen::decode_offscreen_image(&attribute, payload),
+            None => Ok(None),
+        }
+    }
+
     /// Stored pixels shrunk by an integer factor (for overviews of a whole sheet).
     pub fn render_layer_scaled(&self, layer: &ClipLayer, factor: u32) -> Result<Option<RgbaImage>> {
         match self.base_offscreen(layer.render_mipmap)? {
@@ -431,7 +440,8 @@ impl ClipDocument {
 }
 
 fn classify(row: &Row, vector_ids: &HashSet<i64>) -> LayerKind {
-    match row.int("LayerType") {
+    // Bit 1 only says the layer has a layer mask (a raster layer with one is 3).
+    match row.int("LayerType") & !LAYER_TYPE_MASKED {
         LAYER_TYPE_ROOT => LayerKind::Root,
         LAYER_TYPE_PAPER => LayerKind::Paper,
         LAYER_TYPE_STORY_INFO => LayerKind::StoryInfo,

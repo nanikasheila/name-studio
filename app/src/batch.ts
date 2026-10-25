@@ -107,6 +107,7 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
           donors: [...(task.donors ?? []), project.source?.path, ...templates.donors].filter((path): path is string => !!path),
           draftLayers: task.draftRough === false ? [] : ROUGH_LAYERS,
           frameFolders: task.frameFolders === true,
+          panelMasks: task.panelMasks === true,
           notes: task.notes !== false,
         },
         true,
