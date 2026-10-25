@@ -344,7 +344,7 @@ pub(crate) fn mirror_nombre(db: &Connection) -> Result<()> {
 /// `ComicStoryNombreStart + ComicPageIndex` there. The text and its style run
 /// change, and the block widens or narrows by the template's width per
 /// character, keeping the edge nearer to the page border (the binding edge).
-fn update_nombre(db: &Connection, first_right: bool) -> Result<()> {
+pub(crate) fn update_nombre(db: &Connection, first_right: bool) -> Result<()> {
     if !has_column(db, "Canvas", "ComicPageIndex")? || !has_column(db, "Canvas", "ComicStoryNombreStart")? {
         return Ok(());
     }

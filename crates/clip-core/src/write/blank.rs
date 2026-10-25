@@ -19,7 +19,7 @@ use super::canvas::{blank_preview, resize_offscreens, set_thumbnail_canvas};
 use super::editor::ClipEditor;
 use super::page::{
     LEFT_PAGE_FLAG, NOMBRE_INFO, RIGHT_PAGE_FLAG, STORY_INFO, TextItems, canvas_value, drop_render_cache, has_column,
-    mirror_nombre, story_layers,
+    mirror_nombre, story_layers, update_nombre,
 };
 use super::schema::column_names;
 use crate::clip::{round_half_even, to_pixels};
@@ -288,6 +288,8 @@ pub fn apply_setup(editor: &mut ClipEditor, setup: &PageSetup) -> Result<()> {
         }
         mirror_nombre(db)?;
     }
+    // The page is the first one: its ノンブル is the start number.
+    update_nombre(&editor.db, !setup.first_page_left)?;
     Ok(())
 }
 
@@ -604,6 +606,11 @@ fn place_story_texts(db: &Connection, old: &Frames, new: &Frames) -> Result<()> 
     let at = |anchor_old: i64, anchor_new: i64, value: i64| {
         anchor_new + round_half_even((value - anchor_old) as f64 * scale)
     };
+    // CSP puts 作品名 and 作者名 about 6 mm under the 仕上がり (its pages of
+    // A3/B4 and A4/B5 agree). When the canvas has no room there (a canvas of
+    // 仕上がり + 裁ち落とし), they go up, inside the canvas, so they can be seen.
+    let margin = round_half_even(STORY_MARGIN_MM / 25.4 * new.resolution);
+    let below = |y0: i64, height: i64| at(old.trim[3], new.trim[3], y0).min(new.height - margin - height);
     for info in [STORY_INFO, NOMBRE_INFO] {
         for (layer_id, _) in story_layers(db, info)? {
             let (dx, dy) = layer_offset(db, layer_id)?;
@@ -619,12 +626,12 @@ fn place_story_texts(db: &Connection, old: &Frames, new: &Frames) -> Result<()> 
                             let width = round_half_even((x1 - x0) as f64 * scale);
                             let height = round_half_even((y1 - y0) as f64 * scale);
                             let (x0, y0) = match part {
-                                Part::Title => (at(old.trim[0], new.trim[0], x0), at(old.trim[3], new.trim[3], y0)),
+                                Part::Title => (at(old.trim[0], new.trim[0], x0), below(y0, height)),
                                 Part::Author => {
                                     let (old_mid, new_mid) =
                                         ((old.trim[0] + old.trim[2]) / 2, (new.trim[0] + new.trim[2]) / 2);
                                     let middle = at(old_mid, new_mid, (x0 + x1) / 2);
-                                    (middle - width / 2, at(old.trim[3], new.trim[3], y0))
+                                    (middle - width / 2, below(y0, height))
                                 }
                                 // A left page: the binding edge is on the right.
                                 Part::Nombre => (
@@ -650,6 +657,9 @@ fn place_story_texts(db: &Connection, old: &Frames, new: &Frames) -> Result<()> 
     }
     Ok(())
 }
+
+/// The least room left under 作品名 and 作者名, from the canvas edge.
+const STORY_MARGIN_MM: f64 = 0.5;
 
 /// Remove the images CSP drew of the story info texts (TLV 0x32, cleared
 /// above): offscreens of those layers that no mipmap or thumbnail uses.

@@ -192,8 +192,19 @@ fn makes_pages_of_another_size_and_binding() {
     // Level with the bottom of the 基本枠 (moved 3 mm up).
     let basic_bottom = (height - 2480) / 2 - 41 + 2480;
     assert_eq!(nombre[0].1[3] as i64, basic_bottom);
+    // The page is the first: its ノンブル is the start number.
+    assert_eq!(nombre[0].0, "3");
     let story = story_blocks(&built.page, 1);
     assert_eq!((story[0].0.as_str(), story[1].0.as_str()), ("Short", ""));
+    // 作品名 under the 仕上がり and inside the canvas, though CSP's place
+    // (just outside the 裁ち落とし) is past its edge.
+    let trim_bottom = (height - 2894) / 2 + 2894;
+    for (text, [_, y0, _, y1]) in &story {
+        assert!(
+            *y0 as i64 >= trim_bottom && (*y1 as i64) < height,
+            "{text}: {y0}..{y1} vs {trim_bottom}..{height}"
+        );
+    }
     // The font goes into the texts and the work.
     let fonts: Vec<u8> = page
         .database()
@@ -206,6 +217,61 @@ fn makes_pages_of_another_size_and_binding() {
     assert!(fonts.windows(12).any(|window| window == b"BIZ-UDGothic"));
     let work = CmcProject::read(&built.work).unwrap();
     assert_eq!((work.binding_position, work.start_page), (0, 1));
+    assert!(check_clip(&built.page).ok());
+}
+
+#[test]
+fn places_the_story_info_where_csp_does_on_another_page() {
+    // CSP EX 5.1.4 made this page: A4 canvas, B5 仕上がり, 裁ち落とし 5 mm,
+    // 基本枠 149 × 219 mm, 600 dpi. 作品名 (331, 6685), ノンブル (4599, 6044)-(4630, 6094).
+    let folder = tempfile::tempdir().unwrap();
+    let setup = PageSetup {
+        canvas_mm: [210.0, 297.0],
+        trim_mm: [182.0, 257.0],
+        basic_mm: [149.0, 219.0],
+        ..commercial()
+    };
+    let built = write_builtin_template(&setup, folder.path()).unwrap();
+    let story = story_blocks(&built.page, 1);
+    assert_eq!(story[0].1[0], 331);
+    assert!((story[0].1[1] - 6685).abs() <= 1, "{story:?}");
+    assert_eq!(
+        story_blocks(&built.page, 2),
+        [("1".to_owned(), [4599, 6044, 4630, 6094])]
+    );
+}
+
+#[test]
+fn keeps_the_story_info_on_a_canvas_of_trim_and_bleed() {
+    let folder = tempfile::tempdir().unwrap();
+    let setup = PageSetup {
+        canvas_mm: [188.0, 263.0],
+        trim_mm: [182.0, 257.0],
+        bleed_mm: 3.0,
+        basic_mm: [150.0, 220.0],
+        resolution: 300.0,
+        ..commercial()
+    };
+    let built = write_builtin_template(&setup, folder.path()).unwrap();
+    let page = ClipDocument::read(&built.page).unwrap();
+    let (width, height) = (page.canvas.width_px, page.canvas.height_px);
+    let (trim_w, trim_h) = page.canvas.crop_size_px.unwrap();
+    let trim_bottom = (height - trim_h) / 2 + trim_h;
+    let story = story_blocks(&built.page, 1);
+    assert_eq!(story.len(), 2);
+    for (text, [x0, y0, x1, y1]) in &story {
+        assert!(*x0 >= 0 && (*x1 as i64) <= width, "{text}: {x0}..{x1}");
+        assert!(
+            *y0 as i64 >= trim_bottom && (*y1 as i64) < height,
+            "{text}: {y0}..{y1} vs {trim_bottom}..{height}"
+        );
+    }
+    // 作品名 at the left of the 仕上がり, 作者名 at its middle.
+    assert!((story[0].1[0] as i64 - (width - trim_w) / 2).abs() <= 1, "{story:?}");
+    assert!(
+        ((story[1].1[0] + story[1].1[2]) as i64 / 2 - width / 2).abs() <= 1,
+        "{story:?}"
+    );
     assert!(check_clip(&built.page).ok());
 }
 
