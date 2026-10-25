@@ -158,6 +158,9 @@ export class PenDialog {
       ctx.fill();
       ctx.stroke();
     }
+    const [first, last] = [curve[0], curve[curve.length - 1]];
+    const percent = (value: number) => `${Math.round(value * 100)}%`;
+    $("pen-curve-ends").textContent = `下限: 筆圧 ${percent(first[0])} → ${percent(first[1])}　上限: 筆圧 ${percent(last[0])} → ${percent(last[1])}`;
     if (raw !== undefined) {
       // Where the pen's press is now.
       const [gx, gy] = this.toGraph([raw, curveAt(curve, raw)]);
@@ -187,7 +190,8 @@ export class PenDialog {
       // A new point where the press is, on its way to being dragged.
       const curve = this.preferences.settings.pressureCurve.map((p) => [...p] as [number, number]);
       const point = this.fromGraph(event.offsetX, event.offsetY);
-      if (point[0] <= 0.01 || point[0] >= 0.99) return;
+      // Between the ends only: past them the curve stays flat.
+      if (point[0] <= curve[0][0] + 0.01 || point[0] >= curve[curve.length - 1][0] - 0.01) return;
       curve.push(point);
       curve.sort((a, b) => a[0] - b[0]);
       this.dragging = curve.indexOf(point);
@@ -198,10 +202,11 @@ export class PenDialog {
       const curve = this.preferences.settings.pressureCurve.map((p) => [...p] as [number, number]);
       const [x, y] = this.fromGraph(event.offsetX, event.offsetY);
       const index = this.dragging;
-      const last = curve.length - 1;
-      // The ends stay at no and full pressure; points in between keep their order.
-      const lo = index === 0 ? 0 : index === last ? 1 : Math.min(Math.max(x, curve[index - 1][0] + 0.01), curve[index + 1][0] - 0.01);
-      curve[index] = [lo, y];
+      // Points keep their order. The ends move too: the lightest press that
+      // draws (下限) and the press that gives the most (上限) differ from person to person.
+      const lo = index === 0 ? 0 : curve[index - 1][0] + 0.01;
+      const hi = index === curve.length - 1 ? 1 : curve[index + 1][0] - 0.01;
+      curve[index] = [Math.min(Math.max(x, lo), hi), y];
       this.preferences.update({ pressureCurve: curve });
       this.drawCurve();
     });

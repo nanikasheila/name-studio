@@ -342,7 +342,7 @@ export function basicBox(format: PageFormat): BoxMm {
 }
 
 /** Keep the part of `shape` where `side(point) >= 0` (Sutherland–Hodgman, one edge). */
-function clipHalfPlane(shape: readonly Point[], side: (p: Point) => number): Point[] {
+export function clipHalfPlane(shape: readonly Point[], side: (p: Point) => number): Point[] {
   const result: Point[] = [];
   for (let i = 0; i < shape.length; i++) {
     const current = shape[i];

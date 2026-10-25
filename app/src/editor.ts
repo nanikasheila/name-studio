@@ -9,7 +9,7 @@ import { balloonExtent, defaultTailStyle, insideBalloon, resolvedShape, tailGeom
 import { spreads } from "./pages";
 import { GRID_GAP_MM, MARGIN, MAX_PAGE_GAP_MM, extent, layoutPages, onStage, rowCount, slotAt, toPage, type Slot } from "./layout";
 import { holdPanel, placeHeld } from "./hold";
-import { addBreakout, addDrawnPanel, moveBreakout, stacked } from "./koma";
+import { addBreakout, addDrawnPanel, moveBreakout, spanGutter, stacked } from "./koma";
 import { joinPanels, moveSeam, seamAt, seamBase, seamLines, snapSeam, type Seam } from "./komaedit";
 import {
   baseBounds,
@@ -883,6 +883,64 @@ export class PageEditor {
   }
 
   /**
+   * The panels being reshaped, and the panel selected, where they run past
+   * their page's edge on screen (over the facing page and the room between
+   * pages): drawn there too, the selected one with its corners, so a side
+   * pulled over the gutter stays in sight and can be taken again.
+   */
+  private drawOverflow(project: Project): void {
+    const drag = this.drag;
+    const s = this.selection;
+    const pageId = drag && "slot" in drag && drag.slot ? drag.slot.page.id : s?.pageId;
+    const slot = pageId ? this.slots.find((x) => x.page.id === pageId) : undefined;
+    if (!slot) return;
+    const ids = new Set<string>();
+    if (drag?.kind === "vertex") ids.add(drag.panelId);
+    else if (drag?.kind === "seam") for (const edge of drag.seam.edges) ids.add(edge.panelId);
+    else if (drag && (drag.kind === "scale" || drag.kind === "rotate" || drag.kind === "warp")) for (const panel of drag.base.panels ?? []) ids.add(panel.id);
+    const corners = !this.transforming && s?.kind === "panel" && s.pageId === slot.page.id ? s.id : null;
+    if (corners) ids.add(corners);
+    const [, pageH] = project.pageFormat.canvasMm;
+    const left = slot.x + slot.shown[0] * slot.scale;
+    const right = slot.x + slot.shown[1] * slot.scale;
+    const panels = slot.page.panels.filter((panel) => ids.has(panel.id) && !panel.spread);
+    const outside = panels.filter((panel) =>
+      panel.shape.some(([x, y]) => {
+        const sx = slot.x + x * slot.scale;
+        return sx < left - 0.5 || sx > right + 0.5 || y < 0 || y > pageH;
+      }),
+    );
+    if (!outside.length) return;
+    const m = { scale: slot.scale, x: slot.x, y: slot.y };
+    const ctx = this.ctx;
+    ctx.save();
+    // Everywhere but its own page, where it is drawn already.
+    ctx.beginPath();
+    ctx.rect(-1e5, -1e5, 2e5, 2e5);
+    ctx.rect(left, slot.y, right - left, pageH * slot.scale);
+    ctx.clip("evenodd");
+    for (const panel of outside) {
+      tracePath(ctx, panel.shape, m, true);
+      ctx.fillStyle = "rgba(47, 111, 219, 0.12)";
+      ctx.fill();
+      ctx.strokeStyle = ACCENT;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      if (panel.id !== corners) continue;
+      ctx.fillStyle = "#ffffff";
+      ctx.lineWidth = 1.5;
+      for (const [x, y] of panel.shape) {
+        const [hx, hy] = [slot.x + x * slot.scale, slot.y + y * slot.scale];
+        ctx.fillRect(hx - HANDLE, hy - HANDLE, HANDLE * 2, HANDLE * 2);
+        ctx.strokeRect(hx - HANDLE, hy - HANDLE, HANDLE * 2, HANDLE * 2);
+      }
+    }
+    ctx.restore();
+  }
+
+  /**
    * What was dragged onto another page goes to that page: dialogue and rough
    * lines past the gutter, or (連続) onto any page on the canvas, and a panel
    * with what is in it.
@@ -945,6 +1003,20 @@ export class PageEditor {
     this.host.status(`${moved.length} 個を ${pages} ページへ移しました`);
   }
 
+  /**
+   * ページをまたぐコマ: panels of the page drawn on past the gutter onto the
+   * facing page (on screen beside it) become 見開き panels. Returns how many.
+   */
+  private spanPanels(project: Project, pageId: string): number {
+    const slot = this.slots.find((s) => s.page.id === pageId);
+    const facing = slot && this.facingSlot(slot);
+    if (!slot || !facing) return 0;
+    let count = 0;
+    for (const panel of [...slot.page.panels]) if (spanGutter(project, slot.page, panel, this.firstAlone)) count++;
+    if (count) this.host.status(`コマがのどを越えたので、${slot.index + 1}・${facing.index + 1} ページの見開きコマにしました（「見開きをやめる」で戻せます）`);
+    return count;
+  }
+
   // --- drawing ----------------------------------------------------------------
 
   /** Draw on the next frame: pointer events can come many times a frame. */
@@ -995,6 +1067,7 @@ export class PageEditor {
     this.strokeCache.forget(drawn);
     this.drawSpreadMarks(project);
     this.drawDragged(project);
+    this.drawOverflow(project);
     this.keepCache();
     this.inline?.place();
     this.placeBar();
@@ -2562,7 +2635,10 @@ export class PageEditor {
     // A pen's eraser end reports button 5 (buttons bit 32): erase with any tool.
     this.setTipEraser(event);
     if (event.button !== 0 && !this.tipEraser) return;
-    const slot = this.slotAt(sx, sy, project);
+    let slot = this.slotAt(sx, sy, project);
+    // The selected panel's corners, also where they lie past its page (over the facing one).
+    const selectedOn = this.tool === "select" && this.selection?.kind === "panel" ? this.slots.find((x) => x.page.id === this.selection!.pageId) : undefined;
+    if (selectedOn && selectedOn !== slot && this.vertexAt(selectedOn, sx, sy) >= 0) slot = selectedOn;
     if (!slot) {
       this.select(null);
       return;
@@ -3210,6 +3286,7 @@ export class PageEditor {
           orderPanels(drag.slot.page, project.binding);
         }
         if (drag.kind === "move") this.carryToPageUnder(project, drag.slot);
+        this.spanPanels(project, this.selection?.pageId ?? drag.slot.page.id);
         for (const slot of this.slots) {
           assignPanels(slot.page);
           sortLines(slot.page, this.binding());
@@ -3331,7 +3408,10 @@ export class PageEditor {
           this.host.cancel();
           break;
         }
-        if (drag.base.panels) orderPanels(drag.slot.page, project.binding);
+        if (drag.base.panels) {
+          orderPanels(drag.slot.page, project.binding);
+          this.spanPanels(project, drag.slot.page.id);
+        }
         assignPanels(drag.slot.page);
         sortLines(drag.slot.page, this.binding());
         this.host.commit();
@@ -3347,8 +3427,9 @@ export class PageEditor {
         orderPanels(drag.slot.page, project.binding);
         assignPanels(drag.slot.page);
         sortLines(drag.slot.page, this.binding());
+        const spanned = this.spanPanels(project, drag.slot.page.id);
         this.host.commit();
-        this.host.status(drag.seam.between ? "間白を動かしました（両側のコマが一緒に）" : "コマの辺を動かしました");
+        if (!spanned) this.host.status(drag.seam.between ? "間白を動かしました（両側のコマが一緒に）" : "コマの辺を動かしました");
         break;
       }
       case "pan":

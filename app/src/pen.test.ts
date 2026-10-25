@@ -22,8 +22,17 @@ describe("tablet settings", () => {
     expect(read.touch).toBe("draw");
   });
 
-  it("keeps a curve's ends at no and full pressure, in order", () => {
-    expect(normalizeCurve([[0.6, 0.4], [0.1, 0.2], [0.9, 1]])).toEqual([[0, 0.2], [0.6, 0.4], [1, 1]]);
+  it("keeps a curve's points in order, its ends where they were put (下限・上限)", () => {
+    expect(normalizeCurve([[0.6, 0.4], [0.1, 0.2], [0.9, 1]])).toEqual([[0.1, 0.2], [0.6, 0.4], [0.9, 1]]);
+    // Ends on top of each other are pulled apart.
+    expect(normalizeCurve([[0.5, 0], [0.5, 1]])).toEqual([[0, 0], [1, 1]]);
+  });
+
+  it("stays flat below the lower end and above the upper one", () => {
+    const curve: [number, number][] = [[0.2, 0], [0.8, 1]];
+    expect(adjustPressure(curve, 0.1)).toBe(0);
+    expect(adjustPressure(curve, 0.5)).toBeCloseTo(0.5);
+    expect(adjustPressure(curve, 0.9)).toBe(1);
   });
 
   it("passes pressure through the curve", () => {
