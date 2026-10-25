@@ -48,7 +48,6 @@ import {
   eraseWith,
   insideBox,
   insidePolygon,
-  LINE_PITCH,
   MM_PER_PT,
   moveLine,
   movePanel,
@@ -93,6 +92,7 @@ import {
   type StrokePoint,
 } from "./project";
 import { readCount, readFlag, readNumber } from "./settings";
+import { linePitch } from "./style";
 import { besideCorners, loadSnap, NO_TARGETS, snapBox, snapPointTo, snapTargets, type SnapSettings, type SnapTargets } from "./snapping";
 
 export type Tool = "select" | "cut" | "text" | "pen" | "eraser" | "fill" | "breakout" | "sticky" | "reference";
@@ -3662,7 +3662,7 @@ export class PageEditor {
         const rows = field.value.replace(/\r\n?/g, "\n").split("\n");
         const longest = Math.max(1, ...rows.map((row) => [...row].length));
         // Room for one more character and one more row, so the caret is never squeezed.
-        const across = (rows.length + 1) * size * LINE_PITCH + 2 * pad;
+        const across = (rows.length + 1) * size * linePitch() + 2 * pad;
         const along = (longest + 1) * size + 2 * pad;
         const [w, h] = line.vertical ? [across, along] : [along, across];
         // Vertical text starts at the right, as it is read.
@@ -3671,7 +3671,7 @@ export class PageEditor {
         style.top = `${ay}px`;
         style.width = `${w}px`;
         style.height = `${h}px`;
-        style.lineHeight = String(LINE_PITCH);
+        style.lineHeight = String(linePitch());
       }
     };
     this.host.begin();

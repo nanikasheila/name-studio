@@ -313,6 +313,9 @@ pub struct NameStyle {
     /// フキダシの線の太さ (mm).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub balloon_line_mm: Option<f64>,
+    /// セリフの行間 (% of the font size), as CSP's 行間.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line_spacing: Option<f64>,
 }
 
 /// CSP のページ設定 (mm): the CLIP STUDIO PAINT page made without a template.

@@ -30,6 +30,8 @@ export interface TextView {
   /** Ink colour; white for 白抜き. */
   color?: string;
   bold?: boolean;
+  /** Line pitch as a multiple of the font size (1.15 when not given). */
+  pitch?: number;
 }
 
 export interface LayerView {

@@ -36,7 +36,7 @@ import {
 import { drawPanelMask, panelFolders } from "./panelfolders";
 import { decodePicture, opacityOf, usedImages } from "./references";
 import { sceneSpans } from "./story";
-import { balloonLineMm, useStyle } from "./style";
+import { balloonLineMm, linePitch, lineSpacing, useStyle } from "./style";
 import type { ReadUnit } from "./readback";
 
 /**
@@ -230,6 +230,8 @@ export type LayerMeta =
       font?: { name: string; postscript: string };
       /** 8-bit RGB; absent keeps the template text's colour. */
       color?: [number, number, number];
+      /** Line spacing in percent of the font size (CSP's 行間); absent keeps the template text's. */
+      lineSpacing?: number;
     };
 
 export type LinePartKind = Exclude<LayerKind, "text" | "fills" | "balloonFills">;
@@ -376,19 +378,20 @@ export function drawNotes(ctx: CanvasRenderingContext2D, project: Project, page:
   ctx.restore();
 }
 
-/** Room CSP's lines take: its line pitch and character advance, generously. */
-const CSP_LINE_PITCH = 1.8;
+/** Room CSP's characters take down a line, generously. */
 const CSP_CHAR_ADVANCE = 1.1;
 
 /**
  * Each line of dialogue as a CSP text layer: its box in template px and its
- * size in CSP pt (pt of the template's resolution). CSP hides what does not
- * fit its frame, so the frame holds every line at CSP's own spacing: down and
- * right of the box's top left for horizontal text (never smaller than the
- * box), and for vertical text placed so the first column starts at the box's
- * top right, as on the name.
+ * size in CSP pt (pt of the template's resolution). The text is written with
+ * the name's 行間, so CSP spaces its lines as the name does. CSP hides what
+ * does not fit its frame, so the frame holds every line: down and right of
+ * the box's top left for horizontal text (never smaller than the box), and
+ * for vertical text placed so the first column starts at the box's top
+ * right, as on the name.
  */
 export function textLayers(page: Page, m: MmToPx, resolution: number): LayerMeta[] {
+  const pitch = linePitch();
   return page.lines
     .filter((line) => line.text.trim())
     .map((line) => {
@@ -397,13 +400,15 @@ export function textLayers(page: Page, m: MmToPx, resolution: number): LayerMeta
       const lines = line.text.split(/\r?\n/);
       // The chosen font, when this computer has it (CSP needs its PostScript name too).
       const font = cspFont(line);
-      const across = lines.length * size * CSP_LINE_PITCH;
+      // From the first line's start to the last line's end.
+      const set = ((lines.length - 1) * pitch + 1) * size;
+      const across = Math.max(lines.length * size * pitch, set);
       const along = Math.max(...lines.map((text) => [...text].length)) * size * CSP_CHAR_ADVANCE;
       // CSP lays vertical text out from the frame's left edge, each column
       // with its line gap on its right: the first column is set from the
       // box's right edge when the frame's left edge is where the last one
       // starts (and the frame holds every column's gap).
-      const left = x1 - ((lines.length - 1) * CSP_LINE_PITCH + 1) * size;
+      const left = x1 - set;
       const frame: [number, number, number, number] = line.vertical
         ? [left, y0, left + across, Math.max(y1, y0 + along)]
         : [x0, y0, Math.max(x1, x0 + along), Math.max(y1, y0 + across)];
@@ -415,6 +420,7 @@ export function textLayers(page: Page, m: MmToPx, resolution: number): LayerMeta
         vertical: line.vertical,
         ...(line.inverted ? { color: [255, 255, 255] as [number, number, number] } : {}),
         ...(font ? { font } : {}),
+        lineSpacing: lineSpacing(),
       };
     });
 }
@@ -533,6 +539,8 @@ export async function exportToCsp(
   if (notes) request = { ...request, draftLayers: [...(request.draftLayers ?? []), NOTES_LAYER_NAME] };
   const pictures = await decodeReferences(project);
   if (pictures.size) request = { ...request, draftLayers: [...(request.draftLayers ?? []), REFERENCE_LAYER_NAME] };
+  // The name's binding, not the template's: a left-bound name may start from a right-bound work.
+  request = { ...request, rightBinding: !project.scroll && project.binding === "right" };
   const start = await call("begin_name_export", { request });
   const vector = editable && start.vectorLayers;
   const text = editable && start.textLayers;

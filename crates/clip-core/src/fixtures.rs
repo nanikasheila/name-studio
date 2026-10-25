@@ -391,8 +391,10 @@ fn add_editing_schema(database: &Connection, canvas: FixtureCanvas) {
              ALTER TABLE Canvas ADD COLUMN ComicStoryStoryIndex;
              ALTER TABLE Canvas ADD COLUMN ComicStoryNombreStart;
              ALTER TABLE Canvas ADD COLUMN CropFrameOptionFlag;
+             ALTER TABLE Canvas ADD COLUMN ComicBindPosition;
              UPDATE Canvas SET ComicPageIndex = 0, ComicIsLeftPage = 1, ComicStoryStoryName = 'Template',
-                 ComicStoryStoryIndex = 3, ComicStoryNombreStart = 1, CropFrameOptionFlag = 2;
+                 ComicStoryStoryIndex = 3, ComicStoryNombreStart = 1, CropFrameOptionFlag = 2,
+                 ComicBindPosition = 1;
              ALTER TABLE Layer ADD COLUMN LayerRenderThumbnail;
              ALTER TABLE Layer ADD COLUMN LayerUuid;
              UPDATE Layer SET LayerUuid = 'fixture-layer-' || MainId;

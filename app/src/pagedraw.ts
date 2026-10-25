@@ -7,7 +7,7 @@ import { lineBold, lineFont } from "./fonts";
 import { borderLines, borderWidthMm, dashes, effectStrokes, stacked } from "./koma";
 import { MM_PER_PT, type Brush, type Line, type Page, type Panel, type Point, type Stroke } from "./project";
 import { drawText } from "./render";
-import { balloonLineMm } from "./style";
+import { balloonLineMm, linePitch } from "./style";
 
 /** Page millimetres → canvas pixels: `px = mm * scale + offset`. */
 export interface MmToPx {
@@ -368,6 +368,7 @@ export function drawLineText(ctx: CanvasRenderingContext2D, line: Line, m: MmToP
       inBalloon: !!line.balloon,
       color: line.inverted ? "#ffffff" : undefined,
       bold: lineBold(line),
+      pitch: linePitch(),
     },
     { scale: m.scale, offsetX: m.x, offsetY: m.y },
   );

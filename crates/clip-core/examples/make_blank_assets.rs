@@ -73,6 +73,7 @@ fn main() {
             vertical: true,
             color: None,
             font: None,
+            line_spacing: None,
         }),
     ];
     let ids = write_name_page(&blank, &layers, &donors, None, &parts, 0, &Vec::new(), true, &[]).unwrap();

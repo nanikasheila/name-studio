@@ -9,6 +9,10 @@ export const APP_FONT_PT: Record<LineKind, number> = { speech: 13, thought: 13, 
 export const APP_PANEL_LINE_MM = 0.6;
 export const APP_THICK_LINE_MM = 1.2;
 export const APP_BALLOON_LINE_MM = 0.3;
+/** セリフの行間 (% of the font size): lines (columns in 縦書き) are this far apart. CSP's own dialogue has 125. */
+export const APP_LINE_SPACING = 115;
+export const MIN_LINE_SPACING = 80;
+export const MAX_LINE_SPACING = 300;
 
 export const MIN_FONT_PT = 4;
 export const MAX_FONT_PT = 72;
@@ -41,6 +45,16 @@ export function panelLineMm(panel: Pick<Panel, "border" | "lineMm">, style: Name
 /** Line width (mm) of balloon outlines. */
 export function balloonLineMm(style: NameStyle | undefined = current): number {
   return style?.balloonLineMm ?? APP_BALLOON_LINE_MM;
+}
+
+/** セリフの行間 (%), on screen and in CSP alike. */
+export function lineSpacing(style: NameStyle | undefined = current): number {
+  return style?.lineSpacing ?? APP_LINE_SPACING;
+}
+
+/** Line pitch as a multiple of the font size. */
+export function linePitch(style: NameStyle | undefined = current): number {
+  return lineSpacing(style) / 100;
 }
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -81,6 +95,20 @@ export function setStyleLine(project: Project, key: StyleLine, mm: number | null
   const value = mm === null || !Number.isFinite(mm) ? null : lineMmValue(mm);
   if (value === null || value === APP_LINES[key]) delete style[key];
   else style[key] = value;
+  keep(project, style);
+}
+
+/** A line spacing kept as set (whole percent, within the limits). */
+export function lineSpacingValue(value: number): number {
+  return clamp(Math.round(value), MIN_LINE_SPACING, MAX_LINE_SPACING);
+}
+
+/** セリフの行間 of the name (%); null (or the app's) clears it. */
+export function setLineSpacingStyle(project: Project, percent: number | null): void {
+  const style = { ...project.style };
+  const value = percent === null || !Number.isFinite(percent) ? null : lineSpacingValue(percent);
+  if (value === null || value === APP_LINE_SPACING) delete style.lineSpacing;
+  else style.lineSpacing = value;
   keep(project, style);
 }
 
