@@ -280,6 +280,28 @@ pub struct NewText {
     pub vertical: bool,
     /// Text colour (8-bit RGB); `None` keeps the donor's.
     pub color: Option<[u8; 3]>,
+    /// Font; `None` keeps the donor's.
+    pub font: Option<FontName>,
+}
+
+/// A font as a text layer names it ([`ATTR_FONT_NAME`]): the name CSP shows
+/// (`I-OTFアンチックStd B`) and the PostScript name (`IwaAntStd-Bd`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct FontName {
+    pub name: String,
+    pub postscript: String,
+}
+
+impl FontName {
+    /// `u16` 1, then each name as a `u16` byte count and UTF-8 (as CSP writes it).
+    pub fn to_attribute(&self) -> Vec<u8> {
+        let mut value = 1u16.to_le_bytes().to_vec();
+        for text in [&self.name, &self.postscript] {
+            value.extend((text.len() as u16).to_le_bytes());
+            value.extend(text.as_bytes());
+        }
+        value
+    }
 }
 
 impl NewText {
@@ -380,6 +402,12 @@ fn retarget(blob: &[u8], text: &NewText, counted_runs: bool) -> Result<Vec<u8>> 
                 ATTR_COLOR if value.len() == 12 => {
                     if let Some(color) = text.color {
                         value = color_bytes(color);
+                    }
+                }
+                // The add-attributes list leaves it empty; only a named one is replaced.
+                ATTR_FONT_NAME if !value.is_empty() => {
+                    if let Some(font) = &text.font {
+                        value = font.to_attribute();
                     }
                 }
                 _ => {}

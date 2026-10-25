@@ -1,6 +1,7 @@
 // The name editor around the canvas: the open project, saving, undo, the
 // page list, the script, the cast and the inspector for the selection.
 import { call } from "./backend";
+import { useFonts } from "./fonts";
 import { $, element, plainButton } from "./dom";
 import { Inspector } from "./inspector";
 import { ask, save } from "@tauri-apps/plugin-dialog";
@@ -618,6 +619,7 @@ export class Workbench {
   // --- rendering ------------------------------------------------------------------------
 
   renderAll(): void {
+    useFonts(this.state.project?.fonts);
     this.renderBrushBar();
     this.editor.draw();
     this.board.update(this.state.revision);

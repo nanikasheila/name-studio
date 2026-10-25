@@ -6,7 +6,7 @@ use std::io::Write;
 use clip_core::container::CsfContainer;
 use clip_core::offscreen::{self, OffscreenParameters};
 use clip_core::text::{
-    NewText, build_tlv, parse_text_attributes, parse_tlv, retarget_add_attributes, retarget_text_attributes,
+    FontName, NewText, build_tlv, parse_text_attributes, parse_tlv, retarget_add_attributes, retarget_text_attributes,
     split_attribute_array, transform_text_attributes,
 };
 use clip_core::vector::{parse_vector_data, select_vector_objects, transform_vector_data};
@@ -352,6 +352,7 @@ fn new_text_takes_one_run_from_a_text_styled_in_parts() {
         font_size_pt: 9.0,
         vertical: true,
         color: None,
+        font: None,
     };
     let retargeted = retarget_text_attributes(&blob, &text).unwrap();
     let items = parse_tlv(&retargeted).unwrap();
@@ -374,6 +375,49 @@ fn new_text_takes_one_run_from_a_text_styled_in_parts() {
     // A run list that does not add up is refused rather than guessed at.
     let broken = build_tlv(&[(0x1a, runs(vec![run(0, 45, 9, &[1, 0])]))]);
     assert!(retarget_text_attributes(&broken, &text).is_err());
+}
+
+#[test]
+fn new_text_names_its_font_as_csp_does() {
+    // As in a CSP-made page: the font run names no font; 0x39 holds the shown and PostScript names.
+    let donor_font = FontName {
+        name: "I-OTFアンチックStd B".into(),
+        postscript: "IwaAntStd-Bd".into(),
+    };
+    let blob = build_tlv(&[(0x20, 400i32.to_le_bytes().to_vec()), (0x39, donor_font.to_attribute())]);
+    assert_eq!(
+        hex(&donor_font.to_attribute()),
+        "01001900492d4f5446e382a2e383b3e38381e38383e382af53746420420c00497761416e745374642d4264"
+    );
+    let mut text = NewText {
+        text: "やあ".into(),
+        frame: [0, 0, 100, 300],
+        font_size_pt: 9.0,
+        vertical: true,
+        color: None,
+        font: None,
+    };
+    let kept = retarget_text_attributes(&blob, &text).unwrap();
+    assert_eq!(
+        parse_text_attributes(&kept).unwrap().font_name.as_deref(),
+        Some("I-OTFアンチックStd B")
+    );
+    text.font = Some(FontName {
+        name: "游明朝 Demibold".into(),
+        postscript: "YuMin-Demibold".into(),
+    });
+    let named = retarget_text_attributes(&blob, &text).unwrap();
+    assert_eq!(
+        parse_text_attributes(&named).unwrap().font_name.as_deref(),
+        Some("游明朝 Demibold")
+    );
+    let items = parse_tlv(&named).unwrap();
+    let value = items.iter().find(|(tag, _)| *tag == 0x39).unwrap().1;
+    assert!(value.ends_with(b"YuMin-Demibold"));
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 #[test]
@@ -402,6 +446,7 @@ fn new_text_takes_one_run_in_the_added_attributes_too() {
         font_size_pt: 9.0,
         vertical: false,
         color: None,
+        font: None,
     };
     let retargeted = retarget_add_attributes(&blob, &text).unwrap();
     let items = parse_tlv(&retargeted[4..]).unwrap();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SHAPE_LABELS, insideBalloon, pageBalloons, resolvedShape, star, tailGeometry, withTails } from "./balloon";
+import { SHAPE_LABELS, insideBalloon, pageBalloons, resolvedShape, star, tailGeometry, tailRootAt, withTails } from "./balloon";
 import { emptyPage, insidePolygon, normalize, newProject, type BalloonShape, type Line, type Point } from "./project";
 
 function line(id: string, box: [number, number, number, number], extra: Partial<Line> = {}): Line {
@@ -38,6 +38,26 @@ describe("balloon shapes", () => {
       sharpest = Math.max(sharpest, Math.min(turn, 2 * Math.PI - turn));
     }
     expect(sharpest).toBeLessThan((12 * Math.PI) / 180);
+  });
+
+  it("leaves the balloon where its 根本 is put, the tip staying where it is", () => {
+    const l = line("line1", [100, 100, 112, 140], { tails: [{ tip: [80, 170] }] });
+    const s = star(l)!;
+    const free = tailGeometry(l, l.tails![0])!;
+    // Towards the tip by default: down and to the left of the centre.
+    expect(free.root[0]).toBeLessThan(s.center[0]);
+    // Moved to the right side of the balloon.
+    l.tails![0].root = 0;
+    const moved = tailGeometry(l, l.tails![0])!;
+    expect(moved.root[1]).toBeCloseTo(s.center[1], 5);
+    expect(moved.root[0]).toBeGreaterThan(112);
+    const outline = withTails(s, l).star.samples.map((sample) => sample.point);
+    expect(outline).toContainEqual([80, 170]);
+    // Near the tip's own direction it follows the tip again.
+    const towards = Math.atan2(170 - s.center[1], 80 - s.center[0]);
+    const near: Point = [s.center[0] + Math.cos(towards + 0.02) * 30, s.center[1] + Math.sin(towards + 0.02) * 30];
+    expect(tailRootAt(l, l.tails![0], near)).toBeNull();
+    expect(tailRootAt(l, l.tails![0], [200, s.center[1]])).toBe(0);
   });
 
   it("follows the kind of line unless chosen", () => {

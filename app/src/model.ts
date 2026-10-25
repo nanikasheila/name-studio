@@ -47,6 +47,8 @@ export interface Tail {
   style?: TailStyle;
   /** 曲がり: how far (mm) the middle of the tail is pushed to its left (negative: right). */
   bend?: number;
+  /** 根本: the direction (radians from the balloon's centre, 0 right, π/2 down) where it leaves the balloon; none: towards the tip. */
+  root?: number;
 }
 
 export interface PageFormat {
@@ -103,6 +105,10 @@ export interface Line {
   emphasis?: boolean;
   /** コマ枠でマスク: the balloon is cut off at the border of its panel. */
   mask?: boolean;
+  /** フキダシの大きさ: its width and height as shares of the usual size for its text (changed without the text). */
+  balloonScale?: [number, number];
+  /** フォント for this line alone (as CLIP STUDIO PAINT names it); none: the one for its kind in `Project.fonts`. */
+  font?: string;
 }
 
 /**
@@ -351,8 +357,16 @@ export interface Project {
   gutters?: Gutters;
   /** 縦スクロール (Webtoon): the pages are pieces (区切り) of one tall strip, read top to bottom, with no spreads. */
   scroll?: boolean;
+  /** 用途ごとのフォント: the typeface each kind of line (and 強調) is set in. */
+  fonts?: LineFonts;
   nextId: number;
 }
+
+/** What a font is chosen for: each kind of line, and lines marked 強調. */
+export type FontRole = LineKind | "emphasis";
+
+/** Font names (as CLIP STUDIO PAINT shows them) by role; none: the usual one (セリフ's, else the app's). */
+export type LineFonts = Partial<Record<FontRole, string>>;
 
 /**
  * 別案: versions of the same run of pages (a page, a 見開き, a scene). The

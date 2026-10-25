@@ -5,6 +5,7 @@ import { call, type CspExportRequest, type DialogueUpdateReport, type FileCheck,
 export type { CspExportRequest, DialogueUpdateReport, FileCheck, NameExportStart, SpreadLayout, TemplateCanvas } from "./backend";
 import { balloonExtent, pageBalloons } from "./balloon";
 import { widthFactors } from "./brush";
+import { cspFont, useFonts } from "./fonts";
 import { borderLines, borderWidthMm, dashes, framePanels, type Side } from "./koma";
 import {
   BALLOON_LINE_MM,
@@ -222,6 +223,8 @@ export type LayerMeta =
       frame: [number, number, number, number];
       fontSizePt: number;
       vertical: boolean;
+      /** The chosen font (by the name CSP shows and its PostScript name); absent keeps the template text's. */
+      font?: { name: string; postscript: string };
       /** 8-bit RGB; absent keeps the template text's colour. */
       color?: [number, number, number];
     };
@@ -388,6 +391,8 @@ export function textLayers(page: Page, m: MmToPx, resolution: number): LayerMeta
       const [x0, y0, x1, y1] = mapBox(line.box, m);
       const size = line.fontSizePt * MM_PER_PT * m.scale;
       const lines = line.text.split(/\r?\n/);
+      // The chosen font, when this computer has it (CSP needs its PostScript name too).
+      const font = cspFont(line);
       const across = lines.length * size * CSP_LINE_PITCH;
       const along = Math.max(...lines.map((text) => [...text].length)) * size * CSP_CHAR_ADVANCE;
       const frame: [number, number, number, number] = line.vertical
@@ -400,6 +405,7 @@ export function textLayers(page: Page, m: MmToPx, resolution: number): LayerMeta
         fontSizePt: (line.fontSizePt * m.scale * 25.4) / resolution,
         vertical: line.vertical,
         ...(line.inverted ? { color: [255, 255, 255] as [number, number, number] } : {}),
+        ...(font ? { font } : {}),
       };
     });
 }
@@ -510,6 +516,8 @@ export async function exportToCsp(
   progress: (message: string) => void,
   confirmImages?: (missing: string[]) => Promise<boolean>,
 ): Promise<CspExportReport | null> {
+  // The dialogue in the name's fonts, also when written from the command line.
+  useFonts(project.fonts);
   await loadTips(project.brushes);
   const notes = request.notes !== false && project.pages.some(hasNotes);
   if (notes) request = { ...request, draftLayers: [...(request.draftLayers ?? []), NOTES_LAYER_NAME] };
@@ -701,6 +709,7 @@ export async function updateCspDialogue(
   request: CspExportRequest,
   progress: (message: string) => void,
 ): Promise<DialogueUpdateSummary> {
+  useFonts(project.fonts);
   await loadTips(project.brushes);
   const notes = request.notes !== false;
   const start = await call("begin_name_export", { request: { ...request, frameFolders: false, notes: false } });
@@ -873,6 +882,7 @@ export async function exportPdf(
   rough: (rough: RoughImage) => Promise<CanvasImageSource | null>,
   progress: (message: string) => void,
 ): Promise<void> {
+  useFonts(project.fonts);
   const [w, h] = project.pageFormat.canvasMm;
   const area = options.area === "trim" ? trimBox(project.pageFormat) : [0, 0, w, h];
   const scale = options.dpi / 25.4;

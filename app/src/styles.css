@@ -699,3 +699,11 @@ button.with-icon, .page-nav .segmented button { display: inline-flex; align-item
 .settings > form > section > .check { margin: 4px 0; color: var(--text); }
 .settings .hint { margin: 4px 0 0; }
 #panel-modes .icon { width: 16px; height: 16px; }
+/* フォント: a field with the fonts to pick from, and a sample in the one chosen. */
+.settings h4 { margin: 12px 0 4px; font-size: 12px; }
+.font-roles { display: grid; gap: 4px; }
+.font-role { display: grid; grid-template-columns: 8.5em 1fr; align-items: center; gap: 8px; }
+.font-field { display: flex; align-items: center; gap: 4px; min-width: 0; flex-wrap: wrap; }
+.font-field input { flex: 1 1 10em; min-width: 8em; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
+.font-field .font-clear { padding: 2px 7px; }
+.font-sample { flex-basis: 100%; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

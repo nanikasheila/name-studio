@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { addFill, addLine, addPanel, addStroke, bounds, newProject, panelContents, pickInside, rectShape } from "./project";
+import { star } from "./balloon";
+import { addFill, addLine, addPanel, addStroke, bounds, newProject, panelContents, pickInside, rectShape, type Point } from "./project";
 import { applyAffine, baseBounds, densify, straightEnd, copySelection, moveItems, pasteClip, rotation, scaling, toggleItem, transformBase, transformItems, withContents } from "./transform";
 
 function sample() {
@@ -158,9 +159,30 @@ describe("transforming panels, balloons and free deform", () => {
     const size = line.fontSizePt;
     const [w] = [line.box[2] - line.box[0]];
     const centre = [(line.box[0] + line.box[2]) / 2, (line.box[1] + line.box[3]) / 2];
-    transformItems(page, transformBase(page, [{ kind: "line", id: line.id }], true), scaling(1.5, 1.5, centre as [number, number]));
+    transformItems(page, transformBase(page, [{ kind: "line", id: line.id }], "withText"), scaling(1.5, 1.5, centre as [number, number]));
     expect(line.fontSizePt).toBeCloseTo(size * 1.5, 1);
     expect(line.box[2] - line.box[0]).toBeCloseTo(w * 1.5, 2);
+  });
+
+  it("can change a balloon on its own without its text: wider, or taller, alone", () => {
+    const { page, line } = sample();
+    const size = line.fontSizePt;
+    const box = [...line.box];
+    const width = (outline: Point[]) => Math.max(...outline.map(([x]) => x)) - Math.min(...outline.map(([x]) => x));
+    const height = (outline: Point[]) => Math.max(...outline.map(([, y]) => y)) - Math.min(...outline.map(([, y]) => y));
+    const before = star(line)!.samples.map((sample) => sample.point);
+    const centre: Point = [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2];
+    transformItems(page, transformBase(page, [{ kind: "line", id: line.id }], "balloonOnly"), scaling(1.6, 1, centre));
+    expect(line.fontSizePt).toBe(size);
+    line.box.forEach((value, i) => expect(value).toBeCloseTo(box[i], 2));
+    expect(line.balloonScale).toEqual([1.6, 1]);
+    const after = star(line)!.samples.map((sample) => sample.point);
+    expect(width(after)).toBeCloseTo(width(before) * 1.6, 1);
+    expect(height(after)).toBeCloseTo(height(before), 1);
+    expect(width(line.balloon!)).toBeCloseTo(width(after), 3);
+    // Back to its usual size: nothing kept.
+    transformItems(page, transformBase(page, [{ kind: "line", id: line.id }], "balloonOnly"), scaling(1 / 1.6, 1, centre));
+    expect(line.balloonScale).toBeUndefined();
   });
 
   it("deforms freely by the four corners", () => {

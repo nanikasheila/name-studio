@@ -126,11 +126,13 @@ export function star(line: Line): Star | null {
   if (shape === "custom") return customStar(line.balloon);
   const [x0, y0, x1, y1] = line.box;
   const center = boxCenter(line.box);
+  // フキダシの大きさ: made wider or taller than its text needs (or narrower).
+  const [sx, sy] = line.balloonScale ?? [1, 1];
   const hw = (x1 - x0) / 2;
   const hh = (y1 - y0) / 2;
   // An ellipse through the box corners, with some air (as before the shapes).
-  const rx = hw * Math.SQRT2 + PAD;
-  const ry = hh * Math.SQRT2 + PAD;
+  const rx = (hw * Math.SQRT2 + PAD) * sx;
+  const ry = (hh * Math.SQRT2 + PAD) * sy;
   const ellipse = (a: number) => 1 / Math.hypot(Math.cos(a) / rx, Math.sin(a) / ry);
   const perimeter = Math.PI * (3 * (rx + ry) - Math.sqrt((3 * rx + ry) * (rx + 3 * ry)));
   const random = seeded(line.id);
@@ -158,8 +160,8 @@ export function star(line: Line): Star | null {
       break;
     }
     case "box": {
-      const bx = hw + PAD;
-      const by = hh + PAD;
+      const bx = (hw + PAD) * sx;
+      const by = (hh + PAD) * sy;
       const corners: Point[] = [
         [bx, by],
         [-bx, by],
@@ -171,8 +173,8 @@ export function star(line: Line): Star | null {
       break;
     }
     case "rounded": {
-      const a = hw + PAD + 1;
-      const b = hh + PAD + 1;
+      const a = (hw + PAD + 1) * sx;
+      const b = (hh + PAD + 1) * sy;
       const n = 5;
       radius = (t) => (Math.abs(Math.cos(t) / a) ** n + Math.abs(Math.sin(t) / b) ** n) ** (-1 / n);
       break;
@@ -332,13 +334,30 @@ export function insideBalloon(line: Line, point: Point): boolean {
 export function tailGeometry(line: Line, tail: Tail): { root: Point; middle: Point; normal: Point } | null {
   const s = star(line);
   if (!s) return null;
-  const angle = Math.atan2(tail.tip[1] - s.center[1], tail.tip[0] - s.center[0]);
-  const root = pointAt(s, angle);
+  const root = pointAt(s, rootAngle(s, tail));
   const [dx, dy] = [tail.tip[0] - root[0], tail.tip[1] - root[1]];
   const length = Math.hypot(dx, dy) || 1;
   const normal: Point = [-dy / length, dx / length];
   const bend = tail.bend ?? 0;
   return { root, middle: [(root[0] + tail.tip[0]) / 2 + normal[0] * bend, (root[1] + tail.tip[1]) / 2 + normal[1] * bend], normal };
+}
+
+/** The direction from the balloon's centre where a tail leaves it: its 根本 if moved, else towards its tip. */
+export function rootAngle(s: Star, tail: Tail): number {
+  return tail.root ?? Math.atan2(tail.tip[1] - s.center[1], tail.tip[0] - s.center[0]);
+}
+
+/**
+ * 根本 for a tail taken round the balloon to `point`: the direction of the
+ * point from the balloon's centre, or null (follow the tip) when that is
+ * within a few degrees of the tip's own direction.
+ */
+export function tailRootAt(line: Line, tail: Tail, point: Point): number | null {
+  const s = star(line);
+  if (!s) return null;
+  const angle = Math.atan2(point[1] - s.center[1], point[0] - s.center[0]);
+  const towards = Math.atan2(tail.tip[1] - s.center[1], tail.tip[0] - s.center[0]);
+  return Math.abs(wrap(angle - towards)) < (4 * Math.PI) / 180 ? null : Math.round(angle * 1000) / 1000;
 }
 
 /**
@@ -360,10 +379,12 @@ export function withTails(s: Star, line: Line, tails: readonly Tail[] = line.tai
   let samples = s.samples;
   const extras: Extra[] = [];
   for (const tail of tails) {
-    const angle = Math.atan2(tail.tip[1] - s.center[1], tail.tip[0] - s.center[0]);
-    const r = radiusAt(s, angle);
+    // A tip inside the balloon shows no tail.
+    const towards = Math.atan2(tail.tip[1] - s.center[1], tail.tip[0] - s.center[0]);
     const distance = Math.hypot(tail.tip[0] - s.center[0], tail.tip[1] - s.center[1]);
-    if (distance <= r + 0.5) continue;
+    if (distance <= radiusAt(s, towards) + 0.5) continue;
+    const angle = rootAngle(s, tail);
+    const r = radiusAt(s, angle);
     const style = tail.style ?? "wedge";
     const root = pointAt(s, angle);
     // 曲がったしっぽ: the middle of the tail pushed `bend` mm to one side.

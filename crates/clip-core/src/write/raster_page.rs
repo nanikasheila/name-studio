@@ -82,6 +82,7 @@ impl PartDonors {
             font_size_pt: 10.0,
             vertical: true,
             color: None,
+            font: None,
         };
         let mut vector = None;
         let mut text = None;

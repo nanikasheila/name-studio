@@ -7,7 +7,9 @@ import { wantsTail } from "./autotail";
 import { SHAPE_LABELS, TAIL_LABELS, defaultTailStyle, resolvedShape } from "./balloon";
 import type { Board } from "./board";
 import { $, choice, element, plainButton, svg } from "./dom";
-import { PANEL_CARRIES_KEY, pickedSummary, type PageEditor, type Selection } from "./editor";
+import { BALLOON_TEXT_KEY, PANEL_CARRIES_KEY, pickedSummary, type PageEditor, type Selection } from "./editor";
+import { fontField } from "./fontpicker";
+import { APP_FONT_LABEL, FONT_ROLE_LABELS, lineFont } from "./fonts";
 import { writeFlag } from "./settings";
 import {
   BORDER_LABELS,
@@ -376,6 +378,36 @@ export class Inspector {
     );
     const remove = element("button", { className: "danger", textContent: "このセリフを消す" });
     remove.addEventListener("click", () => this.host.deleteSelection());
+    // フォント: this line's own, else the one for its kind (設定 → 用途ごと).
+    const usualFont = lineFont({ kind: line.kind, emphasis: line.emphasis }, project.fonts);
+    const usualRole = line.emphasis && project.fonts?.emphasis ? "emphasis" : line.kind;
+    const font = fontField(
+      line.font ?? "",
+      `${FONT_ROLE_LABELS[usualRole]}のフォント（${usualFont ?? APP_FONT_LABEL}）`,
+      (name) =>
+        this.host.edit(() => {
+          if (name) line.font = name;
+          else delete line.font;
+        }),
+      "このセリフだけのフォント。種類ごとのフォントは「設定」で決めます",
+    );
+    // 変形: the text grows with the balloon, or the balloon alone changes around it.
+    const follows = element("input", { type: "checkbox", checked: this.host.editor.balloonTextFollows });
+    follows.addEventListener("change", () => {
+      this.host.editor.balloonTextFollows = follows.checked;
+      writeFlag(BALLOON_TEXT_KEY, follows.checked);
+    });
+    const fitBalloon = element("button", {
+      textContent: "フキダシを文字に合わせる",
+      title: "フキダシだけ変えた大きさをやめて、文字に合った大きさに戻す",
+      disabled: !line.balloonScale,
+    });
+    fitBalloon.addEventListener("click", () =>
+      this.host.edit(() => {
+        delete line.balloonScale;
+        fitLine(line);
+      }),
+    );
     const panelNumber = page.panels.find((p) => p.id === line.panel)?.order;
     const shape = choice(
       SHAPE_LABELS,
@@ -470,17 +502,20 @@ export class Inspector {
       ...(toneOf(project, line.speaker) ? [element("p", { className: "hint tone-hint", textContent: `口調: ${toneOf(project, line.speaker)}` })] : []),
       element("div", { className: "row" }, element("label", {}, "文字の大きさ（pt）", size), element("label", { className: "inline" }, vertical, "縦書き")),
       element("div", { className: "row" }, emphasis, inverted),
+      element("label", {}, "フォント", font),
       element("h3", { textContent: "フキダシ" }),
       element("label", {}, "形", shape),
       makeDefault,
       mask,
+      element("label", { className: "inline", title: "切ると、変形の枠でフキダシだけ広げたり細くしたりでき、文字の大きさはそのまま" }, follows, "変形で文字の大きさも変える"),
+      fitBalloon,
       element("div", { className: "row" }, addTail, removeTail),
       element("label", {}, `しっぽ（${tails.length} 本）`, tailStyle),
       element("label", {}, "つなぐ（連結フキダシ）", link),
       element("p", {
         className: "hint",
         textContent:
-          "しっぽの丸い先をドラッグして話者に向けます（コマの外の話者にも）。2本以上で同時に話す声。改行で行を分けます。ドラッグか矢印キーで動かせます。",
+          "しっぽの丸い先をドラッグして話者に向けます（コマの外の話者にも）。ひし形で曲げ、フキダシの縁の小さな四角で根本の位置を動かせます。2本以上で同時に話す声。改行で行を分けます。ドラッグか矢印キーで動かせます。",
       }),
       remove,
     ];
