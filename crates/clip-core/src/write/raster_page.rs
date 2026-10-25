@@ -476,7 +476,13 @@ fn holds(layer: &PageLayer, kind: u8) -> bool {
 /// `image` with its alpha cut down to `mask`'s (both the same size).
 fn masked(image: &RgbaImage, mask: &RgbaImage) -> RgbaImage {
     let mut result = image.clone();
-    for (pixel, cover) in result.pixels.chunks_exact_mut(4).zip(mask.pixels.chunks_exact(4)) {
+    for (pixel, cover) in result
+        .pixels
+        .as_chunks_mut::<4>()
+        .0
+        .iter_mut()
+        .zip(mask.pixels.as_chunks::<4>().0)
+    {
         pixel[3] = ((u16::from(pixel[3]) * u16::from(cover[3]) + 127) / 255) as u8;
     }
     result
