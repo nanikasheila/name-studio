@@ -64,9 +64,9 @@ fn names_saved_by_earlier_versions_open_and_keep_everything() {
 fn the_current_data_is_kept_as_a_past_name_too() {
     // When the front end's fields change, the new full-field sample joins the past ones (see their README).
     let current = include_str!("fixtures/full-project.json");
-    let kept = past_files()
-        .iter()
-        .any(|path| std::fs::read_to_string(path).is_ok_and(|text| text == current));
+    let kept = past_files().iter().any(|path| {
+        std::fs::read_to_string(path).is_ok_and(|text| text.replace("\r\n", "\n") == current.replace("\r\n", "\n"))
+    });
     assert!(
         kept,
         "fixtures/full-project.json changed: copy it to fixtures/past/full-project-pr<この PR の番号>.json"
