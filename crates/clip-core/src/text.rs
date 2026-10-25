@@ -266,6 +266,20 @@ fn color_font_run(value: &mut [u8], color: [u8; 3], counted_run: bool) {
     }
 }
 
+/// Name the font of the one font run of `value` (as [`single_run`] makes it).
+/// CSP draws the text in the run's font when the run names one, whatever
+/// [`ATTR_FONT_NAME`] says (a CSP-made dialogue names it in both).
+fn name_font_run(value: &mut Vec<u8>, name: &str) {
+    const DATA: usize = 16;
+    if value.len() < DATA + 18 {
+        return;
+    }
+    let units: Vec<u16> = name.encode_utf16().collect();
+    value.truncate(DATA + 16);
+    value.extend((units.len() as u16).to_le_bytes());
+    value.extend(units.iter().flat_map(|unit| unit.to_le_bytes()));
+}
+
 /// The runs of run tag `id`, if `value` is exactly a run list.
 fn parse_runs(id: u32, value: &[u8]) -> Option<Vec<Run<'_>>> {
     let count = le_u32(value, 0).ok()?;
@@ -408,6 +422,9 @@ fn retarget(blob: &[u8], text: &NewText, counted_runs: bool) -> Result<Vec<u8>> 
                 };
                 if let (ATTR_FONT_RUNS, Some(color)) = (id, text.color) {
                     color_font_run(&mut value, color, counted_runs);
+                }
+                if let (ATTR_FONT_RUNS, Some(font), true) = (id, &text.font, counted_runs) {
+                    name_font_run(&mut value, &font.name);
                 }
                 if let (ATTR_PARAGRAPH_RUNS, Some(percent)) = (id, text.line_spacing) {
                     space_paragraph_run(&mut value, percent, counted_runs);

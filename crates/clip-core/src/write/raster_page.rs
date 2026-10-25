@@ -633,7 +633,9 @@ impl PageBuilder<'_> {
 /// and text layers are copied from `donors`. Vector and text layers are not
 /// drawn here, so the thumbnail shows the images with `overlay` (the lines
 /// and texts drawn by the caller, any size with the page's proportions) on top.
-/// For a spread template, `first_right` tells which half is page `page_index`.
+/// `zero_left` is whether page index 0 is a left page (none: as the template's
+/// own index and side say); on a spread template it tells which half is page
+/// `page_index`.
 #[allow(clippy::too_many_arguments)]
 pub fn write_name_page(
     template: &Path,
@@ -643,7 +645,7 @@ pub fn write_name_page(
     output: &Path,
     page_index: i64,
     canvas_values: &Values,
-    first_right: bool,
+    zero_left: Option<bool>,
     draft_layers: &[String],
     looks: &[LayerLook],
 ) -> Result<Vec<i64>> {
@@ -651,7 +653,7 @@ pub fn write_name_page(
     let (width, height) = (source.canvas.width_px as u32, source.canvas.height_px as u32);
     let mut editor = ClipEditor::open(template)?;
     editor.renew_ids()?;
-    apply_page_settings(&editor.db, page_index, canvas_values, first_right)?;
+    apply_page_settings(&editor.db, page_index, canvas_values, zero_left)?;
     let needs = |kind: u8| layers.iter().any(|layer| holds(layer, kind));
     for (needed, donor) in [
         (needs(0), &donors.vector),
@@ -832,7 +834,7 @@ impl RasterWorkWriter {
         }
         let template = ClipDocument::read(&options.template)?;
         let canvas = template_canvas(&template);
-        let first_page_left = first_page_left(&template);
+        let mut first_page_left = first_page_left(&template);
         let spread_path =
             std::env::temp_dir().join(format!("name-studio-spread-{}.clip", uuid::Uuid::new_v4().simple()));
         let spread = make_spread_template(&options.template, &spread_path)
@@ -852,7 +854,19 @@ impl RasterWorkWriter {
         };
         if let Some(right) = options.right_binding {
             // 1 in CSP's right-bound works, on the work and on each page.
+            let was_right = super::page::canvas_value(template.database(), "ComicBindPosition")?
+                .or_else(|| value_of(&canvas_values, "ComicBindPosition").cloned())
+                .map(|value| super::int_value(Some(&value)) != 0);
+            // Bound on the other side, the book starts on the other side too:
+            // a right-bound work's first page is a left page, a left-bound one's a right page.
+            if was_right.is_some_and(|was| was != right) {
+                first_page_left = first_page_left.map(|left| !left);
+            }
             overrides.push(("ComicBindPosition".to_owned(), Value::Integer(right as i64)));
+            if let Some(left) = first_page_left {
+                // The work's 開始ページ (1: from the right), as blank works write it.
+                overrides.push(("ComicStartPage".to_owned(), Value::Integer((!left) as i64)));
+            }
         }
         for (column, value) in &overrides {
             super::set_value(&mut canvas_values, column, value.clone());
@@ -900,12 +914,6 @@ impl RasterWorkWriter {
         } else {
             self.options.template.clone()
         };
-        // Page `index` is on the left when page 0 is and the two are an even
-        // number apart; the other half of a spread is the next page.
-        let first_right = self
-            .first_page_left
-            .map(|zero_left| zero_left != (index.rem_euclid(2) == 0))
-            .unwrap_or(true);
         write_name_page(
             &template,
             layers,
@@ -914,7 +922,7 @@ impl RasterWorkWriter {
             &output,
             index,
             &self.canvas_values,
-            first_right,
+            self.first_page_left,
             &self.options.draft_layers,
             &self.options.layer_looks,
         )?;

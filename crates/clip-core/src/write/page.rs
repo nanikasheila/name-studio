@@ -74,7 +74,7 @@ pub fn write_page(
 ) -> Result<PageResult> {
     let mut editor = ClipEditor::open(template)?;
     editor.renew_ids()?;
-    apply_page_settings(&editor.db, page_index.unwrap_or(page.number - 1), canvas_values, true)?;
+    apply_page_settings(&editor.db, page_index.unwrap_or(page.number - 1), canvas_values, None)?;
     let source = sheet.database();
     merge_page_schema(&editor.db, source)?;
     share_rows(&editor.db, source)?;
@@ -111,21 +111,27 @@ pub fn write_page(
 /// Set the page position in the work and the work's canvas settings (and
 /// with them the episode number in the story information text).
 ///
-/// On a spread, `first_right` tells which half has the page that comes
-/// first in the book (the right one in a right-bound manga).
+/// `zero_left` is whether page index 0 is a left page; none keeps the
+/// template's own parity. On a spread it tells which half has the page that
+/// comes first in the book (the right one in a right-bound manga).
 pub(crate) fn apply_page_settings(
     db: &Connection,
     page_index: i64,
     canvas_values: &Values,
-    first_right: bool,
+    zero_left: Option<bool>,
 ) -> Result<()> {
+    // Page `page_index` is on the left when page 0 is and the two are an even
+    // number apart; the other half of a spread is the next page.
+    let first_right = zero_left
+        .map(|left| left != (page_index.rem_euclid(2) == 0))
+        .unwrap_or(true);
     if is_spread(db)? {
         // A spread keeps its sides: the right half is the right page.
         if has_column(db, "Canvas", "ComicPageIndex")? {
             db.execute("UPDATE Canvas SET ComicPageIndex = ?1", [page_index])?;
         }
     } else {
-        set_page_index(db, page_index)?;
+        set_page_index(db, page_index, zero_left)?;
     }
     if !canvas_values.is_empty() {
         let old_index = canvas_value(db, "ComicStoryStoryIndex")?;
@@ -248,9 +254,9 @@ pub(crate) fn has_column(db: &Connection, table: &str, column: &str) -> Result<b
 /// Set the page position and side (left / right) on the copied canvas.
 ///
 /// CSP numbers pages and places the ノンブル from these columns. The side
-/// alternates with the index; the template's own pair gives the parity, so
-/// the binding direction and start side need no guess.
-fn set_page_index(db: &Connection, index: i64) -> Result<()> {
+/// alternates with the index; `zero_left` (page 0 is a left page) gives the
+/// parity, else the template's own pair does.
+fn set_page_index(db: &Connection, index: i64, zero_left: Option<bool>) -> Result<()> {
     if !has_column(db, "Canvas", "ComicPageIndex")? || !has_column(db, "Canvas", "ComicIsLeftPage")? {
         return Ok(());
     }
@@ -258,7 +264,10 @@ fn set_page_index(db: &Connection, index: i64) -> Result<()> {
         db.query_row("SELECT ComicPageIndex, ComicIsLeftPage FROM Canvas", [], |row| {
             Ok((row.get(0)?, row.get(1)?))
         })?;
-    let left = (template_left.unwrap_or(0) != 0) == (index - template_index.unwrap_or(0)).rem_euclid(2).eq(&0);
+    let left = match zero_left {
+        Some(zero_left) => zero_left == index.rem_euclid(2).eq(&0),
+        None => (template_left.unwrap_or(0) != 0) == (index - template_index.unwrap_or(0)).rem_euclid(2).eq(&0),
+    };
     db.execute(
         "UPDATE Canvas SET ComicPageIndex = ?1, ComicIsLeftPage = ?2",
         (index, left as i64),

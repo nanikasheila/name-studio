@@ -448,19 +448,24 @@ fn a_left_bound_name_stays_left_bound_from_a_right_bound_work() {
             image: RgbaImage::transparent(400, 560),
         });
         writer.write_page(&[layer], None, false).unwrap();
+        let first_left = writer.first_page_left;
         let report = writer.finish().unwrap();
-        let work = CmcProject::read(report.work.unwrap()).unwrap().binding_position;
-        let page: i64 = ClipDocument::read(&report.pages[0])
+        let work = CmcProject::read(report.work.unwrap()).unwrap();
+        let page: (i64, i64) = ClipDocument::read(&report.pages[0])
             .unwrap()
             .database()
-            .query_row("SELECT ComicBindPosition FROM Canvas", [], |row| row.get(0))
+            .query_row("SELECT ComicBindPosition, ComicIsLeftPage FROM Canvas", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
             .unwrap();
-        (work, page)
+        (work.binding_position, work.start_page, page, first_left)
     };
-    assert_eq!(bind(Some(false), "left"), (0, 0));
-    assert_eq!(bind(Some(true), "right"), (1, 1));
+    // The template's first page is a left page; left-bound, the book starts on the right.
+    assert_eq!(bind(Some(false), "left"), (0, 1, (0, 0), Some(false)));
+    assert_eq!(bind(Some(true), "right"), (1, 0, (1, 1), Some(true)));
     // Without a binding, the template's stays.
-    assert_eq!(bind(None, "as-is"), (1, 1));
+    let (binding, _, page, first_left) = bind(None, "as-is");
+    assert_eq!((binding, page, first_left), (1, (1, 1), Some(true)));
 }
 
 #[test]
