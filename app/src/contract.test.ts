@@ -215,6 +215,7 @@ export const FULL_PROJECT: Full<Project> = {
     firstPageLeft: false,
     nombreStart: 3,
     font: "BIZ UDゴシック",
+    joinPieces: true,
   },
   nextId: 42,
 };

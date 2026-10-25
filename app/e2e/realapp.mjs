@@ -3,7 +3,8 @@
 // has (the WebView, its Content-Security-Policy, the calls to the Rust side)
 // is checked too, once with a CSP-made template page, once with the one
 // the app makes from its own settings (--builtin, with a work) and once with
-// each panel as a folder with a layer mask (--panel-masks). Needs the
+// each panel as a folder with a layer mask (--panel-masks), and a 縦スクロール
+// whose pieces are joined into one tall page. Needs the
 // release build and a template page:
 //   npx tauri build --no-bundle
 //   cargo run -p clip-core --features fixtures --example fixture_page -- <dir>/page.clip
@@ -27,15 +28,22 @@ if (!dir || !existsSync(join(dir, "page.clip")) || !existsSync(app)) {
 const server = await createServer({ root, logLevel: "error", server: { middlewareMode: true } });
 const P = await server.ssrLoadModule("/src/project.ts");
 const { projectJson } = await server.ssrLoadModule("/src/projectjson.ts");
+const { cspPageOf } = await server.ssrLoadModule("/src/csppage.ts");
 const project = P.newProject("通しテスト", 3);
 const page = project.pages[0];
 P.addPanel(project, page, P.rectShape([20, 20, 160, 120]));
 P.setLineText(P.addLine(project, page, [40, 40, 60, 100]), "セリフ");
 page.strokes.push({ id: "rough1", points: [[30, 30, 0.5], [90, 90, 0.5]], widthMm: 0.5, closed: false });
 page.memo = "メモ";
+// A 縦スクロール of three pieces, joined: one tall page.
+const scroll = P.newProject("縦スクロール", 3, "scroll");
+for (const piece of scroll.pages) P.setLineText(P.addLine(scroll, piece, [40, 40, 60, 100]), "セリフ");
+scroll.cspPage = { ...cspPageOf(scroll), joinPieces: true };
 await server.close();
 const name = join(dir, "test.namestudio");
 writeFileSync(name, projectJson(project));
+const scrollName = join(dir, "scroll.namestudio");
+writeFileSync(scrollName, projectJson(scroll));
 const failures = [];
 const check = (ok, what) => {
   console.log(`${ok ? "ok  " : "FAIL"} ${what}`);
@@ -43,16 +51,16 @@ const check = (ok, what) => {
 };
 
 /** Export with `args`; the report, after checking the app and its pages. */
-function exportWith(label, args) {
+function exportWith(label, args, { file = name, pages = 3 } = {}) {
   const out = join(dir, label);
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out);
-  const run = spawnSync(app, ["--export-csp", name, ...args, "--out", out], { timeout: 180000, encoding: "utf8" });
+  const run = spawnSync(app, ["--export-csp", file, ...args, "--out", out], { timeout: 180000, encoding: "utf8" });
   const reportPath = join(out, "name-studio-export.json");
   const report = existsSync(reportPath) ? JSON.parse(readFileSync(reportPath, "utf8").replace(/^\uFEFF/, "")) : null;
   check(run.status === 0, `${label}: the app exits cleanly (${run.status ?? run.error?.message})`);
   check(report?.ok === true, `${label}: the export reports success (${report?.error ?? report?.summary?.join(" / ") ?? "no report"})`);
-  check(report?.pages?.length === 3 && report.pages.every((path) => existsSync(path)), `${label}: it wrote the three pages`);
+  check(report?.pages?.length === pages && report.pages.every((path) => existsSync(path)), `${label}: it wrote ${pages} page(s)`);
   check(report?.checks?.every((c) => c.problems.length === 0) ?? false, `${label}: each page reads back as sent`);
   if (failures.length) console.error(run.stderr);
   return report;
@@ -66,4 +74,6 @@ check(builtin?.vectorLayers === true && builtin?.textLayers === true, "builtin: 
 // Each panel as a folder with a layer mask: the pages read back with the folder, its mask and the rough in it.
 const masks = exportWith("masks", ["--builtin", "--panel-masks"]);
 check((masks?.checks?.[0]?.layers ?? 0) > (builtin?.checks?.[0]?.layers ?? 0), "masks: the first page has the panel's folder and its layers");
+const tall = exportWith("tall", ["--builtin", "--work-name", "縦スクロール"], { file: scrollName, pages: 1 });
+check(tall?.textLayers === true && (tall?.checks?.[0]?.layers ?? 0) > 0, "tall: the joined page has its layers");
 if (failures.length) process.exit(1);

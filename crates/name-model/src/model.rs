@@ -336,6 +336,9 @@ pub struct CspPage {
     /// 作品情報・ノンブルのフォント, as CSP names it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub font: Option<String>,
+    /// 縦スクロール: the pieces joined one under the other into tall pages.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub join_pieces: Option<bool>,
 }
 
 /// A number for each kind of line.

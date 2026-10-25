@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LAYER_ORDER, canBeVector, layerForm, placeUnit, checkSummary, clipLines, dialogueUpdateSummary, imagesNote, missingEditable, exportUnits, frameMetas, hasNotes, mapBox, packBody, partCount, projectToTemplate, scriptText, textLayers, vectorLines, type DialogueUpdateReport, type LayerMeta } from "./nameexport";
+import { LAYER_ORDER, canBeVector, layerForm, placeStacked, placeUnit, checkSummary, clipLines, dialogueUpdateSummary, imagesNote, missingEditable, exportUnits, frameMetas, hasNotes, mapBox, packBody, partCount, projectToTemplate, scriptText, textLayers, vectorLines, type DialogueUpdateReport, type LayerMeta } from "./nameexport";
 import { addCharacter, addLine, addScene, basicBox, newProject, rectShape } from "./project";
 import { useStyle } from "./style";
 
@@ -320,6 +320,17 @@ describe("the layer plan of a page", () => {
     expect(placeUnit(project, [0, 1], full, spread).map(({ right, m }) => [right, m.x])).toEqual([
       [false, 0],
       [true, 1000],
+    ]);
+  });
+
+  it("stacks the pieces of a joined 縦スクロール, each in its share of the height", () => {
+    const project = newProject("縦", 5, "scroll");
+    expect(exportUnits(project, false, null, 2).units).toEqual([[0, 1], [2, 3], [4]]);
+    const [w, h] = project.pageFormat.canvasMm;
+    const placed = placeStacked(project, [2, 3], { widthPx: w * 10, heightPx: h * 20 }, 2);
+    expect(placed.map(({ page, m, right }) => [page.id, m.scale, m.x, m.y, right])).toEqual([
+      [project.pages[2].id, 10, 0, 0, false],
+      [project.pages[3].id, 10, 0, h * 10, false],
     ]);
   });
 

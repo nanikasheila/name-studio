@@ -7,12 +7,12 @@ import { checkSummary, dialogueUpdateSummary, exportToCsp, imagesNote, missingEd
 import { normalize } from "./project";
 import { projectBody } from "./projectjson";
 import { applyTakeBack, planTakeBack, takeBackSummary } from "./readback";
-import { cspPageOf, pageSetup, setupProblem } from "./csppage";
+import { cspPageOf, pageSetup, piecesPerPage, setupProblem } from "./csppage";
 import { installedFont } from "./fonts";
 import type { Project } from "./model";
 
 /** The template page and work to write with, and pages to copy layers from: the given ones, or with --builtin those made from the name's CSP page settings. */
-async function templatesFor(task: BatchExport, project: Project): Promise<{ template: string; workTemplate: string | null; donors: string[] }> {
+async function templatesFor(task: BatchExport, project: Project): Promise<{ template: string; workTemplate: string | null; donors: string[]; pieces?: number }> {
   if (!task.builtin) {
     if (!task.template) throw new Error("--template（ページのひな形 .clip）がありません");
     return { template: task.template, workTemplate: task.workTemplate, donors: [] };
@@ -22,7 +22,7 @@ async function templatesFor(task: BatchExport, project: Project): Promise<{ temp
   if (problem) throw new Error(problem);
   const built = await call("prepare_builtin_template", { setup });
   // A work only when it is given a name.
-  return { template: built.page, workTemplate: task.workName ? (task.workTemplate ?? built.work) : null, donors: [built.parts] };
+  return { template: built.page, workTemplate: task.workName ? (task.workTemplate ?? built.work) : null, donors: [built.parts], pieces: piecesPerPage(project, cspPageOf(project)) };
 }
 
 /** The export the app was started for (or why its arguments are wrong), or null for a normal start. */
@@ -112,6 +112,8 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
         },
         true,
         status,
+        undefined,
+        templates.pieces,
       );
       if (!report) throw new Error("書き出しが止まりました");
       const check = checkSummary(report);

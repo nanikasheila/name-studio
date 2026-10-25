@@ -391,6 +391,8 @@ export interface CspPage {
   nombreStart?: number;
   /** 作品情報・ノンブルのフォント (as CSP names it); none: the built-in one (ＭＳ ゴシック). */
   font?: string;
+  /** 縦スクロール: the pieces joined one under the other into tall pages (as many as CSP's largest side holds) rather than a page each. */
+  joinPieces?: boolean;
 }
 
 /** 作品の既定: the sizes and line widths a name draws with; none: the app's (style.ts). */

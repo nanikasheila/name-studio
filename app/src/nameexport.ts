@@ -49,9 +49,17 @@ export function exportUnits(
   project: Project,
   firstPageLeft: boolean | null,
   spreadProblem: string | null = null,
+  pieces = 1,
 ): { units: number[][]; warnings: string[] } {
   const units: number[][] = [];
   const warnings: string[] = [];
+  if (pieces > 1) {
+    // 縦スクロール, joined: `pieces` pieces one under the other on each page.
+    for (let index = 0; index < project.pages.length; index += pieces) {
+      units.push(project.pages.slice(index, index + pieces).map((_, offset) => index + offset));
+    }
+    return { units, warnings };
+  }
   const zeroLeft = firstPageLeft ?? project.binding === "right";
   const isLeft = (index: number) => zeroLeft === (index % 2 === 0);
   for (let index = 0; index < project.pages.length; ) {
@@ -516,6 +524,21 @@ export function placeUnit(project: Project, unit: number[], full: MmToPx, spread
   });
 }
 
+/**
+ * 縦スクロール, joined: the pieces of a unit one under the other on a page
+ * that holds `pieces` of them, each fitted into its share of the height.
+ */
+export function placeStacked(project: Project, unit: number[], canvas: Pick<TemplateCanvas, "widthPx" | "heightPx">, pieces: number): PlacedPage[] {
+  const share = canvas.heightPx / pieces;
+  const [w, h] = project.pageFormat.canvasMm;
+  const scale = Math.min(canvas.widthPx / w, share / h);
+  return unit.map((index, position) => ({
+    page: project.pages[index],
+    m: { scale, x: (canvas.widthPx - w * scale) / 2, y: position * share + (share - h * scale) / 2 },
+    right: project.binding === "right",
+  }));
+}
+
 /** How a kind of part goes to CSP: as vector lines, as text layers, as a picture, or not at all. */
 export function layerForm(kind: LayerKind, vector: boolean, text: boolean): "vector" | "text" | "raster" | "none" {
   // Image balloons carry their own paper.
@@ -530,6 +553,8 @@ export async function exportToCsp(
   editable: boolean,
   progress: (message: string) => void,
   confirmImages?: (missing: string[]) => Promise<boolean>,
+  /** 縦スクロール, joined: pieces on each page (the template is that tall; see `piecesPerPage`). */
+  pieces = 1,
 ): Promise<CspExportReport | null> {
   // The dialogue in the name's fonts, also when written from the command line.
   useFonts(project.fonts);
@@ -555,11 +580,11 @@ export async function exportToCsp(
       return null;
     }
     const full = projectToTemplate(project, start);
-    const { units, warnings } = exportUnits(project, start.firstPageLeft, start.spread ? null : start.spreadProblem);
+    const { units, warnings } = exportUnits(project, start.firstPageLeft, start.spread ? null : start.spreadProblem, pieces);
     if (vector && !masks && request.frameFolders && !start.frameFolders) warnings.push(NO_FRAME_FOLDER);
     const checks: FileCheck[] = [];
     // One drawing canvas for the widest page; each page is drawn at its own size.
-    const widest = Math.max(start.widthPx, ...(units.some((unit) => unit.length > 1) && start.spread ? [start.spread.widthPx] : []));
+    const widest = Math.max(start.widthPx, ...(units.some((unit) => unit.length > 1) && start.spread && pieces === 1 ? [start.spread.widthPx] : []));
     const factor = Math.min(1, Math.sqrt(MAX_LAYER_PIXELS / (widest * start.heightPx)));
     const drawing = document.createElement("canvas");
     const ctx = drawing.getContext("2d")!;
@@ -567,9 +592,9 @@ export async function exportToCsp(
     const overlayCtx = overlay.getContext("2d")!;
     for (const [unitIndex, unit] of units.entries()) {
       progress(`${unitIndex + 1} / ${units.length} ページを書き出し中…`);
-      const spread = unit.length > 1 && start.spread ? start.spread : null;
+      const spread = unit.length > 1 && start.spread && pieces === 1 ? start.spread : null;
       const pageWidth = spread ? spread.widthPx : start.widthPx;
-      const placed = placeUnit(project, unit, full, spread);
+      const placed = pieces > 1 ? placeStacked(project, unit, start, pieces) : placeUnit(project, unit, full, spread);
       // On a spread each page shows up to the gutter (template px, `scale` of drawing).
       const clipped = (target: CanvasRenderingContext2D, scale: number, right: boolean, draw: () => void) => {
         if (!spread) return draw();
@@ -699,7 +724,7 @@ export async function exportToCsp(
     overlay.width = 0;
     for (const picture of pictures.values()) picture.close();
     const report = await call("finish_name_export");
-    return { ...report, vectorLayers: vector, textLayers: text, checks, warnings, spreads: units.filter((unit) => unit.length > 1).length };
+    return { ...report, vectorLayers: vector, textLayers: text, checks, warnings, spreads: pieces > 1 ? 0 : units.filter((unit) => unit.length > 1).length };
   } catch (error) {
     await call("cancel_name_export").catch(() => undefined);
     throw error;
