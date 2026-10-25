@@ -191,6 +191,8 @@ export class PageEditor {
   /** 画面の回転 (radians, clockwise): the whole view turns about the middle of the stage. */
   private rotation = 0;
   private slots: Slot[] = [];
+  /** The canvas's size on screen (CSS px), kept by `resize`. */
+  private size: { width: number; height: number } | null = null;
   private drag: Drag | null = null;
   private spaceHeld = false;
   private pointer: Point | null = null;
@@ -366,7 +368,7 @@ export class PageEditor {
     const project = this.host.project();
     if (!project || !this.continuous) return;
     this.slide(() => {
-      const { width, height } = this.canvas.getBoundingClientRect();
+      const { width, height } = this.stageSize();
       this.zoom = 1;
       this.pan = [0, 0];
       if (this.rotation) {
@@ -395,7 +397,7 @@ export class PageEditor {
       this.draw();
       return;
     }
-    const { width, height } = this.canvas.getBoundingClientRect();
+    const { width, height } = this.stageSize();
     const [x0, y0, x1, y1] = box;
     const inside = x0 >= 0 && x1 <= width && y0 >= 0 && y1 <= height;
     if (inside || this.rotation) {
@@ -442,7 +444,7 @@ export class PageEditor {
       const project = this.host.project();
       this.zoom = 1;
       const box = project && this.spreadBox(this.layout(project));
-      const { width, height } = this.canvas.getBoundingClientRect();
+      const { width, height } = this.stageSize();
       if (box) {
         this.pan[0] += width / 2 - (box[0] + box[2]) / 2;
         this.pan[1] += height / 2 - (box[1] + box[3]) / 2;
@@ -471,7 +473,7 @@ export class PageEditor {
 
   /** The middle of the stage (CSS px), which the view turns about. */
   private centre(): Point {
-    const { width, height } = this.canvas.getBoundingClientRect();
+    const { width, height } = this.stageSize();
     return [width / 2, height / 2];
   }
 
@@ -579,7 +581,7 @@ export class PageEditor {
     const box = this.drag || this.inline || !this.bar.childElementCount ? null : this.selectionScreenBox();
     this.bar.hidden = !box;
     if (!box) return;
-    const { width, height } = this.canvas.getBoundingClientRect();
+    const { width, height } = this.stageSize();
     const w = this.bar.offsetWidth;
     const h = this.bar.offsetHeight;
     // Clear of the turning handle above a transform frame.
@@ -607,14 +609,28 @@ export class PageEditor {
   resize(): void {
     const ratio = window.devicePixelRatio || 1;
     const { width, height } = this.canvas.getBoundingClientRect();
+    this.size = { width, height };
     this.canvas.width = Math.round(width * ratio);
     this.canvas.height = Math.round(height * ratio);
     this.applyViewTransform();
     this.draw();
   }
 
-  private layout(project: Project): Slot[] {
+  /**
+   * The canvas on screen (CSS px), as of the last resize (the stage is watched
+   * for that): reading it from the page while drawing would make the browser
+   * lay out what the side panels just changed, in the middle of a frame.
+   */
+  private stageSize(): { width: number; height: number } {
+    if (this.size) return this.size;
     const { width, height } = this.canvas.getBoundingClientRect();
+    // Not kept while the editor is hidden: the next resize gives it.
+    if (width && height) this.size = { width, height };
+    return { width, height };
+  }
+
+  private layout(project: Project): Slot[] {
+    const { width, height } = this.stageSize();
     const view = { single: this.single, continuous: this.continuous, rows: this.rows, zoom: this.zoom, pan: this.pan, width, height, gapMm: this.pageGapMm };
     return layoutPages(project, this.spreadList(), this.spreadIndex, view);
   }
@@ -638,7 +654,7 @@ export class PageEditor {
 
   /** Whether any of a page (and its number) is on screen. */
   private onCanvas(project: Project, slot: Slot): boolean {
-    const { width, height } = this.canvas.getBoundingClientRect();
+    const { width, height } = this.stageSize();
     return onStage(slot, project.pageFormat.canvasMm[1], width, height, this.rotation);
   }
 
@@ -982,6 +998,7 @@ export class PageEditor {
     const project = this.host.project();
     if (!project) return;
     this.slots = this.slid(this.layout(project));
+    this.strokeCache.startFrame();
     const drawn = new Set<string>();
     for (const slot of this.slots) {
       if (!this.onCanvas(project, slot)) continue;
@@ -3023,7 +3040,7 @@ export class PageEditor {
     const zoom = Math.min(Math.max(this.zoom * factor, this.continuous ? 0.02 : 0.3), 12);
     const applied = zoom / this.zoom;
     // Keep the point under the pointer still.
-    const { width, height } = this.canvas.getBoundingClientRect();
+    const { width, height } = this.stageSize();
     const cx = width / 2 + this.pan[0];
     const cy = height / 2 + this.pan[1];
     const [ex, ey] = this.at(event);

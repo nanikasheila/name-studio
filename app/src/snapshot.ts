@@ -19,8 +19,8 @@ export interface Snapshot {
   readonly pages: readonly Part[];
 }
 
-/** In development (and tests) a shared list is frozen, so a change in place fails loudly. */
-const freezing = import.meta.env.DEV;
+/** In development (and tests) a shared list is frozen, so a change in place fails loudly; not when timing (e2e/perf.mjs). */
+const freezing = import.meta.env.DEV && !import.meta.env.VITE_PERF;
 
 function keep(list: unknown[]): void {
   if (!freezing || Object.isFrozen(list)) return;
@@ -44,6 +44,32 @@ function part(value: unknown): Part {
     return v;
   });
   return { json, lists };
+}
+
+/**
+ * A page as `part` writes it, much quicker: a page's point lists are only in
+ * its strokes, so the strokes are copied with their lists numbered and the
+ * rest is written without a replacer looking at every value.
+ */
+function pagePart(page: Paged["pages"][number]): Part {
+  const { strokes } = page as { strokes?: unknown };
+  if (!Array.isArray(strokes)) return part(page);
+  const lists: unknown[][] = [];
+  const numbered = strokes.map((stroke: { points?: unknown }) => {
+    if (!Array.isArray(stroke.points)) return stroke;
+    keep(stroke.points);
+    lists.push(stroke.points);
+    return { ...stroke, points: lists.length - 1 };
+  });
+  return { json: JSON.stringify({ ...(page as object), strokes: numbered }), lists };
+}
+
+/** A page back from `pagePart` (or `part`): its strokes get their lists again. */
+function revivePage<T>(piece: Part): T {
+  const page = JSON.parse(piece.json) as { strokes?: { points?: unknown }[] };
+  if (!Array.isArray(page.strokes)) return revive<T>(piece);
+  for (const stroke of page.strokes) if (typeof stroke.points === "number") stroke.points = piece.lists[stroke.points];
+  return page as T;
 }
 
 function sameLists(a: readonly unknown[][], b: readonly unknown[][]): boolean {
@@ -72,7 +98,7 @@ export class Snapshotter<T extends Paged> {
     const snapshot: Snapshot = {
       head: part(rest),
       pages: pages.map((page, i) => {
-        const piece = part(page);
+        const piece = pagePart(page);
         // Pages added or removed in front shift the rest: look a little to either side.
         for (const j of [i, i - 1, i + 1, i - 2, i + 2]) {
           const old = before[j];
@@ -87,7 +113,7 @@ export class Snapshotter<T extends Paged> {
 
   restore(snapshot: Snapshot): T {
     const value = revive<Omit<T, "pages">>(snapshot.head) as T;
-    value.pages = snapshot.pages.map((page) => revive(page));
+    value.pages = snapshot.pages.map((page) => revivePage(page));
     return value;
   }
 
@@ -111,6 +137,12 @@ export function listId(points: object): number {
 
 /** A text that is the same exactly when what `value` holds is (point lists by their number). */
 export function fingerprint(value: unknown): string {
+  // A page: its lists are only in its strokes (as in `pagePart`).
+  const { strokes } = value as { strokes?: unknown };
+  if (Array.isArray(strokes) && !("dataBase64" in (value as object))) {
+    const numbered = strokes.map((stroke: { points?: unknown }) => (Array.isArray(stroke.points) ? { ...stroke, points: listId(stroke.points) } : stroke));
+    return JSON.stringify({ ...(value as object), strokes: numbered });
+  }
   return JSON.stringify(value, (key, v: unknown) => {
     if (key === "points" && Array.isArray(v)) return listId(v);
     if (key === "dataBase64" && typeof v === "string") return v.length;

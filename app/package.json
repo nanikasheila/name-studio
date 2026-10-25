@@ -9,7 +9,8 @@
     "test": "vitest run",
     "tauri": "tauri",
     "e2e": "node e2e/smoke.mjs && node e2e/tools.mjs",
-    "e2e:tools": "node e2e/tools.mjs"
+    "e2e:tools": "node e2e/tools.mjs",
+    "e2e:perf": "node e2e/perf.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",

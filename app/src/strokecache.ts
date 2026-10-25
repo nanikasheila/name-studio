@@ -14,6 +14,13 @@ const MAX_PIXELS = 12_000_000;
 const BUDGET_PIXELS = 64_000_000;
 /** After the last change of scale, a stretched picture is drawn again sharp. */
 export const SETTLE_MS = 160;
+/**
+ * Pictures of pages are drawn for about this long a frame (pages seen for
+ * the first time, as in 連続 with many pages, and pages drawn sharp after a
+ * zoom); the rest follow in the next frames, so the view never stops for all
+ * of them at once. A page whose lines changed is drawn at once.
+ */
+const NEW_PAGES_MS = 12;
 
 interface Layer {
   /** What was drawn, except the scale. */
@@ -38,8 +45,10 @@ export class StrokeCache {
   private tips = 0;
   private settle = 0;
   private clock = 0;
+  /** Time spent this frame drawing pictures of pages seen for the first time. */
+  private spent = 0;
 
-  /** `redraw` is asked for when a stretched picture should be drawn again sharp. */
+  /** `redraw` is asked for when a stretched picture should be drawn again sharp, or pages wait for their picture (next frame). */
   constructor(
     private readonly redraw: () => void,
     private readonly now: () => number = () => performance.now(),
@@ -48,6 +57,11 @@ export class StrokeCache {
   /** A brush tip picture finished loading: lines drawn before it change. */
   tipsChanged(): void {
     this.tips += 1;
+  }
+
+  /** A frame begins: pages new to it get their share of time again. */
+  startFrame(): void {
+    this.spent = 0;
   }
 
   /** Forget pages not drawn since `keep` (the pages on screen are kept). */
@@ -86,8 +100,14 @@ export class StrokeCache {
       if (layer && fresh && now - layer.askedAt < SETTLE_MS) {
         // Zooming: the old picture, stretched, until the scale stays put.
         this.scheduleSettle();
+      } else if ((!layer || fresh) && this.spent > NEW_PAGES_MS) {
+        // A page seen for the first time, or one to draw sharp at its new size: its turn comes in a later frame.
+        this.redraw();
+        if (!layer) return;
       } else {
+        const start = this.now();
         layer = this.paint(key, layer, strokes, size, m.scale, pixelScale, content, style);
+        this.spent += this.now() - start;
       }
     }
     layer.used = ++this.clock;
