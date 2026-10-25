@@ -41,7 +41,7 @@ cargo run -p clip-core --example make_blank_assets -- <ページ.clip> <作品.c
   - ページ番号は作品情報の文字配列の 2 つめ（「7ページ」）。属性は作者名のブロックを写し、部品の印 TLV 0x2e を 4 にする
     （0x2e: 1 作品名・2 作者名・4 ページ番号・16 ノンブル・32 隠しノンブル）。番号は `PageNumberStart + ComicPageIndex` で、ページごとに書き換える。
   - 見えるノンブル（`UseShownNombre` 1・`UseHiddenNombre` 0）: 文字は前置き＋番号＋後ろ（「p.1-」）、大きさは `ComicStoryNombreFontSize`（TLV 0x20 = pt × 100）、
-    白は TLV 0x22 = ff × 12。フチは作品の列（`NombreUseEdge` / `NombreEdgeWidth`）だけで、文字の属性にはない。
+    白は TLV 0x22 = ff × 12。フチは文字の属性ではなく (ノンブル) レイヤーの効果（`LayerEffectInfo` の EffectEdge: 太さ px の f64 と色 RGB の u32、ビッグエンディアン。`LayerEffectAttached` 1 など。assets/nombre-edge.bin が G1 の値）で、白い文字に黒いフチ。フチがないと白いノンブルは白い紙で見えない。
     `NombrePosition` 1 上部内側・2 上部・3 上部外側・4 下部内側・5 下部・6 下部外側。上部は基本枠の上から縦の間隔だけ上に下端、下部は基本枠の下から縦の間隔だけ下に上端。
     内側は綴じる側（左ページの右）で、基本枠の端にそろえる。横の間隔は内へ寄せるものとした（G1/G2 は 0 で未確認）。
 - 作品ファイル: `ComicBindPosition`（右綴じ 1・左綴じ 0）、`ComicStartPage`（1 ページ目が右なら 1）、`DefaultPage*`、作品情報の列、ページの大きさ。

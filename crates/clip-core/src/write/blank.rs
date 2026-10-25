@@ -40,6 +40,9 @@ pub const BLANK_PAGE: &[u8] = include_bytes!("../../assets/blank-page.clip");
 pub const BLANK_PARTS: &[u8] = include_bytes!("../../assets/blank-parts.clip");
 /// A work listing one page.
 pub const BLANK_WORK: &[u8] = include_bytes!("../../assets/blank-work.cmc");
+/// The layer effects CSP gave its (ノンブル) with フチ 0.5 mm at 600 dpi
+/// (`LayerEffectInfo`: the フチ on, the other effects off).
+const NOMBRE_EDGE: &[u8] = include_bytes!("../../assets/nombre-edge.bin");
 
 /// File names of a built template, in its folder.
 pub const PAGE_FILE: &str = "page.clip";
@@ -450,7 +453,7 @@ pub fn apply_setup(editor: &mut ClipEditor, setup: &PageSetup) -> Result<()> {
         add_page_number(db)?;
     }
     if let Some(nombre) = &setup.story.nombre {
-        show_nombre(db, nombre, setup.nombre_start)?;
+        show_nombre(db, nombre, setup.nombre_start, setup.resolution)?;
     }
     set_story_texts(db, setup)?;
     place_story_texts(db, &old, &new, setup)?;
@@ -713,7 +716,7 @@ fn add_page_number(db: &Connection) -> Result<()> {
 
 /// Make the hidden ノンブル a shown one: its part, size and colour, with the
 /// first page's text (placed with the others).
-fn show_nombre(db: &Connection, nombre: &ShownNombre, start: i64) -> Result<()> {
+fn show_nombre(db: &Connection, nombre: &ShownNombre, start: i64, page_resolution: f64) -> Result<()> {
     let resolution = resolution(db)?;
     let text = nombre.text(start);
     let units = text.encode_utf16().count();
@@ -764,6 +767,51 @@ fn show_nombre(db: &Connection, nombre: &ShownNombre, start: i64) -> Result<()> 
                 .collect())
         })?;
         drop_render_cache(db, layer_id)?;
+        if let Some(edge) = nombre.edge_mm {
+            // In px of the page made (the template's resolution changes after this).
+            set_edge(db, layer_id, edge / 25.4 * page_resolution, nombre.white)?;
+        }
+    }
+    Ok(())
+}
+
+/// Give a layer CSP's フチ (a layer effect, not a text attribute): `width`
+/// px, black around white text and white around black.
+fn set_edge(db: &Connection, layer_id: i64, width: f64, white_text: bool) -> Result<()> {
+    let mut info = NOMBRE_EDGE.to_vec();
+    // After the size, the count and the name `EffectEdge`: on, width, colour.
+    let at = 4 + 4 + 4 + "EffectEdge".len() * 2;
+    if info.get(at..at + 4) != Some(&[0, 0, 0, 1]) {
+        return Err(CspError::format("Unexpected layer effect template"));
+    }
+    info[at + 4..at + 12].copy_from_slice(&width.to_be_bytes());
+    let channel: u32 = if white_text { 0 } else { 255 };
+    for index in 0..3 {
+        let start = at + 12 + index * 4;
+        info[start..start + 4].copy_from_slice(&channel.to_be_bytes());
+    }
+    let mut values: Vec<(&str, Value)> = [
+        "EffectLayerRenderType",
+        "EffectRenderType",
+        "EffectReferAreaType",
+        "EffectSetUpdateRectType",
+        "EffectOffscreenFixType",
+        "EffectOffscreenMoveType",
+    ]
+    .into_iter()
+    .map(|column| (column, Value::Integer(10)))
+    .collect();
+    values.push(("LayerEffectAttached", Value::Integer(1)));
+    values.push(("LayerEffectEdgeNewRender", Value::Integer(1)));
+    values.push(("LayerEffectInfo", Value::Blob(info)));
+    for (column, value) in values {
+        if !has_column(db, "Layer", column)? {
+            db.execute(&format!("ALTER TABLE Layer ADD COLUMN \"{column}\""), [])?;
+        }
+        db.execute(
+            &format!("UPDATE Layer SET \"{column}\" = ?1 WHERE MainId = ?2"),
+            (value, layer_id),
+        )?;
     }
     Ok(())
 }

@@ -513,6 +513,17 @@ fn lays_out_the_story_info_and_a_shown_nombre_as_csp_does() {
         ),
         ["サブ", "p.", "-"]
     );
+    // フチ is the layer's effect, as CSP gave G1's: 0.5 mm at 600 dpi, black around white.
+    let (attached, info): (i64, Vec<u8>) = page
+        .database()
+        .query_row(
+            "SELECT LayerEffectAttached, LayerEffectInfo FROM Layer WHERE ComicStoryInfoType = 2",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    let edge = std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/nombre-edge.bin")).unwrap();
+    assert_eq!((attached, info), (1, edge));
     assert!(check_clip(&built.page).ok());
     // On G1's own canvas the three rows go up, inside it, in the same order.
     let folder = tempfile::tempdir().unwrap();
