@@ -76,7 +76,7 @@ fn main() {
             line_spacing: None,
         }),
     ];
-    let ids = write_name_page(&blank, &layers, &donors, None, &parts, 0, &Vec::new(), true, &[]).unwrap();
+    let ids = write_name_page(&blank, &layers, &donors, None, &parts, 0, &Vec::new(), true, &[], &[]).unwrap();
     // The lines and the text are in page px: their layers sit at the origin.
     let mut editor = ClipEditor::open(&parts).unwrap();
     for id in ids {

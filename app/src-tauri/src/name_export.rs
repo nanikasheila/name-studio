@@ -10,7 +10,7 @@ use clip_core::text::{FontName, NewText};
 use clip_core::vector::{NewFrame, NewVectorLine};
 use clip_core::write::blank::{BuiltTemplate, PageSetup, write_builtin_template};
 use clip_core::write::raster_page::{
-    PageLayer, RasterLayer, RasterWorkWriter, TemplateCanvas, WorkOptions, WorkReport,
+    LayerLook, PageLayer, RasterLayer, RasterWorkWriter, TemplateCanvas, WorkOptions, WorkReport,
 };
 use clip_core::write::split::DEFAULT_NAME_PATTERN;
 use clip_core::write::spread::SpreadLayout;
@@ -39,6 +39,9 @@ pub(crate) struct NameExportRequest {
     /// Layers (by name) written as 下描き layers at half opacity.
     #[serde(default)]
     draft_layers: Vec<String>,
+    /// Layers (by name) written fainter or hidden (the ラフ線のレイヤー).
+    #[serde(default)]
+    layer_looks: Vec<LayerLook>,
     /// Look for a コマ枠フォルダー to copy, to write panels as frames.
     #[serde(default)]
     frame_folders: bool,
@@ -85,6 +88,7 @@ pub(crate) async fn begin_name_export(
         inputs: request.inputs.into_iter().map(PathBuf::from).collect(),
         donor_sources: request.donors.into_iter().map(PathBuf::from).collect(),
         draft_layers: request.draft_layers,
+        layer_looks: request.layer_looks,
         frame_folders: request.frame_folders,
         right_binding: request.right_binding,
     })

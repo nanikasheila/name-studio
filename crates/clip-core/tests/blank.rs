@@ -292,6 +292,7 @@ fn writes_a_work_with_editable_layers_from_the_built_template() {
         inputs: Vec::new(),
         donor_sources: vec![built.parts.clone()],
         draft_layers: Vec::new(),
+        layer_looks: Vec::new(),
         frame_folders: false,
         right_binding: None,
     })

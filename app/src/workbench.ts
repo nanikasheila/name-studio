@@ -19,6 +19,8 @@ import { SettingsDialog } from "./settingsdialog";
 import { PenDialog } from "./pendialog";
 import { arrangePage, arrangePanel, clearFaces, fitSpills } from "./arrange";
 import { LayerView, moveIntoPanel, type LayerRef } from "./layers";
+import { RoughPanel, type RoughChange } from "./roughpanel";
+import { addRoughLayer, layerOf, moveRoughLayer, moveStrokesToLayer, removeRoughLayer, renameRoughLayer, ROUGH_BASE, roughLayersOf, setRoughLayer } from "./roughlayers";
 import { penPreferences } from "./pen";
 import { comboOf, Shortcuts, type ActionId } from "./shortcuts";
 import { Docks, type PaletteDef, type PaletteId } from "./dock";
@@ -166,6 +168,18 @@ export class Workbench {
       const text = page.lines.find((l) => l.id === id)?.text.replace(/\s+/g, " ").trim() ?? "";
       return text.length > 14 ? `${text.slice(0, 14)}…` : text || "（空）";
     },
+  });
+  private readonly roughPanel = new RoughPanel({
+    project: () => this.state.project,
+    active: () => (this.state.project ? layerOf(this.state.project, { layer: this.editor.roughLayer }).id : ROUGH_BASE),
+    setActive: (id) => {
+      this.editor.roughLayer = id;
+      const layer = this.state.project && layerOf(this.state.project, { layer: id });
+      if (layer) this.setStatus(`ペンでレイヤー「${layer.name}」に描きます`);
+      this.renderLayers();
+    },
+    change: (change) => this.changeRough(change),
+    selectedStrokes: () => this.selectedStrokeIds().length,
   });
   readonly board: Board;
   private readonly inspector: Inspector;
@@ -350,6 +364,7 @@ export class Workbench {
     this.history.clear();
     this.autosaver.reset();
     this.editor.selection = null;
+    this.editor.roughLayer = ROUGH_BASE;
     this.editor.spreadIndex = 0;
     this.editor.resetView();
     this.editor.resize();
@@ -683,7 +698,65 @@ export class Workbench {
       .sort((a, b) => a - b)
       .map((number) => ({ page: project.pages[number - 1], number }))
       .filter(({ page }) => page);
-    this.layerView.render($("side-layers"), pages);
+    this.roughPanel.render($("rough-layers"));
+    this.layerView.render($("layer-rows"), pages);
+  }
+
+  /** The lines selected on the page now. */
+  private selectedStrokeIds(): string[] {
+    const s = this.editor.selection;
+    if (!s) return [];
+    if (s.kind === "stroke") return [s.id];
+    return s.kind === "group" ? (s.items ?? []).filter((item) => item.kind === "stroke").map((item) => item.id) : [];
+  }
+
+  /** A change to the ラフ線のレイヤー, as one undoable step. */
+  private changeRough(change: RoughChange): void {
+    const project = this.state.project;
+    if (!project) return;
+    let message = "";
+    this.edit((p) => {
+      switch (change.kind) {
+        case "add": {
+          const layer = addRoughLayer(p, `ラフ線 ${roughLayersOf(p).length + 1}`, () => newId(p, "rough"), layerOf(p, { layer: this.editor.roughLayer }).id);
+          this.editor.roughLayer = layer.id;
+          message = `レイヤー「${layer.name}」を足しました。ペンはこのレイヤーに描きます（名前はダブルクリックで変えられます）`;
+          break;
+        }
+        case "rename":
+          renameRoughLayer(p, change.id, change.name);
+          break;
+        case "look":
+          setRoughLayer(p, change.id, change.change);
+          break;
+        case "move":
+          moveRoughLayer(p, change.id, change.step);
+          break;
+        case "remove": {
+          const name = layerOf(p, { layer: change.id }).name;
+          const count = removeRoughLayer(p, change.id, change.mergeDown);
+          message = change.mergeDown ? `「${name}」を下のレイヤーと結合しました（${count} 本）` : `レイヤー「${name}」を消しました（ラフ線 ${count} 本、Ctrl+Z で戻せます）`;
+          break;
+        }
+        case "takeSelected": {
+          const pageId = this.editor.selection?.pageId;
+          const page = p.pages.find((one) => one.id === pageId);
+          const count = page ? moveStrokesToLayer(p, page, this.selectedStrokeIds(), change.id) : 0;
+          message = `ラフ線 ${count} 本をレイヤー「${layerOf(p, { layer: change.id }).name}」へ移しました`;
+          break;
+        }
+      }
+    });
+    // Lines that went hidden or locked cannot stay picked.
+    const picked = this.selectedStrokeIds();
+    if (picked.length && this.editor.selection) {
+      const page = project.pages.find((one) => one.id === this.editor.selection?.pageId);
+      const stuck = page?.strokes.some((stroke) => picked.includes(stroke.id) && (layerOf(project, stroke).hidden || layerOf(project, stroke).locked));
+      if (stuck) this.editor.select(null);
+    }
+    if (message) this.setStatus(message);
+    this.editor.draw();
+    this.renderLayers();
   }
 
   private layerSelected(ref: LayerRef): boolean {

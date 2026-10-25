@@ -71,6 +71,9 @@ pub struct Project {
     /// CSP-made template is chosen; none: from the name's page.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub csp_page: Option<CspPage>,
+    /// ラフ線のレイヤー, bottom first; none is one layer.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rough_layers: Vec<RoughLayer>,
     /// Next number used by [`Project::new_id`]; ids are never reused.
     pub next_id: u64,
 }
@@ -666,6 +669,27 @@ pub struct Stroke {
     /// Whether the start / end was left by an eraser (no 入り抜き there).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cut: Option<[bool; 2]>,
+    /// The [`RoughLayer`] it is on; none (or one gone) is the first layer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layer: Option<String>,
+}
+
+/// ラフ線のレイヤー: rough lines kept apart (人物・背景・効果…), shown,
+/// faded and locked together.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoughLayer {
+    pub id: String,
+    pub name: String,
+    /// Not shown on the page (written to CSP hidden).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hidden: Option<bool>,
+    /// 0.1..1; none is 1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opacity: Option<f64>,
+    /// Not drawn on, erased or picked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locked: Option<bool>,
 }
 
 /// A point of a rough line, written as `[x, y, pressure]`, or
@@ -935,6 +959,7 @@ impl Project {
             fonts: None,
             style: None,
             csp_page: None,
+            rough_layers: Vec::new(),
             next_id: 1,
         }
     }

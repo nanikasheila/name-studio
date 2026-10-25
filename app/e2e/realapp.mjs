@@ -3,7 +3,8 @@
 // has (the WebView, its Content-Security-Policy, the calls to the Rust side)
 // is checked too, once with a CSP-made template page, once with the one
 // the app makes from its own settings (--builtin, with a work) and once with
-// each panel as a folder with a layer mask (--panel-masks), and a 縦スクロール
+// each panel as a folder with a layer mask (--panel-masks), with two
+// ラフ線のレイヤー, and a 縦スクロール
 // whose pieces are joined into one tall page. Needs the
 // release build and a template page:
 //   npx tauri build --no-bundle
@@ -35,6 +36,10 @@ P.addPanel(project, page, P.rectShape([20, 20, 160, 120]));
 P.setLineText(P.addLine(project, page, [40, 40, 60, 100]), "セリフ");
 page.strokes.push({ id: "rough1", points: [[30, 30, 0.5], [90, 90, 0.5]], widthMm: 0.5, closed: false });
 page.memo = "メモ";
+// The same name with its rough lines on two layers (人物 hidden and faint): one CSP layer more.
+const layered = structuredClone(project);
+layered.roughLayers = [{ id: "rough", name: "ラフ線" }, { id: "rough9", name: "人物", hidden: true, opacity: 0.5 }];
+layered.pages[0].strokes.push({ id: "rough2", points: [[40, 30, 0.5], [90, 60, 0.5]], widthMm: 0.5, closed: false, layer: "rough9" });
 // A 縦スクロール of three pieces, joined: one tall page.
 const scroll = P.newProject("縦スクロール", 3, "scroll");
 for (const piece of scroll.pages) P.setLineText(P.addLine(scroll, piece, [40, 40, 60, 100]), "セリフ");
@@ -44,6 +49,8 @@ const name = join(dir, "test.namestudio");
 writeFileSync(name, projectJson(project));
 const scrollName = join(dir, "scroll.namestudio");
 writeFileSync(scrollName, projectJson(scroll));
+const layeredName = join(dir, "layered.namestudio");
+writeFileSync(layeredName, projectJson(layered));
 const failures = [];
 const check = (ok, what) => {
   console.log(`${ok ? "ok  " : "FAIL"} ${what}`);
@@ -74,6 +81,8 @@ check(builtin?.vectorLayers === true && builtin?.textLayers === true, "builtin: 
 // Each panel as a folder with a layer mask: the pages read back with the folder, its mask and the rough in it.
 const masks = exportWith("masks", ["--builtin", "--panel-masks"]);
 check((masks?.checks?.[0]?.layers ?? 0) > (builtin?.checks?.[0]?.layers ?? 0), "masks: the first page has the panel's folder and its layers");
+const layers = exportWith("layered", ["--builtin"], { file: layeredName });
+check((layers?.checks?.[0]?.layers ?? 0) === (builtin?.checks?.[0]?.layers ?? 0) + 1, "layered: the rough layer 人物 is a layer of its own");
 const tall = exportWith("tall", ["--builtin", "--work-name", "縦スクロール"], { file: scrollName, pages: 1 });
 check(tall?.textLayers === true && (tall?.checks?.[0]?.layers ?? 0) > 0, "tall: the joined page has its layers");
 if (failures.length) process.exit(1);
