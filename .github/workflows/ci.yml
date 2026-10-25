@@ -46,12 +46,19 @@ jobs:
           npm run build
           npm test
 
-      - name: Browser walk-through (open, draw, undo, errors undone, autosave, 連続)
+      - name: Browser walk-through (open, draw, undo, errors undone, autosave, 連続, every tool against its record)
         if: runner.os == 'Linux'
         working-directory: app
         run: |
           npx playwright install --with-deps chromium
           npm run e2e
+
+      - name: Speed with a heavy name (each operation within 50 ms)
+        if: runner.os == 'Linux'
+        working-directory: app
+        run: |
+          npm run e2e:perf -- --report "$RUNNER_TEMP/perf.json"
+          { echo "### 重いネームでの速さ（ms、いちばん遅いフレーム）"; echo; node -e 'const r=require(process.argv[1]);for(const[k,v]of Object.entries(r))console.log(`- ${k}: ${typeof v==="number"?v.toFixed(1):`${v.worst} / ${v.budget}`}`)' "$RUNNER_TEMP/perf.json"; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Check formatting
         run: cargo fmt --check

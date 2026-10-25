@@ -32,6 +32,16 @@ describe("module structure", () => {
     expect(callers).toEqual(["backend.ts"]);
   });
 
+  it("keeps each tool's press and drags out of the page editor", () => {
+    // Tools live in tool*.ts behind tools.ts; editor.ts dispatches and draws.
+    const editor = sources["./editor.ts"];
+    expect(editor.split("\n").length).toBeLessThan(3300);
+    expect(editor).not.toMatch(/(?:tool|drag) satisfies never/);
+    for (const [path, source] of Object.entries(sources)) {
+      if (/^\.\/tool\w*\.ts$/.test(path)) expect(source, path).not.toMatch(/from "\.\/editor"/);
+    }
+  });
+
   it("has no import cycles", () => {
     const graph = imports();
     const cycles: string[] = [];

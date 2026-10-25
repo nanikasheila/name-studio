@@ -23,6 +23,15 @@ describe("Snapshotter", () => {
     expect(back.pages[1].strokes[2].points).toBe(project.pages[1].strokes[2].points);
   });
 
+  it("brings back held panels and other options with their lists too", () => {
+    const project = drawn(2);
+    project.held = [{ id: "held1", panel: { id: "p", shape: [], order: 1 } as never, lines: [], strokes: [project.pages[0].strokes[0]] }];
+    const snapshots = new Snapshotter<Project>();
+    const back = snapshots.restore(snapshots.take(project));
+    expect(back).toEqual(project);
+    expect(back.held![0].strokes[0].points).toBe(project.pages[0].strokes[0].points);
+  });
+
   it("keeps unchanged pages once", () => {
     const project = drawn();
     const snapshots = new Snapshotter<Project>();
@@ -91,6 +100,16 @@ describe("projectJson", () => {
     moveStroke(project.pages[0].strokes[0], 1, 0);
     const moved = JSON.parse(projectJson(project)) as Project;
     expect(moved.pages[0].strokes[0].points[0]).toEqual([11, 10, 0.5]);
+  });
+
+  it("writes pages, held panels and other options as one replacer over everything would", () => {
+    const project = drawn(2);
+    project.held = [{ id: "held1", panel: { id: "p", shape: [[0, 0], [1, 0], [1, 1]], order: 1 } as never, lines: [], strokes: [project.pages[0].strokes[0]] }];
+    project.alternatives = [{ id: "alt", from: 0, to: 0, active: "a", options: [{ id: "b", name: "案2", pages: [JSON.parse(JSON.stringify(project.pages[1]))] }] } as never];
+    // Every point list, wherever it is, written as the saved text writes it.
+    const round = (points: number[][]) => points.map((point) => point.map((v, i) => Math.round(v * (i < 2 ? 100 : 1000)) / (i < 2 ? 100 : 1000)));
+    const plain = JSON.stringify(project, (key, value: unknown) => (key === "points" && Array.isArray(value) ? round(value as number[][]) : value));
+    expect(projectJson(project)).toBe(plain);
   });
 
   it("writes numbers JSON cannot hold as 0", () => {
