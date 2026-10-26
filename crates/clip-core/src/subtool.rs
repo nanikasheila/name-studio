@@ -1,23 +1,11 @@
-//! Sub tools (サブツール: pens, erasers, brushes) saved by CSP.
+//! Sub tools (サブツール: pens, erasers, brushes) saved by CSP, as the
+//! name tool draws with them.
 //!
-//! An exported sub tool (.sut) and CSP's own tool database
-//! (`Tool/EditImageTool.todb` in the user's settings folder) are both SQLite
-//! files with the same three tables:
-//!
-//! - `Manager`: one row; `RootUuid` names the top node.
-//! - `Node`: the tool tree. Folders have `NodeVariantID` 0; a sub tool points
-//!   at its settings with `NodeVariantID`. `NodeFirstChildUuid` and
-//!   `NodeNextUuid` link the tree (a single zero byte means "none").
-//!   `NodeInputOp` / `NodeOutputOp` say what kind of tool it is (10, 11 and 14
-//!   draw, 12 erases).
-//! - `Variant`: one row of settings per sub tool. A .sut keeps only the
-//!   columns the tool uses, so columns are looked up by name.
-//!
-//! A .sut that uses image materials (brush tips, textures) also has
-//! `MaterialFile`, whose `FileData` is a tar archive of the material folder;
-//! `thumbnail/thumbnail.png` in it is a picture of the brush tip. Tools in the
-//! database refer to installed materials instead, which live under
-//! `CLIPStudioCommon/Material/<a>/<b>/<uuid>/` with the same thumbnail.
+//! csp-assets reads an exported sub tool (.sut) and CSP's own tool database
+//! (`Tool/EditImageTool.todb`): the tool tree, each sub tool's settings
+//! (`Variant`), its 影響元設定 and material lists, and the materials a .sut
+//! carries. This module picks the pens and erasers and turns their settings
+//! into what the app draws with.
 //!
 //! Settings that matter for drawing lines:
 //! - `BrushSize` with `BrushSizeUnit` (0 = pixels of the canvas, 2 = mm).
@@ -31,21 +19,22 @@
 //! - `BrushInterval` (% of the size between stamps), `BrushThickness`
 //!   (% of the width kept for the height of the tip), `BrushRotation` (°).
 //! - `BrushPatternImageArray`: the tip materials, see [`pattern_paths`].
+//!   Tools in the database refer to installed materials, which live under
+//!   `CLIPStudioCommon/Material/<a>/<b>/<uuid>/` with a thumbnail of the tip.
 //! - `CompositeMode` 27 is "erase"; `BrushUseVectorEraser` with
 //!   `BrushVectorEraserType` (0 touched part, 1 up to intersections,
 //!   2 whole line) is how it erases vector lines.
 
-use std::collections::HashMap;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use rusqlite::{Connection, OpenFlags};
+use csp_assets::subtool::blob::{Effector, INPUT_PRESSURE, INPUT_RANDOM, INPUT_TILT, INPUT_VELOCITY, MaterialList, Records};
+use csp_assets::subtool::{MaterialFile, Node, SubToolDb};
 use serde::Serialize;
 
 use crate::RgbaImage;
 use crate::error::{CspError, Result};
 use crate::raster::{Filter, decode_png, luma, resize};
-use csp_format::database::{Row, select as select_rows, table_exists};
+use csp_format::database::Row;
 
 /// Largest side of the tip mask handed to the app.
 pub const TIP_SIZE: u32 = 128;
@@ -98,16 +87,9 @@ impl Length {
     }
 }
 
-/// What changes a setting while drawing (影響元設定).
-///
-/// The blob is big endian. A header of `u32` words: `[0]` its own length in
-/// bytes (40 to 48), `[2]` the inputs in use (0x10 pen pressure, 0x20 tilt,
-/// 0x40 speed, 0x80 random), `[3]`..`[6]` the minimum (%) with pressure,
-/// tilt, speed and random, `[8]` and `[9]` the byte lengths of the pressure
-/// and tilt graphs, `[11]` (in a 48-byte header) that of the speed graph.
-/// The graphs follow the header in that order: `u32` header length 12, `u32`
-/// point count, `u32` point size 16, then the points as two `f64` (input,
-/// output) in 0..1. Graph points are control points: CSP draws a smooth curve
+/// What changes a setting while drawing (影響元設定): which inputs are on
+/// (pen pressure, tilt, speed, random), the value at their lightest touch and
+/// their graphs. Graph points are control points: CSP draws a smooth curve
 /// through the ends that bends towards the points in between.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -128,73 +110,38 @@ pub struct Dynamics {
 }
 
 impl Dynamics {
+    /// From an `…Effector` blob (csp-assets reads it); None when it is not one.
     pub fn parse(blob: &[u8]) -> Option<Dynamics> {
-        let word = |index: usize| -> Option<u32> {
-            let bytes = blob.get(index * 4..index * 4 + 4)?;
-            Some(u32::from_be_bytes(bytes.try_into().ok()?))
-        };
-        let header = word(0)? as usize;
-        if !(40..=blob.len()).contains(&header) {
-            return None;
-        }
-        let inputs = word(2)?;
-        let min = |index: usize| -> Option<f64> { Some((word(index)? as f64 / 100.0).clamp(0.0, 1.0)) };
-        let graph_length = |index: usize| {
-            if index * 4 < header {
-                word(index).unwrap_or(0) as usize
-            } else {
-                0
-            }
-        };
-        let mut at = header;
-        let mut graph = |length: usize| -> Option<Vec<[f64; 2]>> {
-            let bytes = blob.get(at..at + length)?;
-            at += length;
-            Some(graph_points(bytes))
-        };
-        let pressure_curve = graph(graph_length(8))?;
-        let tilt_curve = graph(graph_length(9))?;
-        // Without a speed graph (headers before 48 bytes) CSP thins the line
-        // as the pen speeds up: the graph CSP itself saves for its own
-        // brushes (水彩丸筆, にじみ墨...) is this straight line down.
-        let velocity_curve = match graph_length(11) {
-            0 => vec![[0.0, 1.0], [1.0, 0.0]],
-            length => graph(length).unwrap_or_default(),
-        };
+        let effector = Effector::parse(blob).ok()?;
+        let min = |index: usize| (effector.minimum[index] as f64 / 100.0).clamp(0.0, 1.0);
         Some(Dynamics {
-            pressure: inputs & 0x10 != 0,
-            pressure_min: min(3)?,
-            pressure_curve,
-            tilt: inputs & 0x20 != 0,
-            tilt_min: min(4)?,
-            tilt_curve,
-            velocity: inputs & 0x40 != 0,
-            velocity_min: min(5)?,
-            velocity_curve,
-            random: inputs & 0x80 != 0,
-            random_min: min(6)?,
+            pressure: effector.uses(INPUT_PRESSURE),
+            pressure_min: min(0),
+            pressure_curve: graph_points(effector.pressure_graph.as_ref()),
+            tilt: effector.uses(INPUT_TILT),
+            tilt_min: min(1),
+            tilt_curve: graph_points(effector.tilt_graph.as_ref()),
+            velocity: effector.uses(INPUT_VELOCITY),
+            velocity_min: min(2),
+            // Without a speed graph CSP thins the line as the pen speeds up:
+            // the graph CSP itself saves for its own brushes (水彩丸筆,
+            // にじみ墨...) is this straight line down.
+            velocity_curve: match &effector.velocity_graph {
+                Some(graph) => graph_points(Some(graph)),
+                None => vec![[0.0, 1.0], [1.0, 0.0]],
+            },
+            random: effector.uses(INPUT_RANDOM),
+            random_min: min(3),
         })
     }
 }
 
-/// The points of one graph; empty for none or the straight line.
-fn graph_points(graph: &[u8]) -> Vec<[f64; 2]> {
-    let mut points = Vec::new();
-    if graph.len() >= 12 {
-        let read = |at: usize| u32::from_be_bytes(graph[at..at + 4].try_into().unwrap()) as usize;
-        let (start, count, size) = (read(0), read(4), read(8));
-        for index in 0..count {
-            let at = start + index * size;
-            let Some(point) = graph.get(at..at + 16) else { break };
-            let x = f64::from_be_bytes(point[0..8].try_into().unwrap());
-            let y = f64::from_be_bytes(point[8..16].try_into().unwrap());
-            points.push([x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)]);
-        }
-    }
-    if points == [[0.0, 0.0], [1.0, 1.0]] {
-        points.clear();
-    }
-    points
+/// The points of one graph, in 0..1; empty for none or the straight line.
+fn graph_points(graph: Option<&Records>) -> Vec<[f64; 2]> {
+    let points: Vec<[f64; 2]> = graph
+        .map(|graph| graph.points().into_iter().map(|[x, y]| [x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)]).collect())
+        .unwrap_or_default();
+    if points == [[0.0, 0.0], [1.0, 1.0]] { Vec::new() } else { points }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -277,94 +224,29 @@ pub fn read_sub_tools(path: impl AsRef<Path>, material_root: Option<&Path>) -> R
 }
 
 pub fn read_sub_tools_from_bytes(bytes: &[u8], material_root: Option<&Path>) -> Result<Vec<SubTool>> {
-    if !bytes.starts_with(b"SQLite format 3\0") {
+    if !csp_assets::subtool::looks_like(bytes) {
         return Err(CspError::format(
             "CSP のサブツール（.sut）でもツールのデータベースでもありません",
         ));
     }
-    let mut connection = Connection::open_in_memory_with_flags(OpenFlags::SQLITE_OPEN_READ_WRITE)?;
-    connection.deserialize_read_exact(rusqlite::MAIN_DB, bytes, bytes.len(), true)?;
-    for table in ["Manager", "Node", "Variant"] {
-        if !table_exists(&connection, table)? {
-            return Err(CspError::format(format!("サブツールの表 {table} がありません")));
-        }
-    }
-    let nodes = select_rows(&connection, "SELECT * FROM Node", [])?;
-    let variants: HashMap<i64, Row> = select_rows(&connection, "SELECT * FROM Variant", [])?
-        .into_iter()
-        .map(|row| (row.int("VariantID"), row))
-        .collect();
-    let materials = if table_exists(&connection, "MaterialFile")? {
-        select_rows(&connection, "SELECT OriginalPath, FileData FROM MaterialFile", [])?
-    } else {
-        Vec::new()
-    };
-    let root = select_rows(&connection, "SELECT RootUuid FROM Manager", [])?
-        .first()
-        .and_then(|row| row.blob("RootUuid").map(<[u8]>::to_vec));
-
-    let by_uuid: HashMap<Vec<u8>, &Row> = nodes
-        .iter()
-        .filter_map(|row| Some((row.blob("NodeUuid")?.to_vec(), row)))
-        .collect();
-    let mut ordered: Vec<(&Row, Vec<String>)> = Vec::new();
-    match root.filter(|uuid| by_uuid.contains_key(uuid)) {
-        Some(root) => walk(&by_uuid, &root, &mut Vec::new(), &mut ordered, 0),
-        // A .sut with one tool may name no tree; take the nodes as they are.
-        None => ordered.extend(nodes.iter().map(|row| (row, Vec::new()))),
-    }
-
+    let db = SubToolDb::from_bytes(bytes).map_err(|error| CspError::format(format!("サブツールを読めません: {error}")))?;
     let mut tools = Vec::new();
-    for (node, group) in ordered {
-        let variant_id = node.int("NodeVariantID");
-        let Some(variant) = (variant_id != 0).then(|| variants.get(&variant_id)).flatten() else {
+    for entry in db.sub_tools() {
+        let node = &db.nodes[entry.node];
+        let Some(variant) = db.variant(node.variant_id) else {
             continue;
         };
         let kind = kind_of(node, variant);
         if kind == SubToolKind::Other || !variant.has("BrushSize") {
             continue;
         }
-        tools.push(sub_tool(node, variant, group, kind, &materials, material_root));
+        tools.push(sub_tool(node, variant, entry.path, kind, &db.materials, material_root));
     }
     Ok(tools)
 }
 
-fn is_none_uuid(uuid: &[u8]) -> bool {
-    uuid.iter().all(|&byte| byte == 0)
-}
-
-fn walk<'a>(
-    nodes: &HashMap<Vec<u8>, &'a Row>,
-    first: &[u8],
-    path: &mut Vec<String>,
-    out: &mut Vec<(&'a Row, Vec<String>)>,
-    depth: usize,
-) {
-    let mut current = first.to_vec();
-    let mut guard = 0;
-    while !is_none_uuid(&current) && depth < 16 && guard < 10_000 {
-        guard += 1;
-        let Some(node) = nodes.get(&current) else { break };
-        let name = node.text("NodeName").unwrap_or_default();
-        out.push((node, path.clone()));
-        if let Some(child) = node.blob("NodeFirstChildUuid").filter(|uuid| !is_none_uuid(uuid)) {
-            // The unnamed root is not part of the group names.
-            let named = !(depth == 0 && name.is_empty());
-            if named {
-                path.push(name);
-            }
-            walk(nodes, child, path, out, depth + 1);
-            if named {
-                path.pop();
-            }
-        }
-        current = node.blob("NodeNextUuid").map(<[u8]>::to_vec).unwrap_or_default();
-    }
-}
-
-fn kind_of(node: &Row, variant: &Row) -> SubToolKind {
-    let input = node.int("NodeInputOp");
-    let output = node.int("NodeOutputOp");
+fn kind_of(node: &Node, variant: &Row) -> SubToolKind {
+    let (input, output) = (node.input_op, node.output_op);
     if input == 12 || output == 12 {
         return SubToolKind::Eraser;
     }
@@ -396,11 +278,11 @@ fn percent(row: &Row, column: &str, default: f64) -> f64 {
 }
 
 fn sub_tool(
-    node: &Row,
+    node: &Node,
     variant: &Row,
     group: Vec<String>,
     kind: SubToolKind,
-    materials: &[Row],
+    materials: &[MaterialFile],
     material_root: Option<&Path>,
 ) -> SubTool {
     let dynamics = |column: &str| variant.blob(column).and_then(Dynamics::parse);
@@ -433,7 +315,7 @@ fn sub_tool(
         }
     });
     SubTool {
-        name: node.text("NodeName").unwrap_or_default(),
+        name: node.name.clone(),
         group,
         kind,
         size: Length::from_row(variant, "BrushSize", "BrushSizeUnit"),
@@ -462,34 +344,13 @@ fn sub_tool(
     }
 }
 
-/// Material paths in `BrushPatternImageArray`: UTF-16LE strings such as
-/// `.:91:20:<uuid>:data:material_0.layer` (an installed material) or
+/// Material paths in `BrushPatternImageArray` (csp-assets reads the list),
+/// such as `.:91:20:<uuid>:data:material_0.layer` (an installed material) or
 /// `.:Paint001:<uuid>:data:material.layer` (one that comes with CSP).
 pub fn pattern_paths(blob: &[u8]) -> Vec<String> {
-    let mut paths = Vec::new();
-    let mut at = 0;
-    while at + 4 <= blob.len() {
-        if &blob[at..at + 4] == b".\0:\0" {
-            let mut units = Vec::new();
-            let mut end = at;
-            while end + 1 < blob.len() {
-                let unit = u16::from_le_bytes([blob[end], blob[end + 1]]);
-                if unit < 0x20 {
-                    break;
-                }
-                units.push(unit);
-                end += 2;
-            }
-            let text = String::from_utf16_lossy(&units);
-            if text.ends_with(".layer") {
-                paths.push(text);
-            }
-            at = end;
-        } else {
-            at += 1;
-        }
-    }
-    paths
+    MaterialList::parse(blob)
+        .map(|list| list.materials.into_iter().map(|material| material.path.trim_end_matches('\0').to_owned()).collect())
+        .unwrap_or_default()
 }
 
 /// Folders a tip path may be in, relative to the material root:
@@ -521,15 +382,11 @@ pub fn material_folders(path: &str) -> Vec<PathBuf> {
 }
 
 /// PNG of the tip: from the .sut's own materials, else from the installed one.
-fn tip_picture(path: &str, materials: &[Row], material_root: Option<&Path>) -> Option<Vec<u8>> {
+fn tip_picture(path: &str, materials: &[MaterialFile], material_root: Option<&Path>) -> Option<Vec<u8>> {
     let embedded = materials
         .iter()
-        .filter(|material| material.text("OriginalPath").as_deref() == Some(path))
-        .find_map(|material| {
-            material
-                .blob("FileData")
-                .and_then(|tar| tar_entry(tar, "thumbnail/thumbnail.png"))
-        });
+        .filter(|material| material.original_path == path)
+        .find_map(MaterialFile::thumbnail);
     if embedded.is_some() {
         return embedded;
     }
@@ -537,30 +394,6 @@ fn tip_picture(path: &str, materials: &[Row], material_root: Option<&Path>) -> O
     material_folders(path)
         .into_iter()
         .find_map(|folder| std::fs::read(root.join(folder).join("thumbnail").join("thumbnail.png")).ok())
-}
-
-/// One file of a (ustar) tar archive.
-pub fn tar_entry(tar: &[u8], name: &str) -> Option<Vec<u8>> {
-    let mut at = 0;
-    while at + 512 <= tar.len() {
-        let header = &tar[at..at + 512];
-        if header.iter().all(|&byte| byte == 0) {
-            return None;
-        }
-        let entry_name = String::from_utf8_lossy(&header[..100])
-            .trim_end_matches('\0')
-            .to_owned();
-        let size_text = String::from_utf8_lossy(&header[124..136]);
-        let size = usize::from_str_radix(size_text.trim_matches(|c: char| c == '\0' || c == ' '), 8).ok()?;
-        let start = at + 512;
-        if entry_name == name {
-            let mut data = Vec::with_capacity(size);
-            tar.get(start..start + size)?.read_to_end(&mut data).ok()?;
-            return Some(data);
-        }
-        at = start + size.div_ceil(512) * 512;
-    }
-    None
 }
 
 /// Turn a tip picture into a white mask: coverage is alpha times darkness,
@@ -706,18 +539,23 @@ mod tests {
         assert_eq!(short.velocity_curve, [[0.0, 1.0], [1.0, 0.0]]);
     }
 
-    fn utf16(text: &str) -> Vec<u8> {
-        text.encode_utf16().flat_map(u16::to_le_bytes).collect()
+    /// A `BrushPatternImageArray` with one material, as CSP writes it.
+    fn material_list(path: &str, install_path: Option<&str>) -> Vec<u8> {
+        let material = csp_assets::subtool::blob::MaterialRef {
+            path: path.to_owned(),
+            kind: Some(2),
+            name: Some(String::new()),
+            flag: Some(1),
+            install_path: install_path.map(str::to_owned),
+            rest: Vec::new(),
+        };
+        MaterialList { materials: vec![material] }.to_bytes()
     }
 
     #[test]
     fn finds_tip_material_paths() {
         let path = ".:91:20:e6ae21f672-c949-8fb8-0f2b-4fd949ca57:data:material_0.layer";
-        let mut blob = vec![0, 0, 0, 8, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0x84];
-        blob.extend(utf16(path));
-        blob.extend([0, 0, 0, 0, 0, 2]);
-        blob.extend(utf16(".:91:20:e6ae21f672-c949-8fb8-0f2b-4fd949ca57"));
-        blob.extend([0, 0]);
+        let blob = material_list(&format!("{path}\0"), Some(".:91:20:e6ae21f672-c949-8fb8-0f2b-4fd949ca57"));
         assert_eq!(pattern_paths(&blob), vec![path.to_owned()]);
         assert_eq!(
             material_folders(path),
@@ -769,9 +607,6 @@ mod tests {
         let mask = tip_mask(&tip_png()).unwrap();
         assert_eq!((mask.width, mask.height), (4, 2));
         assert!(mask.png_base64.starts_with("iVBORw0KGgo"));
-        let tar = tar(&[("info.zip", b"x"), ("thumbnail/thumbnail.png", &tip_png())]);
-        assert_eq!(tar_entry(&tar, "thumbnail/thumbnail.png"), Some(tip_png()));
-        assert_eq!(tar_entry(&tar, "missing"), None);
     }
 
     #[test]
@@ -785,7 +620,7 @@ mod tests {
 
     /// A .sut like the ones CSP writes: one node, its variant, one material.
     fn sut(name: &str, input: i64, composite: i64, vector_eraser: Option<i64>) -> Vec<u8> {
-        let connection = Connection::open_in_memory().unwrap();
+        let connection = rusqlite::Connection::open_in_memory().unwrap();
         connection
             .execute_batch(
                 "CREATE TABLE Manager(_PW_ID INTEGER PRIMARY KEY AUTOINCREMENT, ToolType INTEGER, Version INTEGER, RootUuid BLOB);
@@ -808,9 +643,7 @@ mod tests {
             )
             .unwrap();
         let path = ".:91:20:abc:data:material_0.layer";
-        let mut pattern = vec![0, 0, 0, 8, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0x44];
-        pattern.extend(utf16(path));
-        pattern.extend([0, 0]);
+        let pattern = material_list(path, None);
         connection
             .execute(
                 "INSERT INTO Variant VALUES (NULL, 87, 80, ?1, 6, 5.0, 0, ?2, 100, 1, ?3, 1, 20.0, 0, 1, 1.5, 2, ?4, ?5, 1, 1, 30)",
