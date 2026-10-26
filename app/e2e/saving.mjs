@@ -1,8 +1,10 @@
 // Saving keeps to the name it was started for: a save that ends after another
 // name was opened leaves that one alone, the export dialog does not carry one
 // unsaved name's folder over to the next, a series file that could not be
-// written stays in view with a way to try again, and the smallest window
-// keeps its buttons on screen. Run: npm run e2e:saving
+// written stays in view with a way to try again, the save state beside the
+// name says where the changes are kept (and a failure until a save works),
+// closing with changes offers to save, not save or go back, and the smallest
+// window keeps its buttons on screen. Run: npm run e2e:saving
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { createServer } from "vite";
@@ -36,6 +38,7 @@ try {
           const meta = JSON.parse(new TextDecoder().decode(args.subarray(4, 4 + length)));
           const text = new TextDecoder().decode(args.subarray(4 + length));
           if (window.__hold) await window.__hold;
+          if (window.__saveFails) throw new Error("ディスクがいっぱいです");
           window.__files[meta.path] = text;
           return null;
         }
@@ -47,12 +50,17 @@ try {
           window.__files[args.path] = args.text;
           return null;
         case "discard_recovery":
+          window.__discarded = (window.__discarded ?? 0) + 1;
           return null;
         case "plugin:dialog|save":
         case "plugin:dialog|open":
           return window.__dialogs.shift() ?? null;
-        case "plugin:dialog|message":
+        case "plugin:dialog|message": {
+          // Asked before closing: the button the test picks, by its label.
+          const buttons = args.buttons?.YesNoCancelCustom;
+          if (buttons && window.__pick !== undefined) return buttons[window.__pick];
           return "Yes";
+        }
         default:
           return undefined;
       }
@@ -72,6 +80,7 @@ try {
       [path, title],
     );
   const settle = () => page.waitForTimeout(200);
+  const saveState = () => page.locator("#save-state").textContent();
   const file = (path) => page.evaluate((path) => (path in window.__files ? JSON.parse(window.__files[path]) : null), path);
   const state = () =>
     page.evaluate(() => {
@@ -87,6 +96,7 @@ try {
     window.__saving = window.nameStudio.workbench.save();
   });
   await settle();
+  check((await saveState()) === "保存中…", `the save state shows a save being written (${await saveState()})`);
   await show(B, "B");
   await page.evaluate(async () => {
     window.__hold = null;
@@ -99,6 +109,24 @@ try {
   check((await file(A))?.title === "A", "A's save wrote A");
   await page.evaluate(() => window.nameStudio.workbench.save());
   check((await file(B))?.title === "B" && (await file(A))?.title === "A", "B's next save goes to B, not to A");
+  check(/^保存済み \d\d:\d\d$/.test(await saveState()), `and the save state says it is in the file, and when (${await saveState()})`);
+  await page.evaluate(() => {
+    const wb = window.nameStudio.workbench;
+    wb.begin();
+    wb.project.title = "B1";
+    wb.commit();
+  });
+  check((await saveState()) === "未保存の変更あり", `a change not yet in the file (${await saveState()})`);
+  // A save that fails stays in view until a save works.
+  await page.evaluate(() => (window.__saveFails = true));
+  await page.evaluate(() => window.nameStudio.workbench.save());
+  await page.evaluate(() => window.nameStudio.workbench.setStatus?.("別の操作"));
+  const failedState = page.locator("#save-state[data-tone=error]");
+  check((await failedState.textContent()) === "保存できませんでした", "a failed save shows in the save state, after other messages too");
+  check((await failedState.getAttribute("title")).includes("ディスクがいっぱいです"), "with why, on hover");
+  await page.evaluate(() => (window.__saveFails = false));
+  await page.evaluate(() => window.nameStudio.workbench.save());
+  check((await saveState()).startsWith("保存済み"), `the next save that works clears it (${await saveState()})`);
 
   // Saves one after another: the later one lands last.
   await page.evaluate(() => {
@@ -116,8 +144,29 @@ try {
   });
   check((await file(B))?.title === "B2", "two saves in a row: the newer one is what stays in the file");
 
+  // Closing with changes not saved: go back, save and go on, or go on without saving.
+  const close = (pick) =>
+    page.evaluate(async (pick) => {
+      const wb = window.nameStudio.workbench;
+      wb.begin();
+      wb.project.title = `閉じる${pick}`;
+      wb.commit();
+      window.__pick = pick;
+      const going = await wb.confirmDiscard();
+      window.__pick = undefined;
+      return { going, dirty: wb.session.dirty, discarded: window.__discarded ?? 0 };
+    }, pick);
+  const back = await close(2);
+  check(!back.going && back.dirty, "closing with changes: 「戻る」 stays with the name, changes kept");
+  const saving = await close(0);
+  check(saving.going && !saving.dirty && (await file(B))?.title === "閉じる0", "「保存して続ける」 saves to its file and goes on");
+  const before = saving.discarded;
+  const dropping = await close(1);
+  check(dropping.going && dropping.discarded === before + 1 && (await file(B))?.title === "閉じる0", "「保存しないで続ける」 goes on without writing the file, and drops the recovery copy");
+
   // 2. The export dialog: unsaved A, then unsaved B.
   await show(null, "未保存A");
+  check((await saveState()) === "未保存", `a name without a file says so (${await saveState()})`);
   await page.evaluate(() => {
     const dialog = window.nameStudio.workbench.exportDialog;
     dialog.open();
@@ -172,12 +221,14 @@ try {
   const alert = page.locator(".alert", { hasText: "シリーズ" });
   check(saved && now.status.includes("シリーズには未反映"), `the status says the series is behind (${now.status})`);
   check(await alert.isVisible(), "an alert about the series stays in view");
+  check((await saveState()).endsWith("シリーズ未反映"), `and the save state says so (${await saveState()})`);
   await page.evaluate(() => window.nameStudio.workbench.setStatus?.("別の操作"));
   check(await alert.isVisible(), "and is still there after other messages");
   await page.evaluate(() => (window.__seriesFails = false));
   await alert.locator("button.alert-action").click();
   await settle();
   check(!(await alert.isVisible()), "「もう一度」 writes it and the alert goes");
+  check(!(await saveState()).includes("シリーズ"), `and the save state no longer mentions the series (${await saveState()})`);
   check((await file(SERIES))?.shared?.characters?.some((c) => c.name === "新しい人"), "the series has the new character");
 
   // 4. The smallest window keeps everything on screen.
@@ -195,12 +246,13 @@ try {
         exportRight: right("name-export"),
         saveRight: right("save"),
         undoRight: right("undo"),
+        stateRight: right("save-state"),
       };
     });
     check(fit.scroll <= fit.inner, `${width}×${height}: no sideways scrolling (${fit.scroll} ≤ ${fit.inner})`);
     check(
-      Math.max(fit.exportRight, fit.saveRight, fit.undoRight) <= fit.inner,
-      `${width}×${height}: save, undo and export are on screen (${Math.round(fit.exportRight)})`,
+      Math.max(fit.exportRight, fit.saveRight, fit.undoRight, fit.stateRight) <= fit.inner,
+      `${width}×${height}: save, its state, undo and export are on screen (${Math.round(fit.exportRight)})`,
     );
   }
   check(errors.length === 0, `no page errors (${errors.join(" / ")})`);

@@ -8,7 +8,7 @@ import { useFonts } from "./fonts";
 import { useStyle } from "./style";
 import { $ } from "./dom";
 import { Inspector } from "./inspector";
-import { ask, save } from "@tauri-apps/plugin-dialog";
+import { ask, message, save } from "@tauri-apps/plugin-dialog";
 import { heldNear } from "./hold";
 import { Autosaver, autosaveToFile, formatTime } from "./autosave";
 import { penPreferences, rememberName } from "./prefs";
@@ -43,6 +43,7 @@ import { normalize, trailingEmptyPages } from "./project";
 import { stillThere } from "./removal";
 import { localStore } from "./settings";
 import { LiveFields } from "./livefields";
+import { saveState, type SaveFacts } from "./savestate";
 import { NameEdits, pickedStrokes } from "./nameedits";
 import { editorDocks } from "./palettes";
 import { ReferenceBar } from "./referencebar";
@@ -174,6 +175,10 @@ export class Workbench {
   private readonly versionDialog: VersionDialog;
   /** The save or autosave being written, which the next one waits for. */
   private writing: Promise<unknown> = Promise.resolve();
+  /** Saves and autosaves being written. */
+  private writes = 0;
+  /** Where the open name's changes are kept, for the save state beside its name. */
+  private kept: Omit<SaveFacts, "hasPath" | "dirty" | "writing"> = { savedAt: null, copyAt: null, failed: null, seriesBehind: false };
   private readonly autosaver = new Autosaver(
     () => this.autosave(),
     () => this.session.inStep,
@@ -387,23 +392,26 @@ export class Workbench {
 
   /**
    * Before the project is closed: let autosave write it to its file, then
-   * ask before throwing away what is still unsaved (and its autosave copy).
+   * ask whether to save what is still unsaved, throw it away (and its
+   * autosave copy) or go back to it.
    */
   async confirmDiscard(): Promise<boolean> {
     if (!this.session.project) return true;
     if (this.session.dirty && this.session.path && autosaveToFile()) await this.autosaver.flush();
     if (!this.session.dirty) return true;
-    const discard = await ask("保存していない変更があります。破棄して続けますか？", { title: "Name Studio", kind: "warning" });
-    if (discard) {
-      this.autosaver.reset();
-      await call("discard_recovery", { path: this.session.path }).catch(() => undefined);
-    }
-    return discard;
+    const [keep, discard] = ["保存して続ける", "保存しないで続ける"];
+    const choice = await message("保存していない変更があります。", { title: "Name Studio", kind: "warning", buttons: { yes: keep, no: discard, cancel: "戻る" } });
+    if (choice === keep || choice === "Yes") return this.save();
+    if (choice !== discard && choice !== "No") return false;
+    this.autosaver.reset();
+    await call("discard_recovery", { path: this.session.path }).catch(() => undefined);
+    return true;
   }
 
   show(project: Project, path: string | null, message: string): void {
     this.seriesPanel.follow(this.session.open(project, path), path);
     clearAlert("series");
+    this.kept = { savedAt: null, copyAt: null, failed: null, seriesBehind: false };
     this.roughs.clear();
     this.autosaver.reset();
     this.editor.selection = null;
@@ -451,6 +459,7 @@ export class Workbench {
     const mended = repair(normalize(project));
     const note = mended.length ? `（${mended.length} か所の問題を直しました）` : "";
     this.show(project, path, `${name} を ${formatTime(timeMs)} の自動保存から復元しました${note}。保存すると確定します`);
+    this.kept.copyAt = timeMs;
     this.markDirty();
     this.updateTitle();
   }
@@ -488,6 +497,7 @@ export class Workbench {
         this.setStatus(`前に開いていたネームを保存しました: ${path}`);
         return true;
       }
+      this.kept = { ...this.kept, savedAt: Date.now(), copyAt: null, failed: null };
       const series = await this.saveSeries(project, path);
       if (!this.session.dirty) this.autosaver.reset();
       this.updateTitle();
@@ -502,6 +512,8 @@ export class Workbench {
       } else {
         this.setStatus(`保存できませんでした: ${error}`);
       }
+      if (this.session.id === id) this.kept.failed = String(error);
+      this.updateTitle();
       showAlert("save", `保存できませんでした。\n${path}\n${error}`, "error");
       void logError(`save: ${error}`);
       return false;
@@ -513,7 +525,12 @@ export class Workbench {
    * after a newer one.
    */
   private queued<T>(write: () => Promise<T>): Promise<T> {
-    const run = this.writing.then(write, write);
+    this.writes++;
+    this.updateTitle();
+    const run = this.writing.then(write, write).finally(() => {
+      this.writes--;
+      this.updateTitle();
+    });
     this.writing = run.catch(() => undefined);
     return run;
   }
@@ -524,6 +541,8 @@ export class Workbench {
    */
   private async saveSeries(project: Project, path: string): Promise<string | null> {
     const problem = await this.seriesPanel.saved(project, path);
+    this.kept.seriesBehind = !!problem;
+    this.updateTitle();
     if (problem) {
       showAlert("series", `ネームは保存しました。シリーズのファイルには反映できていません（次の保存でもう一度試します）。\n${problem}`, "warning", undefined, {
         label: "もう一度",
@@ -557,8 +576,9 @@ export class Workbench {
       if (this.session.id !== id) return;
       if (result.savedToFile && this.session.path === path) {
         this.session.autosaved(revision, id);
-        this.updateTitle();
-      }
+        this.kept = { ...this.kept, savedAt: Date.now(), copyAt: null, failed: null };
+      } else this.kept = { ...this.kept, copyAt: Date.now(), failed: null };
+      this.updateTitle();
       if (result.savedToFile && path) await this.saveSeries(project, path);
       if (result.problems?.length) {
         const list = result.problems.slice(0, 3).join("\n");
@@ -572,6 +592,8 @@ export class Workbench {
       }
     } catch (error) {
       if (this.session.id !== id) return;
+      this.kept.failed = String(error);
+      this.updateTitle();
       this.setStatus(`自動保存できませんでした: ${error}`);
       showAlert("autosave", `自動保存できませんでした（次の変更でもう一度試します）。\n${error}`, "error");
       void logError(`autosave: ${error}`);
@@ -707,6 +729,12 @@ export class Workbench {
     if (!project) return;
     const name = this.session.path?.split(/[\\/]/).pop() ?? "（未保存）";
     this.onTitle(`${this.session.dirty ? "● " : ""}${name} — ${project.title}`);
+    const clock = (ms: number) => new Date(ms).toTimeString().slice(0, 5);
+    const state = saveState({ ...this.kept, hasPath: !!this.session.path, dirty: this.session.dirty, writing: this.writes > 0 }, clock);
+    const node = $("save-state");
+    node.textContent = state.text;
+    node.title = state.detail;
+    node.dataset.tone = state.tone;
   }
 
   /** What the open palettes hold (those folded or hidden wait until they open). */
