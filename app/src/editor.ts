@@ -1,16 +1,17 @@
 // The page editor: draws a spread of the name data and turns pointer input
 // into edits (select and move, cut panels, place lines, draw and erase).
 // What each tool does with a press and its drags is in its own module
-// (tools.ts); the editor keeps the view, the hit testing and the drawing.
+// (tools.ts); the editor keeps the view, the hit testing and the drawing
+// (the memos and 付箋 drawn for the person only are notedraw.ts; writing on
+// the page in place is inplace.ts).
 // Coordinates on a page are millimetres; each page of the spread has its own
 // mm → screen mapping.
 import { maskShape } from "./mask";
 import { BALLOON_TEXT_KEY, CONTINUOUS_KEY, loadSnap, PAGE_GAP_KEY, PANEL_CARRIES_KEY, penPreferences, ROWS_KEY, SHOW_NOTES_KEY, SINGLE_PAGE_KEY } from "./prefs";
-import { balloonExtent, insideBalloon, tailGeometry } from "./balloon";
+import { insideBalloon, tailGeometry } from "./balloon";
 import { spreads } from "./pages";
 import { GRID_GAP_MM, MARGIN, MAX_PAGE_GAP_MM, extent, layoutPages, onStage, rowCount, slotAt, toPage, type Slot } from "./layout";
 import { holdPanel, placeHeld } from "./hold";
-import { canvasFont, lineBold, lineFont } from "./fonts";
 import { addDrawnPanel, moveBreakout, spanGutter, stacked } from "./koma";
 import { joinPanels, seamAt, seamLines, type Seam } from "./komaedit";
 import {
@@ -31,17 +32,16 @@ import { pictureOf } from "./pictures";
 import { corners, imageOf, opacityOf, REFERENCE_HANDLE } from "./references";
 import { StrokeCache } from "./strokecache";
 import { opacityOfLayer, ROUGH_BASE, roughLayersOf, shownStrokes, strokeEditable, strokesOn } from "./roughlayers";
-import { moveLine, setLineText, wrapTypedLine } from "./dialogue";
-import { bounds, insideBox, insidePolygon } from "./geometry";
-import type { Binding, BoxMm, Brush, FillTone, Line, Page, Panel, Point, Project, Sticky, Stroke } from "./model";
+import { moveLine, setLineText } from "./dialogue";
+import { bounds, insideBox, insidePolygon, segmentDistance } from "./geometry";
+import type { Binding, BoxMm, Brush, FillTone, Line, Page, Panel, Point, Project, Stroke } from "./model";
 import { basicBox, snapCut, trimBox } from "./pagebox";
 import { type CarriedContents, carryContents, followPanel, movePanel, panelContents, wantsSpread } from "./panels";
-import { gutters, MM_PER_PT, pageIndex } from "./project";
+import { gutters, pageIndex } from "./project";
 import { assignPanels, orderPanels, sortLines } from "./readingorder";
-import { keepStickyOnPage, STICKY_COLORS, STICKY_TEXT_MM, stickyAnchor, stickyBox, stickyRows } from "./stickies";
+import { keepStickyOnPage, stickyBox } from "./stickies";
 import { moveStroke, strokeHit } from "./strokes";
 import { readCount, readFlag, readNumber } from "./settings";
-import { linePitch } from "./style";
 import {
   FRAME_HANDLES,
   type EditorCore,
@@ -59,6 +59,8 @@ import { dragHandler, PRESS } from "./tools";
 import { pickedSummary } from "./toolselect";
 import { snapPointTo, snapTargets, type SnapSettings, type SnapTargets } from "./snapping";
 import { Viewport } from "./viewport";
+import { ACCENT, drawLeader, drawNote, drawSticky, NOTE_FONT, NOTE_ROW, noteBox, stickyHandle, wrapText, type NoteBox } from "./notedraw";
+import { writeInPlace, type InPlaceEdit, type InPlaceHost } from "./inplace";
 
 export type { EditorEraseMode, EditorHost, PanelMode, Selection, Tool } from "./editorcore";
 export { pickedSummary };
@@ -89,7 +91,6 @@ type Hover =
   | { kind: "item"; slot: Slot; target: Selection }
   | { kind: "handle"; slot: Slot; handle: number };
 
-const ACCENT = "#2f6fdb";
 /** Lines snapped to. */
 const GUIDE = "#e0398a";
 const HANDLE = 5;
@@ -99,8 +100,6 @@ const SLIDE_MS = 220;
 /** Pages narrower than this (px) show their drawing without panel numbers or memos. */
 const SMALL_PAGE_PX = 170;
 
-const NOTE_FONT = '12px "Yu Gothic UI", "Yu Gothic", "Hiragino Sans", "Noto Sans JP", sans-serif';
-const NOTE_ROW = 16;
 
 export class PageEditor {
   tool: Tool = "select";
@@ -174,7 +173,7 @@ export class PageEditor {
   private hoverAt: Point | null = null;
   private hoverFrame = 0;
   /** A text being written in place on the page (a panel's memo or dialogue). */
-  private inline: { field: HTMLTextAreaElement; place: () => void; finish: (keep: boolean) => void } | null = null;
+  private inline: InPlaceEdit | null = null;
   /** Run once the pointer is up (opening a text field during the press would lose its focus). */
   private afterUp: (() => void) | null = null;
   /** What was copied last (Ctrl+C), and how often it was pasted onto its own page. */
@@ -1167,8 +1166,9 @@ export class PageEditor {
       this.drawLine(project, slot, line);
       ctx.restore();
     }
-    if (this.showNotes && !small) for (const panel of page.panels) if (panel.note) this.drawNote(slot, panel);
-    for (const sticky of page.stickies ?? []) this.drawSticky(slot, sticky);
+    if (this.showNotes && !small) for (const panel of page.panels) if (panel.note) drawNote(ctx, slot, panel, project.pageFormat);
+    const handle = this.tool === "select" || this.tool === "sticky" ? LINK_HANDLE : null;
+    for (const sticky of page.stickies ?? []) drawSticky(ctx, slot, sticky, this.isSelected(slot.page, "sticky", sticky.id), handle);
     ctx.restore();
 
     ctx.fillStyle = "#f4f3f0";
@@ -1226,67 +1226,9 @@ export class PageEditor {
     this.draw();
   }
 
-  /** Where a panel's memo sits on screen: inside its top-left corner, as wide as the panel allows. */
-  private noteBox(slot: Slot, panel: Panel): { x: number; y: number; w: number; h: number; rows: string[] } {
-    // On the paper: a 裁ち切り panel's tag sits inside the trim, not out in the bleed.
-    const format = this.host.project()?.pageFormat;
-    const [tx0, ty0, tx1, ty1] = format ? trimBox(format) : [-Infinity, 0, Infinity, Infinity];
-    const [x0, y0, x1, y1] = bounds(panel.shape);
-    const left = Math.max(x0, slot.shown[0], tx0);
-    const right = Math.min(x1, slot.shown[1], tx1);
-    const top = Math.max(y0, 0, ty0);
-    const bottom = Math.min(y1, ty1);
-    // Leave room for the panel's number at the top right.
-    const room = Math.max(60, Math.min((right - left) * slot.scale - 8 - 2 * Math.max(4 * slot.scale, 7) - 6, 280));
-    const ctx = this.ctx;
-    ctx.font = NOTE_FONT;
-    const rows = panel.note ? wrapText(ctx, panel.note, room - 10, 4) : [];
-    const w = rows.length ? Math.min(room, Math.max(...rows.map((row) => ctx.measureText(row).width)) + 10) : 52;
-    const h = Math.max(rows.length, 1) * NOTE_ROW + 4;
-    // The top left corner, or another one when dialogue is there (balloons start at the top right).
-    const [sl, sr, st, sb] = [slot.x + left * slot.scale + 4, slot.x + right * slot.scale - 4 - w, slot.y + top * slot.scale + 4, slot.y + bottom * slot.scale - 4 - h];
-    const corners: [number, number][] = [
-      [sl, st],
-      [sl, sb],
-      [sr, sb],
-    ];
-    const balloons = slot.page.lines
-      .filter((line) => line.panel === panel.id)
-      .map((line) => {
-        const [bx0, by0, bx1, by1] = balloonExtent(line);
-        return [slot.x + bx0 * slot.scale, slot.y + by0 * slot.scale, slot.x + bx1 * slot.scale, slot.y + by1 * slot.scale];
-      });
-    const clear = ([x, y]: [number, number]) => balloons.every(([bx0, by0, bx1, by1]) => x + w < bx0 || x > bx1 || y + h < by0 || y > by1);
-    // Moved by hand: where it was put, wherever the panel goes.
-    if (panel.noteAt) return { x: slot.x + (x0 + panel.noteAt[0]) * slot.scale, y: slot.y + (y0 + panel.noteAt[1]) * slot.scale, w, h, rows };
-    const [x, y] = corners.find(clear) ?? corners[0];
-    return { x, y, w, h, rows };
-  }
-
-  /** A panel's memo, on a pale tag in its corner (screen only). */
-  private drawNote(slot: Slot, panel: Panel): void {
-    const ctx = this.ctx;
-    const { x, y, w, h, rows } = this.noteBox(slot, panel);
-    ctx.save();
-    if (panel.noteAt) {
-      // Moved away from its panel: a line back to it, as a comment points at its cell.
-      const [x0, y0, x1, y1] = bounds(panel.shape);
-      const inset = 3;
-      const ax = Math.min(Math.max(x + w / 2, slot.x + (x0 + inset) * slot.scale), slot.x + (x1 - inset) * slot.scale);
-      const ay = Math.min(Math.max(y + h / 2, slot.y + (y0 + inset) * slot.scale), slot.y + (y1 - inset) * slot.scale);
-      this.leader(ax, ay, [x, y, x + w, y + h], "rgba(170, 140, 40, 0.85)");
-    }
-    ctx.fillStyle = "rgba(255, 246, 194, 0.92)";
-    ctx.strokeStyle = "rgba(170, 140, 40, 0.6)";
-    ctx.lineWidth = 1;
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-    ctx.fillStyle = "#4a3f12";
-    ctx.font = NOTE_FONT;
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-    rows.forEach((row, i) => ctx.fillText(row, x + 5, y + 4 + i * NOTE_ROW));
-    ctx.restore();
+  /** Where a panel's memo sits on screen (notedraw.ts). */
+  private noteBox(slot: Slot, panel: Panel): NoteBox {
+    return noteBox(this.ctx, slot, panel, this.host.project()?.pageFormat);
   }
 
   /** The panel whose memo tag (or, for the panel under the pointer, its "＋メモ" tag) is at a screen point. */
@@ -1299,79 +1241,6 @@ export class PageEditor {
       const { x, y, w, h } = this.noteBox(slot, panel);
       return sx >= x && sx <= x + w && sy >= y && sy <= y + h;
     });
-  }
-
-  /** 付箋: a coloured note with its text; only here, never in exports. */
-  private drawSticky(slot: Slot, sticky: Sticky): void {
-    const ctx = this.ctx;
-    const [x0, y0, x1, y1] = stickyBox(sticky);
-    const sx = slot.x + x0 * slot.scale;
-    const sy = slot.y + y0 * slot.scale;
-    const w = (x1 - x0) * slot.scale;
-    const h = (y1 - y0) * slot.scale;
-    const anchor = stickyAnchor(slot.page, sticky);
-    if (anchor) this.leader(slot.x + anchor[0] * slot.scale, slot.y + anchor[1] * slot.scale, [sx, sy, sx + w, sy + h], "rgba(120, 96, 20, 0.9)", STICKY_COLORS[sticky.color ?? "yellow"].fill);
-    ctx.save();
-    ctx.shadowColor = "rgba(0, 0, 0, 0.25)";
-    ctx.shadowBlur = 4;
-    ctx.shadowOffsetY = 1;
-    ctx.fillStyle = STICKY_COLORS[sticky.color ?? "yellow"].fill;
-    ctx.fillRect(sx, sy, w, h);
-    ctx.restore();
-    if (this.isSelected(slot.page, "sticky", sticky.id)) {
-      ctx.strokeStyle = ACCENT;
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(sx - 1, sy - 1, w + 2, h + 2);
-    }
-    const size = STICKY_TEXT_MM * slot.scale;
-    ctx.fillStyle = sticky.text ? "#3a3420" : "rgba(58, 52, 32, 0.45)";
-    ctx.font = `${size}px sans-serif`;
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-    stickyRows(sticky.text).forEach((row, i) => ctx.fillText(row, sx + 2 * slot.scale, sy + 2 * slot.scale + i * size * 1.3));
-    if (this.isSelected(slot.page, "sticky", sticky.id) && (this.tool === "select" || this.tool === "sticky")) {
-      // The handle to tie it to a panel or a line: drag it there.
-      const [hx, hy] = this.stickyHandle(slot, sticky);
-      ctx.beginPath();
-      ctx.arc(hx, hy, LINK_HANDLE, 0, Math.PI * 2);
-      ctx.fillStyle = anchor ? ACCENT : "#ffffff";
-      ctx.fill();
-      ctx.strokeStyle = ACCENT;
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-    }
-  }
-
-  /** A line from a point on the page to the nearest edge of a box (screen px), with a dot at the point. */
-  private leader(ax: number, ay: number, [x0, y0, x1, y1]: BoxMm, color: string, dot = "#fff6c2"): void {
-    const ctx = this.ctx;
-    const nx = Math.min(Math.max(ax, x0), x1);
-    const ny = Math.min(Math.max(ay, y0), y1);
-    ctx.save();
-    if (Math.hypot(nx - ax, ny - ay) > 2) {
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      ctx.moveTo(ax, ay);
-      ctx.lineTo(nx, ny);
-      ctx.stroke();
-    }
-    ctx.beginPath();
-    ctx.arc(ax, ay, 3.5, 0, Math.PI * 2);
-    ctx.fillStyle = dot;
-    ctx.fill();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1.2;
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  /** Where a 付箋's link handle is on screen: the point it is tied to, else its bottom left corner. */
-  private stickyHandle(slot: Slot, sticky: Sticky): Point {
-    const anchor = stickyAnchor(slot.page, sticky);
-    if (anchor) return [slot.x + anchor[0] * slot.scale, slot.y + anchor[1] * slot.scale];
-    const [x0, , , y1] = stickyBox(sticky);
-    return [slot.x + x0 * slot.scale, slot.y + y1 * slot.scale];
   }
 
   /** The line or panel at a point, to tie a 付箋 to. */
@@ -1525,7 +1394,7 @@ export class PageEditor {
             ctx.fill();
           }
         }
-        this.leader(px, py, [slot.x + x0 * slot.scale, slot.y + y0 * slot.scale, slot.x + x1 * slot.scale, slot.y + y1 * slot.scale], ACCENT);
+        drawLeader(ctx, px, py, [slot.x + x0 * slot.scale, slot.y + y0 * slot.scale, slot.x + x1 * slot.scale, slot.y + y1 * slot.scale], ACCENT);
         ctx.fillStyle = ACCENT;
         ctx.font = "12px sans-serif";
         ctx.textAlign = "left";
@@ -2225,7 +2094,7 @@ export class PageEditor {
         if (shown.has(line.id) && near(geometry.root, 2)) return { lineId: line.id, index, part: "root" };
         // Along the tail (outside the balloon): root to middle to tip.
         const reach = Math.max(6 / slot.scale, 1.2);
-        const close = (a: Point, b: Point) => distanceToSegment(point, a, b) <= reach;
+        const close = (a: Point, b: Point) => segmentDistance(point, a, b) <= reach;
         if ((close(geometry.root, geometry.middle) || close(geometry.middle, tail.tip)) && !insideBalloon(line, point)) {
           return { lineId: line.id, index, part: "body" };
         }
@@ -2534,7 +2403,7 @@ export class PageEditor {
       badgeAt: (slot, sx, sy, pageW) => this.badgeAt(slot, sx, sy, pageW),
       noteAt: (slot, sx, sy) => this.noteAt(slot, sx, sy),
       noteBox: (slot, panel) => this.noteBox(slot, panel),
-      stickyHandle: (slot, sticky) => this.stickyHandle(slot, sticky),
+      stickyHandle,
       linkTarget: (slot, point) => this.linkTarget(slot, point),
       referenceCornerAt: (slot, sx, sy) => this.referenceCornerAt(slot, sx, sy),
       isSelected: (page, kind, id) => this.isSelected(page, kind, id),
@@ -2796,8 +2665,7 @@ export class PageEditor {
 
   /**
    * Write a panel's memo or a line of dialogue in a field laid over the page,
-   * where it is. The page follows each key; Ctrl+Enter or a click elsewhere
-   * keeps it (one undo step), Esc puts it back.
+   * where it is (inplace.ts).
    */
   editInPlace(pageId: string, kind: "note" | "line", id: string): void {
     this.inline?.finish(true);
@@ -2807,95 +2675,21 @@ export class PageEditor {
     const line = kind === "line" ? page?.lines.find((l) => l.id === id) : undefined;
     if (!page || (!panel && !line)) return;
     if (!this.slots.some((slot) => slot.page.id === pageId)) this.showPage(pageIndex(project!, pageId) + 1);
-    const field = document.createElement("textarea");
-    field.className = `inline-edit ${kind}`;
-    field.spellcheck = false;
-    const original = (panel ? panel.note : line!.text) ?? "";
-    field.value = original;
-    if (panel) field.placeholder = "このコマのメモ（狙い・演出・直したいこと）";
-    const apply = (value: string) => {
-      if (panel) {
-        if (value.trim()) panel.note = value;
-        else delete panel.note;
-      } else if (line) {
-        setLineText(line, value);
-      }
+    const host: InPlaceHost = {
+      begin: () => this.host.begin(),
+      commit: () => this.host.commit(),
+      cancel: () => this.host.cancel(),
+      status: (message) => this.host.status(message),
+      draw: () => this.draw(),
+      slotOf: (id) => this.slots.find((s) => s.page.id === id),
+      noteAt: (slot, panel) => this.noteBox(slot, panel),
+      onScreen: (point) => this.view.onScreen(point),
+      opened: (edit) => (this.inline = edit),
+      closed: (edit) => {
+        if (this.inline === edit) this.inline = null;
+      },
     };
-    const place = () => {
-      const slot = this.slots.find((s) => s.page.id === pageId);
-      if (!slot) return;
-      const style = field.style;
-      if (panel) {
-        const { x, y } = this.noteBox(slot, panel);
-        const [x0, , x1] = bounds(panel.shape);
-        const [left, top] = this.view.onScreen([x, y]);
-        style.left = `${left}px`;
-        style.top = `${top}px`;
-        style.width = `${Math.max(180, Math.min((x1 - x0) * slot.scale - 8, 320))}px`;
-        style.height = `${NOTE_ROW * 4 + 8}px`;
-        style.font = NOTE_FONT;
-        style.writingMode = "horizontal-tb";
-      } else if (line) {
-        const [x0, y0, x1] = line.box;
-        // Never smaller than can be read, even when the page is shown small.
-        const size = Math.max(line.fontSizePt * MM_PER_PT * slot.scale, 12);
-        const pad = 6;
-        style.font = canvasFont(lineFont(line), size, lineBold(line));
-        style.writingMode = line.vertical ? "vertical-rl" : "horizontal-tb";
-        const rows = field.value.replace(/\r\n?/g, "\n").split("\n");
-        const longest = Math.max(1, ...rows.map((row) => [...row].length));
-        // Room for one more character and one more row, so the caret is never squeezed.
-        const across = (rows.length + 1) * size * linePitch() + 2 * pad;
-        const along = (longest + 1) * size + 2 * pad;
-        const [w, h] = line.vertical ? [across, along] : [along, across];
-        // Vertical text starts at the right, as it is read.
-        const [ax, ay] = this.view.onScreen([line.vertical ? slot.x + x1 * slot.scale + pad : slot.x + x0 * slot.scale - pad, slot.y + y0 * slot.scale - pad]);
-        style.left = `${line.vertical ? ax - w : ax}px`;
-        style.top = `${ay}px`;
-        style.width = `${w}px`;
-        style.height = `${h}px`;
-        style.lineHeight = String(linePitch());
-      }
-    };
-    this.host.begin();
-    let done = false;
-    const finish = (keep: boolean) => {
-      if (done) return;
-      done = true;
-      if (this.inline?.field === field) this.inline = null;
-      if (!keep) apply(original);
-      // A long line typed in one go: broken into short lines.
-      else if (line && field.value !== original) wrapTypedLine(line);
-      field.remove();
-      if (keep && field.value !== original) {
-        this.host.commit();
-        this.host.status(panel ? "コマのメモを書きました" : "セリフを直しました");
-      } else {
-        this.host.cancel();
-        this.host.status("");
-      }
-      this.draw();
-    };
-    field.addEventListener("input", () => {
-      apply(field.value);
-      this.draw();
-    });
-    field.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        finish(false);
-      } else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-        event.preventDefault();
-        finish(true);
-      }
-    });
-    field.addEventListener("blur", () => finish(true));
-    this.inline = { field, place, finish };
-    this.canvas.parentElement!.append(field);
-    place();
-    field.focus();
-    if (line && line.text === "セリフ") field.select();
-    this.host.status(panel ? "コマのメモを書いています（Ctrl+Enter かほかを押すと決定、Esc でやめる）" : "セリフを書いています（改行で行を分ける。Ctrl+Enter かほかを押すと決定、Esc でやめる）");
+    writeInPlace(host, this.canvas.parentElement!, pageId, panel ? { panel } : { line: line! });
   }
 
   /** Nudge the selection with the arrow keys (mm). */
@@ -2982,35 +2776,8 @@ export class PageEditor {
 /** A small dot for drawing (the tablet settings' 点 cursor). */
 const DOT_CURSOR = `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="9" height="9"><circle cx="4.5" cy="4.5" r="2" fill="#222" stroke="#fff" stroke-width="1"/></svg>')}") 4 4, crosshair`;
 
-function distanceToSegment(p: Point, a: Point, b: Point): number {
-  const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
-  const length = dx * dx + dy * dy;
-  const t = length ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / length)) : 0;
-  return Math.hypot(p[0] - a[0] - dx * t, p[1] - a[1] - dy * t);
-}
-
 export function isTyping(event: Event): boolean {
   const target = event.target as HTMLElement | null;
   return !!target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable);
-}
-
-/** Break `text` into rows no wider than `width` px, at most `max` rows (the last ends in …). */
-function wrapText(ctx: CanvasRenderingContext2D, text: string, width: number, max: number): string[] {
-  const rows: string[] = [];
-  for (const paragraph of text.replace(/\r\n?/g, "\n").split("\n")) {
-    let row = "";
-    for (const char of paragraph) {
-      if (row && ctx.measureText(row + char).width > width) {
-        rows.push(row);
-        row = "";
-      }
-      row += char;
-    }
-    rows.push(row);
-  }
-  if (rows.length <= max) return rows;
-  const kept = rows.slice(0, max);
-  kept[max - 1] = `${kept[max - 1].slice(0, -1)}…`;
-  return kept;
 }
 

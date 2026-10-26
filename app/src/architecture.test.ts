@@ -35,12 +35,12 @@ const LAYERS = {
   /** This computer and the Rust side: storage, settings, commands, the page's elements. */
   platform: ["backend", "dom", "errorlog", "prefs", "settings"],
   /** Drawing a name on a canvas (the screen and the export share it). */
-  render: ["glyph", "pagedraw", "pictures", "render", "strokecache"],
+  render: ["glyph", "notedraw", "pagedraw", "pictures", "render", "strokecache"],
   /** Work done for the screens: saving in the background, writing out. */
   service: ["autosave", "batch", "nameexport", "roughcache"],
   /** The screens. */
   ui: [
-    "actions", "alerts", "altdialog", "board", "brushdialog", "controlbar", "dock", "dragsort", "editor", "editorcore", "exportdialog", "fontpicker", "inspector",
+    "actions", "alerts", "altdialog", "board", "brushdialog", "controlbar", "dock", "dragsort", "editor", "editorcore", "exportdialog", "fontpicker", "inplace", "inspector",
     "layers", "livefields", "nameedits", "palette", "palettes", "pendialog", "referencebar", "roughpanel", "scriptdialog", "seriespanel", "settingsdialog", "sheetexport", "shortcutdialog", "sidelists", "startscreen", "tooleraser", "toolfill",
     "toolpanels", "toolpen", "toolreference", "tools", "toolselect", "toolsticky", "tooltext", "tooltransform", "updater", "versiondialog",
     "viewer", "workbench",
@@ -68,10 +68,15 @@ describe("module structure", () => {
     expect(callers).toEqual(["backend.ts"]);
   });
 
+  it("keeps the editor around the pages to putting its parts together", () => {
+    // The bars, the 資料 pictures, the changes the palettes ask for: their own modules.
+    expect(sources["./workbench.ts"].split("\n").length).toBeLessThan(1000);
+  });
+
   it("keeps each tool's press and drags out of the page editor", () => {
     // Tools live in tool*.ts behind tools.ts; editor.ts dispatches and draws.
     const editor = sources["./editor.ts"];
-    expect(editor.split("\n").length).toBeLessThan(3300);
+    expect(editor.split("\n").length).toBeLessThan(2800);
     expect(editor).not.toMatch(/(?:tool|drag) satisfies never/);
     for (const [path, source] of Object.entries(sources)) {
       if (/^\.\/tool\w*\.ts$/.test(path)) expect(source, path).not.toMatch(/from "\.\/editor"/);
