@@ -134,3 +134,17 @@ export class PenPreferences {
 }
 
 export const penPreferences = new PenPreferences();
+
+// --- 命令パレット ------------------------------------------------------------------
+
+export const RECENT_COMMANDS_KEY = "namestudio.recentCommands";
+
+/** The commands used last, newest first. */
+export function loadRecentCommands(): string[] {
+  const kept = readJson(RECENT_COMMANDS_KEY, []);
+  return Array.isArray(kept) ? kept.filter((id): id is string => typeof id === "string") : [];
+}
+
+export function saveRecentCommands(ids: string[]): void {
+  writeJson(RECENT_COMMANDS_KEY, ids);
+}

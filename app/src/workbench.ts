@@ -23,6 +23,9 @@ import { LayerView, moveIntoPanel, type LayerRef } from "./layers";
 import { RoughPanel, type RoughChange } from "./roughpanel";
 import { SeriesPanel } from "./seriespanel";
 import { addRoughLayer, layerOf, moveRoughLayer, moveStrokesToLayer, removeRoughLayer, renameRoughLayer, ROUGH_BASE, roughLayersOf, setRoughLayer } from "./roughlayers";
+import { buildCommands } from "./actions";
+import type { Command } from "./commands";
+import { CommandPalette } from "./palette";
 import { comboOf, Shortcuts, type ActionId } from "./shortcuts";
 import { Docks, type PaletteDef, type PaletteId } from "./dock";
 import { alternativesOf, makeAlternative, useAlternative } from "./alternatives";
@@ -41,7 +44,7 @@ import {
   spreadTwin,
 } from "./koma";
 import { addAutoTails } from "./autotail";
-import { Board, type LaneId } from "./board";
+import { Board } from "./board";
 import { pageParts } from "./shapes";
 import {
   TONE_LABELS,
@@ -200,8 +203,11 @@ export class Workbench {
   private readonly exportDialog: ExportDialog;
   private readonly altDialog: AltDialog;
   private readonly scriptDialog: ScriptDialog;
-  readonly shortcuts = new Shortcuts(localStore());
-  private readonly shortcutDialog = new ShortcutDialog(this.shortcuts);
+  /** Everything that can be done by name: the keys, the key settings and the command palette run these. */
+  private readonly commands: Command[];
+  readonly shortcuts: Shortcuts;
+  private readonly shortcutDialog: ShortcutDialog;
+  private readonly palette: CommandPalette;
   private readonly penDialog = new PenDialog(penPreferences);
   private readonly brushDialog: BrushDialog;
   private readonly settingsDialog: SettingsDialog;
@@ -272,6 +278,72 @@ export class Workbench {
       openPenSettings: () => this.penDialog.open(),
       openShortcuts: () => this.shortcutDialog.open(),
       prepareRestart: () => this.confirmDiscard(),
+    });
+    this.commands = buildCommands({
+      editor: this.editor,
+      board: this.board,
+      hasProject: () => this.state.project !== null,
+      status: (message) => this.setStatus(message),
+      save: (saveAs) => void this.save(saveAs),
+      undo: () => this.undo(),
+      redo: () => this.redo(),
+      setView: (mode) => this.setView(mode),
+      setRows: (rows) => this.setRows(rows),
+      setTool: (tool) => this.setTool(tool),
+      setEraseMode: (mode) => this.setEraseMode(mode),
+      resizeBrush: (factor) => this.resizeBrush(factor),
+      deleteSelection: () => this.deleteSelection(),
+      copyItems: () => this.copyItems(),
+      paste: () => {
+        // The browser's paste event comes next, with the clipboard's picture if there is one;
+        // where it does not come, what was copied here is pasted.
+        this.pasteHandled = false;
+        window.setTimeout(() => {
+          if (!this.pasteHandled) this.editor.paste();
+        }, 60);
+      },
+      // 左へ・右へ: the next spread is to the left in a right-bound book, to the right in a left-bound one.
+      flipLeft: (step) => this.flip(step * this.leftward()),
+      makeOption: (first, last) => this.makeOption(first, last),
+      toggleFocus: () => {
+        // As CSP's Tab: the side panels go, the pages take the room.
+        document.body.classList.toggle("focus-mode");
+        this.editor.resize();
+        this.setStatus(document.body.classList.contains("focus-mode") ? "左右の欄を隠しました（Tab で戻す）" : "");
+      },
+      arrange: (pageId) => this.arrange(pageId),
+      addTails: (pageId) => this.addTails(pageId),
+      addPageAfter: (page) => {
+        let at = -1;
+        this.edit((p) => {
+          at = p.pages.findIndex((other) => other.id === page.id) + 1;
+          if (at > 0) insertPage(p, at);
+        });
+        if (at > 0) {
+          this.editor.showPage(at + 1);
+          this.renderAll();
+          this.setStatus(`${at + 1} ページを足しました（元に戻すは Ctrl+Z）`);
+        }
+      },
+      openPalette: (id) => this.docks.open(id),
+      openCommandPalette: () => this.palette.open(),
+      click: (id) => {
+        const target = pressable(id);
+        target?.click();
+        return target !== null;
+      },
+      canClick: (id) => pressable(id) !== null,
+    });
+    this.shortcuts = new Shortcuts(localStore(), this.commands);
+    this.shortcutDialog = new ShortcutDialog(this.shortcuts);
+    this.palette = new CommandPalette({
+      commands: () => this.commands,
+      keysOf: (id) => this.shortcuts.keys(id),
+      run: (command) => {
+        if (!command.run()) return;
+        this.editor.draw();
+      },
+      status: (message) => this.setStatus(message),
     });
     // The page takes whatever room the strip and the side panels leave.
     new ResizeObserver(() => this.editor.resize()).observe($("editor-canvas").parentElement!);
@@ -1768,130 +1840,9 @@ export class Workbench {
     return action ? this.run(action) : false;
   }
 
-  /** Run a shortcut's action; false when it does not apply now. */
+  /** Run a command (a shortcut's action, an action bar's button); false when it does not apply now. */
   run(action: ActionId): boolean {
-    // The strip under the page: F6 makes it large, F1 brings it back; F2–F4 show its lanes.
-    if (action === "view.board" || action === "view.edit") {
-      this.board.toggleWide(action === "view.board" ? undefined : false);
-      return true;
-    }
-    const lanes: Partial<Record<ActionId, LaneId[]>> = {
-      "view.structure": ["scene", "text"],
-      "view.emotion": ["emotion"],
-      "view.timeline": ["time"],
-    };
-    const shown = lanes[action];
-    if (shown) {
-      for (const lane of shown) this.board.toggleLane(lane, true);
-      return true;
-    }
-    if (action === "view.continuous") {
-      this.setView(this.editor.continuous ? (this.editor.single ? "single" : "spread") : "continuous");
-      return true;
-    }
-    if (action === "view.fewerRows" || action === "view.moreRows") {
-      if (!this.editor.continuous) this.setView("continuous");
-      this.setRows(this.editor.rowCount() + (action === "view.moreRows" ? 1 : -1));
-      return true;
-    }
-    if (action === "view.all") {
-      if (!this.editor.continuous) this.setView("continuous");
-      this.editor.fitAll();
-      return true;
-    }
-    if (action === "view.fit" || action === "view.rotateLeft" || action === "view.rotateRight") {
-      if (action === "view.fit") this.editor.fitView();
-      else this.editor.rotateView(action === "view.rotateLeft" ? -15 : 15);
-      return true;
-    }
-    if (action === "view.focus") {
-      // As CSP's Tab: the side panels go, the pages take the room.
-      document.body.classList.toggle("focus-mode");
-      this.editor.resize();
-      this.setStatus(document.body.classList.contains("focus-mode") ? "左右の欄を隠しました（Tab で戻す）" : "");
-      return true;
-    }
-    if (action === "undo") this.undo();
-    else if (action === "redo") this.redo();
-    if (action === "undo" || action === "redo") return true;
-    const tools: Partial<Record<ActionId, Tool>> = {
-      "tool.select": "select",
-      "tool.cut": "cut",
-      "tool.text": "text",
-      "tool.pen": "pen",
-      "tool.eraser": "eraser",
-      "tool.fill": "fill",
-      "tool.breakout": "breakout",
-      "tool.sticky": "sticky",
-      "tool.reference": "reference",
-    };
-    const tool = tools[action];
-    const nextEraseMode = () => {
-      // As CSP's sub tools cycle.
-      const modes = Object.keys(ERASE_MODE_LABELS) as EditorEraseMode[];
-      this.setEraseMode(modes[(modes.indexOf(this.editor.eraseMode) + 1) % modes.length]);
-    };
-    if (tool === "eraser" && this.editor.tool === "eraser") {
-      nextEraseMode();
-      return true;
-    }
-    if (tool) {
-      this.setTool(tool);
-      return true;
-    }
-    switch (action) {
-      case "eraser.next":
-        if (this.editor.tool !== "eraser") this.setTool("eraser");
-        else nextEraseMode();
-        return true;
-      case "brush.bigger":
-      case "brush.smaller":
-        return this.resizeBrush(action === "brush.bigger" ? 1.25 : 0.8);
-      case "delete":
-        this.deleteSelection();
-        return true;
-      case "copy":
-        return this.copyItems();
-      case "cut":
-        if (!this.copyItems()) return false;
-        this.deleteSelection();
-        this.setStatus("切り取りました。Ctrl+V で、ポインターのあるページに貼り付けます");
-        return true;
-      case "paste":
-        // The browser's paste event comes next, with the clipboard's picture if there is one;
-        // where it does not come, what was copied here is pasted.
-        this.pasteHandled = false;
-        window.setTimeout(() => {
-          if (!this.pasteHandled) this.editor.paste();
-        }, 60);
-        return false;
-      case "selectAll":
-        return this.editor.selectAll();
-      case "flip.horizontal":
-        return this.editor.transformSelection("flipH");
-      case "flip.vertical":
-        return this.editor.transformSelection("flipV");
-      case "transform":
-        return this.editor.toggleTransform();
-      case "deselect":
-        // Esc ends 変形 first, then lets go of the selection.
-        if (this.editor.isTransforming) this.editor.toggleTransform(false);
-        else this.editor.select(null);
-        return true;
-      case "page.next":
-      case "page.previous":
-        // 左へ・右へ: the next spread is to the left in a right-bound book, to the right in a left-bound one.
-        this.flip(action === "page.next" ? this.leftward() : -this.leftward());
-        return true;
-      case "option.make": {
-        const [first] = this.editor.currentPages();
-        if (!first) return false;
-        this.makeOption(first - 1, first - 1);
-        return true;
-      }
-      default:
-        return false;
-    }
+    return this.commands.find((command) => command.id === action)?.run() ?? false;
   }
 
   /** ] / [: the pen or eraser in hand a size up or down. */
@@ -1908,3 +1859,9 @@ export class Workbench {
   }
 }
 
+/** The button with this id when it is on screen and can be pressed, else null. */
+function pressable(id: string): HTMLButtonElement | null {
+  const target = document.getElementById(id);
+  if (!(target instanceof HTMLButtonElement) || target.disabled || target.closest("[hidden]")) return null;
+  return target;
+}

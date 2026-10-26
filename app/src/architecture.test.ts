@@ -27,7 +27,7 @@ const LAYERS = {
   model: ["model", "types", "geometry"],
   /** Working on a name: pure computation, no browser, no storage, no Rust side. */
   core: [
-    "alternatives", "arrange", "autotail", "balloon", "brush", "csppage", "export", "fonts", "history", "hold", "koma", "komaedit",
+    "alternatives", "arrange", "autotail", "balloon", "brush", "commands", "csppage", "export", "fonts", "history", "hold", "koma", "komaedit",
     "layout", "mask", "namecheck", "namedefaults", "pages", "panelfolders", "pen", "plotimport", "project", "projectjson", "readback",
     "references", "repair", "roughlayers", "scriptimport", "series", "shapes", "shortcuts", "snapping", "snapshot", "story", "style",
     "transform", "wrap",
@@ -40,8 +40,8 @@ const LAYERS = {
   service: ["autosave", "batch", "nameexport"],
   /** The screens. */
   ui: [
-    "alerts", "altdialog", "board", "brushdialog", "dock", "dragsort", "editor", "editorcore", "exportdialog", "fontpicker", "inspector",
-    "layers", "pendialog", "roughpanel", "scriptdialog", "seriespanel", "settingsdialog", "shortcutdialog", "tooleraser", "toolfill",
+    "actions", "alerts", "altdialog", "board", "brushdialog", "dock", "dragsort", "editor", "editorcore", "exportdialog", "fontpicker", "inspector",
+    "layers", "palette", "pendialog", "roughpanel", "scriptdialog", "seriespanel", "settingsdialog", "shortcutdialog", "tooleraser", "toolfill",
     "toolpanels", "toolpen", "toolreference", "tools", "toolselect", "toolsticky", "tooltext", "tooltransform", "updater", "versiondialog",
     "workbench",
   ],

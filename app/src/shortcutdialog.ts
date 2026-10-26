@@ -1,5 +1,5 @@
 // The dialog for changing keyboard shortcuts (R16).
-import { ACTIONS, comboOf, type ActionId, type Shortcuts } from "./shortcuts";
+import { comboOf, type ActionId, type Shortcuts } from "./shortcuts";
 import { $ } from "./dom";
 
 export class ShortcutDialog {
@@ -30,7 +30,7 @@ export class ShortcutDialog {
         if (!combo) return;
         this.listening = null;
         const taken = this.shortcuts.bind(action, combo);
-        const label = (id: ActionId) => ACTIONS.find((a) => a.id === id)?.label ?? id;
+        const label = (id: ActionId) => this.shortcuts.actions.find((a) => a.id === id)?.label ?? id;
         this.message(taken ? `${combo} を「${label(taken)}」から外して「${label(action)}」に割り当てました` : `${combo} を「${label(action)}」に割り当てました`);
         this.render();
       },
@@ -48,7 +48,7 @@ export class ShortcutDialog {
   private render(): void {
     const rows: HTMLElement[] = [];
     let group = "";
-    for (const action of ACTIONS) {
+    for (const action of this.shortcuts.actions) {
       if (action.group !== group) {
         group = action.group;
         rows.push(Object.assign(document.createElement("div"), { className: "sc-group", textContent: group }));

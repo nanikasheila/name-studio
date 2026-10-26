@@ -2,48 +2,8 @@
 // on this computer. A left-hand device or macro pad is set up to send the
 // keys given here.
 
-export type ActionId =
-  | "save"
-  | "saveAs"
-  | "undo"
-  | "redo"
-  | "view.edit"
-  | "view.board"
-  | "view.structure"
-  | "view.emotion"
-  | "view.timeline"
-  | "view.focus"
-  | "view.fit"
-  | "view.rotateLeft"
-  | "view.rotateRight"
-  | "view.continuous"
-  | "view.fewerRows"
-  | "view.moreRows"
-  | "view.all"
-  | "tool.select"
-  | "tool.cut"
-  | "tool.text"
-  | "tool.pen"
-  | "tool.eraser"
-  | "tool.fill"
-  | "tool.breakout"
-  | "tool.sticky"
-  | "tool.reference"
-  | "eraser.next"
-  | "brush.bigger"
-  | "brush.smaller"
-  | "delete"
-  | "copy"
-  | "cut"
-  | "paste"
-  | "selectAll"
-  | "flip.horizontal"
-  | "flip.vertical"
-  | "transform"
-  | "deselect"
-  | "page.next"
-  | "page.previous"
-  | "option.make";
+/** A command's name in the key settings ("tool.pen"); kept with the keys, so it does not change. */
+export type ActionId = string;
 
 export interface ActionInfo {
   id: ActionId;
@@ -51,51 +11,6 @@ export interface ActionInfo {
   group: string;
   keys: string[];
 }
-
-/** Every action with its keys out of the box. */
-export const ACTIONS: readonly ActionInfo[] = [
-  { id: "save", label: "保存", group: "ファイル", keys: ["Ctrl+S"] },
-  { id: "saveAs", label: "名前を付けて保存", group: "ファイル", keys: ["Ctrl+Shift+S"] },
-  { id: "undo", label: "元に戻す", group: "編集", keys: ["Ctrl+Z"] },
-  { id: "redo", label: "やり直す", group: "編集", keys: ["Ctrl+Y", "Ctrl+Shift+Z"] },
-  { id: "delete", label: "選んだものを消す", group: "編集", keys: ["Delete", "Backspace"] },
-  { id: "copy", label: "コピー", group: "編集", keys: ["Ctrl+C"] },
-  { id: "cut", label: "切り取り", group: "編集", keys: ["Ctrl+X"] },
-  { id: "paste", label: "貼り付け（ポインターのあるページへ）", group: "編集", keys: ["Ctrl+V"] },
-  { id: "selectAll", label: "ページの線とセリフを全部選ぶ", group: "編集", keys: ["Ctrl+A"] },
-  { id: "flip.horizontal", label: "選んだ線とセリフを左右反転", group: "編集", keys: [] },
-  { id: "flip.vertical", label: "選んだ線とセリフを上下反転", group: "編集", keys: [] },
-  { id: "transform", label: "選んだものを変形（拡大縮小・回転・自由変形）", group: "編集", keys: ["Ctrl+T"] },
-  { id: "deselect", label: "選択を外す", group: "編集", keys: ["Escape"] },
-  { id: "tool.select", label: "選択", group: "道具", keys: ["V"] },
-  { id: "tool.cut", label: "コマ割り", group: "道具", keys: ["K"] },
-  { id: "tool.text", label: "セリフ", group: "道具", keys: ["T"] },
-  { id: "tool.pen", label: "ペン", group: "道具", keys: ["P"] },
-  { id: "tool.eraser", label: "消しゴム（もう一度で消し方を切り替え）", group: "道具", keys: ["E"] },
-  { id: "tool.fill", label: "投げなわ塗り（ベタ・グレー・白）", group: "道具", keys: ["G"] },
-  { id: "tool.breakout", label: "はみ出し", group: "道具", keys: ["B"] },
-  { id: "tool.sticky", label: "付箋", group: "道具", keys: ["M"] },
-  { id: "tool.reference", label: "資料画像", group: "道具", keys: ["I"] },
-  { id: "eraser.next", label: "消し方を切り替える", group: "道具", keys: [] },
-  { id: "brush.bigger", label: "ペン・消しゴムを太く", group: "道具", keys: ["]"] },
-  { id: "brush.smaller", label: "ペン・消しゴムを細く", group: "道具", keys: ["["] },
-  { id: "page.next", label: "左の見開きへ（右綴じは次・左綴じは前。何も選んでいないとき）", group: "ページ", keys: ["ArrowLeft"] },
-  { id: "page.previous", label: "右の見開きへ（右綴じは前・左綴じは次。何も選んでいないとき）", group: "ページ", keys: ["ArrowRight"] },
-  { id: "option.make", label: "このページの別案を作る", group: "ページ", keys: [] },
-  { id: "view.edit", label: "物語の帯を元の高さに（ページを大きく）", group: "画面", keys: ["F1"] },
-  { id: "view.board", label: "物語の帯を大きく・戻す（型・シーン・時系列・感情・ページ）", group: "画面", keys: ["F6"] },
-  { id: "view.structure", label: "帯にシーンと字数を出す", group: "画面", keys: ["F2"] },
-  { id: "view.emotion", label: "帯に感情曲線を出す", group: "画面", keys: ["F3"] },
-  { id: "view.timeline", label: "帯に時系列を出す", group: "画面", keys: ["F4"] },
-  { id: "view.fit", label: "全体を表示（拡大・移動・回転を戻す）", group: "画面", keys: ["Ctrl+0"] },
-  { id: "view.rotateLeft", label: "画面を左に 15° 回す（Shift + Space + ドラッグで自由に）", group: "画面", keys: ["-"] },
-  { id: "view.rotateRight", label: "画面を右に 15° 回す", group: "画面", keys: ["^"] },
-  { id: "view.continuous", label: "連続（全ページを一枚のキャンバスに）と見開きを切り替える", group: "画面", keys: ["F7"] },
-  { id: "view.fewerRows", label: "連続: 行を減らす（1 行で全ページ横一列）", group: "画面", keys: ["Alt+ArrowUp"] },
-  { id: "view.moreRows", label: "連続: 行を増やす（俯瞰しやすく）", group: "画面", keys: ["Alt+ArrowDown"] },
-  { id: "view.all", label: "連続: 全ページを画面に収める", group: "画面", keys: ["Ctrl+Alt+0"] },
-  { id: "view.focus", label: "左右の欄を隠してページを大きく（もう一度で戻す）", group: "画面", keys: ["Tab"] },
-];
 
 const MODIFIERS = new Set(["Control", "Shift", "Alt", "Meta", "AltGraph", "OS"]);
 
@@ -119,7 +34,11 @@ const STORAGE_KEY = "namestudio.shortcuts";
 export class Shortcuts {
   private custom: Partial<Record<ActionId, string[]>>;
 
-  constructor(private readonly storage: Pick<Storage, "getItem" | "setItem"> | null) {
+  constructor(
+    private readonly storage: Pick<Storage, "getItem" | "setItem"> | null,
+    /** Every action, with its keys out of the box. */
+    readonly actions: readonly ActionInfo[],
+  ) {
     this.custom = {};
     try {
       const saved = this.storage?.getItem(STORAGE_KEY);
@@ -130,12 +49,12 @@ export class Shortcuts {
   }
 
   keys(id: ActionId): string[] {
-    return this.custom[id] ?? ACTIONS.find((action) => action.id === id)?.keys ?? [];
+    return this.custom[id] ?? this.actions.find((action) => action.id === id)?.keys ?? [];
   }
 
   /** The action a key press runs. */
   actionFor(combo: string): ActionId | null {
-    for (const action of ACTIONS) if (this.keys(action.id).includes(combo)) return action.id;
+    for (const action of this.actions) if (this.keys(action.id).includes(combo)) return action.id;
     return null;
   }
 
@@ -163,7 +82,7 @@ export class Shortcuts {
   }
 
   private set(id: ActionId, keys: string[]): void {
-    const defaults = ACTIONS.find((action) => action.id === id)?.keys ?? [];
+    const defaults = this.actions.find((action) => action.id === id)?.keys ?? [];
     if (keys.length === defaults.length && keys.every((key, i) => key === defaults[i])) delete this.custom[id];
     else this.custom[id] = keys;
     this.save();
