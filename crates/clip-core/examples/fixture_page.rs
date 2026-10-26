@@ -4,6 +4,10 @@
 //! ```text
 //! cargo run -p clip-core --features fixtures --example fixture_page -- <page.clip>
 //! ```
+//!
+//! It is not for CSP: its database holds only the tables and columns the tests
+//! read, and CSP crashes on pages exported with it as the template. For a check
+//! in CSP, export with a page CSP saved (or `--builtin`) instead.
 
 use clip_core::fixtures::{FixtureCanvas, FixtureLayer, build_editable_clip};
 

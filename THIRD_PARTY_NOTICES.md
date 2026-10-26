@@ -59,8 +59,8 @@ SQLite（rusqlite に同梱）はパブリックドメインです。SQLite (bun
 | crossbeam-epoch | 0.9.21 | MIT OR Apache-2.0 | https://github.com/crossbeam-rs/crossbeam |
 | crossbeam-utils | 0.8.23 | MIT OR Apache-2.0 | https://github.com/crossbeam-rs/crossbeam |
 | crypto-common | 0.1.7 | MIT OR Apache-2.0 | https://github.com/RustCrypto/traits |
-| csp-assets | 0.1.0 | MIT | https://github.com/nanikasheila/CLIP_STUDIO_PAINT_Format |
-| csp-format | 0.1.0 | MIT | https://github.com/nanikasheila/CLIP_STUDIO_PAINT_Format |
+| csp-assets | 0.1.0 | MIT | https://github.com/nanikasheila/csp-format |
+| csp-format | 0.1.0 | MIT | https://github.com/nanikasheila/csp-format |
 | cssparser | 0.37.0 | MPL-2.0 | https://github.com/servo/rust-cssparser |
 | cssparser-macros | 0.7.1 | MPL-2.0 | https://github.com/servo/rust-cssparser |
 | ctor | 1.0.13 | Apache-2.0 OR MIT | https://github.com/mmastrac/linktime |
