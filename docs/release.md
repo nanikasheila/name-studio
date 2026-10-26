@@ -1,7 +1,8 @@
 # リリースと自動更新
 
-main にマージするたび、GitHub Actions の「Release Windows app」（`.github/workflows/build-app.yml`）が
-Windows のインストーラーを作り、`v0.2.<実行番号>` のリリースとして公開します。
+main にマージして CI（`.github/workflows/ci.yml`）が通るたび、GitHub Actions の「Release Windows app」
+（`.github/workflows/build-app.yml`）が CI の確かめたそのコミットから Windows のインストーラーを作り、
+`v0.2.<実行番号>` のリリースとして公開します。CI が失敗したコミットは配られません。
 
 インストールしたアプリは、起動するとリリースの `latest.json` を見て、新しい版があれば取り込んで再起動します。
 ネームを開いているときは自動では入れ替えず、ツールバーの「更新」ボタンを押したときに、
@@ -54,3 +55,5 @@ Windows のインストーラーを作り、`v0.2.<実行番号>` のリリー�
 
 「Release Windows app」はインストーラーを作ったあと、そのリリースビルドで `app/e2e/realapp.mjs`
 （窓を開いてネームを CSP 用に書き出す）を流し、通ったときだけ公開します。起動できない版は配られません。
+その前に、同じコミットで CI の全部（Rust の全テスト、画面の単体テストと e2e、保存の競合や
+シリーズの保存失敗を含む）が通っていることが条件です。

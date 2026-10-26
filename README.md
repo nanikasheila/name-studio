@@ -7,6 +7,19 @@
 ファイル形式の解析結果は csp-name-splitter の
 [docs/formats/csp-file-format.md](https://github.com/nanikasheila/csp-name-splitter/blob/main/docs/formats/csp-file-format.md) を参照してください。
 
+## はじめかた
+
+1. [最新のリリース](https://github.com/nanikasheila/name-studio/releases/latest) から
+   `NameStudio_…_x64-setup.exe` を落として入れます（Windows 10 / 11。署名していないので、初回は
+   SmartScreen の「詳細情報 → 実行」で進めます）。入れたあとは起動するたびに自動で更新されます。
+2. 開始画面で「新しいネーム」（白紙から）か「開く」（CSP のネーム用紙 .clip から取り込む）。
+   左の道具で、コマ割り（線を引いて割る）→ セリフ（クリックで置く）→ ペン（ラフを描く）。
+   変更は自動で保存され、ネーム名の横に保存の状態が出ます（最初の Ctrl+S で保存先を決めます）。
+3. 右上の「書き出す…」で、書き出し先を選んで「書き出す」。CSP のページ（.clip）と作品（.cmc）が
+   できるので、CLIP STUDIO PAINT EX で作品を開いてペン入れに進みます。打ち合わせ用の PDF もここから。
+
+迷ったら Ctrl+K（命令パレット）で、やりたいことを打って探せます。
+
 ## できること
 
 - CSP のネーム用紙（.clip）を開いて、全体表示と右綴じの見開き表示で見直す
