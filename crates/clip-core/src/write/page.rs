@@ -84,7 +84,7 @@ pub fn write_page(
         layer_ids: Vec::new(),
         warnings: Vec::new(),
     };
-    let payload = |id: &str| sheet.container.external_payload(id).map(<[u8]>::to_vec);
+    let payload = |id: &str| sheet.external_payload(id).map(<[u8]>::to_vec);
     let mut folders: HashMap<i64, i64> = HashMap::new();
     for content in &page.contents {
         let mut parent = editor.root_id;
@@ -190,7 +190,7 @@ fn add_content(
         }
         Ok(())
     };
-    let payload = |id: &str| sheet.container.external_payload(id).map(<[u8]>::to_vec);
+    let payload = |id: &str| sheet.external_payload(id).map(<[u8]>::to_vec);
     let new_id = editor.add_layer(
         sheet.database(),
         &payload,

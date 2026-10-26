@@ -715,6 +715,7 @@ impl ClipEditor {
     /// file CSP saved, whose chunks may be referenced in ways this tool does
     /// not know.
     pub fn save_with(&self, path: impl AsRef<Path>, keep_all: bool) -> Result<()> {
+        self.sync_block_sizes()?;
         let referenced = self.referenced_externals()?;
         let externals: Vec<(&str, &[u8])> = self
             .externals
@@ -726,6 +727,37 @@ impl ClipEditor {
         let temporary = path.with_extension("clip.tmp");
         std::fs::write(&temporary, data)?;
         std::fs::rename(&temporary, path)?;
+        Ok(())
+    }
+
+    /// Make each stored offscreen's `BlockSize` table list its blocks' record
+    /// sizes, as CSP keeps it: pixels written here change the records but
+    /// not the attribute copied from the template.
+    fn sync_block_sizes(&self) -> Result<()> {
+        use csp_format::offscreen::{Attribute, BlockData};
+        let rows: Vec<(i64, Vec<u8>, Value)> = {
+            let mut statement = self.db.prepare("SELECT MainId, Attribute, BlockData FROM Offscreen")?;
+            statement
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+                .collect::<rusqlite::Result<_>>()?
+        };
+        for (id, attribute, block) in rows {
+            let Some(payload) = self.externals.get(&text_of(&block)) else {
+                continue;
+            };
+            let (Ok(mut parsed), Ok(data)) = (Attribute::parse(&attribute), BlockData::parse(payload)) else {
+                continue;
+            };
+            let sizes = data.record_sizes();
+            if parsed.block_sizes().is_none() || parsed.block_sizes() == Some(sizes.as_slice()) {
+                continue;
+            }
+            parsed.set_block_sizes(&sizes);
+            self.db.execute(
+                "UPDATE Offscreen SET Attribute = ?1 WHERE MainId = ?2",
+                (parsed.to_bytes(), id),
+            )?;
+        }
         Ok(())
     }
 

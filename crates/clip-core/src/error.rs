@@ -39,6 +39,12 @@ impl From<std::io::Error> for CspError {
     }
 }
 
+impl From<csp_format::Error> for CspError {
+    fn from(error: csp_format::Error) -> Self {
+        CspError::Format(error.to_string())
+    }
+}
+
 impl From<rusqlite::Error> for CspError {
     fn from(error: rusqlite::Error) -> Self {
         CspError::Sqlite(error)

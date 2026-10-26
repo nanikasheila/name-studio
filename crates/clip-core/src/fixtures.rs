@@ -5,11 +5,8 @@
 //! tables and columns the readers use, like `tests/csp_fixtures.py` in the
 //! Python reference.
 
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use flate2::Compression;
-use flate2::write::ZlibEncoder;
 use rusqlite::{Connection, params};
 
 use crate::text::build_tlv;
@@ -265,13 +262,14 @@ fn utf16(name: &str) -> Vec<u8> {
 pub fn offscreen_attribute(width: u32, height: u32) -> Vec<u8> {
     let (blocks_x, blocks_y) = (width.div_ceil(256), height.div_ceil(256));
     let mut parameter = utf16("Parameter");
-    for value in [width, height, blocks_x, blocks_y, 0x21, 1, 4, 5] {
+    // Colour (BGRA): channel order, bytes per channel, image channels, bytes
+    // per pixel, then where the planes lie in a 256 px block.
+    let values = [
+        width, height, blocks_x, blocks_y, 0x21, 1, 4, 5, 65536, 4, 1024, 1, 256, 65536, 256, 256, 8, 8, 0, 0,
+    ];
+    for value in values {
         parameter.extend(value.to_be_bytes());
     }
-    parameter.extend([
-        0, 1, 0, 0, 0, 0, 0, 4, 0, 0, 4, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 8, 0,
-        0,
-    ]);
     let mut init = utf16("InitColor");
     for value in [0x14u32, 0, 0, 0, 0, 4] {
         init.extend(value.to_be_bytes());
@@ -293,9 +291,10 @@ pub fn offscreen_attribute(width: u32, height: u32) -> Vec<u8> {
     data
 }
 
-/// External payload holding colour blocks painted red inside their boxes.
-pub fn block_payload(blocks: &[FixtureBlock]) -> Vec<u8> {
-    let mut payload = vec![0; 8];
+/// External payload of a `count`-block colour offscreen, with the given
+/// blocks painted red inside their boxes, laid out as CSP stores it.
+pub fn block_payload(blocks: &[FixtureBlock], count: usize) -> Vec<u8> {
+    let mut raw_blocks = vec![None; count];
     for (index, filled) in blocks {
         let mut raw = vec![0u8; 256 * 256 * 5];
         for y in filled.1..filled.3 {
@@ -304,19 +303,9 @@ pub fn block_payload(blocks: &[FixtureBlock]) -> Vec<u8> {
                 raw[65536 + (y * 256 + x) * 4 + 2] = 200;
             }
         }
-        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-        encoder.write_all(&raw).expect("in-memory write");
-        let compressed = encoder.finish().expect("in-memory write");
-        let mut record = utf16("BlockDataBeginChunk");
-        for value in [*index, raw.len() as u32, 256, 256, 1, compressed.len() as u32 + 4] {
-            record.extend(value.to_be_bytes());
-        }
-        record.extend((compressed.len() as u32).to_le_bytes());
-        record.extend(&compressed);
-        payload.extend((record.len() as u32 + 4).to_be_bytes());
-        payload.extend(record);
+        raw_blocks[*index as usize] = Some(raw);
     }
-    payload
+    crate::write::offscreen::encode_block_records(&raw_blocks, 256 * 256 * 5).expect("in-memory write")
 }
 
 /// Wrap a database and external chunks in a CSF container.
@@ -526,7 +515,9 @@ fn build(path: &Path, canvas: FixtureCanvas, layers: Vec<FixtureLayer>, editable
              CREATE TABLE Offscreen(MainId, Attribute, BlockData);
              CREATE TABLE VectorObjectList(MainId, LayerId, VectorData);
              CREATE TABLE CanvasPreview(MainId, ImageData);
-             CREATE TABLE ExternalChunk(ExternalID, Offset);",
+             CREATE TABLE ExternalChunk(ExternalID, Offset);
+             CREATE TABLE Project(MainId, ProjectInternalVersion, ProjectName, ProjectCanvas);
+             INSERT INTO Project VALUES(1, '1.1.0', '', 1);",
         )
         .expect("schema");
     database
@@ -568,7 +559,8 @@ fn build(path: &Path, canvas: FixtureCanvas, layers: Vec<FixtureLayer>, editable
                     )
                 })
                 .expect("offscreen");
-            externals.push((id, block_payload(&layer.raster_blocks)));
+            let count = canvas.width_px().div_ceil(256) * canvas.height_px().div_ceil(256);
+            externals.push((id, block_payload(&layer.raster_blocks, count as usize)));
         }
         if !layer.vectors.is_empty() {
             let id = external_id(externals.len() + 1);

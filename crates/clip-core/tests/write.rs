@@ -184,7 +184,7 @@ fn editor_adds_a_layer_with_pixels() {
     let before = digest(&template);
     let mut editor = ClipEditor::open(&template).unwrap();
     let source = ClipDocument::read(&template).unwrap();
-    let payload = |id: &str| source.container.external_payload(id).map(<[u8]>::to_vec);
+    let payload = |id: &str| source.external_payload(id).map(<[u8]>::to_vec);
     let raster = editor.first_raster_layer().unwrap();
     let mut rename = |values: &mut clip_core::write::Values| {
         for (column, value) in values.iter_mut() {
@@ -346,7 +346,7 @@ fn splits_a_sheet_into_a_work() {
     let mut uuids = Vec::new();
     for file in &files {
         let document = ClipDocument::read(out.join(file)).unwrap();
-        file_ids.insert(document.container.data[16 + 16 + 24..16 + 16 + 40].to_vec());
+        file_ids.insert(document.file_id().to_vec());
         let mut statement = document
             .database()
             .prepare("SELECT LayerUuid FROM Layer WHERE LayerUuid IS NOT NULL")
@@ -1157,7 +1157,7 @@ fn writes_panels_as_a_frame_folder_copied_from_a_finished_page() {
     assert_eq!((mask.pixel_kind, mask.total_planes, mask.color_planes), (1, 1, 0));
     assert_eq!((line.pixel_kind, line.total_planes), (33, 5));
     for block in [mask_block, line_block] {
-        assert!(block.starts_with("extrnlid") && written.container.external_payload(&block).is_none());
+        assert!(block.starts_with("extrnlid") && written.external_payload(&block).is_none());
     }
 }
 
@@ -1439,7 +1439,7 @@ fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
     // Pen work in CSP: a layer drawn on.
     let mut editor = ClipEditor::open(&page_path).unwrap();
     let source = ClipDocument::read(&page_path).unwrap();
-    let payload = |id: &str| source.container.external_payload(id).map(<[u8]>::to_vec);
+    let payload = |id: &str| source.external_payload(id).map(<[u8]>::to_vec);
     let raster = editor.first_raster_layer().unwrap();
     let mut rename = |values: &mut clip_core::write::Values| {
         for (column, value) in values.iter_mut() {
