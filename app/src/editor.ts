@@ -6,11 +6,10 @@
 // the page in place is inplace.ts).
 // Coordinates on a page are millimetres; each page of the spread has its own
 // mm → screen mapping.
-import { maskShape } from "./mask";
 import { BALLOON_TEXT_KEY, CONTINUOUS_KEY, loadSnap, PAGE_GAP_KEY, PANEL_CARRIES_KEY, penPreferences, ROWS_KEY, SHOW_NOTES_KEY, SINGLE_PAGE_KEY } from "./prefs";
 import { insideBalloon, tailGeometry } from "./balloon";
 import { spreads } from "./pages";
-import { GRID_GAP_MM, MARGIN, MAX_PAGE_GAP_MM, extent, layoutPages, onStage, rowCount, slotAt, toPage, type Slot } from "./layout";
+import { GRID_GAP_MM, MARGIN, MAX_PAGE_GAP_MM, extent, fitContinuous, fittedTo, layoutPages, nearestTo, onScreenOf, onStage, rowCount, slotAt, toPage, type Arrangement, type Slot } from "./layout";
 import { holdPanel, placeHeld } from "./hold";
 import { addDrawnPanel, moveBreakout, spanGutter, stacked } from "./koma";
 import { joinPanels, seamAt, seamLines, type Seam } from "./komaedit";
@@ -27,15 +26,14 @@ import {
   type Clip,
   type ItemRef,
 } from "./transform";
-import { INK, drawBalloons, drawLineText, drawPageFills, drawPanelBorders, drawPanelFills, drawStroke, drawStrokes, onTipLoaded, tracePath } from "./pagedraw";
-import { pictureOf } from "./pictures";
-import { corners, imageOf, opacityOf, REFERENCE_HANDLE } from "./references";
+import { drawLineText, drawStroke, onTipLoaded, tracePath } from "./pagedraw";
+import { corners, REFERENCE_HANDLE } from "./references";
 import { StrokeCache } from "./strokecache";
-import { opacityOfLayer, ROUGH_BASE, roughLayersOf, shownStrokes, strokeEditable, strokesOn } from "./roughlayers";
+import { ROUGH_BASE, shownStrokes, strokeEditable } from "./roughlayers";
 import { moveLine, setLineText } from "./dialogue";
 import { bounds, insideBox, insidePolygon, segmentDistance } from "./geometry";
-import type { Binding, BoxMm, Brush, FillTone, Line, Page, Panel, Point, Project, Stroke } from "./model";
-import { basicBox, snapCut, trimBox } from "./pagebox";
+import type { Binding, BoxMm, Brush, FillTone, Line, Page, Panel, Point, Project } from "./model";
+import { snapCut, trimBox } from "./pagebox";
 import { type CarriedContents, carryContents, followPanel, movePanel, panelContents, wantsSpread } from "./panels";
 import { gutters, pageIndex } from "./project";
 import { assignPanels, orderPanels, sortLines } from "./readingorder";
@@ -59,8 +57,9 @@ import { dragHandler, PRESS } from "./tools";
 import { pickedSummary } from "./toolselect";
 import { snapPointTo, snapTargets, type SnapSettings, type SnapTargets } from "./snapping";
 import { Viewport } from "./viewport";
-import { ACCENT, drawLeader, drawNote, drawSticky, NOTE_FONT, NOTE_ROW, noteBox, stickyHandle, wrapText, type NoteBox } from "./notedraw";
+import { ACCENT, drawLeader, NOTE_FONT, NOTE_ROW, noteBox, stickyHandle, type NoteBox } from "./notedraw";
 import { writeInPlace, type InPlaceEdit, type InPlaceHost } from "./inplace";
+import { drawCorners, drawCutOrFrame, drawDashedLine, drawFillArea, drawGoingTo, drawGuideLines, drawLasso, drawLifted, drawOverflowPanels, drawPenCursor, drawPointerNote, drawRing, drawScreenPage, drawSeam, drawSnapGrid, drawTransformFrame, drawWarpCorners, HANDLE } from "./screendraw";
 
 export type { EditorEraseMode, EditorHost, PanelMode, Selection, Tool } from "./editorcore";
 export { pickedSummary };
@@ -93,7 +92,6 @@ type Hover =
 
 /** Lines snapped to. */
 const GUIDE = "#e0398a";
-const HANDLE = 5;
 
 /** How long the pages take to slide to a new arrangement (ms). */
 const SLIDE_MS = 220;
@@ -326,29 +324,33 @@ export class PageEditor {
   }
 
   /** 連続: the whole name on screen. */
-  fitAll(): void {
+  fitAll(slide = true): void {
+    this.fit("all", slide);
+  }
+
+  /** 連続: the rows as tall as the stage (at most zoom 1), the spread worked on in the middle across. */
+  fitRows(): void {
+    this.fit("rows", false);
+  }
+
+  private fit(what: "all" | "rows", slide: boolean, across?: (slots: Slot[]) => number | null): void {
     const project = this.host.project();
     if (!project || !this.continuous) return;
-    this.slide(() => {
-      const { width, height } = this.stageSize();
-      this.view.zoom = 1;
-      this.view.pan = [0, 0];
+    const change = () => {
+      const middleOfSpread = (slots: Slot[]) => {
+        const box = this.spreadBox(slots);
+        return box && (box[0] + box[2]) / 2;
+      };
+      const { zoom, pan } = fitContinuous(project, this.spreadList(), this.arrangement(), what, across ?? middleOfSpread);
+      this.view.zoom = zoom;
+      this.view.pan = pan;
       if (this.view.rotation) {
         this.view.rotation = 0;
         this.applyViewTransform();
       }
-      for (let i = 0; i < 3; i++) {
-        // The gaps between the spreads are partly px: a few rounds settle the zoom.
-        const box = this.extent(this.layout(project));
-        if (!box) return;
-        const factor = Math.min((width - 2 * MARGIN) / (box[2] - box[0]), (height - 2 * MARGIN) / (box[3] - box[1]));
-        this.view.zoom = Math.min(Math.max(this.view.zoom * factor, 0.02), 1);
-      }
-      const box = this.extent(this.layout(project));
-      if (!box) return;
-      this.view.pan[0] += width / 2 - (box[0] + box[2]) / 2;
-      this.view.pan[1] += height / 2 - (box[1] + box[3]) / 2;
-    });
+    };
+    if (slide) this.slide(change);
+    else change();
   }
 
   /** 連続: move the view (sliding) so that the spread worked on is all on screen. */
@@ -532,7 +534,21 @@ export class PageEditor {
   resize(): void {
     const ratio = window.devicePixelRatio || 1;
     const { width, height } = this.canvas.getBoundingClientRect();
+    const before = this.size;
+    const project = this.host.project();
+    // 連続, as the stage grows or shrinks (Tab, the strip, the window): fitted to it, fitted again;
+    // otherwise what was in the middle stays in the middle.
+    const was = this.continuous && project && before?.width && before.height && width && height ? this.layout(project) : null;
+    const fitted = was && project && !project.scroll && before ? fittedTo(was, project.pageFormat.canvasMm[1], before.width, before.height, this.view.zoom) : null;
+    const held = was && project && before ? nearestTo(was, project.pageFormat, [before.width / 2, before.height / 2]) : null;
     this.size = { width, height };
+    const at = (slots: Slot[]) => (held ? onScreenOf(slots, held) : null);
+    if (fitted === "all") this.fitAll(false);
+    else if (fitted === "rows") this.fit("rows", false, (slots) => at(slots)?.[0] ?? null);
+    else if (held && project) {
+      const point = at(this.layout(project));
+      if (point) this.view.pan = [this.view.pan[0] + width / 2 - point[0], this.view.pan[1] + height / 2 - point[1]];
+    }
     this.canvas.width = Math.round(width * ratio);
     this.canvas.height = Math.round(height * ratio);
     this.applyViewTransform();
@@ -552,10 +568,13 @@ export class PageEditor {
     return { width, height };
   }
 
-  private layout(project: Project): Slot[] {
+  private arrangement(): Arrangement {
     const { width, height } = this.stageSize();
-    const view = { single: this.single, continuous: this.continuous, rows: this.rows, zoom: this.view.zoom, pan: this.view.pan, width, height, gapMm: this.pageGapMm };
-    return layoutPages(project, this.spreadList(), this.spreadIndex, view);
+    return { single: this.single, continuous: this.continuous, rows: this.rows, zoom: this.view.zoom, pan: this.view.pan, width, height, gapMm: this.pageGapMm };
+  }
+
+  private layout(project: Project): Slot[] {
+    return layoutPages(project, this.spreadList(), this.spreadIndex, this.arrangement());
   }
 
   /** While sliding: each page part of the way from where it was. */
@@ -585,7 +604,6 @@ export class PageEditor {
     return slotAt(this.slots, sx, sy, project.pageFormat);
   }
 
-  /** The page under a point of the window, the point on it (mm) and the panel there. */
   /** Where a point of a shown page (mm) is in the window (client px), or null when the page is not shown. */
   clientOf(pageId: string, [x, y]: Point): Point | null {
     const slot = this.slots.find((s) => s.page.id === pageId);
@@ -595,6 +613,7 @@ export class PageEditor {
     return [rect.left + sx, rect.top + sy];
   }
 
+  /** The page under a point of the window, the point on it (mm) and the panel there. */
   pageAtClient(clientX: number, clientY: number): { page: Page; point: Point; panel?: Panel } | null {
     const project = this.host.project();
     if (!project) return null;
@@ -663,31 +682,7 @@ export class PageEditor {
       fills: (page.fills ?? []).filter((x) => fills.has(x.id)),
       stickies: [],
     };
-    const [, pageH] = project.pageFormat.canvasMm;
-    const m = { scale: slot.scale, x: slot.x, y: slot.y };
-    const ctx = this.ctx;
-    ctx.save();
-    // Everywhere but its own page, where it is drawn already.
-    ctx.beginPath();
-    ctx.rect(-1e5, -1e5, 2e5, 2e5);
-    ctx.rect(slot.x + slot.shown[0] * slot.scale, slot.y, (slot.shown[1] - slot.shown[0]) * slot.scale, pageH * slot.scale);
-    ctx.clip("evenodd");
-    ctx.globalAlpha = 0.9;
-    for (const panel of dragged.panels) {
-      // Lifted off the paper: the pages under it show through a little.
-      tracePath(ctx, panel.shape, m, true);
-      ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-      ctx.fill();
-    }
-    const brushes = project.brushes ?? [];
-    drawStrokes(ctx, dragged, m, false, () => ACCENT, 0.7, brushes);
-    drawPanelFills(ctx, dragged, m);
-    drawPageFills(ctx, dragged, m);
-    drawPanelBorders(ctx, dragged, m, () => ACCENT);
-    drawStrokes(ctx, dragged, m, true, () => ACCENT, 0.7, brushes);
-    drawBalloons(ctx, dragged, m);
-    for (const line of dragged.lines) drawLineText(ctx, line, m);
-    ctx.restore();
+    drawLifted(this.ctx, project, slot, dragged);
 
     // Where it goes: a panel on its own (not half of a 見開き panel), dialogue and rough lines.
     const panel = s.kind === "panel" && !drag.items ? dragged.panels[0] : undefined;
@@ -699,30 +694,7 @@ export class PageEditor {
     if (!going.length) return;
     const box = bounds(going.flatMap(([x0, y0, x1, y1]) => [[x0, y0], [x1, y1]] as Point[]));
     const to = this.otherPageUnder(project, slot, [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2]);
-    if (!to) return;
-    const [tx0, ty0, tx1, ty1] = trimBox(project.pageFormat);
-    const left = to.x + Math.max(tx0, to.shown[0]) * to.scale;
-    const right = to.x + Math.min(tx1, to.shown[1]) * to.scale;
-    ctx.save();
-    ctx.strokeStyle = ACCENT;
-    ctx.lineWidth = 3;
-    ctx.setLineDash([8, 5]);
-    ctx.strokeRect(left - 3, to.y + ty0 * to.scale - 3, right - left + 6, (ty1 - ty0) * to.scale + 6);
-    ctx.setLineDash([]);
-    const label = `${to.index + 1} ページへ${panel ? "（中身ごと）" : ""}`;
-    ctx.font = "bold 13px system-ui, sans-serif";
-    const w = ctx.measureText(label).width + 16;
-    const lx = (left + right) / 2 - w / 2;
-    const ly = to.y + ty0 * to.scale - 30;
-    ctx.fillStyle = ACCENT;
-    ctx.beginPath();
-    ctx.roundRect(lx, ly, w, 22, 11);
-    ctx.fill();
-    ctx.fillStyle = "#ffffff";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(label, lx + w / 2, ly + 11);
-    ctx.restore();
+    if (to) drawGoingTo(this.ctx, project, to, `${to.index + 1} ページへ${panel ? "（中身ごと）" : ""}`);
   }
 
   /** The page settings follow the page worked on; 連続: its spread is the one worked on. */
@@ -753,44 +725,8 @@ export class PageEditor {
     else if (drag && (drag.kind === "scale" || drag.kind === "rotate" || drag.kind === "warp")) for (const panel of drag.base.panels ?? []) ids.add(panel.id);
     const corners = !this.transforming && s?.kind === "panel" && s.pageId === slot.page.id ? s.id : null;
     if (corners) ids.add(corners);
-    const [, pageH] = project.pageFormat.canvasMm;
-    const left = slot.x + slot.shown[0] * slot.scale;
-    const right = slot.x + slot.shown[1] * slot.scale;
     const panels = slot.page.panels.filter((panel) => ids.has(panel.id) && !panel.spread);
-    const outside = panels.filter((panel) =>
-      panel.shape.some(([x, y]) => {
-        const sx = slot.x + x * slot.scale;
-        return sx < left - 0.5 || sx > right + 0.5 || y < 0 || y > pageH;
-      }),
-    );
-    if (!outside.length) return;
-    const m = { scale: slot.scale, x: slot.x, y: slot.y };
-    const ctx = this.ctx;
-    ctx.save();
-    // Everywhere but its own page, where it is drawn already.
-    ctx.beginPath();
-    ctx.rect(-1e5, -1e5, 2e5, 2e5);
-    ctx.rect(left, slot.y, right - left, pageH * slot.scale);
-    ctx.clip("evenodd");
-    for (const panel of outside) {
-      tracePath(ctx, panel.shape, m, true);
-      ctx.fillStyle = "rgba(47, 111, 219, 0.12)";
-      ctx.fill();
-      ctx.strokeStyle = ACCENT;
-      ctx.lineWidth = 2;
-      ctx.setLineDash([6, 4]);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      if (panel.id !== corners) continue;
-      ctx.fillStyle = "#ffffff";
-      ctx.lineWidth = 1.5;
-      for (const [x, y] of panel.shape) {
-        const [hx, hy] = [slot.x + x * slot.scale, slot.y + y * slot.scale];
-        ctx.fillRect(hx - HANDLE, hy - HANDLE, HANDLE * 2, HANDLE * 2);
-        ctx.strokeRect(hx - HANDLE, hy - HANDLE, HANDLE * 2, HANDLE * 2);
-      }
-    }
-    ctx.restore();
+    drawOverflowPanels(this.ctx, project, slot, panels, corners);
   }
 
   /**
@@ -1026,167 +962,24 @@ export class PageEditor {
   }
 
   private drawPage(project: Project, slot: Slot): void {
-    const ctx = this.ctx;
-    const { scale } = slot;
     const page = this.visiblePage(slot.page);
     const small = this.small(project, slot);
-    const [pageW, pageH] = project.pageFormat.canvasMm;
-    const sx = (x: number) => slot.x + x * scale;
-    const sy = (y: number) => slot.y + y * scale;
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(sx(slot.shown[0]), sy(0), (slot.shown[1] - slot.shown[0]) * scale, pageH * scale);
-    ctx.clip();
-    ctx.fillStyle = "#eeede9";
-    ctx.fillRect(sx(0), sy(0), pageW * scale, pageH * scale);
-    const trim = trimBox(project.pageFormat);
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(sx(trim[0]), sy(trim[1]), (trim[2] - trim[0]) * scale, (trim[3] - trim[1]) * scale);
-    ctx.strokeStyle = "rgba(0, 0, 0, 0.25)";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(sx(trim[0]), sy(trim[1]), (trim[2] - trim[0]) * scale, (trim[3] - trim[1]) * scale);
-    const basic = basicBox(project.pageFormat);
-    ctx.setLineDash([4, 4]);
-    ctx.strokeStyle = "rgba(47, 111, 219, 0.45)";
-    ctx.strokeRect(sx(basic[0]), sy(basic[1]), (basic[2] - basic[0]) * scale, (basic[3] - basic[1]) * scale);
-    ctx.setLineDash([]);
-
-    // Roughs from the source sheet, faded so the name reads on top.
-    ctx.globalAlpha = 0.45;
-    for (const rough of page.roughs) {
-      const image = this.host.rough(rough);
-      if (!image) continue;
-      const [x0, y0, x1, y1] = rough.box;
-      ctx.drawImage(image, sx(x0), sy(y0), (x1 - x0) * scale, (y1 - y0) * scale);
-    }
-    // 資料画像, faint under the drawing.
-    for (const reference of page.references ?? []) {
-      const stored = imageOf(project, reference);
-      const picture = stored && pictureOf(stored, () => this.requestDraw());
-      if (!picture) continue;
-      const [x0, y0, x1, y1] = reference.box;
-      ctx.globalAlpha = opacityOf(reference);
-      ctx.drawImage(picture, sx(x0), sy(y0), (x1 - x0) * scale, (y1 - y0) * scale);
-    }
-    ctx.globalAlpha = 1;
-    if (this.tool === "reference") this.drawReferenceFrames(slot);
-
-    const m = { scale, x: slot.x, y: slot.y };
-    const brushes = this.host.project()?.brushes ?? [];
-    const strokeColor = (stroke: Stroke) => (this.isSelected(page, "stroke", stroke.id) ? ACCENT : "#3a3834");
-    const style = { color: strokeColor, minWidthPx: 0.7, brushes };
-    const roughs = roughLayersOf(project);
-    // Each ラフ線のレイヤー at its own opacity (hidden ones are not in `page`).
-    const drawRoughs = (over: boolean) => {
-      for (const layer of roughs) {
-        const strokes = strokesOn(project, page.strokes, layer);
-        if (!strokes.length) continue;
-        ctx.globalAlpha = opacityOfLayer(layer);
-        this.strokeCache.draw(ctx, page, project.pageFormat.canvasMm, m, over, style, roughs.length > 1 ? layer.id : "", strokes);
-      }
-      ctx.globalAlpha = 1;
-    };
-    drawRoughs(false);
-    drawPanelFills(ctx, page, m);
-    drawPageFills(ctx, page, m, (id) => (this.isSelected(page, "fill", id) ? ACCENT : null));
-    const selectedPanels = page.panels.filter((panel) => this.isSelected(page, "panel", panel.id));
-    for (const panel of selectedPanels) {
-      tracePath(ctx, panel.shape, m, true);
-      ctx.fillStyle = "rgba(47, 111, 219, 0.08)";
-      ctx.fill();
-    }
-    drawPanelBorders(ctx, page, m, (panel) => (selectedPanels.includes(panel) ? ACCENT : INK));
-    drawRoughs(true);
-
-    // はみ出し: shown by a dashed outline (only here, not in exports).
-    for (const breakout of page.breakouts) {
-      const selected = this.isSelected(page, "breakout", breakout.id);
-      tracePath(ctx, breakout.shape, m, true);
-      ctx.setLineDash([5, 4]);
-      ctx.strokeStyle = selected ? ACCENT : "rgba(214, 120, 40, 0.8)";
-      ctx.lineWidth = selected ? 2 : 1.2;
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-
-    for (const panel of stacked(page.panels)) {
-      const selected = selectedPanels.includes(panel);
-      // Panels with no border at all still show where they are.
-      if ((panel.border ?? "solid") === "none" && !selected) {
-        tracePath(ctx, panel.shape, m, true);
-        ctx.setLineDash([2, 4]);
-        ctx.strokeStyle = "rgba(47, 111, 219, 0.35)";
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
-      const { x: nx, y: ny, radius } = this.badge(slot, panel, pageW);
-      const swapping = this.drag?.kind === "swap" && this.drag.to?.panelId === panel.id && this.drag.to.slot.page === page;
-      if (swapping) {
-        tracePath(ctx, panel.shape, m, true);
-        ctx.fillStyle = "rgba(47, 111, 219, 0.18)";
-        ctx.fill();
-      }
-      // Pages seen from afar (連続) show the drawing, not the marks over it.
-      if (!small || selected) {
-        ctx.fillStyle = selected ? ACCENT : "rgba(47, 111, 219, 0.75)";
-        ctx.beginPath();
-        ctx.arc(nx, ny, radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "#ffffff";
-        ctx.font = `bold ${Math.round(radius * 1.2)}px sans-serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(String(panel.order), nx, ny);
-      }
-      // Corners to drag, for a panel selected on its own.
-      if (selected && !this.transforming && this.selection?.kind === "panel") {
-        ctx.fillStyle = "#ffffff";
-        ctx.strokeStyle = ACCENT;
-        ctx.lineWidth = 1.5;
-        for (const [x, y] of panel.shape) {
-          ctx.fillRect(sx(x) - HANDLE, sy(y) - HANDLE, HANDLE * 2, HANDLE * 2);
-          ctx.strokeRect(sx(x) - HANDLE, sy(y) - HANDLE, HANDLE * 2, HANDLE * 2);
-        }
-      }
-    }
-
-    drawBalloons(ctx, page, m);
-    for (const line of page.lines) {
-      // コマ枠でマスク: the words go no further than the balloon does.
-      const panel = line.mask ? page.panels.find((p) => p.id === line.panel) : undefined;
-      const clip = panel && maskShape(panel);
-      if (!clip) {
-        this.drawLine(project, slot, line);
-        continue;
-      }
-      ctx.save();
-      tracePath(ctx, clip, m, true);
-      ctx.clip();
-      this.drawLine(project, slot, line);
-      ctx.restore();
-    }
-    if (this.showNotes && !small) for (const panel of page.panels) if (panel.note) drawNote(ctx, slot, panel, project.pageFormat);
-    const handle = this.tool === "select" || this.tool === "sticky" ? LINK_HANDLE : null;
-    for (const sticky of page.stickies ?? []) drawSticky(ctx, slot, sticky, this.isSelected(slot.page, "sticky", sticky.id), handle);
-    ctx.restore();
-
-    ctx.fillStyle = "#f4f3f0";
-    ctx.font = "13px sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "alphabetic";
-    if (project.scroll) {
-      // 縦スクロール: the pieces touch; the number goes left of the strip, at the top of its piece.
-      ctx.textAlign = "right";
-      ctx.textBaseline = "top";
-      ctx.fillText(String(slot.index + 1), sx(0) - 8, sy(0) + 4);
-      return;
-    }
-    // The page number and its memo, wrapped to the page's width so the two pages of a spread do not run into each other.
-    const [trimX0, , trimX1] = trimBox(project.pageFormat);
-    const memo = page.memo && !small ? `  ${page.memo.replace(/\s*\n\s*/g, " ")}` : "";
-    const rows = wrapText(ctx, `${slot.index + 1}${memo}`, Math.max(small ? 0 : 80, (trimX1 - trimX0) * scale - 8), 2);
-    rows.forEach((row, i) => ctx.fillText(row, sx((trimX0 + trimX1) / 2), sy(pageH) + 18 + i * 16));
+    const [pageW] = project.pageFormat.canvasMm;
+    const swap = this.drag?.kind === "swap" && this.drag.to?.slot.page === slot.page ? this.drag.to.panelId : null;
+    drawScreenPage(this.ctx, project, slot, page, {
+      small,
+      showNotes: this.showNotes,
+      selected: (kind, id) => this.isSelected(slot.page, kind, id),
+      panelCorners: !this.transforming && this.selection?.kind === "panel",
+      swapInto: swap ?? null,
+      stickyHandle: this.tool === "select" || this.tool === "sticky" ? LINK_HANDLE : null,
+      rough: (rough) => this.host.rough(rough),
+      redraw: () => this.requestDraw(),
+      strokes: this.strokeCache,
+      badge: (panel) => this.badge(slot, panel, pageW),
+      referenceFrames: this.tool === "reference" ? () => this.drawReferenceFrames(slot) : undefined,
+      line: (line) => this.drawLine(project, slot, line),
+    });
   }
 
   /** 資料: every picture's outline, the chosen one with corners to drag. */
@@ -1285,21 +1078,7 @@ export class PageEditor {
     // Slots are laid out again on every draw: the hover's page as it is now placed.
     const hoverSlot = this.hover && this.slots.find((s) => s.page.id === this.hover!.slot.page.id);
     const seam = drag?.kind === "seam" ? drag : this.hover?.kind === "seam" && hoverSlot ? { slot: hoverSlot, seam: this.hover.seam } : null;
-    if (seam) {
-      // The border under the pointer (or being moved): its edges, thick.
-      const { slot } = seam;
-      ctx.save();
-      ctx.strokeStyle = ACCENT;
-      ctx.lineWidth = 3;
-      ctx.lineCap = "round";
-      for (const [a, b] of seamLines(slot.page, seam.seam)) {
-        ctx.beginPath();
-        ctx.moveTo(slot.x + a[0] * slot.scale, slot.y + a[1] * slot.scale);
-        ctx.lineTo(slot.x + b[0] * slot.scale, slot.y + b[1] * slot.scale);
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
+    if (seam) drawSeam(ctx, seam.slot, seamLines(seam.slot.page, seam.seam));
     if (!drag && this.hover?.kind === "item" && hoverSlot) {
       const { target } = this.hover;
       const slot = hoverSlot;
@@ -1344,41 +1123,16 @@ export class PageEditor {
     this.drawPolygon();
     this.drawGuides();
     if (drag && (drag.kind === "cut" || drag.kind === "frame")) {
-      const { slot } = drag;
-      const a = drag.a;
       const b = drag.kind === "cut" && !drag.free ? snapCut(drag.a, drag.b) : drag.b;
-      ctx.strokeStyle = ACCENT;
-      ctx.lineWidth = 2;
-      ctx.setLineDash([6, 4]);
-      if (drag.kind === "cut") {
-        ctx.beginPath();
-        ctx.moveTo(slot.x + a[0] * slot.scale, slot.y + a[1] * slot.scale);
-        ctx.lineTo(slot.x + b[0] * slot.scale, slot.y + b[1] * slot.scale);
-        ctx.stroke();
-      } else {
-        const [x0, y0, x1, y1] = bounds([a, b]);
-        ctx.strokeRect(slot.x + x0 * slot.scale, slot.y + y0 * slot.scale, (x1 - x0) * slot.scale, (y1 - y0) * slot.scale);
-      }
-      ctx.setLineDash([]);
+      drawCutOrFrame(ctx, drag.slot, drag.a, b, drag.kind === "cut");
     }
     if (drag?.kind === "fill" && drag.points.length > 2) {
       // The area as it will be filled, while it is drawn round.
-      const { slot } = drag;
-      tracePath(ctx, drag.points, { scale: slot.scale, x: slot.x, y: slot.y }, true);
-      ctx.fillStyle = this.fillTone === "black" ? "rgba(40, 38, 34, 0.55)" : this.fillTone === "gray" ? "rgba(150, 146, 140, 0.55)" : "rgba(255, 255, 255, 0.8)";
-      ctx.fill();
-      ctx.strokeStyle = ACCENT;
-      ctx.lineWidth = 1;
-      ctx.stroke();
+      const tone = this.fillTone === "black" ? "rgba(40, 38, 34, 0.55)" : this.fillTone === "gray" ? "rgba(150, 146, 140, 0.55)" : "rgba(255, 255, 255, 0.8)";
+      drawFillArea(ctx, drag.slot, drag.points, tone);
     }
     if ((drag?.kind === "lasso" || drag?.kind === "pick" || drag?.kind === "eraseLasso") && drag.points.length > 1) {
-      const { slot } = drag;
-      ctx.strokeStyle = drag.kind === "lasso" ? "rgba(214, 120, 40, 0.9)" : drag.kind === "pick" ? ACCENT : "rgba(192, 57, 43, 0.9)";
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([5, 4]);
-      tracePath(ctx, drag.points, { scale: slot.scale, x: slot.x, y: slot.y }, true);
-      ctx.stroke();
-      ctx.setLineDash([]);
+      drawLasso(ctx, drag.slot, drag.points, drag.kind === "lasso" ? "rgba(214, 120, 40, 0.9)" : drag.kind === "pick" ? ACCENT : "rgba(192, 57, 43, 0.9)");
     }
     if (drag?.kind === "stickyLink" && this.pointer) {
       const { slot } = drag;
@@ -1395,28 +1149,13 @@ export class PageEditor {
           }
         }
         drawLeader(ctx, px, py, [slot.x + x0 * slot.scale, slot.y + y0 * slot.scale, slot.x + x1 * slot.scale, slot.y + y1 * slot.scale], ACCENT);
-        ctx.fillStyle = ACCENT;
-        ctx.font = "12px sans-serif";
-        ctx.textAlign = "left";
-        ctx.textBaseline = "bottom";
-        ctx.fillText(drag.to ? (drag.to.kind === "panel" ? "このコマに紐づける" : "このセリフに紐づける") : sticky.link ? "ここで離すと紐づけを外す" : "コマかセリフの上で離す", px + 10, py - 6);
+        drawPointerNote(ctx, this.pointer, drag.to ? (drag.to.kind === "panel" ? "このコマに紐づける" : "このセリフに紐づける") : sticky.link ? "ここで離すと紐づけを外す" : "コマかセリフの上で離す");
       }
     }
     if (drag?.kind === "swap" && this.pointer) {
       // An arrow from the panel's number to where its contents go.
-      ctx.strokeStyle = ACCENT;
-      ctx.lineWidth = 2;
-      ctx.setLineDash([6, 4]);
-      ctx.beginPath();
-      ctx.moveTo(drag.at[0], drag.at[1]);
-      ctx.lineTo(this.pointer[0], this.pointer[1]);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = ACCENT;
-      ctx.font = "12px sans-serif";
-      ctx.textAlign = "left";
-      ctx.textBaseline = "bottom";
-      ctx.fillText(drag.to ? "ここに入れ替え" : "入れ替えるコマへ", this.pointer[0] + 10, this.pointer[1] - 6);
+      drawDashedLine(ctx, drag.at, this.pointer);
+      drawPointerNote(ctx, this.pointer, drag.to ? "ここに入れ替え" : "入れ替えるコマへ");
     }
     if (drag?.kind === "pen") {
       const { slot, points } = drag;
@@ -1428,34 +1167,10 @@ export class PageEditor {
     }
     this.drawFrame();
     if (this.tool === "pen" && !this.erasing() && !this.spaceHeld && this.pointer && penPreferences.settings.cursor === "brush") {
-      // The pen's size where it will draw (a cross in it when it is small).
-      const [px, py] = this.pointer;
-      const radius = Math.max(((this.penWidthMm / 2) * (this.slots[0]?.scale ?? 1)), 2);
-      ctx.save();
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
-      ctx.beginPath();
-      ctx.arc(px, py, radius + 1, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.strokeStyle = "rgba(30, 30, 30, 0.85)";
-      ctx.beginPath();
-      ctx.arc(px, py, radius, 0, Math.PI * 2);
-      if (radius < 5) {
-        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          ctx.moveTo(px + dx * (radius + 2), py + dy * (radius + 2));
-          ctx.lineTo(px + dx * (radius + 6), py + dy * (radius + 6));
-        }
-      }
-      ctx.stroke();
-      ctx.restore();
+      // The pen's size where it will draw.
+      drawPenCursor(ctx, this.pointer, Math.max((this.penWidthMm / 2) * (this.slots[0]?.scale ?? 1), 2));
     }
-    if (this.erasing() && this.eraseMode !== "lasso" && this.pointer) {
-      ctx.strokeStyle = ACCENT;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(this.pointer[0], this.pointer[1], this.eraserRadiusPx(), 0, Math.PI * 2);
-      ctx.stroke();
-    }
+    if (this.erasing() && this.eraseMode !== "lasso" && this.pointer) drawRing(ctx, this.pointer, this.eraserRadiusPx());
   }
 
   // --- 吸着・コマを描く -------------------------------------------------------------
@@ -1592,23 +1307,7 @@ export class PageEditor {
     const guides = this.guides;
     const slot = guides && this.slots.find((s) => s.page.id === guides.pageId);
     if (!guides || !slot || (!guides.xs.length && !guides.ys.length)) return;
-    const [pageW, pageH] = this.host.project()!.pageFormat.canvasMm;
-    const ctx = this.ctx;
-    ctx.save();
-    ctx.strokeStyle = GUIDE;
-    ctx.lineWidth = 1;
-    ctx.setLineDash([5, 4]);
-    ctx.beginPath();
-    for (const x of guides.xs) {
-      ctx.moveTo(slot.x + x * slot.scale, slot.y);
-      ctx.lineTo(slot.x + x * slot.scale, slot.y + pageH * slot.scale);
-    }
-    for (const y of guides.ys) {
-      ctx.moveTo(slot.x + slot.shown[0] * slot.scale, slot.y + y * slot.scale);
-      ctx.lineTo(slot.x + Math.min(slot.shown[1], pageW) * slot.scale, slot.y + y * slot.scale);
-    }
-    ctx.stroke();
-    ctx.restore();
+    drawGuideLines(this.ctx, this.host.project()!, slot, guides.xs, guides.ys, GUIDE);
   }
 
   /** The grid (when panels snap to it) on the pages, while panels are cut, drawn or changed. */
@@ -1617,28 +1316,8 @@ export class PageEditor {
     const panelDrag = this.drag && ["frame", "vertex", "seam", "scale"].includes(this.drag.kind);
     const moving = this.drag?.kind === "move" && !!this.drag.snap;
     if (!grid || !(this.tool === "cut" || panelDrag || moving)) return;
-    const [pageW, pageH] = project.pageFormat.canvasMm;
-    const [bx, by] = basicBox(project.pageFormat);
-    const ctx = this.ctx;
-    ctx.save();
-    ctx.strokeStyle = "rgba(47, 111, 219, 0.14)";
-    ctx.lineWidth = 1;
-    for (const slot of this.slots) {
-      // Too fine to see: no grid.
-      if (gridMm * slot.scale < 4 || this.small(project, slot)) continue;
-      const [x0, x1] = slot.shown;
-      ctx.beginPath();
-      for (let x = bx - Math.floor((bx - x0) / gridMm) * gridMm; x <= x1; x += gridMm) {
-        ctx.moveTo(slot.x + x * slot.scale, slot.y);
-        ctx.lineTo(slot.x + x * slot.scale, slot.y + pageH * slot.scale);
-      }
-      for (let y = by - Math.floor(by / gridMm) * gridMm; y <= pageH; y += gridMm) {
-        ctx.moveTo(slot.x + x0 * slot.scale, slot.y + y * slot.scale);
-        ctx.lineTo(slot.x + Math.min(x1, pageW) * slot.scale, slot.y + y * slot.scale);
-      }
-      ctx.stroke();
-    }
-    ctx.restore();
+    // Too fine to see: no grid.
+    drawSnapGrid(this.ctx, project, this.slots.filter((slot) => gridMm * slot.scale >= 4 && !this.small(project, slot)), gridMm);
   }
 
   /** 多角形: the corners placed, and the side to where the pointer is. */
@@ -1646,8 +1325,6 @@ export class PageEditor {
     const polygon = this.polygon;
     const slot = this.polygonSlot();
     if (!polygon || !slot) return;
-    const ctx = this.ctx;
-    const at = ([x, y]: Point): Point => [slot.x + x * slot.scale, slot.y + y * slot.scale];
     const points = [...polygon.points];
     let closing = false;
     if (this.pointer && !this.drag) {
@@ -1656,29 +1333,7 @@ export class PageEditor {
       closing = polygon.points.length >= 3 && Math.hypot(first[0] - pointer[0], first[1] - pointer[1]) * slot.scale <= 8;
       if (!closing) points.push(this.nextCorner(slot, pointer, false));
     }
-    ctx.save();
-    if (points.length >= 3) {
-      tracePath(ctx, points, { scale: slot.scale, x: slot.x, y: slot.y }, true);
-      ctx.fillStyle = "rgba(47, 111, 219, 0.08)";
-      ctx.fill();
-    }
-    ctx.strokeStyle = ACCENT;
-    ctx.lineWidth = 2;
-    ctx.setLineDash([6, 4]);
-    tracePath(ctx, points, { scale: slot.scale, x: slot.x, y: slot.y }, closing);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = "#ffffff";
-    ctx.lineWidth = 1.5;
-    polygon.points.forEach((point, i) => {
-      const [px, py] = at(point);
-      const r = i === 0 && closing ? HANDLE + 2 : HANDLE - 1;
-      ctx.beginPath();
-      ctx.arc(px, py, r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    });
-    ctx.restore();
+    drawCorners(this.ctx, slot, polygon.points, points, closing);
   }
 
   // --- 変形（拡大縮小・回転・反転） -------------------------------------------------------
@@ -1769,53 +1424,11 @@ export class PageEditor {
 
   private drawFrame(): void {
     const drag = this.drag;
-    if (drag?.kind === "warp") {
-      // The four corners as they are being pulled.
-      const { slot } = drag;
-      const ctx = this.ctx;
-      ctx.save();
-      ctx.strokeStyle = ACCENT;
-      ctx.lineWidth = 1;
-      ctx.setLineDash([4, 3]);
-      tracePath(ctx, drag.corners, { scale: slot.scale, x: slot.x, y: slot.y }, true);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = "#ffffff";
-      ctx.lineWidth = 1.5;
-      for (const [x, y] of drag.corners) {
-        const [px, py] = [slot.x + x * slot.scale, slot.y + y * slot.scale];
-        ctx.fillRect(px - HANDLE + 1, py - HANDLE + 1, 2 * HANDLE - 2, 2 * HANDLE - 2);
-        ctx.strokeRect(px - HANDLE + 1, py - HANDLE + 1, 2 * HANDLE - 2, 2 * HANDLE - 2);
-      }
-      ctx.restore();
-      return;
-    }
+    // 自由変形: the four corners as they are being pulled.
+    if (drag?.kind === "warp") return drawWarpCorners(this.ctx, drag.slot, drag.corners);
     if (drag && drag.kind !== "scale" && drag.kind !== "rotate") return;
     const frame = this.frameGeometry();
-    if (!frame) return;
-    const ctx = this.ctx;
-    const [tl, tr, , bl] = frame.handles;
-    ctx.save();
-    ctx.strokeStyle = ACCENT;
-    ctx.lineWidth = 1;
-    ctx.setLineDash([4, 3]);
-    ctx.strokeRect(tl[0], tl[1], tr[0] - tl[0], bl[1] - tl[1]);
-    ctx.setLineDash([]);
-    ctx.beginPath();
-    ctx.moveTo((tl[0] + tr[0]) / 2, tl[1]);
-    ctx.lineTo(...frame.rotate);
-    ctx.stroke();
-    ctx.fillStyle = "#ffffff";
-    ctx.lineWidth = 1.5;
-    for (const [x, y] of frame.handles) {
-      ctx.fillRect(x - HANDLE + 1, y - HANDLE + 1, 2 * HANDLE - 2, 2 * HANDLE - 2);
-      ctx.strokeRect(x - HANDLE + 1, y - HANDLE + 1, 2 * HANDLE - 2, 2 * HANDLE - 2);
-    }
-    ctx.beginPath();
-    ctx.arc(frame.rotate[0], frame.rotate[1], HANDLE, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.restore();
+    if (frame) drawTransformFrame(this.ctx, frame.handles, frame.rotate);
   }
 
   /** The frame handle at a screen point: 0..7, 8 for turning, or -1. */

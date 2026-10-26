@@ -16,6 +16,7 @@
       <button id="shortcuts" class="editor-only with-icon labelled" title="ショートカットキーの割り当て" hidden><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="5" width="16" height="10" rx="1.5"/><path d="M5 8h1M8 8h1M11 8h1M14 8h1M5 11h1M14 11h1M8 11h4"/></svg><span>キー設定</span></button>
       <button id="pen-settings" class="editor-only with-icon labelled" title="ペンタブレットの設定: 筆圧、傾き、消しゴム側、サイドボタン、タッチ操作、カーソル" hidden><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="4" width="15" height="12" rx="1.5"/><path d="M7 13l1-3 5-5 2 2-5 5z"/></svg><span>ペン設定</span></button>
       <span id="file-name" class="file-name">ファイルが開かれていません</span>
+      <span id="save-state" class="save-state editor-only" role="status" aria-live="polite" hidden></span>
       <button id="update" class="primary" hidden>更新</button>
       <span id="app-version" class="app-version"></span>
       <div class="spacer"></div>
@@ -116,7 +117,7 @@
         <div class="stage">
           <canvas id="editor-canvas"></canvas>
         </div>
-        <div id="story-handle" class="story-handle" title="ドラッグで下の帯の高さを変える（ダブルクリックで大きく・戻す）"></div>
+        <div id="story-handle" class="story-handle" title="ドラッグで下の帯の高さを変える（ダブルクリックで元の高さ・たたむ・広げる）"></div>
         <div class="page-nav" id="page-nav">
           <div class="pager">
             <button id="editor-next" class="icon-button" title="次へ（←）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4l-6 6 6 6"/></svg></button>
@@ -128,6 +129,7 @@
             <button id="single-mode" title="1 ページずつ大きく見る"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="5.5" y="3" width="9" height="14"/></svg><span>単独</span></button>
             <button id="continuous-mode" title="全ページを一枚のキャンバスに並べ、どのページにもそのまま描く（F7）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="1.5" y="3" width="4" height="6"/><rect x="5.5" y="3" width="4" height="6"/><rect x="10.5" y="3" width="4" height="6"/><rect x="14.5" y="3" width="4" height="6"/><rect x="1.5" y="11" width="4" height="6"/><rect x="5.5" y="11" width="4" height="6"/><rect x="10.5" y="11" width="4" height="6"/><rect x="14.5" y="11" width="4" height="6"/></svg><span>連続</span></button>
           </div>
+          <button id="focus-mode" class="icon-button focus-toggle" title="左右の欄と物語の帯を隠してページを大きく（Tab。もう一度で戻す）" aria-label="ページだけにする" aria-pressed="false"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="1"/><path d="M7 7l-2-2M13 7l2-2M7 13l-2 2M13 13l2 2"/></svg></button>
           <div class="rows-control" id="rows-control" hidden>
             <label title="見開きを何行に並べるか。1 で全ページを横一列に（Alt+↑ / Alt+↓）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg><input type="range" id="rows-range" min="1" max="1" step="1" value="1" /><output id="rows-value">1 行</output></label>
             <button id="fit-all" class="icon-button" title="全ページを画面に収める（Ctrl+Alt+0）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg></button>
@@ -203,11 +205,28 @@
         <details id="ne-check" class="name-check"><summary id="ne-check-summary"></summary><div id="ne-check-list" class="name-check-list"></div></details>
         <div id="ne-csp">
           <p class="hint">ページごとに .clip を作り、ラフ線・コマ枠・フキダシ・セリフを別々のレイヤーにします（取り込んだネーム用紙のラフ画像もレイヤーに）。ネームの基本枠を、CSP のページの基本枠に合わせます。</p>
+          <div class="field">
+            <label for="ne-out-dir">書き出し先</label>
+            <output id="ne-out-dir" class="path">未選択</output>
+            <button type="button" id="ne-pick-out-dir" aria-label="書き出し先を選ぶ">選ぶ…</button>
+          </div>
+          <label class="check"><input type="checkbox" id="ne-make-work" checked /> 作品ファイル（.cmc）も作る</label>
+          <div class="field" id="ne-work-fields">
+            <label id="ne-work-template-label" for="ne-work-template">作品のひな形</label>
+            <output id="ne-work-template" class="path">未選択</output>
+            <button type="button" id="ne-pick-work-template" aria-label="作品のひな形を選ぶ">選ぶ…</button>
+            <label for="ne-work-name">作品名</label>
+            <input id="ne-work-name" type="text" />
+            <label for="ne-story-index">話数</label>
+            <input id="ne-story-index" type="number" min="0" placeholder="ひな形のまま" />
+          </div>
+          <details id="ne-more" class="ne-more">
+            <summary>レイヤー・コマ・用紙とノンブル（詳しい設定）</summary>
           <label class="check"><input type="checkbox" id="ne-editable" checked /> 線をベクターレイヤー、セリフをテキストレイヤーにする（CSP で直せる）</label>
           <label class="check"><input type="checkbox" id="ne-draft" checked /> ラフ線を下描きレイヤーにする（不透明度 50%。上にペン入れでき、塗りつぶしの参照と画像の書き出しに入らない）</label>
           <label class="check"><input type="checkbox" id="ne-notes" checked /> コマのメモとページのメモを下描きレイヤー「メモ（ネーム）」に書く（ペン入れ中に見られ、印刷されない。付箋は書かない）</label>
           <div class="field">
-            <span>コマ</span>
+            <label for="ne-panels">コマ</label>
             <select id="ne-panels">
               <option value="lines">コマ枠の線だけ（ベクターレイヤー「コマ枠」）</option>
               <option value="masks">コマごとのフォルダー＋レイヤーマスク</option>
@@ -222,84 +241,70 @@
           <div id="ne-builtin">
             <p class="hint">ひな形を選ばずに、ここで決めた大きさ・枠・解像度・綴じで CSP のページと作品（.cmc）を作ります。設定はネームに保存されます。</p>
             <div class="field csp-page">
-              <span>用紙</span>
+              <label for="ne-preset">用紙</label>
               <select id="ne-preset"></select>
               <span>キャンバス</span>
-              <span class="mm-pair"><input id="ne-canvas-w" type="number" min="1" step="0.1" aria-label="キャンバスの幅" /> × <input id="ne-canvas-h" type="number" min="1" step="0.1" aria-label="キャンバスの高さ" /> mm</span>
+              <span class="mm-pair" role="group" aria-label="キャンバス"><input id="ne-canvas-w" type="number" min="1" step="0.1" aria-label="キャンバスの幅" /> × <input id="ne-canvas-h" type="number" min="1" step="0.1" aria-label="キャンバスの高さ" /> mm</span>
               <span>仕上がり</span>
-              <span class="mm-pair"><input id="ne-trim-w" type="number" min="1" step="0.1" aria-label="仕上がりの幅" /> × <input id="ne-trim-h" type="number" min="1" step="0.1" aria-label="仕上がりの高さ" /> mm</span>
+              <span class="mm-pair" role="group" aria-label="仕上がり"><input id="ne-trim-w" type="number" min="1" step="0.1" aria-label="仕上がりの幅" /> × <input id="ne-trim-h" type="number" min="1" step="0.1" aria-label="仕上がりの高さ" /> mm</span>
               <span>裁ち落とし</span>
-              <span class="mm-pair"><input id="ne-bleed" type="number" min="0" step="0.1" aria-label="裁ち落とし幅" /> mm</span>
+              <span class="mm-pair" role="group" aria-label="裁ち落とし"><input id="ne-bleed" type="number" min="0" step="0.1" aria-label="裁ち落とし幅" /> mm</span>
               <span>基本枠</span>
-              <span class="mm-pair"><input id="ne-basic-w" type="number" min="1" step="0.1" aria-label="基本枠の幅" /> × <input id="ne-basic-h" type="number" min="1" step="0.1" aria-label="基本枠の高さ" /> mm</span>
+              <span class="mm-pair" role="group" aria-label="基本枠"><input id="ne-basic-w" type="number" min="1" step="0.1" aria-label="基本枠の幅" /> × <input id="ne-basic-h" type="number" min="1" step="0.1" aria-label="基本枠の高さ" /> mm</span>
               <span>基本枠のずれ</span>
-              <span class="mm-pair"><input id="ne-basic-x" type="number" step="0.1" aria-label="基本枠の横のずれ" /> , <input id="ne-basic-y" type="number" step="0.1" aria-label="基本枠の縦のずれ" /> mm<small>（右・下へ）</small></span>
-              <span>解像度</span>
+              <span class="mm-pair" role="group" aria-label="基本枠のずれ"><input id="ne-basic-x" type="number" step="0.1" aria-label="基本枠の横のずれ" /> , <input id="ne-basic-y" type="number" step="0.1" aria-label="基本枠の縦のずれ" /> mm<small>（右・下へ）</small></span>
+              <label for="ne-dpi">解像度</label>
               <span class="mm-pair"><select id="ne-dpi"><option value="600">600</option><option value="1200">1200</option><option value="350">350</option><option value="300">300</option><option value="150">150</option></select> dpi <output id="ne-px"></output></span>
-              <span>1 ページ目</span>
+              <label for="ne-first-side">1 ページ目</label>
               <span class="mm-pair"><select id="ne-first-side"><option value="left">左ページ</option><option value="right">右ページ</option></select> <small id="ne-binding-label"></small></span>
-              <span>作者名</span>
+              <label for="ne-author">作者名</label>
               <input id="ne-author" type="text" />
-              <span>ノンブル開始</span>
+              <label for="ne-nombre-start">ノンブル開始</label>
               <span class="mm-pair"><input id="ne-nombre-start" type="number" min="0" step="1" aria-label="ノンブルの開始番号" /></span>
               <span>作品情報の書体</span>
-              <span id="ne-story-font" class="mm-pair"></span>
-              <span>サブタイトル</span>
+              <span id="ne-story-font" class="mm-pair" role="group" aria-label="作品情報の書体"></span>
+              <label for="ne-subtitle">サブタイトル</label>
               <input id="ne-subtitle" type="text" placeholder="なし（作品名・話数のあとに入ります）" />
               <span>作品情報の位置</span>
-              <span class="mm-pair">作品名 <select id="ne-title-pos" aria-label="作品名の位置"><option value="left">左下</option><option value="center">下</option><option value="right">右下</option></select> 作者名 <select id="ne-author-pos" aria-label="作者名の位置"><option value="left">左下</option><option value="center">下</option><option value="right">右下</option></select><small>（仕上がりの下）</small></span>
+              <span class="mm-pair" role="group" aria-label="作品情報の位置">作品名 <select id="ne-title-pos" aria-label="作品名の位置"><option value="left">左下</option><option value="center">下</option><option value="right">右下</option></select> 作者名 <select id="ne-author-pos" aria-label="作者名の位置"><option value="left">左下</option><option value="center">下</option><option value="right">右下</option></select><small>（仕上がりの下）</small></span>
               <span>ページ番号</span>
-              <span class="mm-pair"><label><input id="ne-page-number" type="checkbox" /> 作品情報に入れる</label> 開始 <input id="ne-page-number-start" type="number" min="0" step="1" aria-label="ページ番号の開始番号" /> <select id="ne-page-number-pos" aria-label="ページ番号の位置"><option value="left">左下</option><option value="center">下</option><option value="right">右下</option></select><small>（「7ページ」のように）</small></span>
-              <span>ノンブル</span>
+              <span class="mm-pair" role="group" aria-label="ページ番号"><label><input id="ne-page-number" type="checkbox" /> 作品情報に入れる</label> 開始 <input id="ne-page-number-start" type="number" min="0" step="1" aria-label="ページ番号の開始番号" /> <select id="ne-page-number-pos" aria-label="ページ番号の位置"><option value="left">左下</option><option value="center">下</option><option value="right">右下</option></select><small>（「7ページ」のように）</small></span>
+              <label for="ne-nombre-place">ノンブル</label>
               <span class="mm-pair"><select id="ne-nombre-place" aria-label="ノンブルの位置">
                 <option value="hidden">隠しノンブル（綴じ側の裁ち落とし）</option>
                 <option value="top-inner">上部内側</option><option value="top">上部</option><option value="top-outer">上部外側</option>
                 <option value="bottom-inner">下部内側</option><option value="bottom">下部</option><option value="bottom-outer">下部外側</option>
               </select><small>（内側＝綴じる側。基本枠の外に入ります）</small></span>
               <span class="ne-shown">ノンブルの見た目</span>
-              <span class="mm-pair ne-shown"><select id="ne-nombre-color" aria-label="ノンブルの色"><option value="black">黒</option><option value="white">白</option></select> <label><input id="ne-nombre-edge" type="checkbox" /> フチ</label> <input id="ne-nombre-edge-mm" type="number" min="0" max="5" step="0.1" aria-label="フチの太さ" /> mm　サイズ <input id="ne-nombre-size" type="number" min="4" max="72" step="0.5" aria-label="ノンブルの大きさ" /> pt</span>
+              <span class="mm-pair ne-shown" role="group" aria-label="ノンブルの見た目"><select id="ne-nombre-color" aria-label="ノンブルの色"><option value="black">黒</option><option value="white">白</option></select> <label><input id="ne-nombre-edge" type="checkbox" /> フチ</label> <input id="ne-nombre-edge-mm" type="number" min="0" max="5" step="0.1" aria-label="フチの太さ" /> mm　サイズ <input id="ne-nombre-size" type="number" min="4" max="72" step="0.5" aria-label="ノンブルの大きさ" /> pt</span>
               <span class="ne-shown">ノンブルの書式</span>
-              <span class="mm-pair ne-shown"><input id="ne-nombre-prefix" type="text" class="short" aria-label="番号の前" placeholder="前" /> 1 <input id="ne-nombre-suffix" type="text" class="short" aria-label="番号のあと" placeholder="後" />　基本枠との間隔 縦 <input id="ne-nombre-y" type="number" step="0.1" aria-label="基本枠との縦の間隔" /> 横 <input id="ne-nombre-x" type="number" step="0.1" aria-label="基本枠との横の間隔" /> mm</span>
+              <span class="mm-pair ne-shown" role="group" aria-label="ノンブルの書式"><input id="ne-nombre-prefix" type="text" class="short" aria-label="番号の前" placeholder="前" /> 1 <input id="ne-nombre-suffix" type="text" class="short" aria-label="番号のあと" placeholder="後" />　基本枠との間隔 縦 <input id="ne-nombre-y" type="number" step="0.1" aria-label="基本枠との縦の間隔" /> 横 <input id="ne-nombre-x" type="number" step="0.1" aria-label="基本枠との横の間隔" /> mm</span>
               <span class="ne-join">縦長のページ</span>
               <label class="mm-pair ne-join"><input id="ne-join-pieces" type="checkbox" /> 区切りをつなげて 1 枚に（CSP の上限 30,000 px ごとに分けます） <output id="ne-join-info"></output></label>
             </div>
           </div>
           <div class="field">
-            <span id="ne-template-label">ひな形のページ</span>
+            <label id="ne-template-label" for="ne-template">ひな形のページ</label>
             <output id="ne-template" class="path">未選択</output>
-            <button type="button" id="ne-pick-template">選ぶ…</button>
+            <button type="button" id="ne-pick-template" aria-label="ひな形のページを選ぶ">選ぶ…</button>
             <small id="ne-template-hint">同じ作品の設定で CSP が保存した、空のページ（.clip）</small>
-            <span>見本のページ</span>
+            <label for="ne-donor">見本のページ</label>
             <output id="ne-donor" class="path">未選択</output>
-            <span class="row"><button type="button" id="ne-pick-donor">選ぶ…</button><button type="button" id="ne-clear-donor">外す</button></span>
+            <span class="row"><button type="button" id="ne-pick-donor" aria-label="見本のページを選ぶ">選ぶ…</button><button type="button" id="ne-clear-donor" aria-label="見本のページを外す">外す</button></span>
             <small>任意。CSP でテキストとベクター線を描いて保存したページ（.clip）。その書体や線のレイヤーを写します（なければ内蔵のものを使います）</small>
           </div>
-          <div class="field">
-            <span>書き出し先</span>
-            <output id="ne-out-dir" class="path">未選択</output>
-            <button type="button" id="ne-pick-out-dir">選ぶ…</button>
-          </div>
-          <label class="check"><input type="checkbox" id="ne-make-work" checked /> 作品ファイル（.cmc）も作る</label>
-          <div class="field" id="ne-work-fields">
-            <span id="ne-work-template-label">作品のひな形</span>
-            <output id="ne-work-template" class="path">未選択</output>
-            <button type="button" id="ne-pick-work-template">選ぶ…</button>
-            <span>作品名</span>
-            <input id="ne-work-name" type="text" />
-            <span>話数</span>
-            <input id="ne-story-index" type="number" min="0" placeholder="ひな形のまま" />
-          </div>
+          </details>
           <p class="hint" id="ne-binding-hint" hidden></p>
         </div>
         <div id="ne-pdf" hidden>
           <p class="hint">読み返しや打ち合わせ用に、全ページを 1 つの PDF にします（<span id="ne-pdf-binding">右綴じ</span>で開くよう指定します）。</p>
           <div class="field">
-            <span>範囲</span>
+            <label for="ne-pdf-area">範囲</label>
             <select id="ne-pdf-area">
               <option value="trim">仕上がり（裁ち落とし）で切る</option>
               <option value="canvas">キャンバス全体</option>
             </select>
-            <span>解像度</span>
+            <label for="ne-pdf-dpi">解像度</label>
             <select id="ne-pdf-dpi">
               <option value="150">150 dpi（軽い）</option>
               <option value="200" selected>200 dpi</option>
@@ -310,12 +315,15 @@
         <div id="ne-text" hidden>
           <p class="hint">全ページのセリフを、ページ・コマ・話者つきのテキスト（.txt）にします。写植や打ち合わせに使えます。</p>
         </div>
+        <div class="ne-footer">
+        <p id="ne-summary" class="ne-summary"></p>
         <p id="ne-message" class="message" role="status"></p>
         <div class="actions">
           <button value="cancel" formnovalidate>閉じる</button>
           <button type="button" id="ne-readback" title="書き出したフォルダーのページで CSP で直した・足した・消したセリフを、ネームに入れます（ネームで変えたところはそのまま）">CSP のセリフを読み戻す…</button>
           <button type="button" id="ne-update" title="書き出したフォルダーのページ（CSP で描き進めたもの）に、ネームで変わったセリフとフキダシだけを入れます。描いたレイヤーはそのまま、元のページは name-studio-backup に控えます">セリフだけ反映…</button>
           <button type="button" id="ne-run" class="primary">書き出す</button>
+        </div>
         </div>
       </form>
     </dialog>

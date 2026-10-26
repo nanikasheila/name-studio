@@ -8,7 +8,7 @@ import { useFonts } from "./fonts";
 import { useStyle } from "./style";
 import { $ } from "./dom";
 import { Inspector } from "./inspector";
-import { ask, save } from "@tauri-apps/plugin-dialog";
+import { ask, message, save } from "@tauri-apps/plugin-dialog";
 import { heldNear } from "./hold";
 import { Autosaver, autosaveToFile, formatTime } from "./autosave";
 import { penPreferences, rememberName } from "./prefs";
@@ -43,6 +43,7 @@ import { normalize, trailingEmptyPages } from "./project";
 import { stillThere } from "./removal";
 import { localStore } from "./settings";
 import { LiveFields } from "./livefields";
+import { saveState, type SaveFacts } from "./savestate";
 import { NameEdits, pickedStrokes } from "./nameedits";
 import { editorDocks } from "./palettes";
 import { ReferenceBar } from "./referencebar";
@@ -172,6 +173,12 @@ export class Workbench {
   private readonly brushDialog: BrushDialog;
   private readonly settingsDialog: SettingsDialog;
   private readonly versionDialog: VersionDialog;
+  /** The save or autosave being written, which the next one waits for. */
+  private writing: Promise<unknown> = Promise.resolve();
+  /** Saves and autosaves being written. */
+  private writes = 0;
+  /** Where the open name's changes are kept, for the save state beside its name. */
+  private kept: Omit<SaveFacts, "hasPath" | "dirty" | "writing"> = { savedAt: null, copyAt: null, failed: null, seriesBehind: false };
   private readonly autosaver = new Autosaver(
     () => this.autosave(),
     () => this.session.inStep,
@@ -280,14 +287,7 @@ export class Workbench {
       // 左へ・右へ: the next spread is to the left in a right-bound book, to the right in a left-bound one.
       flipLeft: (step) => this.flip(step * this.leftward()),
       makeOption: (first, last) => this.edits.makeOption(first, last),
-      toggleFocus: () => {
-        // As CSP's Tab: the side palettes and the story band go, the pages take the room.
-        const focus = document.body.classList.toggle("focus-mode");
-        this.editor.resize();
-        // Back: the band and the palettes catch up with what changed while they were hidden.
-        if (!focus) this.renderAll();
-        this.setStatus(focus ? "左右の欄と下の帯を隠しました（Tab で戻す）" : "");
-      },
+      toggleFocus: () => this.toggleFocus(),
       arrange: (pageId) => this.edits.arrange(pageId),
       addTails: (pageId) => this.edits.addTails(pageId),
       addPageAfter: (page) => this.edits.addPageAfter(page),
@@ -345,6 +345,7 @@ export class Workbench {
     this.exportDialog = new ExportDialog({
       project: () => this.session.project,
       projectPath: () => this.session.path,
+      projectId: () => this.session.id,
       rough: (rough) => this.roughs.load(rough),
       status: (message) => this.setStatus(message),
       edit: (change) => this.edit(change),
@@ -380,26 +381,40 @@ export class Workbench {
     return this.session.dirty;
   }
 
+  /** As CSP's Tab: the side palettes and the story band go, the pages take the room. */
+  private toggleFocus(): void {
+    const focus = document.body.classList.toggle("focus-mode");
+    $("focus-mode").setAttribute("aria-pressed", String(focus));
+    this.editor.resize();
+    // Back: the band and the palettes catch up with what changed while they were hidden.
+    if (!focus) this.renderAll();
+    this.setStatus(focus ? "左右の欄と下の帯を隠しました（Tab で戻す）" : "");
+  }
+
   // --- opening and saving --------------------------------------------------------
 
   /**
    * Before the project is closed: let autosave write it to its file, then
-   * ask before throwing away what is still unsaved (and its autosave copy).
+   * ask whether to save what is still unsaved, throw it away (and its
+   * autosave copy) or go back to it.
    */
   async confirmDiscard(): Promise<boolean> {
     if (!this.session.project) return true;
     if (this.session.dirty && this.session.path && autosaveToFile()) await this.autosaver.flush();
     if (!this.session.dirty) return true;
-    const discard = await ask("保存していない変更があります。破棄して続けますか？", { title: "Name Studio", kind: "warning" });
-    if (discard) {
-      this.autosaver.reset();
-      await call("discard_recovery", { path: this.session.path }).catch(() => undefined);
-    }
-    return discard;
+    const [keep, discard] = ["保存して続ける", "保存しないで続ける"];
+    const choice = await message("保存していない変更があります。", { title: "Name Studio", kind: "warning", buttons: { yes: keep, no: discard, cancel: "戻る" } });
+    if (choice === keep || choice === "Yes") return this.save();
+    if (choice !== discard && choice !== "No") return false;
+    this.autosaver.reset();
+    await call("discard_recovery", { path: this.session.path }).catch(() => undefined);
+    return true;
   }
 
   show(project: Project, path: string | null, message: string): void {
     this.seriesPanel.follow(this.session.open(project, path), path);
+    clearAlert("series");
+    this.kept = { savedAt: null, copyAt: null, failed: null, seriesBehind: false };
     this.roughs.clear();
     this.autosaver.reset();
     this.editor.selection = null;
@@ -447,6 +462,7 @@ export class Workbench {
     const mended = repair(normalize(project));
     const note = mended.length ? `（${mended.length} か所の問題を直しました）` : "";
     this.show(project, path, `${name} を ${formatTime(timeMs)} の自動保存から復元しました${note}。保存すると確定します`);
+    this.kept.copyAt = timeMs;
     this.markDirty();
     this.updateTitle();
   }
@@ -470,25 +486,81 @@ export class Workbench {
     if (mended.length) this.commit();
     else this.session.cancel();
     this.seriesPanel.beforeSave(project, path);
-    const revision = this.session.revision;
+    const id = this.session.id;
+    const previousPath = this.session.path;
     try {
-      await call("save_project", projectBody({ path, previousPath: this.session.path }, savedForm(project)));
-      this.session.saved(path, revision);
+      const revision = await this.queued(async () => {
+        const revision = this.session.revision;
+        await call("save_project", projectBody({ path, previousPath }, savedForm(project)));
+        return revision;
+      });
       rememberName(path, project);
-      await this.seriesPanel.saved(project, path);
+      if (!this.session.saved(path, revision, id)) {
+        // Another name was opened while this one was written: it keeps its own file and state.
+        this.setStatus(`前に開いていたネームを保存しました: ${path}`);
+        return true;
+      }
+      this.kept = { ...this.kept, savedAt: Date.now(), copyAt: null, failed: null };
+      const series = await this.saveSeries(project, path);
       if (!this.session.dirty) this.autosaver.reset();
       this.updateTitle();
       clearAlert("save");
       if (mended.length) clearAlert("autosave");
       const note = mended.length ? `（保存の前に ${mended.length} か所直しました: ${mended.slice(0, 2).join("／")}${mended.length > 2 ? " ほか" : ""}。元に戻すは Ctrl+Z）` : "";
-      this.setStatus(`保存しました: ${path}${note}`);
+      this.setStatus(series ? `ネームは保存しました（シリーズには未反映）: ${path}` : `保存しました: ${path}${note}`);
       return true;
     } catch (error) {
-      this.setStatus(`保存できませんでした: ${error}`);
-      showAlert("save", `保存できませんでした。\n${error}`, "error");
+      if (this.session.id !== id) {
+        this.setStatus(`前に開いていたネームを保存できませんでした: ${error}`);
+      } else {
+        this.setStatus(`保存できませんでした: ${error}`);
+      }
+      if (this.session.id === id) this.kept.failed = String(error);
+      this.updateTitle();
+      showAlert("save", `保存できませんでした。\n${path}\n${error}`, "error");
       void logError(`save: ${error}`);
       return false;
     }
+  }
+
+  /**
+   * Saves and autosaves one after another, so an older version never lands
+   * after a newer one.
+   */
+  private queued<T>(write: () => Promise<T>): Promise<T> {
+    this.writes++;
+    this.updateTitle();
+    const run = this.writing.then(write, write).finally(() => {
+      this.writes--;
+      this.updateTitle();
+    });
+    this.writing = run.catch(() => undefined);
+    return run;
+  }
+
+  /**
+   * The series after the open name was saved: an alert stays while the series
+   * file lags behind, with a way to try again. Null when it has it.
+   */
+  private async saveSeries(project: Project, path: string): Promise<string | null> {
+    const problem = await this.seriesPanel.saved(project, path);
+    this.kept.seriesBehind = !!problem;
+    this.updateTitle();
+    if (problem) {
+      showAlert("series", `ネームは保存しました。シリーズのファイルには反映できていません（次の保存でもう一度試します）。\n${problem}`, "warning", undefined, {
+        label: "もう一度",
+        run: () => void this.retrySeries(),
+      });
+    } else {
+      clearAlert("series");
+    }
+    return problem;
+  }
+
+  private async retrySeries(): Promise<void> {
+    const project = this.session.project;
+    const path = this.session.path;
+    if (project && path && !(await this.saveSeries(project, path))) this.setStatus("シリーズに反映しました");
   }
 
   /** Autosave: the file itself when it has one (and that is on), else a copy. */
@@ -496,17 +568,21 @@ export class Workbench {
     const project = this.session.project;
     if (!project) return;
     const path = this.session.path;
-    const revision = this.session.revision;
+    const id = this.session.id;
     try {
-      const result = await call(
-        "autosave_project",
-        projectBody({ path, toFile: autosaveToFile() }, savedForm(project)),
-      );
+      const [result, revision] = await this.queued(async () => {
+        const revision = this.session.revision;
+        const result = await call("autosave_project", projectBody({ path, toFile: autosaveToFile() }, savedForm(project)));
+        return [result, revision] as const;
+      });
+      // A name opened meanwhile is not this one: its state and alerts stay as they are.
+      if (this.session.id !== id) return;
       if (result.savedToFile && this.session.path === path) {
-        this.session.autosaved(revision);
-        this.updateTitle();
-      }
-      if (result.savedToFile && path) await this.seriesPanel.saved(project, path);
+        this.session.autosaved(revision, id);
+        this.kept = { ...this.kept, savedAt: Date.now(), copyAt: null, failed: null };
+      } else this.kept = { ...this.kept, copyAt: Date.now(), failed: null };
+      this.updateTitle();
+      if (result.savedToFile && path) await this.saveSeries(project, path);
       if (result.problems?.length) {
         const list = result.problems.slice(0, 3).join("\n");
         showAlert(
@@ -518,6 +594,9 @@ export class Workbench {
         clearAlert("autosave");
       }
     } catch (error) {
+      if (this.session.id !== id) return;
+      this.kept.failed = String(error);
+      this.updateTitle();
       this.setStatus(`自動保存できませんでした: ${error}`);
       showAlert("autosave", `自動保存できませんでした（次の変更でもう一度試します）。\n${error}`, "error");
       void logError(`autosave: ${error}`);
@@ -653,6 +732,12 @@ export class Workbench {
     if (!project) return;
     const name = this.session.path?.split(/[\\/]/).pop() ?? "（未保存）";
     this.onTitle(`${this.session.dirty ? "● " : ""}${name} — ${project.title}`);
+    const clock = (ms: number) => new Date(ms).toTimeString().slice(0, 5);
+    const state = saveState({ ...this.kept, hasPath: !!this.session.path, dirty: this.session.dirty, writing: this.writes > 0 }, clock);
+    const node = $("save-state");
+    node.textContent = state.text;
+    node.title = state.detail;
+    node.dataset.tone = state.tone;
   }
 
   /** What the open palettes hold (those folded or hidden wait until they open). */
@@ -748,6 +833,7 @@ export class Workbench {
     $("redo").addEventListener("click", () => this.redo());
     $("brush-import").addEventListener("click", () => void this.brushDialog.open());
     $("name-export").addEventListener("click", () => this.exportDialog.open());
+    $("focus-mode").addEventListener("click", () => this.toggleFocus());
     $("versions").addEventListener("click", () => this.openVersions());
     $("shortcuts").addEventListener("click", () => this.shortcutDialog.open());
     $("pen-settings").addEventListener("click", () => this.penDialog.open());

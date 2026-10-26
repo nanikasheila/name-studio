@@ -7,6 +7,19 @@
 ファイル形式の解析結果は csp-name-splitter の
 [docs/formats/csp-file-format.md](https://github.com/nanikasheila/csp-name-splitter/blob/main/docs/formats/csp-file-format.md) を参照してください。
 
+## はじめかた
+
+1. [最新のリリース](https://github.com/nanikasheila/name-studio/releases/latest) から
+   `NameStudio_…_x64-setup.exe` を落として入れます（Windows 10 / 11。署名していないので、初回は
+   SmartScreen の「詳細情報 → 実行」で進めます）。入れたあとは起動するたびに自動で更新されます。
+2. 開始画面で「新しいネーム」（白紙から）か「開く」（CSP のネーム用紙 .clip から取り込む）。
+   左の道具で、コマ割り（線を引いて割る）→ セリフ（クリックで置く）→ ペン（ラフを描く）。
+   変更は自動で保存され、ネーム名の横に保存の状態が出ます（最初の Ctrl+S で保存先を決めます）。
+3. 右上の「書き出す…」で、書き出し先を選んで「書き出す」。CSP のページ（.clip）と作品（.cmc）が
+   できるので、CLIP STUDIO PAINT EX で作品を開いてペン入れに進みます。打ち合わせ用の PDF もここから。
+
+迷ったら Ctrl+K（命令パレット）で、やりたいことを打って探せます。
+
 ## できること
 
 - CSP のネーム用紙（.clip）を開いて、全体表示と右綴じの見開き表示で見直す
@@ -79,8 +92,8 @@
 
 | 場所 | 中身 |
 | --- | --- |
-| `crates/clip-core` | .clip / .cmc の読み書きのうちこのツールの規則（レイヤーの種類、ページ枠、ページ一覧、書き出し）。形式そのもの（コンテナ・DB・画素のブロック・自己検査）は [csp-format](https://github.com/nanikasheila/csp-format) の `csp-format` に任せ、ルートの `Cargo.toml` で rev を決めて使う（C の zlib をビルドするので C コンパイラが要る） |
-| `crates/name-model` | ネームデータ（正本、.namestudio）。ページ・コマ・セリフ・ラフ線・シーン・登場人物・感情の値 |
+| `crates/clip-core` | .clip / .cmc の読み書きのうちこのツールの規則（レイヤーの種類、ページ枠、ページ一覧、ネーム用紙の取り込み、書き出し、サブツールの描き味）。形式そのもの（コンテナ・DB・画素のブロック・テキスト・ベクター・自己検査）は [csp-format](https://github.com/nanikasheila/csp-format) の `csp-format`、サブツール（.sut / .todb）は `csp-assets` に任せ、ルートの `Cargo.toml` で rev を決めて使う（C の zlib をビルドするので C コンパイラが要る） |
+| `crates/name-model` | ネームデータ（正本、.namestudio）。ページ・コマ・セリフ・ラフ線・シーン・登場人物・感情の値。CSP の形式もアプリも知らない（いちばん遅く変わる層。`clip-core/tests/layering.rs` が確かめる） |
 | `crates/name-cli` | コマンドライン（`inspect` / `cells` / `import` / `split` / `decode-time`） |
 | `app/` | 画面（Tauri 2 + TypeScript）。`app/src-tauri` が Rust 側 |
 | `tools/compare_with_python.py` | Python 版（csp-name-splitter の `name_splitter/csp`）と出力を突き合わせる |
@@ -174,3 +187,7 @@ CSP_NAME_SPLITTER=../csp-name-splitter python tools/compare_with_python.py [作�
 ネームデータの型は Rust（`crates/name-model/src/model.rs`）と画面（`app/src/model.ts`）の 2 か所にあります。項目や選択肢を足すときは両方に足し、`app/src/contract.test.ts` の全項目の見本にも足して `(cd app && npx vitest run -u src/contract.test.ts)` で `crates/name-model/tests/fixtures` を書き直してください。片方に足し忘れると、型チェックか `cargo test`（`tests/contract.rs`）が落ちます。Rust 側にコマンドを足したら `app/src/backend.ts` の `Commands` にも書いてください（`backend.test.ts` が `lib.rs` と突き合わせます）。
 
 画面側（`app/src`）のモジュールは、変わる速さで層に分けています（遅い順に 型・計算・仕組み・描画・書き出し・画面・起動）。どの層かは `app/src/architecture.test.ts` の `LAYERS` に書き、上の層から import すると落ちます。計算の層（ネームの操作）はブラウザ・保存場所・Rust 側に触らず、この PC に残す設定は `prefs.ts`（中身は `settings.ts`）、画像の読み込みは `pictures.ts`、キャンバスへの描画は `pagedraw.ts` を通します。ファイルを足したら `LAYERS` にも書いてください。
+
+## ライセンス
+
+MIT（[LICENSE](LICENSE)）。組み込んでいるライブラリとそのライセンスは [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)（インストール先にも入ります）。依存を変えたら `python tools/third_party.py` で作り直します（CI が古いままを止めます）。

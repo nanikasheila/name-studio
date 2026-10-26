@@ -40,6 +40,15 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .toolbar button, .toolbar label, .toolbar select { white-space: nowrap; flex-shrink: 0; }
 .toolbar .file-name { flex-shrink: 1; min-width: 4em; }
 .file-name { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40vw; }
+/* Where the changes are kept: in the file, only in the recovery copy, not yet; and a failure until it is put right. */
+.save-state { flex-shrink: 0; padding: 1px 8px; border-radius: 10px; font-size: 12px; white-space: nowrap; border: 1px solid var(--line); color: var(--muted); }
+.save-state[data-tone="pending"] { color: var(--text); }
+.save-state[data-tone="warning"] { background: #fff6dc; color: #5a4300; border-color: #e3c873; }
+.save-state[data-tone="error"] { background: #fdecea; color: #6b1a12; border-color: #e6a59c; }
+@media (prefers-color-scheme: dark) {
+  .save-state[data-tone="warning"] { background: #463a12; color: #ffecb0; border-color: #8a7330; }
+  .save-state[data-tone="error"] { background: #4a1c17; color: #ffd9d3; border-color: #8a3a30; }
+}
 .spacer { flex: 1; }
 .segmented { display: flex; }
 .segmented button { border-radius: 0; }
@@ -106,6 +115,7 @@ body:has(#viewer.start) .viewer-only { display: none; }
 .alert.warning { background: #fff6dc; color: #5a4300; border-color: #e3c873; }
 .alert p { margin: 0; flex: 1; white-space: pre-line; }
 .alert button { border: 0; background: transparent; color: inherit; font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 4px; }
+.alert button.alert-action { font-size: 12px; padding: 2px 8px; border: 1px solid currentColor; border-radius: 4px; white-space: nowrap; }
 @media (prefers-color-scheme: dark) {
   .alert.error { background: #4a1c17; color: #ffd9d3; border-color: #8a3a30; }
   .alert.warning { background: #463a12; color: #ffecb0; border-color: #8a7330; }
@@ -136,6 +146,13 @@ dialog.export::backdrop { background: rgb(0 0 0 / 0.35); }
 .name-check-list button.fix { align-self: flex-start; border: 1px solid #c9a24a; border-radius: 4px; background: #fff; padding: 3px 8px; margin-bottom: 4px; }
 .export .message.error { color: #c0392b; }
 .export .actions { display: flex; justify-content: flex-end; gap: 8px; }
+/* What 書き出す makes, the messages and the buttons stay at the bottom while the settings scroll. */
+.export .ne-footer { position: sticky; bottom: -20px; margin: 8px -20px -20px; padding: 8px 20px 16px; background: var(--panel); border-top: 1px solid var(--line); }
+.export .ne-summary { margin: 0 0 4px; font-size: 12px; overflow-wrap: anywhere; }
+.export .ne-footer .message { margin: 0 0 6px; }
+.export .ne-more { margin: 12px 0 4px; }
+.export .ne-more > summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.export .ne-more[open] > summary { margin-bottom: 4px; }
 #work-fields[hidden] { display: none; }
 .export .kinds { margin: 10px 0 4px; }
 .export .ne-modes { margin: 12px 0 4px; }
@@ -572,6 +589,15 @@ button.with-icon, .page-nav .segmented button { display: inline-flex; align-item
   .page-nav .segmented button span { display: none; }
   .rows-control input[type="range"] { width: 80px; }
 }
+/* The undo and export buttons never give way: they stay on screen at the smallest window. */
+.toolbar .app-bar { flex-shrink: 0; }
+/* A narrow window keeps the top buttons as icons (the names stay for screen readers and tips). */
+@media (max-width: 1180px) {
+  .toolbar button.labelled span, .toolbar #name-export span {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+  .toolbar { gap: 4px; }
+}
 .tool-options .brush-bar .size input { width: 4em; }
 
 /* The inspector in the colour of what is selected. */
@@ -623,6 +649,7 @@ button.with-icon, .page-nav .segmented button { display: inline-flex; align-item
 .held-actions { display: flex; flex-wrap: wrap; gap: 4px; }
 .held-actions button { font-size: 11px; padding: 2px 6px; }
 .held-badge { font-size: 12px; padding: 2px 8px; border-color: var(--c-sticky); }
+.focus-toggle[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 14%, var(--panel)); border-color: var(--accent); }
 .held-badge.near { background: color-mix(in srgb, var(--c-sticky) 22%, var(--panel)); font-weight: 600; }
 .tabs button { font-size: 13px; }
 .held-count { font-size: 10px; padding: 0 3px; border-radius: 3px; border: 1px solid var(--c-sticky); color: var(--text); }
@@ -645,6 +672,7 @@ button.with-icon, .page-nav .segmented button { display: inline-flex; align-item
 .story-controls > * { flex-shrink: 0; }
 .story-controls .spacer { flex: 1; }
 .story-lanes { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
+.story-lanes[hidden] { display: none; }
 .cast-dot {
   width: 24px; height: 24px; padding: 0; border-radius: 50%; display: inline-grid; place-items: center; font-size: 12px; font-weight: 700;
   color: #fff; background: var(--who); border: 2px solid transparent; opacity: 0.55;
@@ -694,6 +722,8 @@ button.with-icon, .page-nav .segmented button { display: inline-flex; align-item
 .dock.left { border-right: 1px solid var(--line); }
 .dock.right { border-left: 1px solid var(--line); }
 .dock.narrow { width: 52px; }
+/* A narrow window: the open palettes give the pages most of the width. */
+.dock:not(.narrow) { max-width: 26vw; }
 .dock-rail { display: flex; flex-wrap: wrap; gap: 2px; padding: 6px 4px; border-bottom: 1px solid var(--line); }
 .dock-rail button {
   flex: 1 1 38px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 4px 0 3px; font-size: 10.5px;

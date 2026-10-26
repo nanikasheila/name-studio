@@ -8,15 +8,15 @@
 //! - text blocks become lines (balloon outlines kept when there are some);
 //! - raster layers are referenced as rough images (pixels stay in the sheet).
 
-use clip_core::layout::{
+use crate::layout::{
     PageCell, ReadingOrder, Rect, as_rectangle, detect_page_cells, find_rectangles, template_rectangles,
 };
 use std::path::{Path, PathBuf};
 
-use clip_core::cmc::CmcProject;
-use clip_core::{ClipDocument, ClipLayer, LayerKind, Result};
+use crate::cmc::CmcProject;
+use crate::{ClipDocument, ClipLayer, LayerKind, Result};
 
-use crate::model::{
+use name_model::{
     BalloonShape, BoxMm, Line, LineKind, Page, PageFormat, Panel, Project, RoughImage, SourceSheet, Stroke, StrokePoint,
 };
 

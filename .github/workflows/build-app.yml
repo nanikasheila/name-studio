@@ -1,12 +1,16 @@
 name: Release Windows app
 
-# Every merge to main becomes a GitHub release with the Windows installer.
+# Every merge to main whose CI passed becomes a GitHub release with the
+# Windows installer, built from the very commit CI checked (a commit whose
+# tests failed is never shipped to the copies that update themselves).
 # With the updater key set up (docs/release.md), the release also carries
 # latest.json and the installer's signature, and installed copies update
 # themselves when they start. The installer itself is not code-signed, so
 # Windows shows a SmartScreen warning on the first install.
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -19,11 +23,17 @@ concurrency:
 
 jobs:
   windows:
+    # By hand, or after CI passed on a push to main (not on a pull request's run).
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: windows-latest
     env:
       VERSION: 0.2.${{ github.run_number }}
+      # The commit CI checked (by hand: the branch's head).
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SHA }}
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -62,7 +72,7 @@ jobs:
       - name: Collect release files
         shell: bash
         env:
-          NOTES: ${{ github.event.head_commit.message }}
+          NOTES: ${{ github.event.workflow_run.head_commit.message || github.event.head_commit.message }}
         run: node .github/scripts/release-files.mjs "$VERSION" release
 
       - name: Publish release
@@ -73,7 +83,7 @@ jobs:
           gh release create "v$VERSION" release/* \
             --title "Name Studio v$VERSION" \
             --notes-file release-notes.md \
-            --target "$GITHUB_SHA"
+            --target "$SHA"
 
       - uses: actions/upload-artifact@v4
         with:

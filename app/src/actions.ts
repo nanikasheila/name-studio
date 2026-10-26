@@ -240,6 +240,7 @@ export function buildCommands(host: CommandHost): Command[] {
     },
     { id: "view.edit", label: "物語の帯を元の高さに（ページを大きく）", group: "画面", keys: ["F1"], available: named, run: always(() => host.board.toggleWide(false)) },
     { id: "view.board", label: "物語の帯を大きく・戻す（型・シーン・時系列・感情・ページ）", group: "画面", keys: ["F6"], available: named, run: always(() => host.board.toggleWide()) },
+    { id: "view.fold", label: "物語の帯をたたむ・広げる（ページを広く）", group: "画面", keys: ["Shift+F6"], words: "隠す 閉じる 下の帯", available: named, run: always(() => host.board.toggleFold()) },
     lanes("view.structure", "帯にシーンと字数を出す", ["F2"], ["scene", "text"]),
     lanes("view.emotion", "帯に感情曲線を出す", ["F3"], ["emotion"]),
     lanes("view.timeline", "帯に時系列を出す", ["F4"], ["time"]),

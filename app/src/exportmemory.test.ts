@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { againSummary, memoryFrom, withMemory, type ExportMemory } from "./exportmemory";
+import { againSummary, exportSummary, memoryFrom, withMemory, type ExportMemory } from "./exportmemory";
 
 const memory = (timeMs: number, outDir = "C:/out"): ExportMemory => ({
   timeMs,
@@ -46,5 +46,32 @@ describe("export memory", () => {
     expect(againSummary(memory(1, ""))).toBeNull();
     expect(againSummary({ ...memory(1), kind: "pdf", files: { pdf: "C:/n.pdf" } })).toBe("PDFを C:/n.pdf に");
     expect(againSummary({ ...memory(1), kind: "text" })).toBeNull();
+  });
+});
+
+describe("what 書き出す will make", () => {
+  const settings = {
+    kind: "csp" as const,
+    form: { template: "", outDir: "C:/out", fit: "basic" as const, makeWork: true, workTemplate: "", workName: "ユメノストラ", storyIndex: "4" },
+    mode: "builtin" as const,
+    panels: "lines" as const,
+    editable: true,
+    draftRough: true,
+    notes: false,
+    pdf: { area: "trim" as const, dpi: 200 },
+  };
+  const of = { pages: 21, scroll: false, page: { trimMm: [257, 364] as [number, number], resolution: 600, preset: "商業誌 B4" } };
+
+  it("says the pages, the paper, the layers and where, for CSP", () => {
+    expect(exportSummary(settings, of)).toBe("21 ページ・商業誌 B4・600 dpi・直せる線とセリフ・ラフは下描き・コマ枠の線 → 作品「ユメノストラ」とページを C:/out に");
+    expect(exportSummary({ ...settings, mode: "file", form: { ...settings.form, template: "C:\\t\\page.clip", outDir: "", makeWork: false } }, of)).toBe(
+      "21 ページ・ひな形 page.clip・直せる線とセリフ・ラフは下描き・コマ枠の線 → ページだけを （書き出し先が未選択） に",
+    );
+    expect(exportSummary(settings, { ...of, page: { ...of.page, preset: null } })).toContain("仕上がり 257×364 mm");
+  });
+
+  it("says the PDF's resolution and area, and the script", () => {
+    expect(exportSummary({ ...settings, kind: "pdf" }, of)).toBe("21 ページを 1 つの PDF に（200 dpi・仕上がりで切る）");
+    expect(exportSummary({ ...settings, kind: "text" }, { ...of, scroll: true })).toBe("21 区切りのセリフを台本（.txt）に");
   });
 });

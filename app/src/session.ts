@@ -14,6 +14,8 @@ export class Session {
   private unsaved = false;
   /** Counts changes, so a save knows whether more came while it ran. */
   private count = 0;
+  /** Counts the names opened, so a save that ends after another was opened leaves it alone. */
+  private opened = 0;
   /** Snapshot taken by `begin`, recorded by `commit`. */
   private pending: Snapshot | null = null;
 
@@ -36,6 +38,11 @@ export class Session {
     return this.count;
   }
 
+  /** Which opened name this is: a new one for each `open`, kept through Save As. */
+  get id(): number {
+    return this.opened;
+  }
+
   /** A step is under way (begun, not yet committed). */
   get inStep(): boolean {
     return this.pending !== null;
@@ -55,6 +62,7 @@ export class Session {
     this.file = path;
     this.unsaved = false;
     this.pending = null;
+    this.opened += 1;
     this.history.clear();
     return this.current;
   }
@@ -66,15 +74,23 @@ export class Session {
     this.changed();
   }
 
-  /** Saved at `path` as it was at `revision`: unsaved only if more came since. */
-  saved(path: string, revision: number): void {
+  /**
+   * Saved at `path` as it was at `revision`: unsaved only if more came since.
+   * False, changing nothing, when another name was opened since (`id` is the
+   * one that was saved).
+   */
+  saved(path: string, revision: number, id = this.opened): boolean {
+    if (id !== this.opened) return false;
     this.file = path;
     if (this.count === revision) this.unsaved = false;
+    return true;
   }
 
-  /** Written to its own file by autosave, as it was at `revision`. */
-  autosaved(revision: number): void {
+  /** Written to its own file by autosave, as it was at `revision` (see `saved`). */
+  autosaved(revision: number, id = this.opened): boolean {
+    if (id !== this.opened) return false;
     if (this.count === revision) this.unsaved = false;
+    return true;
   }
 
   /** Remember the project as it is before a step changes it. */

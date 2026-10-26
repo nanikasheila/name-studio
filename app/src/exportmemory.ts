@@ -82,3 +82,34 @@ export function againSummary(memory: ExportMemory | null): string | null {
   const file = memory.files[memory.kind];
   return file ? `${memory.kind === "pdf" ? "PDF" : "台本"}を ${file} に` : null;
 }
+
+/** What the export about to be made is written from (beyond its settings). */
+export interface SummaryOf {
+  /** Pages (縦スクロール: pieces). */
+  pages: number;
+  scroll: boolean;
+  /** The CSP page made by the tool (ツールで設定する), with its 用紙's short name if it is one. */
+  page: { trimMm: [number, number]; resolution: number; preset: string | null } | null;
+}
+
+const PANELS_SHORT: Record<PanelExport, string> = { lines: "コマ枠の線", masks: "コマごとのマスク", frames: "コマ枠フォルダー" };
+const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
+
+/** What 「書き出す」 will make, in a line: how many pages, of what, to where. */
+export function exportSummary(settings: Omit<ExportMemory, "timeMs" | "files">, of: SummaryOf): string {
+  const pages = `${of.pages} ${of.scroll ? "区切り" : "ページ"}`;
+  if (settings.kind === "pdf") return `${pages}を 1 つの PDF に（${settings.pdf.dpi} dpi・${settings.pdf.area === "trim" ? "仕上がりで切る" : "キャンバス全体"}）`;
+  if (settings.kind === "text") return `${pages}のセリフを台本（.txt）に`;
+  const builtin = settings.mode === "builtin" && of.page;
+  const parts = [
+    pages,
+    builtin ? (of.page!.preset ?? `仕上がり ${of.page!.trimMm[0]}×${of.page!.trimMm[1]} mm`) : `ひな形 ${settings.form.template ? fileName(settings.form.template) : "未選択"}`,
+    builtin ? `${of.page!.resolution} dpi` : null,
+    settings.editable ? "直せる線とセリフ" : "画像の線とセリフ",
+    settings.draftRough ? "ラフは下描き" : null,
+    PANELS_SHORT[settings.panels],
+    settings.notes ? "メモ付き" : null,
+  ].filter((part): part is string => !!part);
+  const work = settings.form.makeWork ? `作品「${settings.form.workName || "（名前なし）"}」とページ` : "ページだけ";
+  return `${parts.join("・")} → ${work}を ${settings.form.outDir || "（書き出し先が未選択）"} に`;
+}

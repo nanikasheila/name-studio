@@ -52,6 +52,7 @@ export function fontField(value: string, fallback: string, change: (name: string
   const input = element("input", { type: "text", value, placeholder: fallback, title, spellcheck: false, autocomplete: "off" });
   input.setAttribute("role", "combobox");
   input.setAttribute("aria-expanded", "false");
+  if (title) input.setAttribute("aria-label", title);
   const shown = element("span", { className: "font-sample", textContent: SAMPLE });
   const show = (name: string) => (shown.style.font = canvasFont(name.trim() || null, 15));
   show(value);

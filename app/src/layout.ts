@@ -178,6 +178,64 @@ export function onStage(slot: Slot, pageH: number, width: number, height: number
   return x1 >= -room && x0 <= width + room && y1 >= -room && slot.y <= height + room;
 }
 
+/**
+ * 連続: the zoom and pan that make the spreads as large as fits, at most
+ * zoom 1: every page (`all`, in the middle) or the rows as tall as the stage
+ * (`rows`, the screen x that `across` gives for the laid-out pages put in
+ * the middle).
+ */
+export function fitContinuous(project: Project, list: Pair[], view: Arrangement, what: "all" | "rows", across: (slots: Slot[]) => number | null): { zoom: number; pan: Point } {
+  const pageH = project.pageFormat.canvasMm[1];
+  let zoom = 1;
+  const slots = (pan: [number, number] = [0, 0]) => layoutPages(project, list, 0, { ...view, continuous: true, zoom, pan });
+  for (let i = 0; i < 3; i++) {
+    // The gaps between the spreads are partly px: a few rounds settle the zoom.
+    const box = extent(slots(), pageH);
+    if (!box) return { zoom: 1, pan: [0, 0] };
+    const tall = (view.height - 2 * MARGIN) / (box[3] - box[1]);
+    zoom = Math.min(Math.max(zoom * (what === "rows" ? tall : Math.min((view.width - 2 * MARGIN) / (box[2] - box[0]), tall)), 0.02), 1);
+  }
+  const laid = slots();
+  const box = extent(laid, pageH)!;
+  const x = what === "rows" ? (across(laid) ?? (box[0] + box[2]) / 2) : (box[0] + box[2]) / 2;
+  return { zoom, pan: [view.width / 2 - x, view.height / 2 - (box[1] + box[3]) / 2] };
+}
+
+/**
+ * 連続: how the spreads were fitted to a stage of `width` x `height`, if
+ * they were: every page inside and filling it across or down (`all`), or
+ * the rows filling its height (`rows`, or in its middle at zoom 1).
+ */
+export function fittedTo(slots: Slot[], pageH: number, width: number, height: number, zoom: number): "all" | "rows" | null {
+  const box = extent(slots, pageH);
+  if (!box) return null;
+  const [w, h] = [box[2] - box[0], box[3] - box[1]];
+  const middle = (a: number, b: number, size: number) => Math.abs((a + b) / 2 - size / 2) < 2;
+  const fills = (length: number, size: number) => Math.abs(length - (size - 2 * MARGIN)) < 2;
+  const across = middle(box[0], box[2], width);
+  if (across && middle(box[1], box[3], height) && w <= width && h <= height && (fills(w, width) || fills(h, height))) return "all";
+  if (middle(box[1], box[3], height) && (fills(h, height) || (zoom === 1 && h <= height))) return "rows";
+  return null;
+}
+
+/** The page nearest a point of the stage (px) and the point of it (mm, maybe off the page) there. */
+export function nearestTo(slots: Slot[], format: PageFormat, [sx, sy]: Point): { index: number; point: Point } | null {
+  const [pageW, pageH] = format.canvasMm;
+  let best: { index: number; point: Point; far: number } | null = null;
+  for (const slot of slots) {
+    const point = toPage(slot, sx, sy);
+    const far = Math.hypot(Math.max(0, -point[0], point[0] - pageW), Math.max(0, -point[1], point[1] - pageH));
+    if (!best || far < best.far) best = { index: slot.index, point, far };
+  }
+  return best && { index: best.index, point: best.point };
+}
+
+/** Where a point of a page (mm) is on the screen (px), or null when the page is not laid out. */
+export function onScreenOf(slots: Slot[], { index, point }: { index: number; point: Point }): Point | null {
+  const slot = slots.find((s) => s.index === index);
+  return slot ? [slot.x + point[0] * slot.scale, slot.y + point[1] * slot.scale] : null;
+}
+
 /** A point of the screen (px) on a page (mm). */
 export function toPage(slot: Slot, sx: number, sy: number): Point {
   return [(sx - slot.x) / slot.scale, (sy - slot.y) / slot.scale];

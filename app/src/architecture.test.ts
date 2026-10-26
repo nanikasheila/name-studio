@@ -30,17 +30,17 @@ const LAYERS = {
     "alternatives", "arrange", "autotail", "balloon", "brush", "cast", "commands", "csppage", "dialogue", "export", "exportmemory", "fonts",
     "history", "hold", "koma", "komaedit", "layout", "mask", "namecheck", "namedefaults", "pagebox", "pages", "panelfolders", "panels", "pen",
     "plotimport", "project", "projectjson", "readback", "readingorder", "recent", "references", "removal", "reorder", "repair", "roughlayers", "scriptimport",
-    "series", "session", "shapes", "shortcuts", "snapping", "snapshot", "stickies", "story", "strokes", "structures", "style", "transform", "viewport", "wrap",
+    "savestate", "series", "session", "shapes", "shortcuts", "snapping", "snapshot", "stickies", "story", "strokes", "structures", "style", "transform", "viewport", "wrap",
   ],
   /** This computer and the Rust side: storage, settings, commands, the page's elements. */
   platform: ["backend", "dom", "errorlog", "prefs", "settings"],
   /** Drawing a name on a canvas (the screen and the export share it). */
-  render: ["glyph", "notedraw", "pagedraw", "pictures", "render", "strokecache"],
+  render: ["glyph", "notedraw", "pagedraw", "pagethumb", "pictures", "render", "screendraw", "strokecache"],
   /** Work done for the screens: saving in the background, writing out. */
   service: ["autosave", "batch", "nameexport", "roughcache"],
   /** The screens. */
   ui: [
-    "actions", "alerts", "altdialog", "board", "brushdialog", "controlbar", "dock", "dragsort", "editor", "editorcore", "exportdialog", "fontpicker", "inplace", "inspector",
+    "actions", "alerts", "altdialog", "board", "boarddock", "boardemotion", "boardpages", "boardscene", "boardshape", "boardview", "brushdialog", "controlbar", "dock", "dragsort", "editor", "editorcore", "exportdialog", "fontpicker", "inplace", "inspector",
     "layers", "livefields", "nameedits", "palette", "palettes", "pendialog", "referencebar", "roughpanel", "scriptdialog", "seriespanel", "settingsdialog", "sheetexport", "shortcutdialog", "sidelists", "startscreen", "tooleraser", "toolfill",
     "toolpanels", "toolpen", "toolreference", "tools", "toolselect", "toolsticky", "tooltext", "tooltransform", "updater", "versiondialog",
     "viewer", "workbench",
@@ -73,10 +73,18 @@ describe("module structure", () => {
     expect(sources["./workbench.ts"].split("\n").length).toBeLessThan(1000);
   });
 
+  it("keeps each lane of 物語の帯 in its own module", () => {
+    // board.ts puts the lanes on one page axis; each lane draws and edits in board*.ts.
+    for (const [path, source] of Object.entries(sources)) {
+      if (/^\.\/board\w*\.ts$/.test(path)) expect(source.split("\n").length, path).toBeLessThan(650);
+      if (/^\.\/board\w+\.ts$/.test(path)) expect(source, path).not.toMatch(/from "\.\/board"/);
+    }
+  });
+
   it("keeps each tool's press and drags out of the page editor", () => {
-    // Tools live in tool*.ts behind tools.ts; editor.ts dispatches and draws.
+    // Tools live in tool*.ts behind tools.ts; editor.ts dispatches, screendraw.ts draws.
     const editor = sources["./editor.ts"];
-    expect(editor.split("\n").length).toBeLessThan(2800);
+    expect(editor.split("\n").length).toBeLessThan(2400);
     expect(editor).not.toMatch(/(?:tool|drag) satisfies never/);
     for (const [path, source] of Object.entries(sources)) {
       if (/^\.\/tool\w*\.ts$/.test(path)) expect(source, path).not.toMatch(/from "\.\/editor"/);
