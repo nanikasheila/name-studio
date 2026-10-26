@@ -2,7 +2,7 @@
 // drag, going on across the gutter onto the facing page; 囲って消す erases
 // what is inside the outline drawn.
 import type { DragHandler, DragOf, EditorCore, Press } from "./editorcore";
-import { toPage, type Slot } from "./layout";
+import { nearestSlot, toPage, type Slot } from "./layout";
 import type { Point } from "./model";
 import { eraseInside, eraseWith } from "./strokes";
 import { strokeEditable } from "./roughlayers";
@@ -37,8 +37,8 @@ function erase(editor: EditorCore, drag: DragOf<"erase">, slot: Slot, point: Poi
 
 const eraseDrag: DragHandler<DragOf<"erase">> = {
   move(editor, drag, { project, ex, ey }) {
-    // The eraser goes on across the gutter onto the facing page.
-    const under = editor.slotAt(ex, ey, project) ?? drag.slot;
+    // The eraser goes on across the gutter onto the facing page, and in the 欄外 of the page nearest.
+    const under = editor.slotAt(ex, ey, project) ?? nearestSlot(editor.slots, project.pageFormat, [ex, ey]) ?? drag.slot;
     erase(editor, drag, under, toPage(under, ex, ey));
   },
   end(editor, drag) {

@@ -36,6 +36,7 @@ import { repair } from "./repair";
 import { savedForm } from "./references";
 import { Session } from "./session";
 import { HELD_TYPE, SideLists } from "./sidelists";
+import { pointOff } from "./aside";
 import { VersionDialog, type VersionInfo } from "./versiondialog";
 import { Board } from "./board";
 import type { Project } from "./model";
@@ -92,6 +93,7 @@ export class Workbench {
     goTo: (pageId, kind, id) => this.goTo(pageId, kind, id),
     movePages: (first, last, target) => this.edits.movePages(first, last, target),
     putHeld: (id, page, point, panel) => this.edits.putHeld(id, page, point, panel),
+    layHeld: (id, page) => (page ? this.edits.layHeld(id, page) : this.edits.unlayHeld(id)),
     openScript: () => this.scriptDialog.open(),
   });
   /** The palettes beside the pages (left or right, several at once). */
@@ -855,7 +857,10 @@ export class Workbench {
       if (!id) return;
       event.preventDefault();
       const where = this.editor.pageAtClient(event.clientX, event.clientY);
-      if (where) this.edits.putHeld(id, where.page, where.point, where.panel);
+      const format = this.session.project?.pageFormat;
+      // Off the page: laid in its 欄外.
+      if (where && format && pointOff(where.point, format)) this.edits.layHeld(id, where.page, where.point);
+      else if (where) this.edits.putHeld(id, where.page, where.point, where.panel);
     });
   }
 

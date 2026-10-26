@@ -137,6 +137,7 @@ const held: Full<HeldPanel> = {
   stickies: page.stickies,
   near: "page1",
   from: "page2",
+  at: [20, -90],
 };
 
 export const FULL_PROJECT: Full<Project> = {

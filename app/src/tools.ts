@@ -2,6 +2,7 @@
 // kind of drag goes on and ends. A new tool or drag must be added here (the
 // types say so).
 import type { DragHandler, EditorCore, Press, Tool, ToolDrag } from "./editorcore";
+import { ASIDE_DRAGS } from "./toolaside";
 import { ERASER_DRAGS, pressEraser } from "./tooleraser";
 import { FILL_DRAGS, pressBreakout, pressFill } from "./toolfill";
 import { PANEL_DRAGS, pressCut } from "./toolpanels";
@@ -35,6 +36,7 @@ const DRAGS: {
   ...FILL_DRAGS,
   ...STICKY_DRAGS,
   ...REFERENCE_DRAGS,
+  ...ASIDE_DRAGS,
 };
 
 /** The handler of a drag. */

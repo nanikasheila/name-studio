@@ -4,10 +4,12 @@
 // something is done (cuts, outlines, lassos, guides, the transform frame, the
 // pen and eraser cursors). Plain drawing from what it is given: the editor
 // decides what is selected, dragged or hovered.
-import type { Line, Page, Panel, Point, Project, RoughImage, Stroke } from "./model";
+import type { BoxMm, Line, Page, PageFormat, Panel, Point, Project, RoughImage, Stroke } from "./model";
+import { bounds } from "./geometry";
 import { basicBox, trimBox } from "./pagebox";
 import { type Slot } from "./layout";
 import { maskShape } from "./mask";
+import { wantsSpread } from "./panels";
 import { stacked } from "./koma";
 import { ACCENT, drawNote, drawSticky, wrapText } from "./notedraw";
 import { INK, drawBalloons, drawLineText, drawPageFills, drawPanelBorders, drawPanelFills, drawStrokes, tracePath } from "./pagedraw";
@@ -523,6 +525,87 @@ export function drawTransformFrame(ctx: CanvasRenderingContext2D, handles: Point
   ctx.beginPath();
   ctx.arc(rotate[0], rotate[1], HANDLE, 0, Math.PI * 2);
   ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** 資料: every picture's outline on the page, the chosen one with corners to drag. */
+export function drawReferenceFrames(ctx: CanvasRenderingContext2D, slot: Slot, chosenId: string | null): void {
+  for (const reference of slot.page.references ?? []) {
+    const chosen = reference.id === chosenId;
+    const [x0, y0, x1, y1] = reference.box.map((v, i) => (i % 2 ? slot.y : slot.x) + v * slot.scale);
+    ctx.save();
+    ctx.setLineDash(chosen ? [] : [4, 3]);
+    ctx.strokeStyle = chosen ? ACCENT : "rgba(47, 111, 219, 0.55)";
+    ctx.lineWidth = chosen ? 1.5 : 1;
+    ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    if (chosen) {
+      ctx.setLineDash([]);
+      ctx.fillStyle = "#ffffff";
+      for (const [x, y] of [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]) {
+        ctx.fillRect(x - HANDLE, y - HANDLE, HANDLE * 2, HANDLE * 2);
+        ctx.strokeRect(x - HANDLE, y - HANDLE, HANDLE * 2, HANDLE * 2);
+      }
+    }
+    ctx.restore();
+  }
+}
+
+/** Where a panel's number sits (screen px): inside the paper even for panels that run off it (a 裁ち切り panel's at the trim, not out in the bleed). */
+export function panelBadge(slot: Slot, panel: Panel, format: PageFormat | undefined, pageW: number): { x: number; y: number; radius: number } {
+  const [, y0, x1] = bounds(panel.shape);
+  const radius = Math.max(4 * slot.scale, 7);
+  const [, ty0, tx1] = format ? trimBox(format) : [0, 0, pageW];
+  return {
+    x: Math.min(slot.x + x1 * slot.scale, slot.x + Math.min(pageW, tx1) * slot.scale) - radius - 3,
+    y: Math.max(slot.y + y0 * slot.scale, slot.y + Math.max(0, ty0) * slot.scale) + radius + 3,
+    radius,
+  };
+}
+
+/**
+ * 見開きページ: a mark under the gutter when the two pages go to CSP as one.
+ * 連続 (`current`: the spread worked on): that spread is framed.
+ */
+export function drawSpreadMarks(
+  ctx: CanvasRenderingContext2D,
+  project: Project,
+  laid: readonly Slot[],
+  list: readonly (readonly (number | null)[])[],
+  current: number | null,
+  onCanvas: (slot: Slot) => boolean,
+  extent: (slots: Slot[]) => BoxMm | null,
+): void {
+  const bySpread = new Map<number, Slot[]>();
+  const spreadOf = new Map<number, number>();
+  list.forEach((pair, i) => pair.forEach((page) => page !== null && spreadOf.set(page - 1, i)));
+  for (const slot of laid) {
+    const i = spreadOf.get(slot.index);
+    if (i === undefined) continue;
+    bySpread.set(i, [...(bySpread.get(i) ?? []), slot]);
+  }
+  const pageH = project.pageFormat.canvasMm[1];
+  for (const slots of bySpread.values()) {
+    if (slots.length < 2 || !slots.some(onCanvas)) continue;
+    if (!wantsSpread(project, Math.min(...slots.map((slot) => slot.index)))) continue;
+    const [left, right] = [...slots].sort((a, b) => a.x - b.x);
+    const gutter = left.x + left.shown[1] * left.scale;
+    ctx.save();
+    ctx.fillStyle = "#3a6fd8";
+    ctx.font = "12px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("見開きページ", gutter, right.y + pageH * right.scale + 18);
+    ctx.restore();
+  }
+  const spread = current === null ? undefined : bySpread.get(current);
+  if (!spread || list.length < 2) return;
+  const box = extent(spread);
+  if (!box) return;
+  ctx.save();
+  ctx.strokeStyle = "rgba(47, 111, 219, 0.55)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(box[0] - 5, box[1] - 5, box[2] - box[0] + 10, box[3] - box[1] + 10, 6);
   ctx.stroke();
   ctx.restore();
 }

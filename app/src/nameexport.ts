@@ -29,6 +29,7 @@ import { splitAtX } from "./strokes";
 import { panelFolders } from "./panelfolders";
 import { layerOf, opacityOfLayer, roughExportNames, roughLayersOf, shownStrokes, strokesOn } from "./roughlayers";
 import { decodePicture } from "./pictures";
+import { onPageOnly } from "./aside";
 import { opacityOf, usedImages } from "./references";
 import { sceneSpans } from "./story";
 import { balloonLineMm, linePitch, lineSpacing, useStyle } from "./style";
@@ -511,13 +512,13 @@ export interface PlacedPage {
   right: boolean;
 }
 
-/** Places the pages of one export unit (one page, or the two of a spread). */
+/** Places the pages of one export unit (one page, or the two of a spread), without what lies in their 欄外 (a CSP page ends at its paper). */
 export function placeUnit(project: Project, unit: number[], full: MmToPx, spread: SpreadLayout | null): PlacedPage[] {
   // Right binding: the first page of a spread is the right half.
   return unit.map((index, position) => {
     const right = (position === 0) === (project.binding === "right");
     const dx = spread ? (right ? spread.rightDx : spread.leftDx) : 0;
-    return { page: project.pages[index], m: shifted(full, dx), right };
+    return { page: onPageOnly(project.pages[index], project.pageFormat), m: shifted(full, dx), right };
   });
 }
 
@@ -530,7 +531,7 @@ export function placeStacked(project: Project, unit: number[], canvas: Pick<Temp
   const [w, h] = project.pageFormat.canvasMm;
   const scale = Math.min(canvas.widthPx / w, share / h);
   return unit.map((index, position) => ({
-    page: project.pages[index],
+    page: onPageOnly(project.pages[index], project.pageFormat),
     m: { scale, x: (canvas.widthPx - w * scale) / 2, y: position * share + (share - h * scale) / 2 },
     right: project.binding === "right",
   }));

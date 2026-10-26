@@ -3,8 +3,10 @@
 // says what it did, and the pages it touched brought into view.
 import { makeAlternative, useAlternative } from "./alternatives";
 import { arrangePage, arrangePanel, clearFaces, fitSpills } from "./arrange";
+import { layAside, takeFromAside } from "./aside";
 import { addAutoTails } from "./autotail";
 import type { PageEditor, Selection } from "./editor";
+import { bounds } from "./geometry";
 import { holdPanel, movePanelToPage, placeHeld } from "./hold";
 import { moveIntoPanel, type LayerRef } from "./layers";
 import type { Alternatives, Page, Panel, Point, Project } from "./model";
@@ -175,16 +177,46 @@ export class NameEdits {
     this.host.renderAll();
   }
 
-  /** Take the selected panel off its page into 保留. */
+  /** Take the selected panel off its page into 保留, laid in the 欄外 above the page. */
   holdSelected(page: Page, panel: Panel): void {
     const index = this.host.project()!.pages.indexOf(page);
     this.edit((p) => {
       const at = p.pages.find((x) => x.id === page.id);
       const target = at?.panels.find((x) => x.id === panel.id);
-      if (at && target) holdPanel(p, at, target);
+      if (at && target) layAside(p, holdPanel(p, at, target), at);
     });
     this.editor.select(null);
-    this.status(`${index + 1} ページのコマ ${panel.order} を中身ごと保留にしました（左の「保留」から、ページへドラッグで戻せます）`);
+    this.status(`${index + 1} ページのコマ ${panel.order} を中身ごと保留にして、ページの上の欄外に置きました（ページへドラッグで戻せます。一覧は「保留」）`);
+    this.host.renderAll();
+  }
+
+  /** Lay a held panel in the 欄外 of `page`: with its middle at `point` (mm on the page, off it), else above the page. */
+  layHeld(id: string, page: Page, point?: Point): void {
+    this.edit((p) => {
+      const held = p.held?.find((h) => h.id === id);
+      const at = p.pages.find((x) => x.id === page.id);
+      if (!held || !at) return;
+      if (!point) {
+        layAside(p, held, at);
+        return;
+      }
+      const [x0, y0, x1, y1] = bounds(held.panel.shape);
+      held.near = at.id;
+      held.at = [point[0] - (x1 - x0) / 2, point[1] - (y1 - y0) / 2];
+    });
+    const index = this.host.project()!.pages.findIndex((x) => x.id === page.id);
+    if (!point) this.editor.showPage(index + 1);
+    this.status(`保留のコマを ${index + 1} ページの欄外に置きました（ページへドラッグで置けます）`);
+    this.host.renderAll();
+  }
+
+  /** Take a held panel out of the 欄外 (it stays in the 保留 list). */
+  unlayHeld(id: string): void {
+    this.edit((p) => {
+      const held = p.held?.find((h) => h.id === id);
+      if (held) takeFromAside(held);
+    });
+    this.status("保留のコマを欄外から下げました（保留の一覧に残っています）");
     this.host.renderAll();
   }
 
