@@ -8,12 +8,13 @@
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "tauri": "tauri",
-    "e2e": "node e2e/smoke.mjs && node e2e/tools.mjs && node e2e/roughs.mjs && node e2e/series.mjs && node e2e/storyinfo.mjs",
+    "e2e": "node e2e/smoke.mjs && node e2e/tools.mjs && node e2e/roughs.mjs && node e2e/series.mjs && node e2e/storyinfo.mjs && node e2e/palette.mjs",
     "e2e:tools": "node e2e/tools.mjs",
     "e2e:perf": "node e2e/perf.mjs",
     "e2e:roughs": "node e2e/roughs.mjs",
     "e2e:series": "node e2e/series.mjs",
-    "e2e:storyinfo": "node e2e/storyinfo.mjs"
+    "e2e:storyinfo": "node e2e/storyinfo.mjs",
+    "e2e:palette": "node e2e/palette.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",

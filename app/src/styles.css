@@ -795,3 +795,18 @@ dialog.settings { width: min(820px, calc(100vw - 32px)); height: min(640px, calc
 .font-item.active { background: #2f6fdb; color: #fff; border-color: #2f6fdb; }
 .font-menu-empty { margin: 8px 2px; color: var(--muted); font-size: 12px; }
 .font-menu-hint { margin: 0; font-size: 11px; color: var(--muted); flex: none; }
+/* 命令パレット (Ctrl+K). */
+dialog.command-palette {
+  width: min(640px, calc(100vw - 32px)); margin: 12vh auto auto; padding: 0; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--panel); color: var(--text); box-shadow: 0 12px 40px rgb(0 0 0 / 0.25);
+}
+dialog.command-palette::backdrop { background: rgb(0 0 0 / 0.2); }
+.cmdp-input { width: 100%; font: inherit; font-size: 15px; color: var(--text); background: transparent; border: 0; border-bottom: 1px solid var(--line); padding: 12px 16px; outline: none; }
+.cmdp-list { max-height: min(420px, 60vh); overflow: auto; padding: 4px; }
+.cmdp-item { display: grid; grid-template-columns: 4.5em 1fr auto; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 6px; cursor: pointer; }
+.cmdp-item.current { background: var(--accent); color: #fff; }
+.cmdp-item.unavailable { opacity: 0.45; }
+.cmdp-group { font-size: 11px; color: var(--muted); }
+.cmdp-item.current .cmdp-group, .cmdp-item.current .cmdp-keys { color: rgb(255 255 255 / 0.85); }
+.cmdp-keys { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.cmdp-nothing { padding: 14px 12px; color: var(--muted); }

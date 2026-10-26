@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { comboOf, Shortcuts } from "./shortcuts";
+import { comboOf, Shortcuts, type ActionInfo } from "./shortcuts";
+
+const ACTIONS: ActionInfo[] = [
+  { id: "redo", label: "やり直す", group: "編集", keys: ["Ctrl+Y", "Ctrl+Shift+Z"] },
+  { id: "tool.pen", label: "ペン", group: "道具", keys: ["P"] },
+  { id: "view.edit", label: "物語の帯を元の高さに", group: "画面", keys: ["F1"] },
+];
 
 const key = (key: string, mods: Partial<Record<"ctrlKey" | "metaKey" | "altKey" | "shiftKey", boolean>> = {}) => ({
   key,
@@ -28,7 +34,7 @@ describe("ショートカット", () => {
 
   it("finds actions by their keys, and moves a key that is given to another action", () => {
     const storage = memory();
-    const shortcuts = new Shortcuts(storage);
+    const shortcuts = new Shortcuts(storage, ACTIONS);
     expect(shortcuts.actionFor("P")).toBe("tool.pen");
     expect(shortcuts.actionFor("Ctrl+Shift+Z")).toBe("redo");
     expect(shortcuts.bind("tool.pen", "F5")).toBeNull();
@@ -38,7 +44,7 @@ describe("ショートカット", () => {
     expect(shortcuts.keys("view.edit")).toEqual([]);
     expect(shortcuts.changed()).toBe(true);
     // Kept for the next start.
-    const again = new Shortcuts(storage);
+    const again = new Shortcuts(storage, ACTIONS);
     expect(again.keys("tool.pen")).toEqual(["P", "F5", "F1"]);
     again.unbind("tool.pen", "P");
     expect(again.actionFor("P")).toBeNull();
