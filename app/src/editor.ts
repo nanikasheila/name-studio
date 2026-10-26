@@ -9,7 +9,7 @@
 import { BALLOON_TEXT_KEY, CONTINUOUS_KEY, loadSnap, PAGE_GAP_KEY, PANEL_CARRIES_KEY, penPreferences, ROWS_KEY, SHOW_NOTES_KEY, SINGLE_PAGE_KEY } from "./prefs";
 import { insideBalloon, tailGeometry } from "./balloon";
 import { spreads } from "./pages";
-import { GRID_GAP_MM, MARGIN, MAX_PAGE_GAP_MM, extent, layoutPages, onStage, rowCount, slotAt, toPage, type Slot } from "./layout";
+import { GRID_GAP_MM, MARGIN, MAX_PAGE_GAP_MM, extent, fitContinuous, fittedTo, layoutPages, nearestTo, onScreenOf, onStage, rowCount, slotAt, toPage, type Arrangement, type Slot } from "./layout";
 import { holdPanel, placeHeld } from "./hold";
 import { addDrawnPanel, moveBreakout, spanGutter, stacked } from "./koma";
 import { joinPanels, seamAt, seamLines, type Seam } from "./komaedit";
@@ -324,29 +324,33 @@ export class PageEditor {
   }
 
   /** 連続: the whole name on screen. */
-  fitAll(): void {
+  fitAll(slide = true): void {
+    this.fit("all", slide);
+  }
+
+  /** 連続: the rows as tall as the stage (at most zoom 1), the spread worked on in the middle across. */
+  fitRows(): void {
+    this.fit("rows", false);
+  }
+
+  private fit(what: "all" | "rows", slide: boolean, across?: (slots: Slot[]) => number | null): void {
     const project = this.host.project();
     if (!project || !this.continuous) return;
-    this.slide(() => {
-      const { width, height } = this.stageSize();
-      this.view.zoom = 1;
-      this.view.pan = [0, 0];
+    const change = () => {
+      const middleOfSpread = (slots: Slot[]) => {
+        const box = this.spreadBox(slots);
+        return box && (box[0] + box[2]) / 2;
+      };
+      const { zoom, pan } = fitContinuous(project, this.spreadList(), this.arrangement(), what, across ?? middleOfSpread);
+      this.view.zoom = zoom;
+      this.view.pan = pan;
       if (this.view.rotation) {
         this.view.rotation = 0;
         this.applyViewTransform();
       }
-      for (let i = 0; i < 3; i++) {
-        // The gaps between the spreads are partly px: a few rounds settle the zoom.
-        const box = this.extent(this.layout(project));
-        if (!box) return;
-        const factor = Math.min((width - 2 * MARGIN) / (box[2] - box[0]), (height - 2 * MARGIN) / (box[3] - box[1]));
-        this.view.zoom = Math.min(Math.max(this.view.zoom * factor, 0.02), 1);
-      }
-      const box = this.extent(this.layout(project));
-      if (!box) return;
-      this.view.pan[0] += width / 2 - (box[0] + box[2]) / 2;
-      this.view.pan[1] += height / 2 - (box[1] + box[3]) / 2;
-    });
+    };
+    if (slide) this.slide(change);
+    else change();
   }
 
   /** 連続: move the view (sliding) so that the spread worked on is all on screen. */
@@ -530,7 +534,21 @@ export class PageEditor {
   resize(): void {
     const ratio = window.devicePixelRatio || 1;
     const { width, height } = this.canvas.getBoundingClientRect();
+    const before = this.size;
+    const project = this.host.project();
+    // 連続, as the stage grows or shrinks (Tab, the strip, the window): fitted to it, fitted again;
+    // otherwise what was in the middle stays in the middle.
+    const was = this.continuous && project && before?.width && before.height && width && height ? this.layout(project) : null;
+    const fitted = was && project && !project.scroll && before ? fittedTo(was, project.pageFormat.canvasMm[1], before.width, before.height, this.view.zoom) : null;
+    const held = was && project && before ? nearestTo(was, project.pageFormat, [before.width / 2, before.height / 2]) : null;
     this.size = { width, height };
+    const at = (slots: Slot[]) => (held ? onScreenOf(slots, held) : null);
+    if (fitted === "all") this.fitAll(false);
+    else if (fitted === "rows") this.fit("rows", false, (slots) => at(slots)?.[0] ?? null);
+    else if (held && project) {
+      const point = at(this.layout(project));
+      if (point) this.view.pan = [this.view.pan[0] + width / 2 - point[0], this.view.pan[1] + height / 2 - point[1]];
+    }
     this.canvas.width = Math.round(width * ratio);
     this.canvas.height = Math.round(height * ratio);
     this.applyViewTransform();
@@ -550,10 +568,13 @@ export class PageEditor {
     return { width, height };
   }
 
-  private layout(project: Project): Slot[] {
+  private arrangement(): Arrangement {
     const { width, height } = this.stageSize();
-    const view = { single: this.single, continuous: this.continuous, rows: this.rows, zoom: this.view.zoom, pan: this.view.pan, width, height, gapMm: this.pageGapMm };
-    return layoutPages(project, this.spreadList(), this.spreadIndex, view);
+    return { single: this.single, continuous: this.continuous, rows: this.rows, zoom: this.view.zoom, pan: this.view.pan, width, height, gapMm: this.pageGapMm };
+  }
+
+  private layout(project: Project): Slot[] {
+    return layoutPages(project, this.spreadList(), this.spreadIndex, this.arrangement());
   }
 
   /** While sliding: each page part of the way from where it was. */
@@ -583,7 +604,6 @@ export class PageEditor {
     return slotAt(this.slots, sx, sy, project.pageFormat);
   }
 
-  /** The page under a point of the window, the point on it (mm) and the panel there. */
   /** Where a point of a shown page (mm) is in the window (client px), or null when the page is not shown. */
   clientOf(pageId: string, [x, y]: Point): Point | null {
     const slot = this.slots.find((s) => s.page.id === pageId);
@@ -593,6 +613,7 @@ export class PageEditor {
     return [rect.left + sx, rect.top + sy];
   }
 
+  /** The page under a point of the window, the point on it (mm) and the panel there. */
   pageAtClient(clientX: number, clientY: number): { page: Page; point: Point; panel?: Panel } | null {
     const project = this.host.project();
     if (!project) return null;

@@ -128,9 +128,10 @@ export class ControlBar {
     this.showViewMode();
     const index = page && project ? project.pages.indexOf(page) : -1;
     this.editor.spreadIndex = 0;
-    // 連続: a few spreads on screen around the page, then out or in with the wheel.
-    this.editor.resetView(this.editor.continuous ? 0.5 : 1);
+    // 連続: the rows as tall as the stage around the page (縦スクロール: a few pieces), then out or in with the wheel.
+    this.editor.resetView(this.editor.continuous && project?.scroll ? 0.5 : 1);
     if (index >= 0) this.editor.showPage(index + 1);
+    if (this.editor.continuous && !project?.scroll) this.editor.fitRows();
     this.host.renderAll();
     if (this.editor.continuous && project?.scroll) this.host.status("区切りを縦の帯に並べました。ホイールで上下、Ctrl+ホイールで拡大縮小、列数は下のつまみ（Alt+↑↓）");
     else if (this.editor.continuous) this.host.status("全ページを一枚に並べました。行数は下のつまみ（Alt+↑↓）、全体は Ctrl+Alt+0、横へは Shift+ホイール");

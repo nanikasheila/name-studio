@@ -8,16 +8,15 @@
 import { element as html, svg } from "./dom";
 import type { Project } from "./model";
 import { readJson, writeJson } from "./settings";
+import { DockHeight, type Mode } from "./boarddock";
 import { emotionSeries, markSpeakingPages, sceneSpans, speakingPages, timeline } from "./story";
 import { emotionLane, textLane } from "./boardemotion";
 import { pageLane } from "./boardpages";
 import { pageStory, sceneInspector, sceneLane, timeLane } from "./boardscene";
 import { shapeInspector, shapeLane } from "./boardshape";
-import { type BoardSelection, type BoardTip, icon, type LaneId, type LaneView, ROW, RULER, SCENE, SHAPE, type StoryHost, TEXT, track } from "./boardview";
+import { type BoardSelection, type BoardTip, icon, type LaneId, type LaneView, ROW, RULER, SCENE, SHAPE, type StoryHost, TEXT } from "./boardview";
 
 export type { BoardSelection, BoardTip, LaneId, StoryHost } from "./boardview";
-
-type Mode = "strip" | "wide";
 
 const LANES: { id: LaneId; label: string; hint: string }[] = [
   { id: "shape", label: "型", hint: "話の型: 区切りの線をドラッグで配分を変える（決まった型は自分の型に写してから）。◆はビート。クリックで型を選ぶ・直す" },
@@ -28,15 +27,9 @@ const LANES: { id: LaneId; label: string; hint: string }[] = [
 ];
 
 const DEFAULT_LANES: Record<Mode, LaneId[]> = { strip: ["shape", "scene", "emotion", "text"], wide: ["shape", "scene", "time", "emotion", "text"] };
-/** 0: as tall as the lanes need (the strip) or most of the height (大きく). */
-const DEFAULT_HEIGHT: Record<Mode, number> = { strip: 0, wide: 0 };
 const LANES_KEY = "namestudio.storyLanes";
-const HEIGHT_KEY = "namestudio.storyHeight";
 
 const LABEL_WIDTH = 66;
-/** The strip's own row of buttons, and room for a scroll bar. */
-const CHROME = 32 + 14;
-const MIN_HEIGHT = 96;
 export const MIN_COLUMN = 24;
 export const MAX_COLUMN = 240;
 
@@ -52,7 +45,6 @@ export class Board {
   private column = 0;
   private mode: Mode = "strip";
   private shown: Record<Mode, LaneId[]> = readSaved(LANES_KEY, DEFAULT_LANES);
-  private heights: Record<Mode, number> = readSaved(HEIGHT_KEY, DEFAULT_HEIGHT);
   private selection: BoardSelection | null = null;
   /** Character whose emotion values the curve lane changes. */
   private character: string | null = null;
@@ -80,10 +72,11 @@ export class Board {
   private readonly root: HTMLDivElement;
   /** What the lanes see of the strip. */
   private readonly view: LaneView;
+  private readonly height: DockHeight;
 
   constructor(
-    private readonly dock: HTMLElement,
-    private readonly handle: HTMLElement,
+    dock: HTMLElement,
+    handle: HTMLElement,
     private readonly host: StoryHost,
   ) {
     this.controls = html("div", { className: "story-controls" });
@@ -93,7 +86,15 @@ export class Board {
     this.tipNode.hidden = true;
     this.tip = { show: (event, lines) => this.showTip(event, lines), hide: () => (this.tipNode.hidden = true) };
     this.view = this.laneView();
-    this.bindHandle();
+    this.height = new DockHeight({
+      dock,
+      handle,
+      controls: this.controls,
+      lanes: this.root,
+      mode: () => this.mode,
+      contentHeight: () => this.contentHeight,
+      changed: () => this.render(),
+    });
     // Fitted to the width: a narrower or wider strip fits the pages again.
     let width = 0;
     let queued = false;
@@ -184,7 +185,7 @@ export class Board {
     this.column = this.columns[this.mode] || this.fitColumn(project);
     this.controls.replaceChildren(...this.controlBar(project));
     this.root.replaceChildren(this.lanes(project), this.tipNode);
-    this.applyHeight();
+    this.height.apply();
     this.scroller!.scrollLeft = this.scroll.left;
     this.scroller!.scrollTop = this.scroll.top;
     this.paintSelection();
@@ -253,7 +254,17 @@ export class Board {
   toggleWide(wide = !this.expanded): void {
     if (this.scroller) this.scroll = { left: this.scroller.scrollLeft, top: 0 };
     this.mode = wide ? "wide" : "strip";
+    this.height.fold(false);
     this.render();
+  }
+
+  get isFolded(): boolean {
+    return this.height.isFolded;
+  }
+
+  /** たたむ ⇄ 広げる (Shift+F6, a double click on the top edge): the strip down to its row of buttons. */
+  toggleFold(fold = !this.isFolded): void {
+    if (this.height.fold(fold)) this.render();
   }
 
   /** Show or hide a lane (in the current mode); `on` forces it. */
@@ -263,47 +274,6 @@ export class Board {
     this.shown = { ...this.shown, [this.mode]: show ? LANES.map((l) => l.id).filter((l) => l === id || lanes.includes(l)) : lanes.filter((l) => l !== id) };
     writeJson(LANES_KEY, this.shown);
     this.render();
-  }
-
-  private applyHeight(): void {
-    const room = this.dock.parentElement?.clientHeight || window.innerHeight;
-    const wanted = this.heights[this.mode] || (this.mode === "wide" ? Math.round(room * 0.62) : Math.min(this.contentHeight + CHROME, Math.round(room * 0.38)));
-    // The page above keeps at least some room.
-    const max = Math.max(MIN_HEIGHT, room - 160);
-    const height = `${Math.max(MIN_HEIGHT, Math.min(max, wanted))}px`;
-    this.dock.style.height = height;
-    this.dock.classList.toggle("wide", this.mode === "wide");
-  }
-
-  /** Drag the top edge of the strip to give it more or less of the height. */
-  private bindHandle(): void {
-    this.handle.addEventListener("pointerdown", (down) => {
-      if (down.button !== 0) return;
-      down.preventDefault();
-      const start = this.dock.getBoundingClientRect().height;
-      const room = this.dock.parentElement?.clientHeight || window.innerHeight;
-      this.handle.classList.add("dragging");
-      track(down, this.handle, {
-        move: (event) => {
-          const height = Math.round(Math.max(MIN_HEIGHT, Math.min(room - 160, start + down.clientY - event.clientY)));
-          this.dock.style.height = `${height}px`;
-        },
-        end: () => {
-          this.handle.classList.remove("dragging");
-          this.heights = { ...this.heights, [this.mode]: Math.round(this.dock.getBoundingClientRect().height) };
-          writeJson(HEIGHT_KEY, this.heights);
-          this.render();
-        },
-      });
-    });
-    this.handle.addEventListener("dblclick", () => {
-      // Back to the height the lanes need, then 大きく and back.
-      if (this.heights[this.mode]) {
-        this.heights = { ...this.heights, [this.mode]: 0 };
-        writeJson(HEIGHT_KEY, this.heights);
-        this.render();
-      } else this.toggleWide();
-    });
   }
 
   // --- the strip's own bar ---------------------------------------------------------
@@ -366,9 +336,16 @@ export class Board {
       icon(this.expanded ? "narrow" : "wide"),
     );
     wide.addEventListener("click", () => this.toggleWide());
+    const fold = html(
+      "button",
+      { className: `icon-button${this.isFolded ? " active" : ""}`, title: this.isFolded ? "帯を広げる（Shift+F6・上端のダブルクリック）" : "帯をたたんでページを広くする（Shift+F6・上端のダブルクリック）" },
+      icon(this.isFolded ? "unfold" : "fold"),
+    );
+    fold.setAttribute("aria-pressed", String(this.isFolded));
+    fold.addEventListener("click", () => this.toggleFold());
     const help = html("button", { className: "icon-button", title: this.helpText() }, icon("help"));
     help.addEventListener("click", () => this.select({ kind: "shape" }));
-    out.push(html("div", { className: "spacer" }), fit, wide, help);
+    out.push(html("div", { className: "spacer" }), fit, wide, fold, help);
     return out;
   }
 

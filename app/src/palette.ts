@@ -5,6 +5,9 @@ import { findCommands, usedNow, type Command } from "./commands";
 import { element } from "./dom";
 import { loadRecentCommands, saveRecentCommands } from "./prefs";
 
+/** The command that opens this palette: not listed in it. */
+const OPEN_PALETTE = "palette.commands";
+
 export interface PaletteHost {
   commands(): readonly Command[];
   keysOf(id: string): string[];
@@ -92,7 +95,8 @@ export class CommandPalette {
 
   private render(): void {
     const used = this.remembers ? loadRecentCommands() : [];
-    this.shown = findCommands(this.input.value, this.host.commands(), used);
+    const commands = this.host.commands().filter((command) => command.id !== OPEN_PALETTE);
+    this.shown = findCommands(this.input.value, commands, used);
     this.index = Math.min(this.index, Math.max(0, this.shown.length - 1));
     const recent = new Set(this.input.value.trim() ? [] : used);
     const rows = this.shown.map((command, i) => {

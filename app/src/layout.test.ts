@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CAPTION, GRID_GAP_MM, GRID_GAP_PX, extent, layoutPages, onStage, pageGapPx, rowCount, slotAt, spreadWidth, toPage, type Arrangement, type Pair, type Slot } from "./layout";
+import { CAPTION, GRID_GAP_MM, MARGIN, GRID_GAP_PX, extent, fitContinuous, fittedTo, layoutPages, nearestTo, onStage, pageGapPx, rowCount, slotAt, spreadWidth, toPage, type Arrangement, type Pair, type Slot } from "./layout";
 import type { Project } from "./model";
 import { trimBox } from "./pagebox";
 import { newProject } from "./project";
@@ -129,5 +129,38 @@ describe("the room between spreads (連続)", () => {
     expect(xs(0).gap).toBeCloseTo(0);
     const wide = xs(30);
     expect(wide.gap).toBeCloseTo(pageGapPx(30, wide.scale));
+  });
+
+  it("finds the page nearest a point of the stage, and the point of it there, on or off the page", () => {
+    const p = project("right");
+    const slots = layoutPages(p, [[1, 2], [3, 4]], 0, view({ continuous: true }));
+    const third = slots.find((s) => s.index === 2)!;
+    expect(nearestTo(slots, p.pageFormat, onScreen(third, [50, 60]))).toEqual({ index: 2, point: [expect.closeTo(50), expect.closeTo(60)] });
+    // Just above a page: that page, at a point above its top.
+    const above = nearestTo(slots, p.pageFormat, onScreen(third, [50, -5]));
+    expect(above?.index).toBe(2);
+    expect(above?.point[1]).toBeCloseTo(-5);
+    expect(nearestTo([], p.pageFormat, [0, 0])).toBeNull();
+  });
+
+  it("fits 連続 to the stage: every page, or the rows as tall as it, and tells which it was", () => {
+    const p = project("right", 16);
+    const pairs: Pair[] = [[1, null], [2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13], [14, 15], [16, null]];
+    const stage = view({ continuous: true, width: 1000, height: 600 });
+    const pageH = p.pageFormat.canvasMm[1];
+    const laid = (fit: { zoom: number; pan: [number, number] }) => layoutPages(p, pairs, 0, { ...stage, ...fit });
+    const all = fitContinuous(p, pairs, stage, "all", () => null) as { zoom: number; pan: [number, number] };
+    const box = extent(laid(all), pageH)!;
+    expect(box[0]).toBeGreaterThanOrEqual(MARGIN - 1);
+    expect(box[2]).toBeLessThanOrEqual(1000 - MARGIN + 1);
+    expect(fittedTo(laid(all), pageH, 1000, 600, all.zoom)).toBe("all");
+    // One row of nine spreads: as tall as the stage, wider than it, the given x in the middle.
+    const rows = fitContinuous(p, pairs, stage, "rows", (slots) => slots[0].x) as { zoom: number; pan: [number, number] };
+    const tall = extent(laid(rows), pageH)!;
+    expect(tall[3] - tall[1]).toBeCloseTo(600 - 2 * MARGIN, 0);
+    expect(laid(rows)[0].x).toBeCloseTo(500);
+    expect(fittedTo(laid(rows), pageH, 1000, 600, rows.zoom)).toBe("rows");
+    // Moved or zoomed by hand: neither.
+    expect(fittedTo(laid({ zoom: rows.zoom, pan: [rows.pan[0], rows.pan[1] + 40] }), pageH, 1000, 600, rows.zoom)).toBeNull();
   });
 });
