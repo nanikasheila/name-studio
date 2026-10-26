@@ -27,7 +27,7 @@ const LAYERS = {
   model: ["model", "types", "geometry"],
   /** Working on a name: pure computation, no browser, no storage, no Rust side. */
   core: [
-    "alternatives", "arrange", "autotail", "balloon", "brush", "cast", "commands", "csppage", "dialogue", "export", "exportmemory", "fonts",
+    "alternatives", "arrange", "aside", "autotail", "balloon", "brush", "cast", "commands", "csppage", "dialogue", "export", "exportmemory", "fonts",
     "history", "hold", "koma", "komaedit", "layout", "mask", "namecheck", "namedefaults", "pagebox", "pages", "panelfolders", "panels", "pen",
     "plotimport", "project", "projectjson", "readback", "readingorder", "recent", "references", "removal", "reorder", "repair", "roughlayers", "scriptimport",
     "savestate", "series", "session", "shapes", "shortcuts", "snapping", "snapshot", "stickies", "story", "strokes", "structures", "style", "transform", "viewport", "wrap",
@@ -35,13 +35,13 @@ const LAYERS = {
   /** This computer and the Rust side: storage, settings, commands, the page's elements. */
   platform: ["backend", "dom", "errorlog", "prefs", "settings"],
   /** Drawing a name on a canvas (the screen and the export share it). */
-  render: ["glyph", "notedraw", "pagedraw", "pagethumb", "pictures", "render", "screendraw", "strokecache"],
+  render: ["asidedraw", "glyph", "notedraw", "pagedraw", "pagethumb", "pictures", "render", "screendraw", "strokecache"],
   /** Work done for the screens: saving in the background, writing out. */
   service: ["autosave", "batch", "nameexport", "roughcache"],
   /** The screens. */
   ui: [
     "actions", "alerts", "altdialog", "board", "boarddock", "boardemotion", "boardpages", "boardscene", "boardshape", "boardview", "brushdialog", "controlbar", "dock", "dragsort", "editor", "editorcore", "exportdialog", "fontpicker", "inplace", "inspector",
-    "layers", "livefields", "nameedits", "palette", "palettes", "pendialog", "referencebar", "roughpanel", "scriptdialog", "seriespanel", "settingsdialog", "sheetexport", "shortcutdialog", "sidelists", "startscreen", "tooleraser", "toolfill",
+    "layers", "livefields", "nameedits", "palette", "palettes", "pendialog", "referencebar", "roughpanel", "scriptdialog", "seriespanel", "settingsdialog", "sheetexport", "shortcutdialog", "sidelists", "startscreen", "toolaside", "tooleraser", "toolfill",
     "toolpanels", "toolpen", "toolreference", "tools", "toolselect", "toolsticky", "tooltext", "tooltransform", "updater", "versiondialog",
     "viewer", "workbench",
   ],

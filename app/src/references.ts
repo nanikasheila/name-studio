@@ -1,6 +1,8 @@
 // 資料画像: photos, backgrounds or earlier panels laid faintly under a page to
 // draw the name over. The picture is kept once in the project (made smaller
 // when it is taken in) and each page's reference says where it lies.
+import { offPage } from "./aside";
+import type { Slot } from "./layout";
 import type { BoxMm, Page, Point, Project, ReferenceImage, StoredImage } from "./model";
 import { trimBox } from "./pagebox";
 import { newId } from "./project";
@@ -35,6 +37,8 @@ export function addReference(project: Project, page: Page, image: StoredImage, a
   }
   const [cx, cy] = at ?? [(tx0 + tx1) / 2, (ty0 + ty1) / 2];
   const reference: ReferenceImage = { id: newId(project, "reference"), image: image.id, box: [cx - width / 2, cy - height / 2, cx + width / 2, cy + height / 2] };
+  // Beside the page (in the 欄外) it is looked at, not drawn over: at full strength.
+  if (offPage(reference.box, project.pageFormat)) reference.opacity = 1;
   page.references = [...(page.references ?? []), reference];
   return reference;
 }
@@ -100,4 +104,11 @@ export function savedForm(project: Project): Project {
   if (images.length) copy.images = images;
   else delete copy.images;
   return copy;
+}
+
+/** The chosen picture's corner under a screen point of `slot`'s page (0–3), or -1. */
+export function referenceCornerAt(slot: Slot, chosenId: string | null, sx: number, sy: number): number {
+  const chosen = chosenId === null ? undefined : slot.page.references?.find((r) => r.id === chosenId);
+  if (!chosen) return -1;
+  return corners(chosen.box).findIndex(([x, y]) => Math.hypot(slot.x + x * slot.scale - sx, slot.y + y * slot.scale - sy) <= REFERENCE_HANDLE + 2);
 }

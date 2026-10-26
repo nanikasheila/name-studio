@@ -103,6 +103,10 @@ pub struct HeldPanel {
     /// The page it was taken from.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub from: Option<String>,
+    /// 欄外: laid beside page `near` (the top left of its panel's box, mm on
+    /// that page, off the page); none: only in the 保留 list.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at: Option<Point>,
 }
 
 /// 別案: versions of the same run of pages (a page, a 見開き, a scene). The

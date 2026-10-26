@@ -101,7 +101,7 @@ export class Inspector {
         });
         const hasLines = page.lines.some((line) => line.panel === panel.id);
         const arrange = button("セリフを並べる", "このコマのセリフを読む順に右上から並べ直す（長いセリフは改行）", () => this.host.arrange(page.id, panel.id));
-        const hold = button("保留", "中身ごと保留にする: 置き場所を決めるまで、左の「保留」に置いておく", () => this.host.holdSelected(page, panel));
+        const hold = button("保留", "中身ごと保留にする: 置き場所を決めるまで、ページの上の欄外に置いておく（左の「保留」にも並ぶ）", () => this.host.holdSelected(page, panel));
         const moveTo = element("select", { title: "中身ごとほかのページへ移す" });
         moveTo.append(element("option", { value: "", textContent: "移す…" }));
         project.pages.forEach((other, index) => {

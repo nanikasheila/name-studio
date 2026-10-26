@@ -180,6 +180,16 @@ export type ToolDrag =
       start: number;
       moved: boolean;
     }
+  /** 保留コマ laid in the 欄外: moved there (its box from `at`), or onto the page `to` to put it there. */
+  | {
+      kind: "held";
+      slot: Slot;
+      heldId: string;
+      start: Point;
+      at: Point;
+      moved: boolean;
+      to: Slot | null;
+    }
   /** 資料画像: moved (corner -1) or resized from a corner, the opposite corner staying put. */
   | {
       kind: "reference";

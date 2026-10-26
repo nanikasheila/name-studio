@@ -532,4 +532,6 @@ export interface HeldPanel {
   near?: string;
   /** The page it was taken from. */
   from?: string;
+  /** 欄外: laid beside page `near` (the top left of its panel's box, mm on that page, off the page); none: only in the 保留 list. */
+  at?: Point;
 }

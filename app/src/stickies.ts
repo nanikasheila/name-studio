@@ -34,18 +34,36 @@ export function stickyBox(sticky: Sticky): BoxMm {
 
 export function addSticky(project: Project, page: Page, at: Point, text = ""): Sticky {
   const sticky: Sticky = { id: newId(project, "sticky"), text, at };
-  keepStickyOnPage(project, sticky);
+  settleSticky(project, sticky);
   (page.stickies ??= []).push(sticky);
   return sticky;
 }
 
-/** Keep a 付箋 on its own page, so it does not cover the facing page of a spread. */
-export function keepStickyOnPage(project: Project, sticky: Sticky): void {
+/**
+ * A 付箋 lies on its page or in its 欄外, not across the edge: on the page
+ * (kept clear of the facing page of a spread) when its middle is, else just
+ * outside the edge it is nearest.
+ */
+export function settleSticky(project: Project, sticky: Sticky): void {
   const [width, height] = project.pageFormat.canvasMm;
   const [x0, y0, x1, y1] = stickyBox(sticky);
-  const x = Math.min(Math.max(x0, 0), Math.max(0, width - (x1 - x0)));
-  const y = Math.min(Math.max(y0, 0), Math.max(0, height - (y1 - y0)));
-  sticky.at = [x, y];
+  const [cx, cy] = [(x0 + x1) / 2, (y0 + y1) / 2];
+  if (cx >= 0 && cx <= width && cy >= 0 && cy <= height) {
+    const x = Math.min(Math.max(x0, 0), Math.max(0, width - (x1 - x0)));
+    const y = Math.min(Math.max(y0, 0), Math.max(0, height - (y1 - y0)));
+    sticky.at = [x, y];
+    return;
+  }
+  if (x1 <= 0 || x0 >= width || y1 <= 0 || y0 >= height) return;
+  // Pushed out the shortest way.
+  const ways: Point[] = [
+    [-x1, 0],
+    [width - x0, 0],
+    [0, -y1],
+    [0, height - y0],
+  ];
+  const [dx, dy] = ways.reduce((best, way) => (Math.hypot(...way) < Math.hypot(...best) ? way : best));
+  sticky.at = [x0 + dx, y0 + dy];
 }
 
 /** The box a link's point is measured from: the panel's bounds or the line's box. */

@@ -33,6 +33,8 @@ export interface SideListsHost {
   movePages(first: number, last: number, target: number): void;
   /** Put a held panel on `page`: into `panel`, at `point`, or where it was. */
   putHeld(id: string, page: Page, point?: Point, panel?: Panel): void;
+  /** Lay a held panel in the 欄外 above `page`, or (null) take it out of the 欄外. */
+  layHeld(id: string, page: Page | null): void;
   /** The dialog for taking in a script or a plot. */
   openScript(): void;
 }
@@ -243,6 +245,12 @@ export class SideLists {
       });
       into.title = "選んでいるコマに、中身（セリフ・ラフ線）を合わせて入れる";
       into.disabled = !target;
+      const aside = h.at && project.pages.some((p) => p.id === h.near);
+      const lay = plainButton(aside ? "欄外から下げる" : "欄外に置く", () => {
+        const page = aside ? null : (project.pages.find((p) => p.id === h.near) ?? this.host.focusPage());
+        if (aside || page) this.host.layHeld(h.id, page);
+      });
+      lay.title = aside ? "ページの外（欄外）から下げて、この一覧だけに置く" : "「このあたり」のページ（未定なら今のページ）の上の欄外に置いて、紙面で見えるようにする";
       const drop = plainButton("消す", () => this.host.edit((p) => (p.held = (p.held ?? []).filter((x) => x.id !== h.id))));
       drop.className = "danger small";
       const item = element(
@@ -255,7 +263,8 @@ export class SideLists {
           element("div", { className: "held-words", textContent: words || h.panel.note || "（セリフなし）" }),
           ...(h.panel.note && words ? [element("div", { className: "held-note", textContent: h.panel.note })] : []),
           near,
-          element("div", { className: "held-actions" }, put, into, drop),
+          ...(aside ? [element("div", { className: "held-note", textContent: `欄外（${project.pages.findIndex((p) => p.id === h.near) + 1} ページのそば）に置いてあります` })] : []),
+          element("div", { className: "held-actions" }, put, into, lay, drop),
         ),
       );
       item.addEventListener("dragstart", (event) => {
@@ -267,8 +276,8 @@ export class SideLists {
     const head = element("p", {
       className: "hint",
       textContent: held.length
-        ? `保留のコマ ${held.length}。ページへドラッグで置く（コマの上で離すと中身をそのコマへ）。`
-        : "保留のコマはありません。コマを選んで「保留」を押すと、中身ごとここへ移ります。置き場所が決まったら、ページへドラッグして戻します。",
+        ? `保留のコマ ${held.length}。ページへドラッグで置く（コマの上で離すと中身をそのコマへ）。ページの外へドラッグすると欄外に置けます。`
+        : "保留のコマはありません。コマを選んで「保留」を押すと、中身ごとページの上の欄外へ移ります（ここにも並びます）。置き場所が決まったら、ページへドラッグして戻します。",
     });
     $("side-held").replaceChildren(head, ...items);
   }

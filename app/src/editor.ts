@@ -9,7 +9,7 @@
 import { BALLOON_TEXT_KEY, CONTINUOUS_KEY, loadSnap, PAGE_GAP_KEY, PANEL_CARRIES_KEY, penPreferences, ROWS_KEY, SHOW_NOTES_KEY, SINGLE_PAGE_KEY } from "./prefs";
 import { insideBalloon, tailGeometry } from "./balloon";
 import { spreads } from "./pages";
-import { GRID_GAP_MM, MARGIN, MAX_PAGE_GAP_MM, extent, fitContinuous, fittedTo, layoutPages, nearestTo, onScreenOf, onStage, rowCount, slotAt, toPage, type Arrangement, type Slot } from "./layout";
+import { GRID_GAP_MM, MARGIN, MAX_PAGE_GAP_MM, extent, fitContinuous, fittedTo, layoutPages, nearestSlot, nearestTo, onScreenOf, onStage, rowCount, slotAt, toPage, type Arrangement, type Slot } from "./layout";
 import { holdPanel, placeHeld } from "./hold";
 import { addDrawnPanel, moveBreakout, spanGutter, stacked } from "./koma";
 import { joinPanels, seamAt, seamLines, type Seam } from "./komaedit";
@@ -19,6 +19,7 @@ import {
   pasteClip,
   rotation,
   scaling,
+  selectionBox,
   transformBase,
   transformItems,
   withContents,
@@ -27,17 +28,20 @@ import {
   type ItemRef,
 } from "./transform";
 import { drawLineText, drawStroke, onTipLoaded, tracePath } from "./pagedraw";
-import { corners, REFERENCE_HANDLE } from "./references";
+import { referenceCornerAt } from "./references";
 import { StrokeCache } from "./strokecache";
 import { ROUGH_BASE, shownStrokes, strokeEditable } from "./roughlayers";
 import { moveLine, setLineText } from "./dialogue";
 import { bounds, insideBox, insidePolygon, segmentDistance } from "./geometry";
 import type { Binding, BoxMm, Brush, FillTone, Line, Page, Panel, Point, Project } from "./model";
 import { snapCut, trimBox } from "./pagebox";
-import { type CarriedContents, carryContents, followPanel, movePanel, panelContents, wantsSpread } from "./panels";
+import { type CarriedContents, carryContents, followPanel, movePanel, panelContents } from "./panels";
 import { gutters, pageIndex } from "./project";
 import { assignPanels, orderPanels, sortLines } from "./readingorder";
-import { keepStickyOnPage, stickyBox } from "./stickies";
+import { settleSticky, stickyBox } from "./stickies";
+import { asideRoom, NO_ROOM, offPage, type Room } from "./aside";
+import { drawAside } from "./asidedraw";
+import { asideSlot, pressHeld } from "./toolaside";
 import { moveStroke, strokeHit } from "./strokes";
 import { readCount, readFlag, readNumber } from "./settings";
 import {
@@ -59,7 +63,7 @@ import { snapPointTo, snapTargets, type SnapSettings, type SnapTargets } from ".
 import { Viewport } from "./viewport";
 import { ACCENT, drawLeader, NOTE_FONT, NOTE_ROW, noteBox, stickyHandle, type NoteBox } from "./notedraw";
 import { writeInPlace, type InPlaceEdit, type InPlaceHost } from "./inplace";
-import { drawCorners, drawCutOrFrame, drawDashedLine, drawFillArea, drawGoingTo, drawGuideLines, drawLasso, drawLifted, drawOverflowPanels, drawPenCursor, drawPointerNote, drawRing, drawScreenPage, drawSeam, drawSnapGrid, drawTransformFrame, drawWarpCorners, HANDLE } from "./screendraw";
+import { drawCorners, drawCutOrFrame, drawDashedLine, drawFillArea, drawGoingTo, drawGuideLines, drawLasso, drawLifted, drawOverflowPanels, drawPenCursor, drawPointerNote, drawReferenceFrames, drawSpreadMarks, drawRing, drawScreenPage, drawSeam, drawSnapGrid, drawTransformFrame, drawWarpCorners, HANDLE, panelBadge } from "./screendraw";
 
 export type { EditorEraseMode, EditorHost, PanelMode, Selection, Tool } from "./editorcore";
 export { pickedSummary };
@@ -138,6 +142,8 @@ export class PageEditor {
   snapping: SnapSettings = loadSnap();
   /** 連続: room between the spreads (mm). */
   pageGapMm = readNumber(PAGE_GAP_KEY, GRID_GAP_MM, 0, MAX_PAGE_GAP_MM);
+  /** 連続: room kept around the pages for what lies in their 欄外 (aside.ts). */
+  private room: Room = NO_ROOM;
   /** コマ割り: what a drag with the panel tool does. */
   panelMode: PanelMode = "cut";
   /** 多角形: the corners placed so far on a page (the panel is made when the outline is closed). */
@@ -471,26 +477,7 @@ export class PageEditor {
     const s = this.selection;
     const slot = s && this.slots.find((x) => x.page.id === s.pageId);
     if (!s || !slot) return null;
-    const page = slot.page;
-    let box: BoxMm | null = null;
-    if (s.kind === "panel") {
-      const panel = page.panels.find((p) => p.id === s.id);
-      if (panel) box = bounds(panel.shape);
-    } else if (s.kind === "line") {
-      const line = page.lines.find((l) => l.id === s.id);
-      if (line) box = bounds([[line.box[0], line.box[1]], [line.box[2], line.box[3]], ...(line.balloon ?? [])]);
-    } else if (s.kind === "breakout") {
-      const breakout = page.breakouts.find((b) => b.id === s.id);
-      if (breakout) box = bounds(breakout.shape);
-    } else if (s.kind === "sticky") {
-      const sticky = page.stickies?.find((n) => n.id === s.id);
-      if (sticky) box = stickyBox(sticky);
-    } else if (s.kind === "fill") {
-      const fill = page.fills?.find((f) => f.id === s.id);
-      if (fill) box = bounds(fill.shape);
-    } else {
-      box = baseBounds(transformBase(page, this.selectedItems()));
-    }
+    const box = selectionBox(slot.page, s.kind, s.id, this.selectedItems());
     if (!box) return null;
     const corners = [
       [box[0], box[1]],
@@ -539,7 +526,7 @@ export class PageEditor {
     // 連続, as the stage grows or shrinks (Tab, the strip, the window): fitted to it, fitted again;
     // otherwise what was in the middle stays in the middle.
     const was = this.continuous && project && before?.width && before.height && width && height ? this.layout(project) : null;
-    const fitted = was && project && !project.scroll && before ? fittedTo(was, project.pageFormat.canvasMm[1], before.width, before.height, this.view.zoom) : null;
+    const fitted = was && project && !project.scroll && before ? fittedTo(was, project.pageFormat.canvasMm[1], before.width, before.height, this.view.zoom, this.room) : null;
     const held = was && project && before ? nearestTo(was, project.pageFormat, [before.width / 2, before.height / 2]) : null;
     this.size = { width, height };
     const at = (slots: Slot[]) => (held ? onScreenOf(slots, held) : null);
@@ -570,7 +557,7 @@ export class PageEditor {
 
   private arrangement(): Arrangement {
     const { width, height } = this.stageSize();
-    return { single: this.single, continuous: this.continuous, rows: this.rows, zoom: this.view.zoom, pan: this.view.pan, width, height, gapMm: this.pageGapMm };
+    return { single: this.single, continuous: this.continuous, rows: this.rows, zoom: this.view.zoom, pan: this.view.pan, width, height, gapMm: this.pageGapMm, room: this.room };
   }
 
   private layout(project: Project): Slot[] {
@@ -619,7 +606,8 @@ export class PageEditor {
     if (!project) return null;
     const rect = this.canvas.getBoundingClientRect();
     const [sx, sy] = this.view.unturned([clientX - rect.left, clientY - rect.top]);
-    const slot = this.slotAt(sx, sy, project);
+    // Off every page: the nearest one, at a point in its 欄外.
+    const slot = this.slotAt(sx, sy, project) ?? nearestSlot(this.slots, project.pageFormat, [sx, sy]);
     if (!slot) return null;
     const point = toPage(slot, sx, sy);
     return { page: slot.page, point, panel: this.panelAt(slot.page, point) };
@@ -737,8 +725,24 @@ export class PageEditor {
   private carryToPageUnder(project: Project, slot: Slot): void {
     const s = this.selection;
     if (!s || s.pageId !== slot.page.id) return;
-    const under = (point: Point) => this.otherPageUnder(project, slot, point);
+    // Off every page: the page whose 欄外 it now lies in.
+    const nearest = ([x, y]: Point) => nearestSlot(this.slots, project.pageFormat, [slot.x + x * slot.scale, slot.y + y * slot.scale]);
+    const under = (point: Point) => this.otherPageUnder(project, slot, point) ?? (offPage([...point, ...point], project.pageFormat) && nearest(point) !== slot ? nearest(point) : null);
     const centre = (box: BoxMm): Point => [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2];
+    if (s.kind === "sticky") {
+      const sticky = slot.page.stickies?.find((n) => n.id === s.id);
+      // One tied to a panel or a line stays on that page.
+      const to = sticky && !sticky.link ? under(centre(stickyBox(sticky))) : null;
+      if (sticky && to) {
+        slot.page.stickies = slot.page.stickies!.filter((n) => n !== sticky);
+        sticky.at = toPage(to, slot.x + sticky.at[0] * slot.scale, slot.y + sticky.at[1] * slot.scale);
+        (to.page.stickies ??= []).push(sticky);
+        this.selection = { ...s, pageId: to.page.id };
+        this.focusOn(to);
+      }
+      if (sticky) settleSticky(project, sticky);
+      return;
+    }
     if (s.kind === "panel") {
       const panel = slot.page.panels.find((p) => p.id === s.id);
       // Half of a 見開き panel stays: it is one panel with the facing page's half.
@@ -846,6 +850,7 @@ export class PageEditor {
     ctx.restore();
     const project = this.host.project();
     if (!project) return;
+    if (!this.drag) this.keepRoom(project);
     this.slots = this.slid(this.layout(project));
     this.strokeCache.startFrame();
     const drawn = new Set<string>();
@@ -855,6 +860,14 @@ export class PageEditor {
       drawn.add(slot.page.id);
     }
     this.strokeCache.forget(drawn);
+    drawAside(this.ctx, project, this.slots, {
+      visible: (page) => this.visiblePage(page),
+      selected: (page, kind, id) => this.isSelected(page, kind, id),
+      stickyHandle: this.tool === "select" || this.tool === "sticky" ? LINK_HANDLE : null,
+      held: this.drag?.kind === "held" ? this.drag : null,
+      redraw: () => this.requestDraw(),
+      referenceFrames: this.tool === "reference" ? (slot) => this.drawReferenceFrames(slot) : undefined,
+    });
     this.drawSpreadMarks(project);
     this.drawDragged(project);
     this.drawOverflow(project);
@@ -874,6 +887,22 @@ export class PageEditor {
     ctx.clearRect(0, 0, cache.width, cache.height);
     ctx.drawImage(this.canvas, 0, 0);
     this.cache = cache;
+  }
+
+  /** 連続: room between the pages for what lies in their 欄外, made anew as that changes (the pages slide, the spread worked on stays put). */
+  private keepRoom(project: Project): void {
+    const room = asideRoom(project, project.pageFormat.canvasMm[1] / 2);
+    if (room.every((side, i) => Math.abs(side - this.room[i]) < 0.5)) return;
+    if (!this.continuous) {
+      this.room = room;
+      return;
+    }
+    const from = new Map(this.slots.map((slot): [number, Point] => [slot.index, [slot.x, slot.y]]));
+    const before = this.spreadBox(this.layout(project));
+    this.room = room;
+    const after = this.spreadBox(this.layout(project));
+    if (before && after) this.view.pan = [this.view.pan[0] + before[0] - after[0], this.view.pan[1] + before[1] - after[1]];
+    if (from.size && !matchMedia("(prefers-reduced-motion: reduce)").matches) this.sliding = { from, start: performance.now() };
   }
 
   /** Redraw only what lies over the pages (hover marks, the eraser ring) on the next frame. */
@@ -900,40 +929,8 @@ export class PageEditor {
    * 連続: the spread worked on (what the side panels are about) is framed.
    */
   private drawSpreadMarks(project: Project): void {
-    const bySpread = new Map<number, Slot[]>();
-    const list = this.spreadList();
-    const spreadOf = new Map<number, number>();
-    list.forEach((pair, i) => pair.forEach((page) => page !== null && spreadOf.set(page - 1, i)));
-    for (const slot of this.slots) {
-      const i = spreadOf.get(slot.index);
-      if (i === undefined) continue;
-      bySpread.set(i, [...(bySpread.get(i) ?? []), slot]);
-    }
-    const ctx = this.ctx;
-    const pageH = project.pageFormat.canvasMm[1];
-    for (const slots of bySpread.values()) {
-      if (slots.length < 2 || !slots.some((slot) => this.onCanvas(project, slot))) continue;
-      if (!wantsSpread(project, Math.min(...slots.map((slot) => slot.index)))) continue;
-      const [left, right] = [...slots].sort((a, b) => a.x - b.x);
-      const gutter = left.x + left.shown[1] * left.scale;
-      ctx.save();
-      ctx.fillStyle = "#3a6fd8";
-      ctx.font = "12px system-ui, sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("見開きページ", gutter, right.y + pageH * right.scale + 18);
-      ctx.restore();
-    }
-    const current = bySpread.get(this.spreadIndex);
-    if (!this.continuous || !current || list.length < 2) return;
-    const box = this.extent(current);
-    if (!box) return;
-    ctx.save();
-    ctx.strokeStyle = "rgba(47, 111, 219, 0.55)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(box[0] - 5, box[1] - 5, box[2] - box[0] + 10, box[3] - box[1] + 10, 6);
-    ctx.stroke();
-    ctx.restore();
+    const current = this.continuous ? this.spreadIndex : null;
+    drawSpreadMarks(this.ctx, project, this.slots, this.spreadList(), current, (slot) => this.onCanvas(project, slot), (slots) => this.extent(slots));
   }
 
   /** The page as shown: without what the レイヤー list hides. */
@@ -984,32 +981,12 @@ export class PageEditor {
 
   /** 資料: every picture's outline, the chosen one with corners to drag. */
   private drawReferenceFrames(slot: Slot): void {
-    const ctx = this.ctx;
-    for (const reference of slot.page.references ?? []) {
-      const chosen = this.reference?.pageId === slot.page.id && this.reference.id === reference.id;
-      const [x0, y0, x1, y1] = reference.box.map((v, i) => (i % 2 ? slot.y : slot.x) + v * slot.scale);
-      ctx.save();
-      ctx.setLineDash(chosen ? [] : [4, 3]);
-      ctx.strokeStyle = chosen ? ACCENT : "rgba(47, 111, 219, 0.55)";
-      ctx.lineWidth = chosen ? 1.5 : 1;
-      ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
-      if (chosen) {
-        ctx.setLineDash([]);
-        ctx.fillStyle = "#ffffff";
-        for (const [x, y] of [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]) {
-          ctx.fillRect(x - HANDLE, y - HANDLE, HANDLE * 2, HANDLE * 2);
-          ctx.strokeRect(x - HANDLE, y - HANDLE, HANDLE * 2, HANDLE * 2);
-        }
-      }
-      ctx.restore();
-    }
+    drawReferenceFrames(this.ctx, slot, this.reference?.pageId === slot.page.id ? this.reference.id : null);
   }
 
   /** 資料: the chosen picture's corner under a screen point (0–3), or -1. */
   private referenceCornerAt(slot: Slot, sx: number, sy: number): number {
-    const chosen = this.reference?.pageId === slot.page.id ? slot.page.references?.find((r) => r.id === this.reference!.id) : undefined;
-    if (!chosen) return -1;
-    return corners(chosen.box).findIndex(([x, y]) => Math.hypot(slot.x + x * slot.scale - sx, slot.y + y * slot.scale - sy) <= REFERENCE_HANDLE + 2);
+    return referenceCornerAt(slot, this.reference?.pageId === slot.page.id ? this.reference.id : null, sx, sy);
   }
 
   /** Choose a 資料画像 (or none) with the 資料 tool. */
@@ -1494,7 +1471,7 @@ export class PageEditor {
   pasteTarget(): { page: Page; point?: Point } | null {
     const project = this.host.project();
     if (!project) return null;
-    const under = this.pointer && this.slotAt(this.pointer[0], this.pointer[1], project);
+    const under = this.pointer && (this.slotAt(this.pointer[0], this.pointer[1], project) ?? nearestSlot(this.slots, project.pageFormat, this.pointer));
     if (under) return { page: under.page, point: toPage(under, this.pointer![0], this.pointer![1]) };
     const page = this.focusPage();
     return page ? { page } : null;
@@ -1656,16 +1633,7 @@ export class PageEditor {
 
   /** Where a panel's number sits (screen px). Numbers stay inside the page even for panels that run off it. */
   private badge(slot: Slot, panel: Panel, pageW: number): { x: number; y: number; radius: number } {
-    const [, y0, x1] = bounds(panel.shape);
-    const radius = Math.max(4 * slot.scale, 7);
-    // On the paper: a 裁ち切り panel's number sits at the trim, not out in the bleed.
-    const format = this.host.project()?.pageFormat;
-    const [, ty0, tx1] = format ? trimBox(format) : [0, 0, pageW];
-    return {
-      x: Math.min(slot.x + x1 * slot.scale, slot.x + Math.min(pageW, tx1) * slot.scale) - radius - 3,
-      y: Math.max(slot.y + y0 * slot.scale, slot.y + Math.max(0, ty0) * slot.scale) + radius + 3,
-      radius,
-    };
+    return panelBadge(slot, panel, this.host.project()?.pageFormat, pageW);
   }
 
   /** The panel whose number is under the pointer. */
@@ -1930,10 +1898,14 @@ export class PageEditor {
     // A pen's eraser end reports button 5 (buttons bit 32): erase with any tool.
     this.setTipEraser(event);
     if (event.button !== 0 && !this.tipEraser) return;
+    // 保留コマ laid in the 欄外 lie over everything.
+    if (this.tool === "select" && !this.tipEraser && pressHeld(this.core, project, sx, sy)) return;
     let slot = this.slotAt(sx, sy, project);
     // The selected panel's corners, also where they lie past its page (over the facing one).
     const selectedOn = this.tool === "select" && this.selection?.kind === "panel" ? this.slots.find((x) => x.page.id === this.selection!.pageId) : undefined;
     if (selectedOn && selectedOn !== slot && this.vertexAt(selectedOn, sx, sy) >= 0) slot = selectedOn;
+    // Off every page: in the 欄外 of the nearest one.
+    slot ??= asideSlot(this.core, this.tipEraser ? "eraser" : this.tool, project, sx, sy);
     if (!slot) {
       this.select(null);
       return;
@@ -2155,11 +2127,8 @@ export class PageEditor {
       if (breakout) moveBreakout(breakout, dx, dy);
     } else if (s.kind === "sticky") {
       const sticky = page.stickies?.find((n) => n.id === s.id);
-      if (sticky) {
-        sticky.at = [sticky.at[0] + dx, sticky.at[1] + dy];
-        const project = this.host.project();
-        if (project) keepStickyOnPage(project, sticky);
-      }
+      // On its page or in its 欄外 once let go (carryToPageUnder).
+      if (sticky) sticky.at = [sticky.at[0] + dx, sticky.at[1] + dy];
     } else if (s.kind === "fill") {
       const fill = page.fills?.find((f) => f.id === s.id);
       if (fill) fill.shape = fill.shape.map(([x, y]) => [x + dx, y + dy]);
@@ -2311,6 +2280,8 @@ export class PageEditor {
     if (!page || !this.selection) return false;
     this.host.begin();
     this.moveSelection(page, dx, dy);
+    const sticky = this.selection.kind === "sticky" ? page.stickies?.find((n) => n.id === this.selection!.id) : undefined;
+    if (sticky) settleSticky(this.host.project()!, sticky);
     if (this.selection.kind === "panel" || this.selection.items?.some((item) => item.kind === "panel")) orderPanels(page, this.host.project()!.binding);
     assignPanels(page);
     sortLines(page, this.binding());

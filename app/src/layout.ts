@@ -1,6 +1,7 @@
 // Where the pages lie on the editor's screen: one spread (見開き), one page
 // (単独), or every spread on one canvas (連続), and the conversions between
 // the screen (CSS px, before the view's rotation) and a page (mm).
+import type { Room } from "./aside";
 import type { BoxMm, Page, PageFormat, Point, Project } from "./model";
 import { trimBox } from "./pagebox";
 
@@ -43,6 +44,8 @@ export interface Arrangement {
   pan: [number, number];
   /** 連続: room between the spreads (mm); none is GRID_GAP_MM. */
   gapMm?: number;
+  /** 連続: room kept around every page for what lies in the 欄外 (mm: top, right, bottom, left). */
+  room?: Room;
   /** The stage (CSS px). */
   width: number;
   height: number;
@@ -121,11 +124,12 @@ function continuousLayout(project: Project, list: Pair[], view: Arrangement): Sl
   const scale = spreadFit(project.pageFormat, view.width, view.height) * view.zoom;
   const columns = Math.ceil(list.length / rowCount(view.rows, list.length));
   const gap = pageGapPx(view.gapMm ?? GRID_GAP_MM, scale);
-  const pitchX = spreadMm * scale + gap;
-  const pitchY = pageH * scale + CAPTION + gap;
+  const [roomTop, roomRight, roomBottom, roomLeft] = (view.room ?? [0, 0, 0, 0]).map((mm) => mm * scale);
+  const pitchX = spreadMm * scale + gap + roomLeft + roomRight;
+  const pitchY = pageH * scale + CAPTION + gap + roomTop + roomBottom;
   const step = project.binding === "right" ? -1 : 1;
-  const left = (step < 0 ? view.width - MARGIN - spreadMm * scale : MARGIN) + view.pan[0];
-  const top = MARGIN + view.pan[1];
+  const left = (step < 0 ? view.width - MARGIN - roomRight - spreadMm * scale : MARGIN + roomLeft) + view.pan[0];
+  const top = MARGIN + roomTop + view.pan[1];
   return list.flatMap((pair, i) => spreadSlots(project, pair, left + step * (i % columns) * pitchX, top + Math.floor(i / columns) * pitchY, scale));
 }
 
@@ -139,8 +143,9 @@ function stripLayout(project: Project, list: Pair[], view: Arrangement): Slot[] 
   const [pageW, pageH] = project.pageFormat.canvasMm;
   const scale = Math.min((view.width - 2 * MARGIN - STRIP_SIDE) / pageW, (view.height - 2 * MARGIN) / pageH) * view.zoom;
   const perColumn = Math.ceil(list.length / rowCount(view.rows, list.length));
-  const pitchX = pageW * scale + STRIP_SIDE + pageGapPx(view.gapMm ?? GRID_GAP_MM, scale);
-  const left = MARGIN + STRIP_SIDE + view.pan[0];
+  const [, roomRight, , roomLeft] = (view.room ?? [0, 0, 0, 0]).map((mm) => mm * scale);
+  const pitchX = pageW * scale + STRIP_SIDE + pageGapPx(view.gapMm ?? GRID_GAP_MM, scale) + roomLeft + roomRight;
+  const left = MARGIN + STRIP_SIDE + roomLeft + view.pan[0];
   const top = MARGIN + view.pan[1];
   return list.flatMap((pair, i): Slot[] => {
     const number = pair[0] ?? pair[1];
@@ -157,14 +162,15 @@ export function pageGapPx(gapMm: number, scale: number): number {
   return gap * scale + GRID_GAP_PX * Math.min(1, gap / GRID_GAP_MM);
 }
 
-/** The screen box (px) of the pages in `slots`, with the room for their page numbers. */
-export function extent(slots: Slot[], pageH: number): BoxMm | null {
+/** The screen box (px) of the pages in `slots`, with the room for their page numbers (and `room` around them for the 欄外). */
+export function extent(slots: Slot[], pageH: number, room?: Room): BoxMm | null {
   if (!slots.length) return null;
+  const [top, right, bottom, left] = room ?? [0, 0, 0, 0];
   return [
-    Math.min(...slots.map((slot) => slot.x + slot.shown[0] * slot.scale)),
-    Math.min(...slots.map((slot) => slot.y)),
-    Math.max(...slots.map((slot) => slot.x + slot.shown[1] * slot.scale)),
-    Math.max(...slots.map((slot) => slot.y + pageH * slot.scale + CAPTION)),
+    Math.min(...slots.map((slot) => slot.x + (slot.shown[0] - left) * slot.scale)),
+    Math.min(...slots.map((slot) => slot.y - top * slot.scale)),
+    Math.max(...slots.map((slot) => slot.x + (slot.shown[1] + right) * slot.scale)),
+    Math.max(...slots.map((slot) => slot.y + (pageH + bottom) * slot.scale + CAPTION)),
   ];
 }
 
@@ -190,13 +196,13 @@ export function fitContinuous(project: Project, list: Pair[], view: Arrangement,
   const slots = (pan: [number, number] = [0, 0]) => layoutPages(project, list, 0, { ...view, continuous: true, zoom, pan });
   for (let i = 0; i < 3; i++) {
     // The gaps between the spreads are partly px: a few rounds settle the zoom.
-    const box = extent(slots(), pageH);
+    const box = extent(slots(), pageH, view.room);
     if (!box) return { zoom: 1, pan: [0, 0] };
     const tall = (view.height - 2 * MARGIN) / (box[3] - box[1]);
     zoom = Math.min(Math.max(zoom * (what === "rows" ? tall : Math.min((view.width - 2 * MARGIN) / (box[2] - box[0]), tall)), 0.02), 1);
   }
   const laid = slots();
-  const box = extent(laid, pageH)!;
+  const box = extent(laid, pageH, view.room)!;
   const x = what === "rows" ? (across(laid) ?? (box[0] + box[2]) / 2) : (box[0] + box[2]) / 2;
   return { zoom, pan: [view.width / 2 - x, view.height / 2 - (box[1] + box[3]) / 2] };
 }
@@ -206,8 +212,8 @@ export function fitContinuous(project: Project, list: Pair[], view: Arrangement,
  * they were: every page inside and filling it across or down (`all`), or
  * the rows filling its height (`rows`, or in its middle at zoom 1).
  */
-export function fittedTo(slots: Slot[], pageH: number, width: number, height: number, zoom: number): "all" | "rows" | null {
-  const box = extent(slots, pageH);
+export function fittedTo(slots: Slot[], pageH: number, width: number, height: number, zoom: number, room?: Room): "all" | "rows" | null {
+  const box = extent(slots, pageH, room);
   if (!box) return null;
   const [w, h] = [box[2] - box[0], box[3] - box[1]];
   const middle = (a: number, b: number, size: number) => Math.abs((a + b) / 2 - size / 2) < 2;
@@ -228,6 +234,18 @@ export function nearestTo(slots: Slot[], format: PageFormat, [sx, sy]: Point): {
     if (!best || far < best.far) best = { index: slot.index, point, far };
   }
   return best && { index: best.index, point: best.point };
+}
+
+/** The page nearest a point of the screen (px) that is on none: the one whose 欄外 it is in. */
+export function nearestSlot(slots: readonly Slot[], format: PageFormat, [sx, sy]: Point): Slot | null {
+  const pageH = format.canvasMm[1];
+  let best: { slot: Slot; far: number } | null = null;
+  for (const slot of slots) {
+    const [x, y] = toPage(slot, sx, sy);
+    const far = Math.hypot(Math.max(0, slot.shown[0] - x, x - slot.shown[1]), Math.max(0, -y, y - pageH)) * slot.scale;
+    if (!best || far < best.far) best = { slot, far };
+  }
+  return best?.slot ?? null;
 }
 
 /** Where a point of a page (mm) is on the screen (px), or null when the page is not laid out. */

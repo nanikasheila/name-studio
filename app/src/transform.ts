@@ -9,6 +9,7 @@ import type { BoxMm, Breakout, Fill, Line, Page, Panel, Point, Project, Sticky, 
 import { carryContents, movePanel } from "./panels";
 import { newId } from "./project";
 import { assignPanels, orderPanels, sortLines } from "./readingorder";
+import { stickyBox } from "./stickies";
 import { moveStroke } from "./strokes";
 
 /** x' = a x + c y + e, y' = b x + d y + f. */
@@ -448,4 +449,29 @@ export function densify(points: StrokePoint[]): StrokePoint[] {
   const [a, b] = points;
   const steps = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.5));
   return Array.from({ length: steps + 1 }, (_, i) => a.map((value, k) => value + ((b[k] ?? value) - value) * (i / steps)) as StrokePoint);
+}
+
+/** The box of what is selected (mm): one thing of `kind`, or `items` picked together. */
+export function selectionBox(page: Page, kind: string, id: string, items: readonly ItemRef[]): BoxMm | null {
+  if (kind === "panel") {
+    const panel = page.panels.find((p) => p.id === id);
+    return panel ? bounds(panel.shape) : null;
+  }
+  if (kind === "line") {
+    const line = page.lines.find((l) => l.id === id);
+    return line ? bounds([[line.box[0], line.box[1]], [line.box[2], line.box[3]], ...(line.balloon ?? [])]) : null;
+  }
+  if (kind === "breakout") {
+    const breakout = page.breakouts.find((b) => b.id === id);
+    return breakout ? bounds(breakout.shape) : null;
+  }
+  if (kind === "sticky") {
+    const sticky = page.stickies?.find((n) => n.id === id);
+    return sticky ? stickyBox(sticky) : null;
+  }
+  if (kind === "fill") {
+    const fill = page.fills?.find((f) => f.id === id);
+    return fill ? bounds(fill.shape) : null;
+  }
+  return baseBounds(transformBase(page, items));
 }
