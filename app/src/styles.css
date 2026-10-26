@@ -381,8 +381,8 @@ dialog.pen-settings { width: min(720px, calc(100vw - 32px)); max-height: calc(10
 .action-bar select { width: auto; }
 .action-bar button.active { border-color: var(--accent); color: var(--accent); background: rgb(47 111 219 / 0.08); }
 
-/* Tab: the pages take the whole width. */
-body.focus-mode #editor > .dock { display: none; }
+/* Tab: the pages take the whole window (the side palettes and the story band go). */
+body.focus-mode #editor > .dock, body.focus-mode #story, body.focus-mode #story-handle { display: none; }
 
 /* 話の型の色分け (page lists) */
 .page-item.tinted { box-shadow: inset 4px 0 0 var(--part); }

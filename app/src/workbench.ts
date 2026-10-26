@@ -306,10 +306,12 @@ export class Workbench {
       flipLeft: (step) => this.flip(step * this.leftward()),
       makeOption: (first, last) => this.makeOption(first, last),
       toggleFocus: () => {
-        // As CSP's Tab: the side panels go, the pages take the room.
-        document.body.classList.toggle("focus-mode");
+        // As CSP's Tab: the side palettes and the story band go, the pages take the room.
+        const focus = document.body.classList.toggle("focus-mode");
         this.editor.resize();
-        this.setStatus(document.body.classList.contains("focus-mode") ? "左右の欄を隠しました（Tab で戻す）" : "");
+        // Back: the band and the palettes catch up with what changed while they were hidden.
+        if (!focus) this.renderAll();
+        this.setStatus(focus ? "左右の欄と下の帯を隠しました（Tab で戻す）" : "");
       },
       arrange: (pageId) => this.arrange(pageId),
       addTails: (pageId) => this.addTails(pageId),

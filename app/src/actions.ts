@@ -29,7 +29,7 @@ export interface CommandHost {
   /** One spread to the left (1) or right (-1). */
   flipLeft(step: 1 | -1): void;
   makeOption(first: number, last: number): void;
-  /** Tab: the side panels hidden, the pages take the room (again: back). */
+  /** Tab: the side palettes and the story band hidden, the pages take the room (again: back). */
   toggleFocus(): void;
   arrange(pageId: string): void;
   addTails(pageId?: string): number;
@@ -289,7 +289,7 @@ export function buildCommands(host: CommandHost): Command[] {
         editor.fitAll();
       }),
     },
-    { id: "view.focus", label: "左右の欄を隠してページを大きく（もう一度で戻す）", group: "画面", keys: ["Tab"], available: named, run: always(() => host.toggleFocus()) },
+    { id: "view.focus", label: "左右の欄と物語の帯を隠してページを大きく（もう一度で戻す）", group: "画面", keys: ["Tab"], available: named, run: always(() => host.toggleFocus()) },
     palette("pages", "ページ", "一覧 並べ替え"),
     palette("script", "台本", "台本 プロット 取り込み markdown"),
     palette("cast", "人物", "登場人物 キャラ"),
