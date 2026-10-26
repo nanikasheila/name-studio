@@ -17,7 +17,7 @@ use super::raster_page::{PageLayer, TemplateCanvas};
 use crate::clip::{ClipDocument, ClipLayer, LayerKind};
 use crate::cmc::CmcProject;
 use crate::text::text_color;
-use crate::vector::{FrameTemplate, brush_style_of};
+use crate::vector::brush_style_of;
 
 /// What one written layer should hold, without its pixels.
 #[derive(Debug, Clone, PartialEq)]
@@ -476,7 +476,7 @@ fn check_document(document: &ClipDocument, check: &mut FileCheck) {
                 Ok(payloads) => brush_styles.extend(
                     payloads
                         .iter()
-                        .filter_map(|payload| FrameTemplate::of(payload).ok().flatten())
+                        .filter_map(|payload| crate::vector::frame_template_of(payload))
                         .map(|frame| frame.brush_style()),
                 ),
                 Err(error) => check

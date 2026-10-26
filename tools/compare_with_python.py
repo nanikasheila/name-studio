@@ -8,7 +8,11 @@ How: Builds the synthetic test files from ``tests/csp_fixtures.py`` (plus any
      Then splits a synthetic name sheet with both ``split`` commands and
      compares what they wrote: the summaries, every database row (ids that
      are random by design are masked), the vector and text data byte for
-     byte, and the pixels within a small resampling tolerance.
+     byte, and the pixels within a small resampling tolerance. The Rust
+     writer edits files through csp-format, which stores pixels its own way
+     (every mipmap level, no pixels in vector and text layers' render
+     caches, NULL for links it drops), so the pixel storage tables and the
+     links into them are left to csp-format's own checks.
 
 The Python reference lives in the csp-name-splitter repository. Point
 ``CSP_NAME_SPLITTER`` at a checkout of it (default: a sibling folder).
@@ -36,6 +40,7 @@ import struct  # noqa: E402
 
 from PIL import Image, ImageChops  # noqa: E402
 
+import csp_fixtures  # noqa: E402
 from csp_fixtures import (  # noqa: E402
     FixtureLayer, build_clip, build_cmc, build_text_attributes, rectangle,
 )
@@ -51,10 +56,15 @@ FLOAT_TOLERANCE = 1e-9
 # Resampling is not byte-identical to Pillow's fixed-point filters.
 PIXEL_TOLERANCE = 8
 BBOX_TOLERANCE = 2
-# Values that are random by design (file and layer ids) or derived from them.
+# Values that are random by design (file and layer ids) or derived from them, and the selected layer.
 MASKED_COLUMNS = {"LayerUuid", "ExternalID", "Offset", "BlockData", "VectorData", "ImageData",
                   "LinkWriteYear", "LinkWriteMonth", "LinkWriteDay", "LinkWriteHour", "LinkWriteMinute",
-                  "LinkWriteSecond"}
+                  "LinkWriteSecond", "CanvasCurrentLayer"}
+# How pixels are stored (csp-format's own way in the Rust writer, checked there).
+STORAGE_TABLES = {"Mipmap", "MipmapInfo", "Offscreen", "ExternalChunk", "ElemScheme", "LayerThumbnail"}
+# Layer columns that point into those tables.
+STORAGE_LINKS = {"LayerRenderMipmap", "LayerLayerMaskMipmap", "LayerRenderThumbnail", "LayerLayerMaskThumbnail",
+                 "ComicFrameLineMipmap"}
 
 
 def _sample_image(width: int, height: int) -> Image.Image:
@@ -93,6 +103,25 @@ def build_fixtures(folder: Path) -> list[Path]:
     ], double_page=True)
     work = build_cmc(folder / "work.cmc", ["page0001.clip", "page0002.clip", "page0003.clip"], order=[0, 2, 1])
     return [page, sheet, name, work]
+
+
+_reference_editing_schema = csp_fixtures._add_editing_schema
+
+
+def _editing_schema(database: sqlite3.Connection) -> None:
+    """The reference fixtures' editing schema, plus the columns every CSP file
+    has that csp-format (the Rust writer) edits: the current layer and the
+    layer mask's thumbnail and masking flag."""
+    _reference_editing_schema(database)
+    database.executescript(
+        "ALTER TABLE Canvas ADD COLUMN CanvasCurrentLayer;"
+        "UPDATE Canvas SET CanvasCurrentLayer = 0;"
+        "ALTER TABLE Layer ADD COLUMN LayerLayerMaskThumbnail;"
+        "ALTER TABLE Layer ADD COLUMN LayerMasking;"
+    )
+
+
+csp_fixtures._add_editing_schema = _editing_schema
 
 
 def build_split_inputs(folder: Path) -> tuple[Path, Path]:
@@ -149,12 +178,16 @@ def database_rows(path: Path) -> dict[str, list[list[object]]]:
         tables = [row[0] for row in database.execute("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")]
         result = {}
         for table in tables:
+            if table in STORAGE_TABLES:
+                continue
             columns = [row[1] for row in database.execute(f'PRAGMA table_info("{table}")')]
             rows = []
             for row in database.execute(f'SELECT * FROM "{table}"'):
                 values = []
                 for column, value in zip(columns, row):
-                    if column in MASKED_COLUMNS and value not in (None, b"", ""):
+                    if column in STORAGE_LINKS:
+                        value = "<link>" if value else 0
+                    elif column in MASKED_COLUMNS and value not in (None, b"", ""):
                         value = "<masked>"
                     elif table == "Offscreen" and column == "Attribute" and isinstance(value, bytes):
                         value = without_block_sizes(value).hex()
@@ -189,6 +222,9 @@ def pixel_differences(python_path: Path, rust_path: Path) -> list[str]:
     for layer in python_document.iter_layers():
         expected = python_document.render_layer_pixels(layer)
         actual = rust_document.render_layer_pixels(rust_document.find_layer(layer.main_id))
+        # An empty render cache is the same as none: CSP draws those layers itself.
+        expected = None if expected is not None and expected.getbbox() is None else expected
+        actual = None if actual is not None and actual.getbbox() is None else actual
         if expected is None or actual is None:
             if (expected is None) != (actual is None):
                 found.append(f"layer {layer.main_id}: stored pixels {expected is not None} != {actual is not None}")
@@ -200,7 +236,12 @@ def pixel_differences(python_path: Path, rust_path: Path) -> list[str]:
 
 
 def summary_differences(python: object, rust: object, where: str = "$") -> list[str]:
-    """Like ``differences``, but pixel bounding boxes may move by a pixel or two."""
+    """Like ``differences``, but pixel bounding boxes may move by a pixel or two,
+    and empty stored pixels are the same as none."""
+    if where.endswith(".stored_pixels") and (python is None or rust is None):
+        empty = [value for value in (python, rust) if value is not None]
+        if all(isinstance(value, dict) and value.get("bbox") == [] for value in empty):
+            return []
     if where.endswith(".stored_pixels.bbox") and isinstance(python, list) and isinstance(rust, list):
         if len(python) == len(rust) and all(abs(a - b) <= BBOX_TOLERANCE for a, b in zip(python, rust)):
             return []

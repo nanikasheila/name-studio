@@ -305,7 +305,9 @@ pub fn block_payload(blocks: &[FixtureBlock], count: usize) -> Vec<u8> {
         }
         raw_blocks[*index as usize] = Some(raw);
     }
-    crate::write::offscreen::encode_block_records(&raw_blocks, 256 * 256 * 5).expect("in-memory write")
+    csp_format::offscreen::BlockData::from_raw_blocks(&raw_blocks, 256 * 256 * 5)
+        .expect("in-memory write")
+        .to_bytes()
 }
 
 /// Wrap a database and external chunks in a CSF container.
@@ -384,7 +386,10 @@ fn add_editing_schema(database: &Connection, canvas: FixtureCanvas) {
              UPDATE Canvas SET ComicPageIndex = 0, ComicIsLeftPage = 1, ComicStoryStoryName = 'Template',
                  ComicStoryStoryIndex = 3, ComicStoryNombreStart = 1, CropFrameOptionFlag = 2,
                  ComicBindPosition = 1;
+             ALTER TABLE Canvas ADD COLUMN CanvasCurrentLayer;
              ALTER TABLE Layer ADD COLUMN LayerRenderThumbnail;
+             ALTER TABLE Layer ADD COLUMN LayerLayerMaskThumbnail;
+             ALTER TABLE Layer ADD COLUMN LayerMasking;
              ALTER TABLE Layer ADD COLUMN LayerUuid;
              UPDATE Layer SET LayerUuid = 'fixture-layer-' || MainId;
              ALTER TABLE Layer ADD COLUMN VectorNormalStrokeIndex;
@@ -545,22 +550,27 @@ fn build(path: &Path, canvas: FixtureCanvas, layers: Vec<FixtureLayer>, editable
         if !layer.raster_blocks.is_empty() {
             mipmap = layer.main_id;
             let id = external_id(externals.len() + 1);
+            let count = canvas.width_px().div_ceil(256) * canvas.height_px().div_ceil(256);
+            let payload = block_payload(&layer.raster_blocks, count as usize);
+            // The attribute lists each block record's size, as CSP keeps it.
+            let mut attribute =
+                csp_format::offscreen::Attribute::parse(&offscreen_attribute(canvas.width_px(), canvas.height_px()))
+                    .expect("fixture attribute");
+            let sizes = csp_format::offscreen::BlockData::parse(&payload)
+                .expect("fixture blocks")
+                .record_sizes();
+            attribute.set_block_sizes(&sizes);
             database
                 .execute("INSERT INTO Mipmap VALUES(?1, ?1)", [mipmap])
                 .and_then(|_| database.execute("INSERT INTO MipmapInfo VALUES(?1, ?1)", [mipmap]))
                 .and_then(|_| {
                     database.execute(
                         "INSERT INTO Offscreen VALUES(?1, ?2, ?3)",
-                        params![
-                            mipmap,
-                            offscreen_attribute(canvas.width_px(), canvas.height_px()),
-                            id.as_bytes()
-                        ],
+                        params![mipmap, attribute.to_bytes(), id.as_bytes()],
                     )
                 })
                 .expect("offscreen");
-            let count = canvas.width_px().div_ceil(256) * canvas.height_px().div_ceil(256);
-            externals.push((id, block_payload(&layer.raster_blocks, count as usize)));
+            externals.push((id, payload));
         }
         if !layer.vectors.is_empty() {
             let id = external_id(externals.len() + 1);

@@ -13,9 +13,10 @@ use clip_core::fixtures::{FixtureCanvas, FixtureLayer, OPEN, build_cmc, build_ed
 use clip_core::layout::ReadingOrder;
 use clip_core::plan::{Fit, PlanOptions, plan_sheet};
 use clip_core::text::{build_tlv, parse_text_attributes, parse_tlv};
-use clip_core::write::editor::ClipEditor;
 use clip_core::write::split::{DEFAULT_NAME_PATTERN, SplitOptions, split_sheet};
 use clip_core::{ClipDocument, CmcProject, RgbaImage};
+use csp_format::ClipFile;
+use csp_format::edit::NewLayer;
 
 /// 160 x 60 mm and 40 x 56 mm at 254 dpi: 1600 x 600 and 400 x 560 px.
 const SHEET: FixtureCanvas = FixtureCanvas {
@@ -182,28 +183,15 @@ fn editor_adds_a_layer_with_pixels() {
     let folder = tempfile::tempdir().unwrap();
     let template = template(folder.path());
     let before = digest(&template);
-    let mut editor = ClipEditor::open(&template).unwrap();
-    let source = ClipDocument::read(&template).unwrap();
-    let payload = |id: &str| source.external_payload(id).map(<[u8]>::to_vec);
-    let raster = editor.first_raster_layer().unwrap();
-    let mut rename = |values: &mut clip_core::write::Values| {
-        for (column, value) in values.iter_mut() {
-            if column == "LayerName" {
-                *value = rusqlite::types::Value::Text("追加".into());
-            }
-        }
-        Ok(())
-    };
-    let new_id = editor
-        .add_layer(source.database(), &payload, raster, Some(&mut rename), None)
-        .unwrap();
-    editor.append_to_folder(editor.root_id, new_id, None).unwrap();
-    let red = RgbaImage {
+    let mut editor = ClipFile::open(&template).unwrap();
+    let root = editor.canvas.root_folder;
+    let new_id = editor.add_layer(root, NewLayer::Raster, "追加").unwrap();
+    let red = csp_format::RgbaImage {
         width: 20,
         height: 10,
         pixels: [255, 0, 0, 255].repeat(200),
     };
-    editor.set_layer_image(new_id, &red, (100, 200)).unwrap();
+    editor.set_layer_pixels(new_id, &red, (100, 200)).unwrap();
     let output = folder.path().join("out.clip");
     editor.save(&output).unwrap();
     assert_eq!(digest(&template), before);
@@ -815,9 +803,9 @@ fn checks_written_pages_and_works() {
 
     // The faults CSP has shown: vectors without the brush style manager.
     let broken = folder.path().join("broken.clip");
-    let editor = ClipEditor::open(&page).unwrap();
+    let editor = ClipFile::open(&page).unwrap();
     editor
-        .db
+        .database()
         .execute("UPDATE Canvas SET BrushStyleManager = NULL", [])
         .unwrap();
     editor.save(&broken).unwrap();
@@ -836,9 +824,9 @@ fn checks_written_pages_and_works() {
 /// The template with a 仕上がり枠 of 30 x 50 mm (300 x 500 px), as spreads need.
 fn trimmed_template(folder: &Path) -> PathBuf {
     let path = folder.join("template").join("page-trim.clip");
-    let editor = ClipEditor::open(template(folder)).unwrap();
+    let editor = ClipFile::open(template(folder)).unwrap();
     editor
-        .db
+        .database()
         .execute_batch(
             "ALTER TABLE Canvas ADD COLUMN CropFrameUnitKind;
              ALTER TABLE Canvas ADD COLUMN CropFrameWidth;
@@ -917,8 +905,15 @@ fn writes_spread_pages() {
         })
         .unwrap();
     assert_eq!((left, flag), (0, 17));
-    // Every render offscreen is as wide as the spread (padded to blocks).
-    let mut statement = spread.database().prepare("SELECT Attribute FROM Offscreen").unwrap();
+    // Every render image is as wide as the spread (padded to blocks) at
+    // full size; the smaller zoom levels halve it.
+    let mut statement = spread
+        .database()
+        .prepare(
+            "SELECT o.Attribute FROM Mipmap m JOIN MipmapInfo i ON i.MainId = m.BaseMipmapInfo
+             JOIN Offscreen o ON o.MainId = i.Offscreen",
+        )
+        .unwrap();
     let widths: Vec<(u32, u32)> = statement
         .query_map([], |row| row.get::<_, Vec<u8>>(0))
         .unwrap()
@@ -1437,30 +1432,24 @@ fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
     assert_eq!(written.rasters.keys().collect::<Vec<_>>(), ["メモ（ネーム）"]);
 
     // Pen work in CSP: a layer drawn on.
-    let mut editor = ClipEditor::open(&page_path).unwrap();
+    let mut editor = ClipFile::open(&page_path).unwrap();
     let source = ClipDocument::read(&page_path).unwrap();
-    let payload = |id: &str| source.external_payload(id).map(<[u8]>::to_vec);
-    let raster = editor.first_raster_layer().unwrap();
-    let mut rename = |values: &mut clip_core::write::Values| {
-        for (column, value) in values.iter_mut() {
-            if column == "LayerName" {
-                *value = rusqlite::types::Value::Text("ペン入れ".into());
-            }
-        }
-        Ok(())
-    };
-    let ink = editor
-        .add_layer(source.database(), &payload, raster, Some(&mut rename), None)
-        .unwrap();
-    editor.append_to_folder(editor.root_id, ink, None).unwrap();
-    let black = RgbaImage {
+    let raster = source
+        .layers()
+        .into_iter()
+        .find(|layer| layer.kind == clip_core::LayerKind::Raster)
+        .unwrap()
+        .main_id;
+    let root = editor.canvas.root_folder;
+    let ink = editor.add_layer(root, NewLayer::Raster, "ペン入れ").unwrap();
+    let black = csp_format::RgbaImage {
         width: 30,
         height: 30,
         pixels: [0, 0, 0, 255].repeat(900),
     };
-    editor.set_layer_image(ink, &black, (50, 300)).unwrap();
+    editor.set_layer_pixels(ink, &black, (50, 300)).unwrap();
     // New layers start from a copy of the first raster layer's offscreens: drawn on here too.
-    editor.set_layer_image(raster, &black, (10, 10)).unwrap();
+    editor.set_layer_pixels(raster, &black, (10, 10)).unwrap();
     editor.save(&page_path).unwrap();
     drop(source);
     let drawn = digest(&page_path);
