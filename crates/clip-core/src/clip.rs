@@ -22,9 +22,9 @@ use rayon::prelude::*;
 
 use crate::error::{CspError, Result};
 use crate::offscreen::{OffscreenParameters, RgbaImage};
-use crate::sql::{Row, select_rows, table_exists};
 use crate::text::{TextAttributes, parse_text_attributes, split_attribute_array};
 use crate::vector::{VectorObject, parse_vector_data};
+use csp_format::database::{Row, select as select_rows, table_exists};
 
 const LAYER_TYPE_RASTER: i64 = 1;
 const LAYER_TYPE_ROOT: i64 = 256;
@@ -348,7 +348,7 @@ impl ClipDocument {
         let (width, height) = (offscreen.parameter.width, offscreen.parameter.height);
         // The unstored part first (the init colour), then the stored blocks
         // decoded side by side.
-        let mut image = csp_format::RgbaImage::new(width, height);
+        let mut image = RgbaImage::new(width, height);
         if let Some(init) = offscreen.attribute.init_color().filter(|init| init.do_initialize) {
             image.fill([255, 255, 255, (init.alpha & 0xff) as u8]);
         }
@@ -363,7 +363,7 @@ impl ClipDocument {
         for ((x0, y0, _, _), tile) in tiles {
             image.paste(&tile, x0, y0);
         }
-        Ok(Some(from_format(image)))
+        Ok(Some(image))
     }
 
     /// A layer mask's pixels (alpha 255 shows the layer), or None without one.
@@ -380,7 +380,7 @@ impl ClipDocument {
     pub fn render_layer_scaled(&self, layer: &ClipLayer, factor: u32) -> Result<Option<RgbaImage>> {
         let halvings = factor.max(1).next_power_of_two().trailing_zeros();
         match self.stored_offscreen(layer.render_mipmap)? {
-            Some(offscreen) => Ok(Some(from_format(offscreen.to_rgba_halved(halvings)?))),
+            Some(offscreen) => Ok(Some(offscreen.to_rgba_halved(halvings)?)),
             None => Ok(None),
         }
     }
@@ -389,21 +389,10 @@ impl ClipDocument {
         if layer.render_mipmap == 0 {
             return Ok(None);
         }
-        let Some(offscreen) = self.file.mipmap_base(layer.render_mipmap)? else {
-            return Ok(None);
-        };
-        // The same eight values as clip-core's own names for them.
-        let p = offscreen.parameter;
-        Ok(Some(OffscreenParameters {
-            width: p.width,
-            height: p.height,
-            blocks_x: p.blocks_x,
-            blocks_y: p.blocks_y,
-            pixel_kind: p.channel_order,
-            alpha_planes: p.channel_bytes,
-            color_planes: p.image_channels,
-            total_planes: p.pixel_bytes,
-        }))
+        Ok(self
+            .file
+            .mipmap_base(layer.render_mipmap)?
+            .map(|offscreen| offscreen.parameter))
     }
 
     /// Layer pixels inside a canvas box (transparent where none are stored;
@@ -413,15 +402,10 @@ impl ClipDocument {
         let (x0, y0, x1, y1) = box_;
         let (x1, y1) = (x1.max(x0 + 1), y1.max(y0 + 1));
         let Some(offscreen) = self.stored_offscreen(layer.render_mipmap)? else {
-            return Ok(RgbaImage::transparent((x1 - x0) as u32, (y1 - y0) as u32));
+            return Ok(RgbaImage::new((x1 - x0) as u32, (y1 - y0) as u32));
         };
         let (origin_x, origin_y) = layer.pixel_origin();
-        Ok(from_format(offscreen.to_rgba_region((
-            x0 - origin_x,
-            y0 - origin_y,
-            x1 - origin_x,
-            y1 - origin_y,
-        ))?))
+        Ok(offscreen.to_rgba_region((x0 - origin_x, y0 - origin_y, x1 - origin_x, y1 - origin_y))?)
     }
 
     /// Canvas boxes of the 256 px blocks that store pixels, found without
@@ -515,14 +499,6 @@ impl ClipDocument {
             );
         }
         strings
-    }
-}
-
-fn from_format(image: csp_format::RgbaImage) -> RgbaImage {
-    RgbaImage {
-        width: image.width,
-        height: image.height,
-        pixels: image.pixels,
     }
 }
 

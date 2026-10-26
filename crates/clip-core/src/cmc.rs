@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::error::{CspError, Result};
-use crate::sql::{Row, select_rows};
+use csp_format::database::{Row, select as select_rows};
 
 pub const SQLITE_MAGIC: &[u8; 16] = b"SQLite format 3\0";
 pub const PAGE_NODE_TYPE: i64 = 2;

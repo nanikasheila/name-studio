@@ -310,7 +310,7 @@ pub fn update_dialogue(
             // Unrecorded (written by an older version): compared with the page.
             None => match named_layer(&document, &notes.name) {
                 Some(layer) => !same_pixels(&document, layer, &notes.image),
-                None => !notes.image.is_transparent(),
+                None => !crate::raster::is_transparent(&notes.image),
             },
         }
     });
@@ -425,7 +425,7 @@ pub fn update_dialogue(
                 }
                 let like = row.as_ref().map(|row| (own.source.file(), row));
                 let id = raster_like(&mut file, parent, &raster.name, like)?;
-                if !raster.image.is_transparent() {
+                if !crate::raster::is_transparent(&raster.image) {
                     let image = fit(&raster.image, width, height);
                     file.set_layer_pixels(id, &csp_image(image.as_ref().unwrap_or(&raster.image)), (0, 0))?;
                 }
@@ -491,7 +491,7 @@ fn same_pixels(document: &ClipDocument, layer: &ClipLayer, image: &RgbaImage) ->
     let image = fitted.as_ref().unwrap_or(image);
     let stored = match document.render_layer_pixels(layer) {
         Ok(Some(stored)) => stored,
-        Ok(None) => return image.is_transparent(),
+        Ok(None) => return crate::raster::is_transparent(image),
         Err(_) => return false,
     };
     let (origin_x, origin_y) = layer.pixel_origin();

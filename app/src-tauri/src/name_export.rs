@@ -232,7 +232,7 @@ fn rough_layer(
     height: u32,
 ) -> Result<RgbaImage, String> {
     state.ensure_sheet(sheet)?;
-    let mut page = RgbaImage::transparent(width, height);
+    let mut page = RgbaImage::new(width, height);
     for rough in roughs {
         let [x0, y0, x1, y1] = rough.sheet_crop;
         let region = (x0.floor() as i64, y0.floor() as i64, x1.ceil() as i64, y1.ceil() as i64);
@@ -241,7 +241,7 @@ fn rough_layer(
         })?;
         let [tx0, ty0, tx1, ty1] = rough.target;
         let (w, h) = ((tx1 - tx0).round().max(1.0) as u32, (ty1 - ty0).round().max(1.0) as u32);
-        page.blend_over(
+        page.draw_over(
             &resize(&pixels, w, h, Filter::Lanczos3),
             tx0.round() as i64,
             ty0.round() as i64,
@@ -261,7 +261,7 @@ fn page_layer<'a>(
         LayerMeta::Raster { name, length } => {
             let png = take(length)?;
             let image = if png.is_empty() {
-                RgbaImage::transparent(width, height)
+                RgbaImage::new(width, height)
             } else {
                 decode_png(png).map_err(|error| error.to_string())?
             };
@@ -594,7 +594,7 @@ mod tests {
 
     #[test]
     fn a_page_from_the_front_end_becomes_clip_core_layers() {
-        let png = RgbaImage::transparent(4, 3).to_png().unwrap();
+        let png = RgbaImage::new(4, 3).to_png().unwrap();
         let json = page_json().replace("LENGTH", &png.len().to_string());
         let meta: PageLayersMeta = serde_json::from_str(&json).unwrap();
         assert!(meta.spread);
@@ -646,8 +646,8 @@ mod tests {
 
     #[test]
     fn a_folder_takes_its_mask_before_the_images_in_it() {
-        let mask = RgbaImage::transparent(4, 3).to_png().unwrap();
-        let ink = RgbaImage::transparent(2, 2).to_png().unwrap();
+        let mask = RgbaImage::new(4, 3).to_png().unwrap();
+        let ink = RgbaImage::new(2, 2).to_png().unwrap();
         let json = r#"{"layers": [{"kind": "folder", "name": "コマ1", "maskLength": MASK, "children": [
                 {"kind": "vector", "name": "ラフ線", "lines": []},
                 {"kind": "raster", "name": "ペン入れ", "length": INK}

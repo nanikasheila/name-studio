@@ -5,10 +5,8 @@
 //! `docs/formats/csp-file-format.md` there. Input files are only read: CSP
 //! itself is never touched; pages and works are written as new files.
 
-mod bytes;
 pub mod clip;
 pub mod cmc;
-pub mod container;
 pub mod error;
 #[cfg(feature = "fixtures")]
 pub mod fixtures;
@@ -17,7 +15,6 @@ pub mod layout;
 pub mod offscreen;
 pub mod plan;
 pub mod raster;
-mod sql;
 pub mod subtool;
 pub mod text;
 pub mod vector;
@@ -25,6 +22,6 @@ pub mod write;
 
 pub use clip::{ClipCanvas, ClipDocument, ClipLayer, LayerKind};
 pub use cmc::{CmcPage, CmcProject};
+pub use csp_format::database::Row;
 pub use error::{CspError, Result};
 pub use offscreen::RgbaImage;
-pub use sql::Row;

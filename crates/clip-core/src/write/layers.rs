@@ -316,7 +316,7 @@ pub(crate) fn set_layer_mask(file: &mut ClipFile, layer_id: i64, mask: &RgbaImag
         let mut attribute = mask_attribute(size.width, size.height);
         let parameter = attribute.parameter()?;
         let full = base.get_or_insert_with(|| {
-            let mut image = RgbaImage::transparent(size.width, size.height);
+            let mut image = RgbaImage::new(size.width, size.height);
             image.paste(mask, 0, 0);
             image
         });

@@ -6,7 +6,6 @@
 
 use rayon::prelude::*;
 
-use crate::error::{CspError, Result};
 use crate::offscreen::RgbaImage;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -151,90 +150,20 @@ pub fn resize(image: &RgbaImage, width: u32, height: u32, filter: Filter) -> Rgb
     RgbaImage { width, height, pixels }
 }
 
-impl RgbaImage {
-    /// Replace the pixels under `other` placed at (x, y); parts outside are dropped.
-    pub fn paste(&mut self, other: &RgbaImage, x: i64, y: i64) {
-        let (width, height) = (self.width as i64, self.height as i64);
-        let left = x.max(0);
-        let right = (x + other.width as i64).min(width);
-        if left >= right {
-            return;
-        }
-        for row in y.max(0)..(y + other.height as i64).min(height) {
-            let source_row = (row - y) as usize;
-            let source = source_row * other.width as usize * 4 + (left - x) as usize * 4;
-            let target = (row * width + left) as usize * 4;
-            let length = (right - left) as usize * 4;
-            self.pixels[target..target + length].copy_from_slice(&other.pixels[source..source + length]);
-        }
-    }
-
-    /// Draw `other` placed at (x, y) over this image (straight alpha, "source over").
-    pub fn blend_over(&mut self, other: &RgbaImage, x: i64, y: i64) {
-        let (width, height) = (self.width as i64, self.height as i64);
-        for row in y.max(0)..(y + other.height as i64).min(height) {
-            for column in x.max(0)..(x + other.width as i64).min(width) {
-                let source = (((row - y) * other.width as i64 + (column - x)) * 4) as usize;
-                let target = ((row * width + column) * 4) as usize;
-                let alpha = other.pixels[source + 3] as f32 / 255.0;
-                if alpha == 0.0 {
-                    continue;
-                }
-                let below = self.pixels[target + 3] as f32 / 255.0;
-                let out = alpha + below * (1.0 - alpha);
-                for channel in 0..3 {
-                    let value = (other.pixels[source + channel] as f32 * alpha
-                        + self.pixels[target + channel] as f32 * below * (1.0 - alpha))
-                        / out;
-                    self.pixels[target + channel] = value.round().clamp(0.0, 255.0) as u8;
-                }
-                self.pixels[target + 3] = (out * 255.0).round() as u8;
-            }
-        }
-    }
-
-    /// The part inside (x0, y0, x1, y1), transparent where it leaves the image.
-    pub fn crop(&self, box_: (i64, i64, i64, i64)) -> RgbaImage {
-        let (x0, y0, x1, y1) = box_;
-        let mut result = RgbaImage::transparent((x1 - x0).max(1) as u32, (y1 - y0).max(1) as u32);
-        result.paste(self, -x0, -y0);
-        result
-    }
-
-    pub fn is_transparent(&self) -> bool {
-        self.pixels.iter().skip(3).step_by(4).all(|alpha| *alpha == 0)
-    }
+/// The part of `image` inside (x0, y0, x1, y1), transparent where it leaves the image.
+pub fn crop(image: &RgbaImage, box_: (i64, i64, i64, i64)) -> RgbaImage {
+    let (x0, y0, x1, y1) = box_;
+    let mut result = RgbaImage::new((x1 - x0).max(1) as u32, (y1 - y0).max(1) as u32);
+    result.paste(image, -x0, -y0);
+    result
 }
 
-/// Decode a PNG (any 8-bit colour type) as RGBA.
-pub fn decode_png(data: &[u8]) -> Result<RgbaImage> {
-    let error = |error: png::DecodingError| CspError::format(format!("Cannot decode PNG: {error}"));
-    let mut decoder = png::Decoder::new(std::io::Cursor::new(data));
-    decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
-    let mut reader = decoder.read_info().map_err(error)?;
-    let mut buffer = vec![0; reader.output_buffer_size().unwrap_or(0)];
-    let info = reader.next_frame(&mut buffer).map_err(error)?;
-    let (width, height) = (info.width, info.height);
-    let samples = &buffer[..info.buffer_size()];
-    let pixels: Vec<u8> = match info.color_type {
-        png::ColorType::Rgba => samples.to_vec(),
-        png::ColorType::Rgb => samples
-            .as_chunks::<3>()
-            .0
-            .iter()
-            .flat_map(|p| [p[0], p[1], p[2], 255])
-            .collect(),
-        png::ColorType::GrayscaleAlpha => samples
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .flat_map(|p| [p[0], p[0], p[0], p[1]])
-            .collect(),
-        png::ColorType::Grayscale => samples.iter().flat_map(|v| [*v, *v, *v, 255]).collect(),
-        png::ColorType::Indexed => return Err(CspError::format("Indexed PNG was not expanded")),
-    };
-    Ok(RgbaImage { width, height, pixels })
+/// No pixel of `image` has any alpha.
+pub fn is_transparent(image: &RgbaImage) -> bool {
+    image.pixels.iter().skip(3).step_by(4).all(|alpha| *alpha == 0)
 }
+
+pub use csp_format::image::decode_png;
 
 /// Pillow's RGB → L conversion (ITU-R 601-2 luma, fixed point).
 pub fn luma(r: u8, g: u8, b: u8) -> u8 {

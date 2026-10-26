@@ -433,7 +433,7 @@ fn a_left_bound_name_stays_left_bound_from_a_right_bound_work() {
         let mut writer = RasterWorkWriter::new(options(right_binding, out)).unwrap();
         let layer = PageLayer::Raster(RasterLayer {
             name: "ラフ".into(),
-            image: RgbaImage::transparent(400, 560),
+            image: RgbaImage::new(400, 560),
         });
         writer.write_page(&[layer], None, false).unwrap();
         let first_left = writer.first_page_left;
@@ -480,7 +480,7 @@ fn writes_whole_page_raster_layers_into_a_work() {
     .unwrap();
     assert_eq!((writer.canvas.width_px, writer.canvas.height_px), (400, 560));
     // Panels drawn at half size are scaled up to the page; balloons stay empty.
-    let mut frame = RgbaImage::transparent(200, 280);
+    let mut frame = RgbaImage::new(200, 280);
     frame.paste(
         &RgbaImage {
             width: 50,
@@ -500,7 +500,7 @@ fn writes_whole_page_raster_layers_into_a_work() {
                     }),
                     PageLayer::Raster(RasterLayer {
                         name: "フキダシ".into(),
-                        image: RgbaImage::transparent(400, 560),
+                        image: RgbaImage::new(400, 560),
                     }),
                 ],
                 None,
@@ -707,7 +707,7 @@ fn checks_written_pages_and_works() {
         right_binding: None,
     })
     .unwrap();
-    let mut rough = RgbaImage::transparent(200, 280);
+    let mut rough = RgbaImage::new(200, 280);
     rough.paste(
         &RgbaImage {
             width: 30,
@@ -733,7 +733,7 @@ fn checks_written_pages_and_works() {
         }),
         PageLayer::Raster(RasterLayer {
             name: "空".into(),
-            image: RgbaImage::transparent(400, 560),
+            image: RgbaImage::new(400, 560),
         }),
         PageLayer::Vector {
             name: "コマ枠".into(),
@@ -860,7 +860,10 @@ fn story_texts(path: &Path, kind: i64) -> Vec<(String, i32, i32, bool)> {
         .map(Result::unwrap)
         .map(|(text, attributes, right, offset)| {
             let items = parse_tlv(&attributes).unwrap();
-            let bbox = items.iter().find(|(tag, _)| *tag == 0x2A).map(|(_, bbox)| *bbox);
+            let bbox = items
+                .iter()
+                .find(|(tag, _)| *tag == 0x2A)
+                .map(|(_, bbox)| bbox.as_slice());
             let x = |at: usize| {
                 bbox.map(|bbox| i32::from_le_bytes(bbox[at..at + 4].try_into().unwrap()) + offset as i32)
                     .unwrap_or(0)
@@ -872,7 +875,6 @@ fn story_texts(path: &Path, kind: i64) -> Vec<(String, i32, i32, bool)> {
 
 #[test]
 fn writes_spread_pages() {
-    use clip_core::offscreen::OffscreenParameters;
     use clip_core::write::raster_page::{PageLayer, RasterLayer, RasterWorkWriter, WorkOptions};
     use clip_core::write::spread::{SpreadLayout, make_spread_template};
     use clip_core::write::verify::{ExpectedLayer, verify_page, verify_work};
@@ -919,7 +921,7 @@ fn writes_spread_pages() {
         .unwrap()
         .map(|attribute| {
             let attribute = attribute.unwrap();
-            let parameters = OffscreenParameters::parse(&attribute).unwrap();
+            let parameters = clip_core::offscreen::parameters(&attribute).unwrap();
             // BlockSize: one entry per block, at the end of the attribute.
             let count = u32::from_be_bytes(
                 attribute[attribute.len() - 4 * (parameters.blocks_x * parameters.blocks_y) as usize - 8..][..4]
@@ -966,7 +968,7 @@ fn writes_spread_pages() {
     assert_eq!(writer.first_page_left, Some(true));
     let canvas = writer.spread_canvas().unwrap();
     assert_eq!((canvas.width_px, canvas.height_px), (800, 560));
-    let mut wide = RgbaImage::transparent(800, 560);
+    let mut wide = RgbaImage::new(800, 560);
     wide.paste(
         &RgbaImage {
             width: 40,
@@ -982,17 +984,13 @@ fn writes_spread_pages() {
             image,
         })]
     };
-    writer
-        .write_page(&page(RgbaImage::transparent(400, 560)), None, false)
-        .unwrap();
+    writer.write_page(&page(RgbaImage::new(400, 560)), None, false).unwrap();
     let layers = page(wide);
     let expected: Vec<ExpectedLayer> = layers.iter().map(|layer| ExpectedLayer::of(layer, 800, 560)).collect();
     let spread_page = writer.write_page(&layers, None, true).unwrap();
     let check = verify_page(&spread_page, &expected, &canvas);
     assert!(check.problems.is_empty(), "{:?}", check.problems);
-    let last = writer
-        .write_page(&page(RgbaImage::transparent(400, 560)), None, false)
-        .unwrap();
+    let last = writer.write_page(&page(RgbaImage::new(400, 560)), None, false).unwrap();
     let report = writer.finish().unwrap();
     let names: Vec<String> = report
         .pages
@@ -1020,7 +1018,6 @@ fn writes_spread_pages() {
 #[test]
 fn writes_panels_as_a_frame_folder_copied_from_a_finished_page() {
     use clip_core::LayerKind;
-    use clip_core::offscreen::OffscreenParameters;
     use clip_core::vector::{NewFrame, parse_vector_data};
     use clip_core::write::raster_page::{PageLayer, RasterWorkWriter, WorkOptions};
     use clip_core::write::verify::{ExpectedLayer, verify_page};
@@ -1146,11 +1143,11 @@ fn writes_panels_as_a_frame_folder_copied_from_a_finished_page() {
     let (mask, mask_block) = base(row.int("LayerLayerMaskMipmap"));
     let (line, line_block) = base(row.int("ComicFrameLineMipmap"));
     let (mask, line) = (
-        OffscreenParameters::parse(&mask).unwrap(),
-        OffscreenParameters::parse(&line).unwrap(),
+        clip_core::offscreen::parameters(&mask).unwrap(),
+        clip_core::offscreen::parameters(&line).unwrap(),
     );
-    assert_eq!((mask.pixel_kind, mask.total_planes, mask.color_planes), (1, 1, 0));
-    assert_eq!((line.pixel_kind, line.total_planes), (33, 5));
+    assert_eq!((mask.channel_order, mask.pixel_bytes, mask.image_channels), (1, 1, 0));
+    assert_eq!((line.channel_order, line.pixel_bytes), (33, 5));
     for block in [mask_block, line_block] {
         assert!(block.starts_with("extrnlid") && written.external_payload(&block).is_none());
     }
@@ -1159,7 +1156,6 @@ fn writes_panels_as_a_frame_folder_copied_from_a_finished_page() {
 #[test]
 fn writes_a_panel_as_a_folder_with_a_layer_mask() {
     use clip_core::LayerKind;
-    use clip_core::offscreen::OffscreenParameters;
     use clip_core::vector::NewVectorLine;
     use clip_core::write::raster_page::{PageLayer, RasterLayer, RasterWorkWriter, WorkOptions, page_record};
     use clip_core::write::verify::{ExpectedLayer, verify_page};
@@ -1183,7 +1179,7 @@ fn writes_a_panel_as_a_folder_with_a_layer_mask() {
     let canvas = writer.canvas;
     assert_eq!((canvas.width_px, canvas.height_px), (400, 560));
     // The panel, at half the page's size (as the app sends its images).
-    let mut mask = RgbaImage::transparent(200, 280);
+    let mut mask = RgbaImage::new(200, 280);
     for y in 10..100 {
         for x in 10..150 {
             mask.pixels[(y * 200 + x) * 4 + 3] = 255;
@@ -1206,7 +1202,7 @@ fn writes_a_panel_as_a_folder_with_a_layer_mask() {
                 },
                 PageLayer::Raster(RasterLayer {
                     name: "ペン入れ".into(),
-                    image: RgbaImage::transparent(400, 560),
+                    image: RgbaImage::new(400, 560),
                 }),
             ],
         },
@@ -1215,7 +1211,7 @@ fn writes_a_panel_as_a_folder_with_a_layer_mask() {
             mask: None,
             children: vec![PageLayer::Raster(RasterLayer {
                 name: "ペン入れ".into(),
-                image: RgbaImage::transparent(400, 560),
+                image: RgbaImage::new(400, 560),
             })],
         },
     ];
@@ -1260,14 +1256,14 @@ fn writes_a_panel_as_a_folder_with_a_layer_mask() {
             |row| row.get(0),
         )
         .unwrap();
-    let parameters = OffscreenParameters::parse(&attribute).unwrap();
+    let parameters = clip_core::offscreen::parameters(&attribute).unwrap();
     assert_eq!(
         (
             parameters.width,
             parameters.height,
-            parameters.pixel_kind,
-            parameters.color_planes,
-            parameters.total_planes
+            parameters.channel_order,
+            parameters.image_channels,
+            parameters.pixel_bytes
         ),
         (400, 560, 1, 0, 1)
     );
@@ -1291,7 +1287,7 @@ fn writes_rough_layers_hidden_and_fainter_as_set() {
     let folder = tempfile::tempdir().unwrap();
     let template_path = template(folder.path());
     let raster = |name: &str| {
-        let mut image = RgbaImage::transparent(400, 560);
+        let mut image = RgbaImage::new(400, 560);
         image.pixels[3] = 255;
         PageLayer::Raster(RasterLayer {
             name: name.into(),
@@ -1377,7 +1373,7 @@ fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
         }],
     };
     let paper = |x: u32| {
-        let mut image = RgbaImage::transparent(400, 560);
+        let mut image = RgbaImage::new(400, 560);
         for y in 40..200 {
             for dx in 0..60 {
                 let at = ((y * 400 + x + dx) * 4) as usize;
@@ -1391,7 +1387,7 @@ fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
     };
     // The memos: a tag in the corner.
     let memo = |y: u32| {
-        let mut image = RgbaImage::transparent(400, 560);
+        let mut image = RgbaImage::new(400, 560);
         for row in y..y + 10 {
             for x in 10..60 {
                 let at = ((row * 400 + x) * 4) as usize;
