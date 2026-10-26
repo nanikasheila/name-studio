@@ -230,7 +230,7 @@ fn import(args: &[String]) -> ExitCode {
         }
     };
     let imported = clip_core::ClipDocument::read(&input)
-        .and_then(|document| name_model::import::import_sheet(&document, name_model::PageFormat::default()));
+        .and_then(|document| clip_core::import::import_sheet(&document, name_model::PageFormat::default()));
     let (project, warnings) = match imported {
         Ok(result) => result,
         Err(error) => {

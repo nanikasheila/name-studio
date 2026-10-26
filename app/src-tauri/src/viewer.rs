@@ -172,7 +172,7 @@ pub(crate) async fn import_project(path: String, state: tauri::State<'_, AppStat
     let guard = state.document.lock().map_err(lock_error)?;
     let document = guard.as_ref().ok_or("ファイルが開かれていません")?;
     let (project, warnings) =
-        name_model::import::import_sheet(document, PageFormat::default()).map_err(|error| error.to_string())?;
+        clip_core::import::import_sheet(document, PageFormat::default()).map_err(|error| error.to_string())?;
     Ok(ImportResult { project, warnings })
 }
 

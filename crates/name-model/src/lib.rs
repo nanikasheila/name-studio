@@ -5,7 +5,6 @@
 //! views. CSP files are imported from and exported to; this is the source of
 //! truth.
 
-pub mod import;
 pub mod model;
 pub mod pdf;
 pub mod series;
