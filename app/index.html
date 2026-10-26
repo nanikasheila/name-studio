@@ -40,7 +40,7 @@
         <button id="name-export" class="with-icon" title="CSP のページと作品、PDF、台本に書き出す"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5v10M6 8.5l4 4 4-4"/><path d="M3 13.5v3.5h14v-3.5"/></svg><span>書き出す…</span></button>
       </div>
     </header>
-    <main id="viewer" class="workspace">
+    <main id="viewer" class="workspace start">
       <aside class="sidebar">
         <div class="tabs" role="tablist">
           <button id="tab-layers" class="active" role="tab">レイヤー</button>
@@ -51,7 +51,19 @@
       </aside>
       <section class="stage">
         <canvas id="canvas"></canvas>
-        <div id="empty" class="empty">ネームデータ（.namestudio）か CLIP STUDIO PAINT のネーム用紙（.clip）を開いてください</div>
+        <div id="empty" class="empty start-screen">
+          <div class="start-box">
+            <div class="start-actions">
+              <button id="start-open" class="primary">開く…</button>
+              <button id="start-new">新しいネーム…</button>
+            </div>
+            <p class="start-hint">ネームデータ（.namestudio）か CLIP STUDIO PAINT のネーム用紙（.clip）を開いてください。Ctrl+K で命令を名前で探せます</p>
+            <section class="start-recent" id="start-recent" hidden>
+              <h2>最近のネーム</h2>
+              <ol id="recent-names" class="recent-names"></ol>
+            </section>
+          </div>
+        </div>
       </section>
     </main>
     <main id="editor" class="workspace" hidden>

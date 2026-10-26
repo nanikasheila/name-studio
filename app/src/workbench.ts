@@ -10,7 +10,7 @@ import { ask, save } from "@tauri-apps/plugin-dialog";
 import { heldNear, holdPanel, movePanelToPage, placeHeld } from "./hold";
 import { Autosaver, autosaveToFile, formatTime } from "./autosave";
 import { addBrushes } from "./brush";
-import { loadLibrary, penPreferences, SHOW_NOTES_KEY, SINGLE_PAGE_KEY, CONTINUOUS_KEY, ROWS_KEY } from "./prefs";
+import { loadLibrary, penPreferences, SHOW_NOTES_KEY, SINGLE_PAGE_KEY, CONTINUOUS_KEY, ROWS_KEY, rememberName } from "./prefs";
 import { BrushDialog } from "./brushdialog";
 import { AltDialog } from "./altdialog";
 import { ScriptDialog } from "./scriptdialog";
@@ -459,6 +459,7 @@ export class Workbench {
     const project = await call("load_project", { path });
     const series = await this.seriesPanel.attach(project, path);
     this.show(project, path, `${project.pages.length} ページのネームを開きました${series}`);
+    rememberName(path, project);
   }
 
   async importSheet(sheetPath: string): Promise<void> {
@@ -516,6 +517,7 @@ export class Workbench {
     try {
       await call("save_project", projectBody({ path, previousPath: this.session.path }, savedForm(project)));
       this.session.saved(path, revision);
+      rememberName(path, project);
       await this.seriesPanel.saved(project, path);
       if (!this.session.dirty) this.autosaver.reset();
       this.updateTitle();

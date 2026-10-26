@@ -5,6 +5,7 @@
 import { withBrushes } from "./brush";
 import { defaultsFrom, defaultsOf, type NewNameDefaults } from "./namedefaults";
 import { normalizeCurve, defaultPenSettings, parsePenSettings, type PenSettings } from "./pen";
+import { forgotten, recentFrom, remembered, type RecentName } from "./recent";
 import { localStore, readJson, writeJson, writeText } from "./settings";
 import { shapesFrom } from "./shapes";
 import { snapFrom, type SnapSettings } from "./snapping";
@@ -147,4 +148,22 @@ export function loadRecentCommands(): string[] {
 
 export function saveRecentCommands(ids: string[]): void {
   writeJson(RECENT_COMMANDS_KEY, ids);
+}
+
+// --- 最近のネーム --------------------------------------------------------------------
+
+export const RECENT_NAMES_KEY = "namestudio.recentNames";
+
+/** The names opened or saved last, newest first. */
+export function loadRecentNames(): RecentName[] {
+  return recentFrom(readJson(RECENT_NAMES_KEY, []));
+}
+
+/** Keep a name opened or saved now at the top of the start screen's list. */
+export function rememberName(path: string, project: Pick<Project, "title" | "pages">): void {
+  writeJson(RECENT_NAMES_KEY, remembered(loadRecentNames(), { path, title: project.title, pages: project.pages.length, timeMs: Date.now() }));
+}
+
+export function forgetName(path: string): void {
+  writeJson(RECENT_NAMES_KEY, forgotten(loadRecentNames(), path));
 }
