@@ -2,6 +2,7 @@
 name = "name-studio-app"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
 description = "ネーム制作専用ツール"
 
 [lib]

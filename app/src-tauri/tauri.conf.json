@@ -58,7 +58,12 @@
       "icons/icon.ico",
       "icons/icon.png"
     ],
-    "createUpdaterArtifacts": false
+    "createUpdaterArtifacts": false,
+    "license": "MIT",
+    "resources": {
+      "../../LICENSE": "LICENSE.txt",
+      "../../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md"
+    }
   },
   "plugins": {
     "updater": {

@@ -63,6 +63,9 @@ jobs:
       - name: Check formatting
         run: cargo fmt --check
 
+      - name: Check the list of bundled libraries
+        run: python3 tools/third_party.py --check
+
       - name: Clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 

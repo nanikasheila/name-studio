@@ -174,3 +174,7 @@ CSP_NAME_SPLITTER=../csp-name-splitter python tools/compare_with_python.py [作�
 ネームデータの型は Rust（`crates/name-model/src/model.rs`）と画面（`app/src/model.ts`）の 2 か所にあります。項目や選択肢を足すときは両方に足し、`app/src/contract.test.ts` の全項目の見本にも足して `(cd app && npx vitest run -u src/contract.test.ts)` で `crates/name-model/tests/fixtures` を書き直してください。片方に足し忘れると、型チェックか `cargo test`（`tests/contract.rs`）が落ちます。Rust 側にコマンドを足したら `app/src/backend.ts` の `Commands` にも書いてください（`backend.test.ts` が `lib.rs` と突き合わせます）。
 
 画面側（`app/src`）のモジュールは、変わる速さで層に分けています（遅い順に 型・計算・仕組み・描画・書き出し・画面・起動）。どの層かは `app/src/architecture.test.ts` の `LAYERS` に書き、上の層から import すると落ちます。計算の層（ネームの操作）はブラウザ・保存場所・Rust 側に触らず、この PC に残す設定は `prefs.ts`（中身は `settings.ts`）、画像の読み込みは `pictures.ts`、キャンバスへの描画は `pagedraw.ts` を通します。ファイルを足したら `LAYERS` にも書いてください。
+
+## ライセンス
+
+MIT（[LICENSE](LICENSE)）。組み込んでいるライブラリとそのライセンスは [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)（インストール先にも入ります）。依存を変えたら `python tools/third_party.py` で作り直します（CI が古いままを止めます）。
