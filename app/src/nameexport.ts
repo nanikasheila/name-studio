@@ -19,22 +19,13 @@ import {
   loadTips,
   type MmToPx,
 } from "./pagedraw";
-import {
-  KIND_LABELS,
-  MM_PER_PT,
-  basicBox,
-  bounds,
-  splitAtX,
-  trimBox,
-  type BoxMm,
-  type Brush,
-  type Page,
-  type RoughLayer,
-  type Project,
-  type RoughImage,
-  type StrokePoint,
-  wantsSpread,
-} from "./project";
+import { KIND_LABELS } from "./dialogue";
+import { bounds } from "./geometry";
+import type { BoxMm, Brush, Page, Project, RoughImage, RoughLayer, StrokePoint } from "./model";
+import { basicBox, trimBox } from "./pagebox";
+import { wantsSpread } from "./panels";
+import { MM_PER_PT } from "./project";
+import { splitAtX } from "./strokes";
 import { panelFolders } from "./panelfolders";
 import { layerOf, opacityOfLayer, roughExportNames, roughLayersOf, shownStrokes, strokesOn } from "./roughlayers";
 import { decodePicture } from "./pictures";

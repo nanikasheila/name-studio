@@ -1,6 +1,8 @@
 // Story structure derived from the name data for the story strip:
 // scenes over pages, per-page amounts, emotion curves and story time.
-import { pageIndex, textAmount, type Project, type Scene } from "./project";
+import { textAmount } from "./dialogue";
+import type { Project, Scene } from "./model";
+import { pageIndex } from "./project";
 import { beatPage, currentShape, shapeSpans } from "./shapes";
 
 export interface SceneSpan {

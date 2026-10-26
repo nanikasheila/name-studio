@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { addLine, newProject } from "./project";
+import { addLine } from "./dialogue";
+import { newProject } from "./project";
 import { applyShared, folderOf, newSeries, nextStoryIndex, relativePath, resolvePath, samePath, sharedOf, withEpisode, withoutEpisode } from "./series";
 
 describe("シリーズ", () => {

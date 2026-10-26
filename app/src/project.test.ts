@@ -1,47 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { History } from "./history";
-import {
-  addCharacter,
-  boxCenter,
-  carryContents,
-  followPanel,
-  movePanel,
-  panelContents,
-  addLine,
-  addPanel,
-  addScene,
-  addStroke,
-  area,
-  basicBox,
-  cutPanels,
-  eraseInside,
-  eraseStrokes,
-  insertPage,
-  movePage,
-  movePagesTo,
-  moveScene,
-  pageBlock,
-  swapPanelContents,
-  addFill,
-  newProject,
-  orderPanels,
-  pickInside,
-  splitAtX,
-  splitOverPages,
-  rectShape,
-  setLineText,
-  wrapTypedLine,
-  removeCharacter,
-  removePage,
-  sceneOf,
-  setEmotion,
-  snapCut,
-  snapPoint,
-  snapLines,
-  splitShape,
-  textSize,
-  type Point,
-} from "./project";
+import { addCharacter, addScene, removeCharacter, sceneOf, setEmotion } from "./cast";
+import { addLine, setLineText, textSize, wrapTypedLine } from "./dialogue";
+import { area, boxCenter, rectShape } from "./geometry";
+import type { Point } from "./model";
+import { basicBox, snapCut, snapLines, snapPoint, splitShape } from "./pagebox";
+import { addPanel, carryContents, cutPanels, followPanel, movePanel, panelContents, swapPanelContents } from "./panels";
+import { insertPage, movePage, newProject, removePage, trailingEmptyPages } from "./project";
+import { orderPanels } from "./readingorder";
+import { movePagesTo, moveScene, pageBlock } from "./reorder";
+import { addFill, addStroke, eraseInside, eraseStrokes, pickInside, splitAtX, splitOverPages } from "./strokes";
 
 const square = rectShape([0, 0, 100, 100]);
 
@@ -399,8 +367,7 @@ describe("入れ替え", () => {
 });
 
 describe("ネーム用紙の空のページ", () => {
-  it("counts the empty pages at the end only", async () => {
-    const { trailingEmptyPages, newProject, addLine } = await import("./project");
+  it("counts the empty pages at the end only", () => {
     const project = newProject("t", 6);
     expect(trailingEmptyPages(project)).toBe(6);
     addLine(project, project.pages[1], [100, 100], "あ");

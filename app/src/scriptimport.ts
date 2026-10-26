@@ -20,32 +20,14 @@
 import { faces, inReadingDirection, layOut, moveClear, placingBox, wrapToFit } from "./arrange";
 import { balloonExtent } from "./balloon";
 import { PATTERNS, patternPanels } from "./koma";
-import {
-  addCharacter,
-  addLine,
-  addPanel,
-  assignPanels,
-  basicBox,
-  DEFAULT_GUTTERS,
-  fitLine,
-  gutters,
-  insertPage,
-  moveLine,
-  orderPanels,
-  pageIndex,
-  putScene,
-  rectShape,
-  setLineKind,
-  sortLines,
-  type BalloonShape,
-  type Binding,
-  type BoxMm,
-  type Line,
-  type LineKind,
-  type Page,
-  type Panel,
-  type Project,
-} from "./project";
+import { addCharacter, putScene } from "./cast";
+import { addLine, fitLine, moveLine, setLineKind } from "./dialogue";
+import { rectShape } from "./geometry";
+import type { BalloonShape, Binding, BoxMm, Line, LineKind, Page, Panel, Project } from "./model";
+import { basicBox } from "./pagebox";
+import { addPanel } from "./panels";
+import { DEFAULT_GUTTERS, gutters, insertPage, pageIndex } from "./project";
+import { assignPanels, orderPanels, sortLines } from "./readingorder";
 
 export interface ScriptLine {
   speaker?: string;

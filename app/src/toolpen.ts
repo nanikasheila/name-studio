@@ -6,7 +6,9 @@ import type { DragHandler, DragOf, EditorCore, Press } from "./editorcore";
 import { toPage } from "./layout";
 import { adjustPressure } from "./pen";
 import { penPreferences } from "./prefs";
-import { addStroke, insidePolygon, splitOverPages, type StrokePoint } from "./project";
+import { insidePolygon } from "./geometry";
+import type { StrokePoint } from "./model";
+import { addStroke, splitOverPages } from "./strokes";
 import { layerOf, ROUGH_BASE } from "./roughlayers";
 import { densify, straightEnd } from "./transform";
 

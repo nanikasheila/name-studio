@@ -1,7 +1,8 @@
 // A drawn name of 32 pages must stay quick to change, undo and save: the work
 // done per change grows with what changed, not with all that was drawn.
 import { describe, expect, it } from "vitest";
-import { newProject, type Project, type StrokePoint } from "./project";
+import type { Project, StrokePoint } from "./model";
+import { newProject } from "./project";
 import { projectJson } from "./projectjson";
 import { Snapshotter } from "./snapshot";
 

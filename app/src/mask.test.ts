@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { pageBalloons } from "./balloon";
 import { clipClosed, clipOpen, insetConvex, isConvex, maskShape } from "./mask";
-import { addLine, addPanel, bounds, newProject, rectShape, type Point } from "./project";
+import { addLine } from "./dialogue";
+import { bounds, rectShape } from "./geometry";
+import type { Point } from "./model";
+import { addPanel } from "./panels";
+import { newProject } from "./project";
 
 const square: Point[] = [[0, 0], [10, 0], [10, 10], [0, 10]];
 

@@ -27,10 +27,10 @@ const LAYERS = {
   model: ["model", "types", "geometry"],
   /** Working on a name: pure computation, no browser, no storage, no Rust side. */
   core: [
-    "alternatives", "arrange", "autotail", "balloon", "brush", "commands", "csppage", "export", "fonts", "history", "hold", "koma", "komaedit",
-    "layout", "mask", "namecheck", "namedefaults", "pages", "panelfolders", "pen", "plotimport", "project", "projectjson", "readback",
-    "references", "repair", "roughlayers", "scriptimport", "series", "shapes", "shortcuts", "snapping", "snapshot", "story", "style",
-    "transform", "wrap",
+    "alternatives", "arrange", "autotail", "balloon", "brush", "cast", "commands", "csppage", "dialogue", "export", "exportmemory", "fonts",
+    "history", "hold", "koma", "komaedit", "layout", "mask", "namecheck", "namedefaults", "pagebox", "pages", "panelfolders", "panels", "pen",
+    "plotimport", "project", "projectjson", "readback", "readingorder", "recent", "references", "reorder", "repair", "roughlayers", "scriptimport",
+    "series", "session", "shapes", "shortcuts", "snapping", "snapshot", "stickies", "story", "strokes", "structures", "style", "transform", "viewport", "wrap",
   ],
   /** This computer and the Rust side: storage, settings, commands, the page's elements. */
   platform: ["backend", "dom", "errorlog", "prefs", "settings"],
@@ -41,9 +41,9 @@ const LAYERS = {
   /** The screens. */
   ui: [
     "actions", "alerts", "altdialog", "board", "brushdialog", "dock", "dragsort", "editor", "editorcore", "exportdialog", "fontpicker", "inspector",
-    "layers", "palette", "pendialog", "roughpanel", "scriptdialog", "seriespanel", "settingsdialog", "shortcutdialog", "tooleraser", "toolfill",
+    "layers", "palette", "pendialog", "roughpanel", "scriptdialog", "seriespanel", "settingsdialog", "sheetexport", "shortcutdialog", "sidelists", "startscreen", "tooleraser", "toolfill",
     "toolpanels", "toolpen", "toolreference", "tools", "toolselect", "toolsticky", "tooltext", "tooltransform", "updater", "versiondialog",
-    "workbench",
+    "viewer", "workbench",
   ],
   /** Starting the app: puts the rest together. */
   app: ["main"],

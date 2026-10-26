@@ -1,7 +1,10 @@
 // コマ割り: a line drawn across panels cuts them apart (割る); a box drawn
 // makes a panel (四角, or off the panels); 多角形 places corners one by one.
 import type { DragHandler, DragOf, EditorCore, Press } from "./editorcore";
-import { bounds, cutPanels, insidePolygon, rectShape, snapCut, sortLines } from "./project";
+import { bounds, insidePolygon, rectShape } from "./geometry";
+import { snapCut } from "./pagebox";
+import { cutPanels } from "./panels";
+import { sortLines } from "./readingorder";
 
 export function pressCut(editor: EditorCore, { event, project, slot, point }: Press): void {
   if (editor.panelMode === "polygon") {

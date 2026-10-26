@@ -1,7 +1,7 @@
 // The text tool: a click writes straight onto the page, in the line clicked
 // or in a new one there.
 import type { EditorCore, Press } from "./editorcore";
-import { addLine } from "./project";
+import { addLine } from "./dialogue";
 
 export function pressText(editor: EditorCore, { project, slot, point }: Press): void {
   const hit = editor.hit(slot, point);

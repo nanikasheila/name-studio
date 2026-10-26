@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { History } from "./history";
-import { newProject, trimBox, type StoredImage } from "./project";
+import type { StoredImage } from "./model";
+import { trimBox } from "./pagebox";
+import { newProject } from "./project";
 import { projectJson } from "./projectjson";
 import { addReference, corners, referenceAt, removeReference, resizeBox, savedForm, usedImages } from "./references";
 import { repair } from "./repair";

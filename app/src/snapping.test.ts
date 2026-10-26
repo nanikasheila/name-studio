@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { besideCorners, DEFAULT_SNAP, snapBox, snapPointTo, snapTargets, snapValue, type SnapSettings } from "./snapping";
 import { loadSnap, saveSnap, SNAP_KEY } from "./prefs";
-import { basicBox, DEFAULT_GUTTERS, newProject, rectShape, trimBox, type Page } from "./project";
+import { rectShape } from "./geometry";
+import type { Page } from "./model";
+import { basicBox, trimBox } from "./pagebox";
+import { DEFAULT_GUTTERS, newProject } from "./project";
 import { writeText } from "./settings";
 
 const only = (change: Partial<SnapSettings>): SnapSettings => ({ axis: false, panels: false, frame: false, grid: false, gridMm: 5, ...change });

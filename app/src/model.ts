@@ -1,6 +1,6 @@
 // ネームデータ（正本）の型: the same shapes as crates/name-model/src/model.rs
 // (tests/contract.rs checks that they agree). Only types live here, so that
-// any module can use them without importing the edits in project.ts.
+// any module can use them without importing the edits (project.ts, dialogue.ts, panels.ts, …).
 // Coordinates are millimetres on the page canvas, origin at its top left.
 
 export type Point = [number, number];

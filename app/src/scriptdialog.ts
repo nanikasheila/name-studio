@@ -3,7 +3,7 @@
 import { applyPlot, looksLikePlot, parsePlot, type PlotDoc, type PlotImportReport } from "./plotimport";
 import { applyScript, parseScript, type ScriptDoc, type ScriptImportReport } from "./scriptimport";
 import { PATTERNS } from "./koma";
-import type { Project } from "./project";
+import type { Project } from "./model";
 import { $ } from "./dom";
 
 export interface ScriptDialogHost {

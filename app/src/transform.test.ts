@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { star } from "./balloon";
-import { addFill, addLine, addPanel, addStroke, bounds, newProject, panelContents, pickInside, rectShape, type Point } from "./project";
+import { addLine } from "./dialogue";
+import { bounds, rectShape } from "./geometry";
+import type { Point } from "./model";
+import { addPanel, carryContents, followPanel, movePanel, panelContents } from "./panels";
+import { newProject } from "./project";
+import { addFill, addStroke, eraseInside, pickInside } from "./strokes";
 import { applyAffine, baseBounds, densify, straightEnd, copySelection, moveItems, pasteClip, rotation, scaling, toggleItem, transformBase, transformItems, withContents } from "./transform";
 
 function sample() {
@@ -104,8 +109,7 @@ describe("straight lines", () => {
 });
 
 describe("fills", () => {
-  it("are made, erased by the lasso eraser, follow their panel and paste", async () => {
-    const { addFill, carryContents, eraseInside, followPanel, movePanel } = await import("./project");
+  it("are made, erased by the lasso eraser, follow their panel and paste", () => {
     const { project, page, panel } = sample();
     const fill = addFill(project, page, rectShape([30, 60, 40, 70]), "gray");
     expect(fill.tone).toBe("gray");

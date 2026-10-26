@@ -16,12 +16,13 @@ import {
 } from "./nameexport";
 import { applyTakeBack, planTakeBack, takeBackSummary } from "./readback";
 import { ISSUE_LABELS, checkName, issueSummary } from "./namecheck";
-import type { Project, RoughImage } from "./project";
 import { $, element } from "./dom";
 import { readText, writeText } from "./settings";
 import { compactStory, cspPageOf, firstPageLeft, joinedPage, pageSetup, piecesPerPage, pixelSize, presetOf, PRESETS, setupProblem, withPreset } from "./csppage";
-import type { CspPage, CspStory, NombrePlace, StoryPosition } from "./model";
+import type { CspPage, CspStory, NombrePlace, Project, RoughImage, StoryPosition } from "./model";
 import { fontField } from "./fontpicker";
+import { againSummary, type ExportKind, type ExportMemory, type PanelExport, type TemplateMode } from "./exportmemory";
+import { keepExportMemory, loadExportMemory } from "./prefs";
 import { installedFont } from "./fonts";
 
 export interface ExportDialogHost {
@@ -42,7 +43,7 @@ export interface ExportDialogHost {
   clearFaces(): number;
 }
 
-type Kind = "csp" | "pdf" | "text";
+type Kind = ExportKind;
 
 /** 見本のページ: kept on this computer for the next export. */
 const DONOR_KEY = "namestudio.exportDonor";
@@ -52,11 +53,9 @@ function readDonor(): string {
 }
 
 /** How the CSP pages are made: from the settings here, or from a CSP-made template. */
-type TemplateMode = "builtin" | "file";
 const MODE_KEY = "namestudio.exportTemplateMode";
 
 /** How panels go to CSP (kept on this computer for the next export). */
-type PanelExport = "lines" | "masks" | "frames";
 const PANELS_KEY = "namestudio.exportPanels";
 
 function readPanels(): PanelExport {
@@ -199,6 +198,8 @@ export class ExportDialog {
   /** CSP のページ設定 being edited (the name's, saved with it on writing out). */
   private page: CspPage | null = null;
   private author = "";
+  /** The name the settings here are for (another name starts from its own last export). */
+  private settingsFor: string | null = null;
 
   constructor(private readonly host: ExportDialogHost) {
     for (const kind of ["csp", "pdf", "text"] as const) {
@@ -260,6 +261,13 @@ export class ExportDialog {
   open(): void {
     const project = this.host.project();
     if (!project) return;
+    const path = this.host.projectPath();
+    if (path !== this.settingsFor) {
+      this.settingsFor = path;
+      const memory = path ? loadExportMemory(path) : null;
+      if (memory) this.apply(memory);
+      else this.forgetOtherName();
+    }
     this.form.workName ||= project.title;
     if (!this.form.storyIndex && project.storyIndex !== undefined) this.form.storyIndex = String(project.storyIndex);
     this.page = cspPageOf(project);
@@ -269,6 +277,72 @@ export class ExportDialog {
     this.message("");
     this.renderCheck(project);
     $<HTMLDialogElement>("name-export-dialog").showModal();
+  }
+
+  /**
+   * 前回と同じ設定で書き出す: this name's last export again, with no choices to
+   * make (the dialog shows how it goes). The first time, the dialog is opened
+   * to choose.
+   */
+  async exportAgain(): Promise<void> {
+    if (!this.host.project() || this.busy) return;
+    const path = this.host.projectPath();
+    const memory = path ? loadExportMemory(path) : null;
+    this.open();
+    const what = againSummary(memory);
+    if (!memory || !what) {
+      this.message(
+        path
+          ? "このネームはこの PC でまだ書き出していません。設定を選んで「書き出す」を押すと、次からは「前回と同じ設定で書き出す」（Ctrl+Shift+E）でそのまま書き出せます。"
+          : "ネームを保存すると、書き出しの設定をネームごとに覚えます。設定を選んで「書き出す」を押してください。",
+      );
+      return;
+    }
+    this.apply(memory);
+    this.show();
+    this.host.status(`前回と同じ設定で書き出します: ${what}`);
+    await this.run(true);
+  }
+
+  /** The settings of a name's last export, into the dialog. */
+  private apply(memory: ExportMemory): void {
+    this.kind = memory.kind;
+    Object.assign(this.form, memory.form);
+    this.mode = memory.mode;
+    this.panels = memory.panels;
+    this.editable = memory.editable;
+    this.draftRough = memory.draftRough;
+    this.notes = memory.notes;
+    $<HTMLSelectElement>("ne-pdf-area").value = memory.pdf.area;
+    $<HTMLSelectElement>("ne-pdf-dpi").value = String(memory.pdf.dpi);
+  }
+
+  /** Another name with no export kept: not the last name's folder or work name (one name must not write over another's pages). */
+  private forgetOtherName(): void {
+    this.form.outDir = "";
+    this.form.workName = "";
+    this.form.storyIndex = "";
+  }
+
+  /** Keep how this name was just written out, for the next time. */
+  private remember(file?: string): void {
+    const path = this.host.projectPath();
+    if (!path) return;
+    const files = { ...(loadExportMemory(path)?.files ?? {}) };
+    if (file && this.kind !== "csp") files[this.kind] = file;
+    keepExportMemory(path, {
+      timeMs: Date.now(),
+      kind: this.kind,
+      form: { ...this.form },
+      mode: this.mode,
+      panels: this.panels,
+      editable: this.editable,
+      draftRough: this.draftRough,
+      notes: this.notes,
+      pdf: { area: $<HTMLSelectElement>("ne-pdf-area").value as "trim" | "canvas", dpi: Number($<HTMLSelectElement>("ne-pdf-dpi").value) },
+      files,
+    });
+    this.settingsFor = path;
   }
 
   /** 書き出す前の確認: what will need fixing by hand afterwards, each one a click away. */
@@ -502,7 +576,8 @@ export class ExportDialog {
     return { template: built.page, workTemplate: built.work, donors: [built.parts], pieces: piecesPerPage(project, page) };
   }
 
-  private async run(): Promise<void> {
+  /** Writes the name out; `again`: to the PDF or script file written last, without asking where. */
+  private async run(again = false): Promise<void> {
     const project = this.host.project();
     if (!project || this.busy) return;
     this.readFields();
@@ -571,6 +646,7 @@ export class ExportDialog {
         const check = checkSummary(report);
         lines.push(...check.lines);
         this.message(lines.join("\n"), !check.ok);
+        this.remember();
         this.host.status(
           check.ok
             ? `${report.pages.length} 枚のページを ${this.form.outDir} に書き出しました（自己確認 OK）`
@@ -579,10 +655,14 @@ export class ExportDialog {
       } else {
         const extension = this.kind === "pdf" ? "pdf" : "txt";
         const base = (this.host.projectPath() ?? project.title ?? "ネーム").replace(/\.[^.\\/]+$/, "");
-        const path = await save({
-          defaultPath: `${base}${this.kind === "text" ? "_台本" : ""}.${extension}`,
-          filters: [{ name: this.kind === "pdf" ? "PDF" : "テキスト", extensions: [extension] }],
-        });
+        const last = this.host.projectPath() ? loadExportMemory(this.host.projectPath()!)?.files[this.kind] : undefined;
+        const path =
+          again && last
+            ? last
+            : await save({
+                defaultPath: last ?? `${base}${this.kind === "text" ? "_台本" : ""}.${extension}`,
+                filters: [{ name: this.kind === "pdf" ? "PDF" : "テキスト", extensions: [extension] }],
+              });
         if (!path) return;
         if (this.sources().some((source) => source.toLowerCase() === path.toLowerCase())) {
           this.message("元のファイルには上書きできません", true);
@@ -603,6 +683,7 @@ export class ExportDialog {
           await call("write_text_file", { path, text: scriptText(project) });
         }
         this.message(`書き出しました（${seconds()} 秒）: ${path}`);
+        this.remember(path);
         this.host.status(`書き出しました: ${path}`);
       }
     } catch (error) {

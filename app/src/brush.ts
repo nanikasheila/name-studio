@@ -1,7 +1,8 @@
 // Pens and erasers: taking them over from CLIP STUDIO PAINT sub tools
 // (crates/clip-core/src/subtool.rs reads the files), and how a brush turns
 // pen pressure and the stroke's length into width and opacity.
-import { newId, type Brush, type PressureCurve, type Project, type Stroke, type StrokePoint } from "./project";
+import type { Brush, PressureCurve, Project, Stroke, StrokePoint } from "./model";
+import { newId } from "./project";
 
 /** What the Rust side reads from a .sut or CSP's tool database. */
 export interface CspLength {

@@ -2,7 +2,8 @@
 // selected (the far side staying, or the middle with Alt), the round handle
 // turns it, Ctrl + a corner warps it.
 import { FRAME_HANDLES, type DragHandler, type DragOf, type EditorCore, type Press } from "./editorcore";
-import { assignPanels, orderPanels, sortLines, type Point, type Project } from "./project";
+import type { Point, Project } from "./model";
+import { assignPanels, orderPanels, sortLines } from "./readingorder";
 import { NO_TARGETS } from "./snapping";
 import { rotation, scaling, transformBase, transformItems, type Affine } from "./transform";
 

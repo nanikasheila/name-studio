@@ -33,44 +33,16 @@ import {
   type Side,
 } from "./koma";
 import { joinPanels, joinedShape, neighbours } from "./komaedit";
-import {
-  KIND_LABELS,
-  TONE_LABELS,
-  addCharacter,
-  addPanel,
-  assignPanels,
-  basicBox,
-  fitLine,
-  insertPage,
-  linkLabel,
-  movePage,
-  orderPanels,
-  pageIndex,
-  rectShape,
-  removePage,
-  setDefaultLineSize,
-  setDefaultShape,
-  setLineKind,
-  setLineText,
-  sortLines,
-  STICKY_COLORS,
-  wantsSpread,
-  wrapTypedLine,
-  type Alternatives,
-  type BalloonShape,
-  type FillTone,
-  type Line,
-  type LineKind,
-  type Page,
-  type Panel,
-  type PanelBorder,
-  type PanelEffect,
-  type PanelFill,
-  type Project,
-  type Sticky,
-  type StickyColor,
-  type TailStyle,
-} from "./project";
+import { addCharacter } from "./cast";
+import { fitLine, KIND_LABELS, setDefaultLineSize, setDefaultShape, setLineKind, setLineText, wrapTypedLine } from "./dialogue";
+import { rectShape } from "./geometry";
+import type { Alternatives, BalloonShape, FillTone, Line, LineKind, Page, Panel, PanelBorder, PanelEffect, PanelFill, Project, Sticky, StickyColor, TailStyle } from "./model";
+import { basicBox } from "./pagebox";
+import { addPanel, wantsSpread } from "./panels";
+import { insertPage, movePage, pageIndex, removePage } from "./project";
+import { assignPanels, orderPanels, sortLines } from "./readingorder";
+import { linkLabel, STICKY_COLORS } from "./stickies";
+import { TONE_LABELS } from "./strokes";
 
 /** What the inspector needs from the workbench around it. */
 export interface InspectorHost {

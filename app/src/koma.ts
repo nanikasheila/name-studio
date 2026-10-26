@@ -3,40 +3,16 @@
 // patterns taken from the manuscripts. Everything here works in page mm.
 import { arrangePanel } from "./arrange";
 import { seeded } from "./balloon";
-import { inheritOpenEdges } from "./geometry";
+import { area, bounds, centroid, inheritOpenEdges, insidePolygon, rectShape } from "./geometry";
 import { panelLineMm } from "./style";
 import { onLeftHand, spreads } from "./pages";
-import {
-  gutters,
-  area,
-  insidePolygon,
-  assignPanels,
-  basicBox,
-  bounds,
-  carryContents,
-  centroid,
-  clipHalfPlane,
-  followPanel,
-  moveLine,
-  moveStroke,
-  newId,
-  orderPanels,
-  pageIndex,
-  panelContents,
-  rectShape,
-  sortLines,
-  trimBox,
-  type BoxMm,
-  type Breakout,
-  type Page,
-  type PageFormat,
-  type Panel,
-  type PanelBorder,
-  type PanelEffect,
-  type PanelFill,
-  type Point,
-  type Project,
-} from "./project";
+import { moveLine } from "./dialogue";
+import type { BoxMm, Breakout, Page, PageFormat, Panel, PanelBorder, PanelEffect, PanelFill, Point, Project } from "./model";
+import { basicBox, clipHalfPlane, trimBox } from "./pagebox";
+import { carryContents, followPanel, panelContents } from "./panels";
+import { gutters, newId, pageIndex } from "./project";
+import { assignPanels, orderPanels, sortLines } from "./readingorder";
+import { moveStroke } from "./strokes";
 
 export const BORDER_LABELS: Record<PanelBorder, string> = {
   solid: "実線",

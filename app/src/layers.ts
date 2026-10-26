@@ -3,7 +3,9 @@
 // panels. Rows pick things on the page, the eye hides them (on screen only),
 // and dragging a row onto a panel moves it into that panel.
 import { stacked } from "./koma";
-import { bounds, carryContents, centroid, type Page, type Panel, type Point } from "./project";
+import { bounds, centroid } from "./geometry";
+import type { Page, Panel, Point } from "./model";
+import { carryContents } from "./panels";
 
 /** Something a row stands for. Rough lines are listed together, per panel. */
 export type LayerRef =

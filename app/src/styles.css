@@ -79,6 +79,26 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   border-top: 1px solid var(--line); min-height: 24px;
 }
 .empty[hidden] { display: none; }
+/* The start screen: open, new, and the names opened last (the sheet viewer's stage before a sheet is open). */
+#viewer.start .sidebar { display: none; }
+/* The viewer's controls wait for a sheet. */
+body:has(#viewer.start) .viewer-only { display: none; }
+.start-actions button:not(.primary) { color: var(--text); }
+.start-screen { overflow: auto; padding: 32px 16px; }
+.start-box { width: min(560px, 100%); display: flex; flex-direction: column; gap: 14px; }
+.start-actions { display: flex; gap: 8px; }
+.start-actions button { padding: 8px 18px; font-size: 15px; }
+.start-hint { margin: 0; font-size: 13px; line-height: 1.6; opacity: 0.85; }
+.start-recent h2 { font-size: 13px; font-weight: 600; margin: 8px 0 6px; opacity: 0.85; }
+.recent-names { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.recent-name { display: flex; align-items: stretch; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.recent-open { flex: 1; min-width: 0; display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; text-align: left; border: 0; border-radius: 0; padding: 8px 12px; background: transparent; }
+.recent-open:hover, .recent-open:focus-visible { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.recent-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent-when { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.recent-where { grid-column: 1 / -1; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent-forget { border: 0; border-left: 1px solid var(--line); border-radius: 0; background: transparent; color: var(--muted); padding: 0 12px; }
+.recent-forget:hover { color: var(--text); }
 /* Problems that must not go unseen (a failed save, an operation undone after an error). */
 .alerts { position: fixed; top: 48px; left: 50%; transform: translateX(-50%); z-index: 20; display: flex; flex-direction: column; gap: 6px; width: min(640px, calc(100vw - 32px)); pointer-events: none; }
 .alert { pointer-events: auto; display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px 8px 12px; border-radius: 8px; font-size: 13px; line-height: 1.5; box-shadow: 0 4px 14px rgb(0 0 0 / 0.18); border: 1px solid; }
@@ -361,8 +381,8 @@ dialog.pen-settings { width: min(720px, calc(100vw - 32px)); max-height: calc(10
 .action-bar select { width: auto; }
 .action-bar button.active { border-color: var(--accent); color: var(--accent); background: rgb(47 111 219 / 0.08); }
 
-/* Tab: the pages take the whole width. */
-body.focus-mode #editor > .dock { display: none; }
+/* Tab: the pages take the whole window (the side palettes and the story band go). */
+body.focus-mode #editor > .dock, body.focus-mode #story, body.focus-mode #story-handle { display: none; }
 
 /* 話の型の色分け (page lists) */
 .page-item.tinted { box-shadow: inset 4px 0 0 var(--part); }

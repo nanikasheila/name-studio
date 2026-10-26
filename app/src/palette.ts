@@ -10,6 +10,8 @@ export interface PaletteHost {
   keysOf(id: string): string[];
   run(command: Command): void;
   status(message: string): void;
+  /** False: the commands used are not remembered to come first (the start screen's few). */
+  remembers?: boolean;
 }
 
 export class CommandPalette {
@@ -19,13 +21,16 @@ export class CommandPalette {
   private shown: Command[] = [];
   private index = 0;
 
-  constructor(private readonly host: PaletteHost) {
+  constructor(
+    private readonly host: PaletteHost,
+    private readonly id = "command-palette",
+  ) {
     this.input = element("input", { type: "search", placeholder: "命令を探す（例: 並べ直す、書き出す、連続）", className: "cmdp-input" });
     this.input.setAttribute("aria-label", "命令を探す");
-    this.input.setAttribute("aria-controls", "cmdp-list");
-    this.list = element("div", { className: "cmdp-list", id: "cmdp-list" });
+    this.input.setAttribute("aria-controls", `${id}-list`);
+    this.list = element("div", { className: "cmdp-list", id: `${id}-list` });
     this.list.setAttribute("role", "listbox");
-    this.dialog = element("dialog", { className: "command-palette", id: "command-palette" }, this.input, this.list);
+    this.dialog = element("dialog", { className: "command-palette", id }, this.input, this.list);
     document.body.append(this.dialog);
     this.input.addEventListener("input", () => {
       this.index = 0;
@@ -50,6 +55,10 @@ export class CommandPalette {
     this.dialog.addEventListener("click", (event) => {
       if (event.target === this.dialog) this.close();
     });
+  }
+
+  private get remembers(): boolean {
+    return this.host.remembers !== false;
   }
 
   get isOpen(): boolean {
@@ -77,19 +86,20 @@ export class CommandPalette {
       return;
     }
     this.close();
-    saveRecentCommands(usedNow(loadRecentCommands(), command.id));
+    if (this.remembers) saveRecentCommands(usedNow(loadRecentCommands(), command.id));
     this.host.run(command);
   }
 
   private render(): void {
-    this.shown = findCommands(this.input.value, this.host.commands(), loadRecentCommands());
+    const used = this.remembers ? loadRecentCommands() : [];
+    this.shown = findCommands(this.input.value, this.host.commands(), used);
     this.index = Math.min(this.index, Math.max(0, this.shown.length - 1));
-    const recent = new Set(this.input.value.trim() ? [] : loadRecentCommands());
+    const recent = new Set(this.input.value.trim() ? [] : used);
     const rows = this.shown.map((command, i) => {
       const keys = this.host.keysOf(command.id);
       const row = element(
         "div",
-        { className: "cmdp-item", id: `cmdp-item-${i}` },
+        { className: "cmdp-item", id: `${this.id}-item-${i}` },
         element("span", { className: "cmdp-group", textContent: recent.has(command.id) ? "最近" : command.group }),
         element("span", { className: "cmdp-label", textContent: command.label }),
         element("span", { className: "cmdp-keys", textContent: keys.join("  ") }),
@@ -107,7 +117,7 @@ export class CommandPalette {
       return row;
     });
     this.list.replaceChildren(...(rows.length ? rows : [element("div", { className: "cmdp-nothing", textContent: "見つかりません" })]));
-    this.input.setAttribute("aria-activedescendant", rows.length ? `cmdp-item-${this.index}` : "");
+    this.input.setAttribute("aria-activedescendant", rows.length ? `${this.id}-item-${this.index}` : "");
     this.list.querySelector(".current")?.scrollIntoView({ block: "nearest" });
   }
 }

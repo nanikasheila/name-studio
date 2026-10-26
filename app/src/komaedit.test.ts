@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { joinedShape, moveSeam, neighbours, seamAt, seamBase, seamOf, snapSeam } from "./komaedit";
-import { addPanel, area, bounds, cutPanels, newProject, rectShape, type Page, type Point } from "./project";
+import { area, bounds, rectShape } from "./geometry";
+import type { Page, Point } from "./model";
+import { addPanel, cutPanels } from "./panels";
+import { newProject } from "./project";
 
 function pageWith(...boxes: [number, number, number, number][]): { page: Page; ids: string[] } {
   const project = newProject("t", 1);

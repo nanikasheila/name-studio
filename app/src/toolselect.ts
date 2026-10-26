@@ -5,20 +5,11 @@ import { defaultTailStyle, insideBalloon, resolvedShape, tailGeometry, tailRootA
 import type { DragHandler, DragOf, EditorCore, MoveSnap, Press, Selection } from "./editorcore";
 import { moveSeam, seamAt, seamBase, snapSeam } from "./komaedit";
 import { toPage } from "./layout";
-import {
-  assignPanels,
-  bounds,
-  carryContents,
-  followPanel,
-  orderPanels,
-  pickInside,
-  sortLines,
-  swapPanelContents,
-  type CarriedContents,
-  type Page,
-  type Point,
-  type Project,
-} from "./project";
+import { bounds } from "./geometry";
+import type { Page, Point, Project } from "./model";
+import { type CarriedContents, carryContents, followPanel, swapPanelContents } from "./panels";
+import { assignPanels, orderPanels, sortLines } from "./readingorder";
+import { pickInside } from "./strokes";
 import { strokeEditable } from "./roughlayers";
 import { besideCorners, snapBox } from "./snapping";
 import { toggleItem, type ItemRef } from "./transform";

@@ -4,7 +4,8 @@
 // (toolselect.ts, toolpen.ts, ...); editor.ts dispatches to them.
 import type { Seam } from "./komaedit";
 import type { Slot } from "./layout";
-import type { Binding, BoxMm, Brush, CarriedContents, EraseMode, FillTone, Page, Panel, Point, Project, RoughImage, Sticky, StrokePoint } from "./project";
+import type { Binding, BoxMm, Brush, EraseMode, FillTone, Page, Panel, Point, Project, RoughImage, Sticky, StrokePoint } from "./model";
+import type { CarriedContents } from "./panels";
 import type { SnapTargets } from "./snapping";
 import type { ItemRef, TransformBase } from "./transform";
 

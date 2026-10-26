@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { hiddenKeys, moveIntoPanel, pageLayers } from "./layers";
-import { addFill, addLine, addPanel, addStroke, bounds, newProject, rectShape } from "./project";
+import { addLine } from "./dialogue";
+import { bounds, rectShape } from "./geometry";
+import { addPanel } from "./panels";
+import { newProject } from "./project";
+import { addFill, addStroke } from "./strokes";
 
 function sample() {
   const project = newProject("t", 2);

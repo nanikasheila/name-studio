@@ -79,7 +79,7 @@ try {
       p.pages[0].strokes = [];
       throw new Error("テストの失敗");
     });
-    return wb.project.pages[0].strokes.length === count && wb.state.pending === null;
+    return wb.project.pages[0].strokes.length === count && !wb.session.inStep;
   });
   check(rolled, "a change that throws is undone");
   check(await page.locator(".alert.error", { hasText: "取り消しました" }).isVisible(), "the person is told it was undone");
@@ -96,7 +96,7 @@ try {
   });
   await page.waitForTimeout(100);
   check(
-    await page.evaluate(() => window.nameStudio.workbench.project.pages[1].strokes.length === 120 && window.nameStudio.workbench.state.pending === null),
+    await page.evaluate(() => window.nameStudio.workbench.project.pages[1].strokes.length === 120 && !window.nameStudio.workbench.session.inStep),
     "an uncaught error during a change undoes it",
   );
   check(
@@ -170,7 +170,8 @@ try {
 
   // The right panel follows the selection, and a change made there is one undo step.
   const panelId = await page.evaluate(async () => {
-    const { addPanel, rectShape } = await import("/src/project.ts");
+    const { addPanel } = await import("/src/panels.ts");
+    const { rectShape } = await import("/src/geometry.ts");
     const wb = window.nameStudio.workbench;
     let id = "";
     wb.edit((p) => (id = addPanel(p, p.pages[0], rectShape([20, 20, 100, 100])).id));

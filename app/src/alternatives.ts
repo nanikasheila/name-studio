@@ -1,7 +1,8 @@
 // 別案 (R6): other versions of a run of pages — a page, a 見開き or a scene —
 // made from the pages in use, compared side by side and switched to. An option
 // may have a different number of pages (another ページ配分).
-import { newId, pageIndex, type AlternativeOption, type Alternatives, type Page, type Project } from "./project";
+import type { AlternativeOption, Alternatives, Page, Project } from "./model";
+import { newId, pageIndex } from "./project";
 
 const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 

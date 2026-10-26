@@ -3,7 +3,8 @@
 // what is inside the outline drawn.
 import type { DragHandler, DragOf, EditorCore, Press } from "./editorcore";
 import { toPage, type Slot } from "./layout";
-import { eraseInside, eraseWith, type Point } from "./project";
+import type { Point } from "./model";
+import { eraseInside, eraseWith } from "./strokes";
 import { strokeEditable } from "./roughlayers";
 
 export function pressEraser(editor: EditorCore, { slot, point }: Press): void {

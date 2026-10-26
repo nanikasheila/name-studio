@@ -2,7 +2,7 @@
 // (単独), or every spread on one canvas (連続), and the conversions between
 // the screen (CSS px, before the view's rotation) and a page (mm).
 import type { BoxMm, Page, PageFormat, Point, Project } from "./model";
-import { trimBox } from "./project";
+import { trimBox } from "./pagebox";
 
 /** Room around the pages (px). */
 export const MARGIN = 28;

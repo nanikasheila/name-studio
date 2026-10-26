@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { canvasFont, cspFont, fontChoices, lineBold, lineFont, roleFont, setInstalledFonts, setRoleFont, COMMON_FONTS } from "./fonts";
-import { newProject, type Line } from "./project";
+import type { Line } from "./model";
+import { newProject } from "./project";
 
 const line = (extra: Partial<Line> = {}): Line => ({ id: "line1", text: "やあ", kind: "speech", box: [0, 0, 10, 10], fontSizePt: 13, vertical: true, ...extra });
 

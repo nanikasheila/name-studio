@@ -11,7 +11,9 @@ import {
   type CspSubTool,
 } from "./brush";
 import { vectorLines } from "./nameexport";
-import { addStroke, eraseWith, newProject, type Brush, type Stroke } from "./project";
+import type { Brush, Stroke } from "./model";
+import { newProject } from "./project";
+import { addStroke, eraseWith } from "./strokes";
 
 const noInput = {
   tilt: false,

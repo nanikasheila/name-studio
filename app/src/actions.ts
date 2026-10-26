@@ -29,13 +29,15 @@ export interface CommandHost {
   /** One spread to the left (1) or right (-1). */
   flipLeft(step: 1 | -1): void;
   makeOption(first: number, last: number): void;
-  /** Tab: the side panels hidden, the pages take the room (again: back). */
+  /** Tab: the side palettes and the story band hidden, the pages take the room (again: back). */
   toggleFocus(): void;
   arrange(pageId: string): void;
   addTails(pageId?: string): number;
   addPageAfter(page: Page): void;
   openPalette(id: PaletteId): void;
   openCommandPalette(): void;
+  /** This name's last export again, with the same settings (the first time: the export dialog). */
+  exportAgain(): void;
   /** Click a button of the screen when it is there and can be pressed; false otherwise. */
   click(buttonId: string): boolean;
   /** Whether that button is there and can be pressed. */
@@ -110,6 +112,7 @@ export function buildCommands(host: CommandHost): Command[] {
     button("open", "開く…", "ファイル", [], "ファイル ネーム 読む"),
     button("new-project", "新しいネーム…", "ファイル", [], "作る 白紙"),
     button("name-export", "書き出す…（CSP・PDF・台本）", "ファイル", [], "エクスポート clip cmc pdf 台本 テキスト"),
+    { id: "exportAgain", label: "前回と同じ設定で書き出す", group: "ファイル", keys: ["Ctrl+Shift+E"], words: "もう一度 再書き出し エクスポート clip pdf", available: named, run: always(() => host.exportAgain()) },
     button("versions", "版の履歴…", "ファイル", [], "バージョン 戻す 自動保存"),
     { id: "undo", label: "元に戻す", group: "編集", keys: ["Ctrl+Z"], available: named, run: always(() => host.undo()) },
     { id: "redo", label: "やり直す", group: "編集", keys: ["Ctrl+Y", "Ctrl+Shift+Z"], available: named, run: always(() => host.redo()) },
@@ -286,7 +289,7 @@ export function buildCommands(host: CommandHost): Command[] {
         editor.fitAll();
       }),
     },
-    { id: "view.focus", label: "左右の欄を隠してページを大きく（もう一度で戻す）", group: "画面", keys: ["Tab"], available: named, run: always(() => host.toggleFocus()) },
+    { id: "view.focus", label: "左右の欄と物語の帯を隠してページを大きく（もう一度で戻す）", group: "画面", keys: ["Tab"], available: named, run: always(() => host.toggleFocus()) },
     palette("pages", "ページ", "一覧 並べ替え"),
     palette("script", "台本", "台本 プロット 取り込み markdown"),
     palette("cast", "人物", "登場人物 キャラ"),

@@ -5,12 +5,12 @@ import { maskShape } from "./mask";
 import { opacityFactors, widthFactors } from "./brush";
 import { lineBold, lineFont } from "./fonts";
 import { borderLines, borderWidthMm, dashes, effectStrokes, stacked } from "./koma";
-import { MM_PER_PT, type Brush, type Line, type Page, type Panel, type Point, type Stroke } from "./project";
+import { MM_PER_PT } from "./project";
 import { drawText } from "./render";
 import { balloonLineMm, linePitch } from "./style";
 import type { MmToPx } from "./geometry";
 import { panelArea, panelsAbove, type PanelFolder } from "./panelfolders";
-import type { PageFormat } from "./model";
+import type { Brush, Line, Page, PageFormat, Panel, Point, Stroke } from "./model";
 
 export type { MmToPx };
 

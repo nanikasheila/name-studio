@@ -6,7 +6,7 @@
 import { insidePolygon, type MmToPx } from "./geometry";
 import { bleedOutline, stacked } from "./koma";
 import type { Page, PageFormat, Panel, Point, Stroke } from "./model";
-import { segmentTouches } from "./project";
+import { segmentTouches } from "./pagebox";
 
 /** Folders are named コマ1, コマ2, … in reading order. */
 export const PANEL_FOLDER_PREFIX = "コマ";

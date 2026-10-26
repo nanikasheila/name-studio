@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { addLine, addScene, addSticky, newProject, removeSticky, stickyBox, stickyRows, STICKY_WIDTH_MM } from "./project";
+import { addScene } from "./cast";
+import { addLine } from "./dialogue";
+import { newProject } from "./project";
+import { addSticky, removeSticky, STICKY_WIDTH_MM, stickyBox, stickyRows } from "./stickies";
 import { HEAVY_TEXT, planAdvice, planParts } from "./story";
 
 describe("構成補助", () => {

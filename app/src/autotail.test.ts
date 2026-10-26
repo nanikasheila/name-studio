@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { addAutoTails, figures, wantsTail } from "./autotail";
 import { balloonExtent } from "./balloon";
-import { addLine, addPanel, addStroke, assignPanels, boxCenter, insidePolygon, newProject, rectShape, type Point } from "./project";
+import { addLine } from "./dialogue";
+import { boxCenter, insidePolygon, rectShape } from "./geometry";
+import type { Point } from "./model";
+import { addPanel } from "./panels";
+import { newProject } from "./project";
+import { assignPanels } from "./readingorder";
+import { addStroke } from "./strokes";
 
 /** A stick figure: head circle and body, `x` its middle, standing on `y`. */
 function figure(x: number, y: number): Point[][] {

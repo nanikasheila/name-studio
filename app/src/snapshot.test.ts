@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { History } from "./history";
-import { addStroke, moveStroke, newProject, type Project } from "./project";
+import type { Project } from "./model";
+import { newProject } from "./project";
+import { addStroke, moveStroke } from "./strokes";
 import { projectBody, projectJson } from "./projectjson";
 import { sameSnapshot, Snapshotter } from "./snapshot";
 
