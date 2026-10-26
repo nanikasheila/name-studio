@@ -37,12 +37,23 @@ fn blob_of(records: Vec<Record>) -> Vec<u8> {
 
 /// `(id, value)` pairs of an attribute blob, in order.
 pub fn parse_tlv(blob: &[u8]) -> Result<Vec<(u32, Vec<u8>)>> {
-    Ok(records(blob)?.into_iter().map(|record| (record.id, record.data)).collect())
+    Ok(records(blob)?
+        .into_iter()
+        .map(|record| (record.id, record.data))
+        .collect())
 }
 
 /// Inverse of [`parse_tlv`].
 pub fn build_tlv(items: &[(u32, Vec<u8>)]) -> Vec<u8> {
-    blob_of(items.iter().map(|(id, data)| Record { id: *id, data: data.clone() }).collect())
+    blob_of(
+        items
+            .iter()
+            .map(|(id, data)| Record {
+                id: *id,
+                data: data.clone(),
+            })
+            .collect(),
+    )
 }
 
 fn le_u32(value: &[u8], at: usize) -> Option<u32> {
@@ -50,24 +61,37 @@ fn le_u32(value: &[u8], at: usize) -> Option<u32> {
 }
 
 fn le_i32s<const N: usize>(value: &[u8]) -> Option<[i32; N]> {
-    (value.len() == 4 * N).then(|| std::array::from_fn(|i| i32::from_le_bytes(value[4 * i..4 * i + 4].try_into().unwrap())))
+    (value.len() == 4 * N)
+        .then(|| std::array::from_fn(|i| i32::from_le_bytes(value[4 * i..4 * i + 4].try_into().unwrap())))
 }
 
 /// Decode the bbox, font size and font name of one text block.
 pub fn parse_text_attributes(blob: &[u8]) -> Result<TextAttributes> {
     let records = records(blob)?;
     // Later duplicates win, like building a dict from the pairs.
-    let find = |id: u32| records.iter().rev().find(|record| record.id == id).map(|record| record.data.as_slice());
+    let find = |id: u32| {
+        records
+            .iter()
+            .rev()
+            .find(|record| record.id == id)
+            .map(|record| record.data.as_slice())
+    };
     Ok(TextAttributes {
-        bbox: find(ATTR_BBOX).and_then(le_i32s::<4>).map(|[x0, y0, x1, y1]| (x0, y0, x1, y1)),
-        font_size_pt: find(ATTR_FONT_SIZE).and_then(le_i32s::<1>).map(|[size]| size as f64 / FONT_SIZE_UNIT),
+        bbox: find(ATTR_BBOX)
+            .and_then(le_i32s::<4>)
+            .map(|[x0, y0, x1, y1]| (x0, y0, x1, y1)),
+        font_size_pt: find(ATTR_FONT_SIZE)
+            .and_then(le_i32s::<1>)
+            .map(|[size]| size as f64 / FONT_SIZE_UNIT),
         font_name: find(ATTR_FONT_NAME).and_then(font_name),
     })
 }
 
 fn font_name(value: &[u8]) -> Option<String> {
     let length = u16::from_le_bytes(value.get(2..4)?.try_into().ok()?) as usize;
-    value.get(4..4 + length).map(|name| String::from_utf8_lossy(name).into_owned())
+    value
+        .get(4..4 + length)
+        .map(|name| String::from_utf8_lossy(name).into_owned())
 }
 
 /// Split `TextLayerAttributesArray` into per-block attribute blobs.
@@ -95,7 +119,10 @@ pub fn transform_text_attributes(blob: &[u8], scale: f64, dx: f64, dy: f64) -> R
             ]))
         } else if id == ATTR_RENDER_CACHE && value.len() == 4 {
             Some(0u32.to_le_bytes().to_vec())
-        } else if matches!(id, ATTR_FONT_SIZE | ATTR_BLOCK_SIZE | ATTR_QUAD) && !value.is_empty() && value.len() % 4 == 0 {
+        } else if matches!(id, ATTR_FONT_SIZE | ATTR_BLOCK_SIZE | ATTR_QUAD)
+            && !value.is_empty()
+            && value.len() % 4 == 0
+        {
             Some(
                 value
                     .as_chunks::<4>()

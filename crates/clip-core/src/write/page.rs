@@ -412,12 +412,15 @@ fn update_preview(db: &Connection, sheet: &ClipDocument, page: &PlannedPage) -> 
     let to_preview = preview.width as f64 / page_width;
     let from_sheet = source.width as f64 / sheet.canvas.width_px as f64;
     let cell = &page.cell.rect;
-    let crop = crate::raster::crop(&source, (
-        round_half_even(cell.x0 * from_sheet),
-        round_half_even(cell.y0 * from_sheet),
-        round_half_even(cell.x1 * from_sheet),
-        round_half_even(cell.y1 * from_sheet),
-    ));
+    let crop = crate::raster::crop(
+        &source,
+        (
+            round_half_even(cell.x0 * from_sheet),
+            round_half_even(cell.y0 * from_sheet),
+            round_half_even(cell.x1 * from_sheet),
+            round_half_even(cell.y1 * from_sheet),
+        ),
+    );
     let (x0, y0, x1, y1) = page.transform.map_box((cell.x0, cell.y0, cell.x1, cell.y1));
     let (x0, y0, x1, y1) = (x0 * to_preview, y0 * to_preview, x1 * to_preview, y1 * to_preview);
     let width = round_half_even(x1 - x0).max(1) as u32;

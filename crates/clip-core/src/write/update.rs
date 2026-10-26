@@ -491,7 +491,7 @@ fn same_pixels(document: &ClipDocument, layer: &ClipLayer, image: &RgbaImage) ->
     let image = fitted.as_ref().unwrap_or(image);
     let stored = match document.render_layer_pixels(layer) {
         Ok(Some(stored)) => stored,
-        Ok(None) => return crate::raster::is_transparent(&image),
+        Ok(None) => return crate::raster::is_transparent(image),
         Err(_) => return false,
     };
     let (origin_x, origin_y) = layer.pixel_origin();

@@ -525,7 +525,7 @@ impl PageBuilder<'_> {
                 let image = fit(&layer.image);
                 let image = image.as_ref().unwrap_or(&layer.image);
                 let id = raster_like(file, parent, &layer.name, like)?;
-                if !crate::raster::is_transparent(&image) {
+                if !crate::raster::is_transparent(image) {
                     file.set_layer_pixels(id, &csp_image(image), (0, 0))?;
                     match mask {
                         Some(mask) => self.composite.draw_over(&masked(image, mask), 0, 0),

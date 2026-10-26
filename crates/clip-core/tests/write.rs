@@ -860,7 +860,10 @@ fn story_texts(path: &Path, kind: i64) -> Vec<(String, i32, i32, bool)> {
         .map(Result::unwrap)
         .map(|(text, attributes, right, offset)| {
             let items = parse_tlv(&attributes).unwrap();
-            let bbox = items.iter().find(|(tag, _)| *tag == 0x2A).map(|(_, bbox)| bbox.as_slice());
+            let bbox = items
+                .iter()
+                .find(|(tag, _)| *tag == 0x2A)
+                .map(|(_, bbox)| bbox.as_slice());
             let x = |at: usize| {
                 bbox.map(|bbox| i32::from_le_bytes(bbox[at..at + 4].try_into().unwrap()) + offset as i32)
                     .unwrap_or(0)
@@ -981,17 +984,13 @@ fn writes_spread_pages() {
             image,
         })]
     };
-    writer
-        .write_page(&page(RgbaImage::new(400, 560)), None, false)
-        .unwrap();
+    writer.write_page(&page(RgbaImage::new(400, 560)), None, false).unwrap();
     let layers = page(wide);
     let expected: Vec<ExpectedLayer> = layers.iter().map(|layer| ExpectedLayer::of(layer, 800, 560)).collect();
     let spread_page = writer.write_page(&layers, None, true).unwrap();
     let check = verify_page(&spread_page, &expected, &canvas);
     assert!(check.problems.is_empty(), "{:?}", check.problems);
-    let last = writer
-        .write_page(&page(RgbaImage::new(400, 560)), None, false)
-        .unwrap();
+    let last = writer.write_page(&page(RgbaImage::new(400, 560)), None, false).unwrap();
     let report = writer.finish().unwrap();
     let names: Vec<String> = report
         .pages

@@ -22,6 +22,6 @@ pub mod write;
 
 pub use clip::{ClipCanvas, ClipDocument, ClipLayer, LayerKind};
 pub use cmc::{CmcPage, CmcProject};
+pub use csp_format::database::Row;
 pub use error::{CspError, Result};
 pub use offscreen::RgbaImage;
-pub use csp_format::database::Row;

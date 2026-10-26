@@ -22,9 +22,9 @@ use rayon::prelude::*;
 
 use crate::error::{CspError, Result};
 use crate::offscreen::{OffscreenParameters, RgbaImage};
-use csp_format::database::{Row, select as select_rows, table_exists};
 use crate::text::{TextAttributes, parse_text_attributes, split_attribute_array};
 use crate::vector::{VectorObject, parse_vector_data};
+use csp_format::database::{Row, select as select_rows, table_exists};
 
 const LAYER_TYPE_RASTER: i64 = 1;
 const LAYER_TYPE_ROOT: i64 = 256;
@@ -389,7 +389,10 @@ impl ClipDocument {
         if layer.render_mipmap == 0 {
             return Ok(None);
         }
-        Ok(self.file.mipmap_base(layer.render_mipmap)?.map(|offscreen| offscreen.parameter))
+        Ok(self
+            .file
+            .mipmap_base(layer.render_mipmap)?
+            .map(|offscreen| offscreen.parameter))
     }
 
     /// Layer pixels inside a canvas box (transparent where none are stored;

@@ -27,7 +27,9 @@
 
 use std::path::{Path, PathBuf};
 
-use csp_assets::subtool::blob::{Effector, INPUT_PRESSURE, INPUT_RANDOM, INPUT_TILT, INPUT_VELOCITY, MaterialList, Records};
+use csp_assets::subtool::blob::{
+    Effector, INPUT_PRESSURE, INPUT_RANDOM, INPUT_TILT, INPUT_VELOCITY, MaterialList, Records,
+};
 use csp_assets::subtool::{MaterialFile, Node, SubToolDb};
 use serde::Serialize;
 
@@ -139,9 +141,19 @@ impl Dynamics {
 /// The points of one graph, in 0..1; empty for none or the straight line.
 fn graph_points(graph: Option<&Records>) -> Vec<[f64; 2]> {
     let points: Vec<[f64; 2]> = graph
-        .map(|graph| graph.points().into_iter().map(|[x, y]| [x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)]).collect())
+        .map(|graph| {
+            graph
+                .points()
+                .into_iter()
+                .map(|[x, y]| [x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)])
+                .collect()
+        })
         .unwrap_or_default();
-    if points == [[0.0, 0.0], [1.0, 1.0]] { Vec::new() } else { points }
+    if points == [[0.0, 0.0], [1.0, 1.0]] {
+        Vec::new()
+    } else {
+        points
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -229,7 +241,8 @@ pub fn read_sub_tools_from_bytes(bytes: &[u8], material_root: Option<&Path>) -> 
             "CSP のサブツール（.sut）でもツールのデータベースでもありません",
         ));
     }
-    let db = SubToolDb::from_bytes(bytes).map_err(|error| CspError::format(format!("サブツールを読めません: {error}")))?;
+    let db =
+        SubToolDb::from_bytes(bytes).map_err(|error| CspError::format(format!("サブツールを読めません: {error}")))?;
     let mut tools = Vec::new();
     for entry in db.sub_tools() {
         let node = &db.nodes[entry.node];
@@ -349,7 +362,12 @@ fn sub_tool(
 /// `.:Paint001:<uuid>:data:material.layer` (one that comes with CSP).
 pub fn pattern_paths(blob: &[u8]) -> Vec<String> {
     MaterialList::parse(blob)
-        .map(|list| list.materials.into_iter().map(|material| material.path.trim_end_matches('\0').to_owned()).collect())
+        .map(|list| {
+            list.materials
+                .into_iter()
+                .map(|material| material.path.trim_end_matches('\0').to_owned())
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -549,13 +567,19 @@ mod tests {
             install_path: install_path.map(str::to_owned),
             rest: Vec::new(),
         };
-        MaterialList { materials: vec![material] }.to_bytes()
+        MaterialList {
+            materials: vec![material],
+        }
+        .to_bytes()
     }
 
     #[test]
     fn finds_tip_material_paths() {
         let path = ".:91:20:e6ae21f672-c949-8fb8-0f2b-4fd949ca57:data:material_0.layer";
-        let blob = material_list(&format!("{path}\0"), Some(".:91:20:e6ae21f672-c949-8fb8-0f2b-4fd949ca57"));
+        let blob = material_list(
+            &format!("{path}\0"),
+            Some(".:91:20:e6ae21f672-c949-8fb8-0f2b-4fd949ca57"),
+        );
         assert_eq!(pattern_paths(&blob), vec![path.to_owned()]);
         assert_eq!(
             material_folders(path),
