@@ -343,8 +343,6 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "csp-format",
- "flate2",
- "png",
  "rayon",
  "rusqlite",
  "serde",

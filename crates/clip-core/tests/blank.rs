@@ -2,7 +2,6 @@
 
 use std::path::Path;
 
-use clip_core::offscreen::OffscreenParameters;
 use clip_core::text::{NewText, parse_tlv};
 use clip_core::vector::NewVectorLine;
 use clip_core::write::blank::{
@@ -88,7 +87,7 @@ fn story_blocks(path: &Path, kind: i64) -> Vec<(String, [i32; 4])> {
         .collect();
     let bbox = |attributes: &[u8], dx: i32, dy: i32| {
         let items = parse_tlv(attributes).unwrap();
-        let bbox = items.iter().find(|(tag, _)| *tag == 0x2A).unwrap().1;
+        let bbox = &items.iter().find(|(tag, _)| *tag == 0x2A).unwrap().1;
         let n = |at: usize| i32::from_le_bytes(bbox[at..at + 4].try_into().unwrap());
         [n(0) + dx, n(4) + dy, n(8) + dx, n(12) + dy]
     };
@@ -173,7 +172,7 @@ fn makes_pages_of_another_size_and_binding() {
         .query_map([], |row| row.get::<_, Vec<u8>>(0))
         .unwrap()
         .map(|attribute| {
-            let parameters = OffscreenParameters::parse(&attribute.unwrap()).unwrap();
+            let parameters = clip_core::offscreen::parameters(&attribute.unwrap()).unwrap();
             (parameters.width, parameters.height)
         })
         .collect();
@@ -307,7 +306,7 @@ fn writes_a_work_with_editable_layers_from_the_built_template() {
     let canvas = writer.canvas;
     assert_eq!((canvas.width_px, canvas.height_px), (1754, 2480));
     let (width, height) = (canvas.width_px, canvas.height_px);
-    let mut rough = RgbaImage::transparent(width, height);
+    let mut rough = RgbaImage::new(width, height);
     rough.paste(
         &RgbaImage {
             width: 50,
@@ -429,7 +428,7 @@ fn story_parts(path: &Path, kind: i64) -> Vec<(i32, String, [i32; 4], i32)> {
     };
     let block = |text: String, attributes: &[u8], dx: i32, dy: i32| {
         let items = parse_tlv(attributes).unwrap();
-        let value = |tag: u32| items.iter().find(|(id, _)| *id == tag).unwrap().1;
+        let value = |tag: u32| items.iter().find(|(id, _)| *id == tag).unwrap().1.as_slice();
         let n = |bytes: &[u8], at: usize| i32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
         let bbox = value(0x2a);
         (
@@ -569,7 +568,7 @@ fn numbers_each_page_of_a_work_with_a_shown_nombre() {
         right_binding: None,
     })
     .unwrap();
-    let blank = RgbaImage::transparent(writer.canvas.width_px, writer.canvas.height_px);
+    let blank = RgbaImage::new(writer.canvas.width_px, writer.canvas.height_px);
     let layers = vec![PageLayer::Raster(RasterLayer {
         name: "ラフ".into(),
         image: blank,

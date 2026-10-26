@@ -18,14 +18,9 @@
 use csp_format::vector::VectorData;
 pub use csp_format::vector_build::{FrameTemplate, NewFrame, NewVectorLine, shape_signature};
 
-use crate::bytes::{be_f64, be_i32, be_u32};
 use crate::error::{CspError, Result};
 
-pub const CLOSED_FLAG: u32 = 0x1000;
-const OBJECT_HEADER_SIZE: usize = 40;
-const POINT_HEAD_SIZE: usize = 32;
-const PAYLOAD_HEAD_SIZE: usize = 8;
-const BRUSH_SIZE_FROM_END: usize = 12;
+pub const CLOSED_FLAG: u32 = csp_format::vector::FLAG_CLOSED;
 
 pub type BBox = (i32, i32, i32, i32);
 
@@ -35,6 +30,7 @@ pub struct VectorObject {
     pub flags: u32,
     pub bbox: BBox,
     pub points: Vec<(f64, f64)>,
+    /// 0 for header layouts without one.
     pub brush_size: f64,
 }
 
@@ -45,93 +41,21 @@ impl VectorObject {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-struct ObjectSpan {
-    start: usize,
-    header_size: usize,
-    point_size: usize,
-    point_count: usize,
-}
-
-impl ObjectSpan {
-    fn end(&self) -> usize {
-        self.start + self.header_size + self.point_size * self.point_count
-    }
-
-    fn brush_size_offset(&self) -> usize {
-        self.start + self.header_size - BRUSH_SIZE_FROM_END
-    }
-
-    fn point_offset(&self, index: usize) -> usize {
-        self.start + self.header_size + index * self.point_size
-    }
-}
-
-fn spans(payload: &[u8]) -> Result<Vec<ObjectSpan>> {
-    if payload.len() < PAYLOAD_HEAD_SIZE {
-        return Err(CspError::format("VectorData is too short"));
-    }
-    let end = PAYLOAD_HEAD_SIZE + be_u32(payload, 4)? as usize;
-    if end > payload.len() {
-        return Err(CspError::format("VectorData length exceeds the payload"));
-    }
-    let mut result = Vec::new();
-    let mut position = PAYLOAD_HEAD_SIZE;
-    while position < end {
-        if position + OBJECT_HEADER_SIZE > end {
-            return Err(CspError::format(format!("Truncated vector object at {position}")));
-        }
-        let header_size = be_u32(payload, position)? as usize;
-        let point_size = be_u32(payload, position + 8)? as usize;
-        let point_count = be_u32(payload, position + 16)? as usize;
-        if header_size < OBJECT_HEADER_SIZE + BRUSH_SIZE_FROM_END || point_size < POINT_HEAD_SIZE {
-            return Err(CspError::format(format!(
-                "Unexpected vector object layout at {position}"
-            )));
-        }
-        let span = ObjectSpan {
-            start: position,
-            header_size,
-            point_size,
-            point_count,
-        };
-        position = span.end();
-        if position > end {
-            return Err(CspError::format("Vector object exceeds VectorData length"));
-        }
-        result.push(span);
-    }
-    Ok(result)
-}
-
-fn read_bbox(payload: &[u8], offset: usize) -> Result<BBox> {
-    Ok((
-        be_i32(payload, offset)?,
-        be_i32(payload, offset + 4)?,
-        be_i32(payload, offset + 8)?,
-        be_i32(payload, offset + 12)?,
-    ))
-}
-
-/// Decode all objects of a `VectorData` payload.
+/// Decode all objects of a `VectorData` payload (csp-format reads it).
 pub fn parse_vector_data(payload: &[u8]) -> Result<Vec<VectorObject>> {
-    spans(payload)?
-        .into_iter()
-        .map(|span| {
-            let points = (0..span.point_count)
-                .map(|index| {
-                    let offset = span.point_offset(index);
-                    Ok((be_f64(payload, offset)?, be_f64(payload, offset + 8)?))
-                })
-                .collect::<Result<_>>()?;
-            Ok(VectorObject {
-                flags: be_u32(payload, span.start + 20)?,
-                bbox: read_bbox(payload, span.start + 24)?,
-                points,
-                brush_size: be_f64(payload, span.brush_size_offset())?,
-            })
+    Ok(VectorData::parse(payload)?
+        .objects
+        .iter()
+        .map(|object| {
+            let [x0, y0, x1, y1] = object.bbox();
+            VectorObject {
+                flags: object.flags(),
+                bbox: (x0, y0, x1, y1),
+                points: object.coordinates(),
+                brush_size: object.brush_size().unwrap_or(0.0),
+            }
         })
-        .collect()
+        .collect())
 }
 
 /// Copy of `payload` with every coordinate mapped to `p * scale + d`; bounding

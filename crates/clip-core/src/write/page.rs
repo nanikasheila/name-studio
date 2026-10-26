@@ -153,7 +153,7 @@ fn add_content(
                 crop.3.ceil() as i64,
             );
             let region = sheet.layer_pixels_in_box(layer, (x0, y0, x1, y1))?;
-            if !region.is_transparent() {
+            if !crate::raster::is_transparent(&region) {
                 let (tx0, ty0, tx1, ty1) = transform.map_box((x0 as f64, y0 as f64, x1 as f64, y1 as f64));
                 let width = round_half_even(tx1 - tx0).max(1) as u32;
                 let height = round_half_even(ty1 - ty0).max(1) as u32;
@@ -412,7 +412,7 @@ fn update_preview(db: &Connection, sheet: &ClipDocument, page: &PlannedPage) -> 
     let to_preview = preview.width as f64 / page_width;
     let from_sheet = source.width as f64 / sheet.canvas.width_px as f64;
     let cell = &page.cell.rect;
-    let crop = source.crop((
+    let crop = crate::raster::crop(&source, (
         round_half_even(cell.x0 * from_sheet),
         round_half_even(cell.y0 * from_sheet),
         round_half_even(cell.x1 * from_sheet),

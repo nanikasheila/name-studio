@@ -45,7 +45,7 @@ use serde::Serialize;
 use crate::RgbaImage;
 use crate::error::{CspError, Result};
 use crate::raster::{Filter, decode_png, luma, resize};
-use crate::sql::{Row, select_rows, table_exists};
+use csp_format::database::{Row, select as select_rows, table_exists};
 
 /// Largest side of the tip mask handed to the app.
 pub const TIP_SIZE: u32 = 128;
@@ -568,7 +568,7 @@ pub fn tar_entry(tar: &[u8], name: &str) -> Option<Vec<u8>> {
 /// what is drawn and shrunk to at most [`TIP_SIZE`].
 pub fn tip_mask(png: &[u8]) -> Result<TipImage> {
     let image = decode_png(png)?;
-    let mut mask = RgbaImage::transparent(image.width, image.height);
+    let mut mask = RgbaImage::new(image.width, image.height);
     for (source, target) in image
         .pixels
         .as_chunks::<4>()
@@ -581,7 +581,7 @@ pub fn tip_mask(png: &[u8]) -> Result<TipImage> {
         target.copy_from_slice(&[255, 255, 255, coverage]);
     }
     let mask = match mask.alpha_bbox() {
-        Some((x0, y0, x1, y1)) => mask.crop((x0 as i64, y0 as i64, x1 as i64, y1 as i64)),
+        Some((x0, y0, x1, y1)) => crate::raster::crop(&mask, (x0 as i64, y0 as i64, x1 as i64, y1 as i64)),
         None => return Err(CspError::format("ブラシ先端の画像が空です")),
     };
     let scale = (TIP_SIZE as f64 / mask.width.max(mask.height) as f64).min(1.0);
@@ -755,7 +755,7 @@ mod tests {
 
     fn tip_png() -> Vec<u8> {
         // A black dot on white, 8 x 8 with a 4 x 2 mark.
-        let mut image = RgbaImage::transparent(8, 8);
+        let mut image = RgbaImage::new(8, 8);
         for (index, pixel) in image.pixels.as_chunks_mut::<4>().0.iter_mut().enumerate() {
             let (x, y) = (index % 8, index / 8);
             let ink = (2..6).contains(&x) && (3..5).contains(&y);

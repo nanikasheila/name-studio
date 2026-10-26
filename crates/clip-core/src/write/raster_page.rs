@@ -525,11 +525,11 @@ impl PageBuilder<'_> {
                 let image = fit(&layer.image);
                 let image = image.as_ref().unwrap_or(&layer.image);
                 let id = raster_like(file, parent, &layer.name, like)?;
-                if !image.is_transparent() {
+                if !crate::raster::is_transparent(&image) {
                     file.set_layer_pixels(id, &csp_image(image), (0, 0))?;
                     match mask {
-                        Some(mask) => self.composite.blend_over(&masked(image, mask), 0, 0),
-                        None => self.composite.blend_over(image, 0, 0),
+                        Some(mask) => self.composite.draw_over(&masked(image, mask), 0, 0),
+                        None => self.composite.draw_over(image, 0, 0),
                     }
                 }
                 id
@@ -661,7 +661,7 @@ pub fn write_name_page(
     let thumbnail = match overlay {
         Some(overlay) => {
             let mut base = resize(&composite, overlay.width, overlay.height, Filter::Box);
-            base.blend_over(overlay, 0, 0);
+            base.draw_over(overlay, 0, 0);
             base
         }
         None => composite,

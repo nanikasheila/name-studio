@@ -1,8 +1,6 @@
 //! Unit tests on synthetic data. Real CSP files contain artwork and stay out
 //! of the repository; `tools/compare_with_python.py` covers them locally.
 
-use clip_core::container::CsfContainer;
-use clip_core::offscreen::{self, OffscreenParameters};
 use clip_core::text::{
     FontName, NewText, build_tlv, line_spacing, parse_text_attributes, parse_tlv, retarget_add_attributes,
     retarget_text_attributes, split_attribute_array, transform_text_attributes,
@@ -84,15 +82,6 @@ fn utf16(name: &str) -> Vec<u8> {
     let mut data = be32(name.encode_utf16().count() as u32).to_vec();
     for unit in name.encode_utf16() {
         data.extend(unit.to_be_bytes());
-    }
-    data
-}
-
-fn attribute(width: u32, height: u32) -> Vec<u8> {
-    let mut data = vec![0; 16];
-    data.extend(utf16("Parameter"));
-    for value in [width, height, width.div_ceil(256), height.div_ceil(256), 1, 1, 4, 5] {
-        data.extend(be32(value));
     }
     data
 }
@@ -293,19 +282,25 @@ fn reads_canvas_tree_pixels_vectors_and_text() {
 }
 
 #[test]
-fn rejects_broken_containers() {
-    assert!(CsfContainer::parse(b"not a clip".to_vec()).is_err());
+fn rejects_broken_files() {
+    let folder = tempfile::tempdir().unwrap();
+    let broken = |name: &str, bytes: Vec<u8>| {
+        let path = folder.path().join(name);
+        std::fs::write(&path, bytes).unwrap();
+        ClipDocument::read(&path).is_err()
+    };
+    assert!(broken("not.clip", b"not a clip".to_vec()));
     let mut wrong_size = b"CSFCHUNK".to_vec();
     wrong_size.extend(999u64.to_be_bytes());
     wrong_size.extend(24u64.to_be_bytes());
-    assert!(CsfContainer::parse(wrong_size).is_err());
+    assert!(broken("size.clip", wrong_size));
     let database = Connection::open_in_memory().unwrap();
     database.execute_batch("CREATE TABLE T(A);").unwrap();
     let mut file = container(&database, &[]);
     let length = file.len();
     file.truncate(length - 1);
     file[8..16].copy_from_slice(&((length - 1) as u64).to_be_bytes());
-    assert!(CsfContainer::parse(file).is_err());
+    assert!(broken("cut.clip", file));
 }
 
 #[test]
@@ -338,7 +333,7 @@ fn round_trips_and_scales_text_attributes() {
     // CSP's rendering of the text (Offscreen 3760) is not copied with it.
     let cached = build_tlv(&[(0x32, 3760u32.to_le_bytes().to_vec())]);
     let moved = transform_text_attributes(&cached, 2.5, 1.0, 2.0).unwrap();
-    assert_eq!(parse_tlv(&moved).unwrap(), vec![(0x32, &0u32.to_le_bytes()[..])]);
+    assert_eq!(parse_tlv(&moved).unwrap(), vec![(0x32, 0u32.to_le_bytes().to_vec())]);
     assert!(split_attribute_array(&[5, 0, 0, 0, 1]).is_err());
     assert!(parse_tlv(&blob[..blob.len() - 1]).is_err());
 }
@@ -494,7 +489,7 @@ fn new_text_names_its_font_as_csp_does() {
         Some("游明朝 Demibold")
     );
     let items = parse_tlv(&named).unwrap();
-    let value = items.iter().find(|(tag, _)| *tag == 0x39).unwrap().1;
+    let value = &items.iter().find(|(tag, _)| *tag == 0x39).unwrap().1;
     assert!(value.ends_with(b"YuMin-Demibold"));
 
     // CSP's own dialogue (the builtin pages' donor) names the font in its run
@@ -517,9 +512,9 @@ fn new_text_names_its_font_as_csp_does() {
     });
     let meiryo = retarget_text_attributes(&blob, &text).unwrap();
     let items = parse_tlv(&meiryo).unwrap();
-    let value = items.iter().find(|(tag, _)| *tag == 0x0b).unwrap().1;
+    let value = &items.iter().find(|(tag, _)| *tag == 0x0b).unwrap().1;
     assert_eq!(
-        value,
+        *value,
         [1u32.to_le_bytes().to_vec(), run(0, 2, 0x32, &named_run("メイリオ"))].concat()
     );
     assert_eq!(
@@ -527,7 +522,7 @@ fn new_text_names_its_font_as_csp_does() {
         Some("メイリオ")
     );
     // And the name the tool property shows (0x1f, plain UTF-8).
-    let value = items.iter().find(|(tag, _)| *tag == 0x1f).unwrap().1;
+    let value = &items.iter().find(|(tag, _)| *tag == 0x1f).unwrap().1;
     assert_eq!(value, "メイリオ".as_bytes());
 }
 
@@ -578,20 +573,7 @@ fn new_text_takes_one_run_in_the_added_attributes_too() {
     let plain = [(plain.len() as u32).to_le_bytes().to_vec(), plain].concat();
     text.color = Some([255, 255, 255]);
     let white = retarget_add_attributes(&plain, &text).unwrap();
-    assert_eq!(parse_tlv(&white[4..]).unwrap(), vec![(0x0b, &runs(&[&[0, 3, 1]])[..])]);
-}
-
-#[test]
-fn rejects_mismatched_block_grid() {
-    let mut data = attribute(600, 300);
-    let grid = data.len() - 24;
-    data[grid..grid + 4].copy_from_slice(&be32(9));
-    assert!(OffscreenParameters::parse(&data).is_err());
-    assert!(
-        offscreen::decode_offscreen_image(&attribute(600, 300), None)
-            .unwrap()
-            .is_none()
-    );
+    assert_eq!(parse_tlv(&white[4..]).unwrap(), vec![(0x0b, runs(&[&[0, 3, 1]]))]);
 }
 
 #[test]

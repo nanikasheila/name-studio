@@ -5,7 +5,8 @@
 //! 0x39 font name, 0x3f block size i32[2] (px), 0x40 quad i32[8] (1/100 px).
 //! `TextLayerAttributesArray` repeats `u32 size + TLV list` per text block.
 
-use crate::bytes::{le_i32, le_u16, le_u32};
+use csp_format::text::{Attributes, Record, split_array};
+
 use crate::error::{CspError, Result};
 use crate::vector::BBox;
 
@@ -24,90 +25,54 @@ pub struct TextAttributes {
     pub font_name: Option<String>,
 }
 
-/// Split a TLV blob into `(id, value)` pairs, in order.
-pub fn parse_tlv(blob: &[u8]) -> Result<Vec<(u32, &[u8])>> {
-    let mut items = Vec::new();
-    let mut position = 0;
-    while position < blob.len() {
-        if position + 8 > blob.len() {
-            return Err(CspError::format(format!("Truncated text attribute at {position}")));
-        }
-        let id = le_u32(blob, position)?;
-        let size = le_u32(blob, position + 4)? as usize;
-        let start = position + 8;
-        let value = blob
-            .get(start..start + size)
-            .ok_or_else(|| CspError::format(format!("Text attribute 0x{id:x} exceeds the blob")))?;
-        items.push((id, value));
-        position = start + size;
-    }
-    Ok(items)
+/// The records of an attribute blob, in order (csp-format reads the list).
+fn records(blob: &[u8]) -> Result<Vec<Record>> {
+    Ok(Attributes::parse(blob)?.records)
+}
+
+/// An attribute blob of these records, in order.
+fn blob_of(records: Vec<Record>) -> Vec<u8> {
+    Attributes { records }.to_bytes()
+}
+
+/// `(id, value)` pairs of an attribute blob, in order.
+pub fn parse_tlv(blob: &[u8]) -> Result<Vec<(u32, Vec<u8>)>> {
+    Ok(records(blob)?.into_iter().map(|record| (record.id, record.data)).collect())
 }
 
 /// Inverse of [`parse_tlv`].
 pub fn build_tlv(items: &[(u32, Vec<u8>)]) -> Vec<u8> {
-    let mut blob = Vec::new();
-    for (id, value) in items {
-        blob.extend_from_slice(&id.to_le_bytes());
-        blob.extend_from_slice(&(value.len() as u32).to_le_bytes());
-        blob.extend_from_slice(value);
-    }
-    blob
+    blob_of(items.iter().map(|(id, data)| Record { id: *id, data: data.clone() }).collect())
 }
 
-fn unpack_bbox(value: &[u8]) -> Result<BBox> {
-    Ok((
-        le_i32(value, 0)?,
-        le_i32(value, 4)?,
-        le_i32(value, 8)?,
-        le_i32(value, 12)?,
-    ))
+fn le_u32(value: &[u8], at: usize) -> Option<u32> {
+    Some(u32::from_le_bytes(value.get(at..at + 4)?.try_into().ok()?))
+}
+
+fn le_i32s<const N: usize>(value: &[u8]) -> Option<[i32; N]> {
+    (value.len() == 4 * N).then(|| std::array::from_fn(|i| i32::from_le_bytes(value[4 * i..4 * i + 4].try_into().unwrap())))
 }
 
 /// Decode the bbox, font size and font name of one text block.
 pub fn parse_text_attributes(blob: &[u8]) -> Result<TextAttributes> {
-    let items = parse_tlv(blob)?;
+    let records = records(blob)?;
     // Later duplicates win, like building a dict from the pairs.
-    let find = |id: u32| items.iter().rev().find(|(key, _)| *key == id).map(|(_, value)| *value);
-    let bbox = match find(ATTR_BBOX) {
-        Some(value) if value.len() == 16 => Some(unpack_bbox(value)?),
-        _ => None,
-    };
-    let font_size_pt = match find(ATTR_FONT_SIZE) {
-        Some(value) if value.len() == 4 => Some(le_i32(value, 0)? as f64 / FONT_SIZE_UNIT),
-        _ => None,
-    };
+    let find = |id: u32| records.iter().rev().find(|record| record.id == id).map(|record| record.data.as_slice());
     Ok(TextAttributes {
-        bbox,
-        font_size_pt,
+        bbox: find(ATTR_BBOX).and_then(le_i32s::<4>).map(|[x0, y0, x1, y1]| (x0, y0, x1, y1)),
+        font_size_pt: find(ATTR_FONT_SIZE).and_then(le_i32s::<1>).map(|[size]| size as f64 / FONT_SIZE_UNIT),
         font_name: find(ATTR_FONT_NAME).and_then(font_name),
     })
 }
 
 fn font_name(value: &[u8]) -> Option<String> {
-    if value.len() < 4 {
-        return None;
-    }
-    let length = le_u16(value, 2).ok()? as usize;
-    value
-        .get(4..4 + length)
-        .map(|name| String::from_utf8_lossy(name).into_owned())
+    let length = u16::from_le_bytes(value.get(2..4)?.try_into().ok()?) as usize;
+    value.get(4..4 + length).map(|name| String::from_utf8_lossy(name).into_owned())
 }
 
-/// Split `TextLayerAttributesArray` into per-block TLV blobs.
+/// Split `TextLayerAttributesArray` into per-block attribute blobs.
 pub fn split_attribute_array(blob: &[u8]) -> Result<Vec<&[u8]>> {
-    let mut blocks = Vec::new();
-    let mut position = 0;
-    while position < blob.len() {
-        let size = le_u32(blob, position).map_err(|_| CspError::format("Truncated text attribute array"))? as usize;
-        let start = position + 4;
-        blocks.push(
-            blob.get(start..start + size)
-                .ok_or_else(|| CspError::format("Text attribute array entry exceeds the blob"))?,
-        );
-        position = start + size;
-    }
-    Ok(blocks)
+    Ok(split_array(blob)?)
 }
 
 /// `blob` with its bbox mapped to `p * scale + d` and font size, block size
@@ -117,40 +82,39 @@ pub fn transform_text_attributes(blob: &[u8], scale: f64, dx: f64, dy: f64) -> R
     if scale <= 0.0 {
         return Err(CspError::format("scale must be positive"));
     }
-    let mut items = Vec::new();
-    for (id, value) in parse_tlv(blob)? {
-        let value = if id == ATTR_BBOX && value.len() == 16 {
-            let (x0, y0, x1, y1) = unpack_bbox(value)?;
-            [
+    let mut records = records(blob)?;
+    for Record { id, data } in &mut records {
+        let (id, value) = (*id, data.as_slice());
+        let changed: Option<Vec<u8>> = if id == ATTR_BBOX && value.len() == 16 {
+            let [x0, y0, x1, y1] = le_i32s::<4>(value).unwrap();
+            Some(i32s(&[
                 (x0 as f64 * scale + dx).floor() as i32,
                 (y0 as f64 * scale + dy).floor() as i32,
                 (x1 as f64 * scale + dx).ceil() as i32,
                 (y1 as f64 * scale + dy).ceil() as i32,
-            ]
-            .iter()
-            .flat_map(|number| number.to_le_bytes())
-            .collect()
+            ]))
         } else if id == ATTR_RENDER_CACHE && value.len() == 4 {
-            0u32.to_le_bytes().to_vec()
-        } else if matches!(id, ATTR_FONT_SIZE | ATTR_BLOCK_SIZE | ATTR_QUAD)
-            && !value.is_empty()
-            && value.len() % 4 == 0
-        {
-            value
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .flat_map(|bytes| {
-                    let number = i32::from_le_bytes(*bytes);
-                    ((number as f64 * scale).round_ties_even() as i32).to_le_bytes()
-                })
-                .collect()
+            Some(0u32.to_le_bytes().to_vec())
+        } else if matches!(id, ATTR_FONT_SIZE | ATTR_BLOCK_SIZE | ATTR_QUAD) && !value.is_empty() && value.len() % 4 == 0 {
+            Some(
+                value
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .flat_map(|bytes| {
+                        let number = i32::from_le_bytes(*bytes);
+                        ((number as f64 * scale).round_ties_even() as i32).to_le_bytes()
+                    })
+                    .collect(),
+            )
         } else {
-            value.to_vec()
+            None
         };
-        items.push((id, value));
+        if let Some(changed) = changed {
+            *data = changed;
+        }
     }
-    Ok(build_tlv(&items))
+    Ok(blob_of(records))
 }
 
 /// Vertical writing bit of `ATTR_DIRECTION` (observed `0x10` for 縦書き).
@@ -202,11 +166,11 @@ type Run<'a> = (u32, u32, u32, &'a [u8]);
 /// count, then per run a `u32` size and the data. Kept if `value` is
 /// exactly such a list.
 fn parse_add_runs(value: &[u8]) -> Option<Vec<&[u8]>> {
-    let count = le_u32(value, 0).ok()?;
+    let count = le_u32(value, 0)?;
     let mut runs = Vec::new();
     let mut offset = 4;
     for _ in 0..count {
-        let size = le_u32(value, offset).ok()? as usize;
+        let size = le_u32(value, offset)? as usize;
         runs.push(value.get(offset + 4..offset + 4 + size)?);
         offset += 4 + size;
     }
@@ -227,9 +191,9 @@ fn space_paragraph_run(value: &mut [u8], percent: f64, counted_run: bool) {
 /// The line spacing (percent of the font size) of the first paragraph run
 /// of `blob`, when it is given as a percentage.
 pub fn line_spacing(blob: &[u8]) -> Result<Option<f64>> {
-    for (id, value) in parse_tlv(blob)? {
+    for Record { id, data } in records(blob)? {
         if id == ATTR_PARAGRAPH_RUNS
-            && let Some(runs) = parse_runs(id, value)
+            && let Some(runs) = parse_runs(id, &data)
             && let Some((_, _, _, data)) = runs.first()
             && data.len() >= 18
             && data[0] == LINE_SPACING_PERCENT
@@ -286,13 +250,13 @@ fn name_font_run(value: &mut Vec<u8>, name: &str) {
 
 /// The runs of run tag `id`, if `value` is exactly a run list.
 fn parse_runs(id: u32, value: &[u8]) -> Option<Vec<Run<'_>>> {
-    let count = le_u32(value, 0).ok()?;
+    let count = le_u32(value, 0)?;
     let mut runs = Vec::new();
     let mut offset = 4;
     for _ in 0..count {
-        let start = le_u32(value, offset).ok()?;
-        let length = le_u32(value, offset + 4).ok()?;
-        let field = le_u32(value, offset + 8).ok()?;
+        let start = le_u32(value, offset)?;
+        let length = le_u32(value, offset + 4)?;
+        let field = le_u32(value, offset + 8)?;
         let data_at = offset + 12;
         let size = if id == ATTR_FONT_RUNS {
             let name = value.get(data_at + 16..data_at + 18)?;
@@ -415,8 +379,7 @@ fn retarget(blob: &[u8], text: &NewText, counted_runs: bool) -> Result<Vec<u8>> 
         [0, 0, width * 100, 0, width * 100, height * 100, 0, height * 100]
     };
     let mut items = Vec::new();
-    for (id, value) in parse_tlv(blob)? {
-        let mut value = value.to_vec();
+    for Record { id, data: mut value } in records(blob)? {
         if RUN_TAGS.contains(&id) {
             if !value.is_empty() {
                 value = if counted_runs {
@@ -444,7 +407,7 @@ fn retarget(blob: &[u8], text: &NewText, counted_runs: bool) -> Result<Vec<u8>> 
                         .to_vec();
                 }
                 ATTR_DIRECTION if value.len() == 4 => {
-                    let flags = le_u32(&value, 0)?;
+                    let flags = le_u32(&value, 0).unwrap_or(0);
                     let flags = if text.vertical {
                         flags | VERTICAL_BIT
                     } else {
@@ -477,9 +440,9 @@ fn retarget(blob: &[u8], text: &NewText, counted_runs: bool) -> Result<Vec<u8>> 
                 _ => {}
             }
         }
-        items.push((id, value));
+        items.push(Record { id, data: value });
     }
-    Ok(build_tlv(&items))
+    Ok(blob_of(items))
 }
 
 /// The colour CSP draws a text in (8-bit RGB): its first font run's own
@@ -490,9 +453,9 @@ pub fn text_color(blob: &[u8]) -> Result<Option<[u8; 3]>> {
         [channel(0), channel(1), channel(2)]
     };
     let mut default = None;
-    for (id, value) in parse_tlv(blob)? {
+    for Record { id, data: value } in records(blob)? {
         if id == ATTR_FONT_RUNS
-            && let Some(runs) = parse_runs(id, value)
+            && let Some(runs) = parse_runs(id, &value)
             && let Some((_, _, _, data)) = runs.first()
             && data.get(1).is_some_and(|flags| flags & RUN_HAS_COLOR != 0)
             && data.len() >= 8
@@ -500,7 +463,7 @@ pub fn text_color(blob: &[u8]) -> Result<Option<[u8; 3]>> {
             return Ok(Some(narrow(&data[2..8])));
         }
         if id == ATTR_COLOR && value.len() >= 6 {
-            default = Some(narrow(value));
+            default = Some(narrow(&value));
         }
     }
     Ok(default)
