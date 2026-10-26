@@ -35,12 +35,12 @@ const LAYERS = {
   /** This computer and the Rust side: storage, settings, commands, the page's elements. */
   platform: ["backend", "dom", "errorlog", "prefs", "settings"],
   /** Drawing a name on a canvas (the screen and the export share it). */
-  render: ["glyph", "notedraw", "pagedraw", "pictures", "render", "strokecache"],
+  render: ["glyph", "notedraw", "pagedraw", "pagethumb", "pictures", "render", "strokecache"],
   /** Work done for the screens: saving in the background, writing out. */
   service: ["autosave", "batch", "nameexport", "roughcache"],
   /** The screens. */
   ui: [
-    "actions", "alerts", "altdialog", "board", "brushdialog", "controlbar", "dock", "dragsort", "editor", "editorcore", "exportdialog", "fontpicker", "inplace", "inspector",
+    "actions", "alerts", "altdialog", "board", "boardemotion", "boardpages", "boardscene", "boardshape", "boardview", "brushdialog", "controlbar", "dock", "dragsort", "editor", "editorcore", "exportdialog", "fontpicker", "inplace", "inspector",
     "layers", "livefields", "nameedits", "palette", "palettes", "pendialog", "referencebar", "roughpanel", "scriptdialog", "seriespanel", "settingsdialog", "sheetexport", "shortcutdialog", "sidelists", "startscreen", "tooleraser", "toolfill",
     "toolpanels", "toolpen", "toolreference", "tools", "toolselect", "toolsticky", "tooltext", "tooltransform", "updater", "versiondialog",
     "viewer", "workbench",
@@ -71,6 +71,14 @@ describe("module structure", () => {
   it("keeps the editor around the pages to putting its parts together", () => {
     // The bars, the 資料 pictures, the changes the palettes ask for: their own modules.
     expect(sources["./workbench.ts"].split("\n").length).toBeLessThan(1000);
+  });
+
+  it("keeps each lane of 物語の帯 in its own module", () => {
+    // board.ts puts the lanes on one page axis; each lane draws and edits in board*.ts.
+    for (const [path, source] of Object.entries(sources)) {
+      if (/^\.\/board\w*\.ts$/.test(path)) expect(source.split("\n").length, path).toBeLessThan(650);
+      if (/^\.\/board\w+\.ts$/.test(path)) expect(source, path).not.toMatch(/from "\.\/board"/);
+    }
   });
 
   it("keeps each tool's press and drags out of the page editor", () => {
