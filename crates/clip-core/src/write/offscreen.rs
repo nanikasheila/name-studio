@@ -2,14 +2,10 @@
 //!
 //! Inverse of [`crate::offscreen`]. Each 256x256 block holds an alpha plane
 //! followed by interleaved BGRX colour (or one gray plane). Blocks without a
-//! visible pixel are stored without data. CSP compresses with zlib at the
-//! fastest level, so the same level is used. The `BlockCheckSum` tail is the
+//! visible pixel are stored without data. Blocks are compressed with CSP's
+//! zlib settings (csp-format), so they come out byte for byte as CSP's. The `BlockCheckSum` tail is the
 //! Adler-32 of `u32le zlib length + zlib data` (0 for empty blocks).
 
-use std::io::Write;
-
-use flate2::Compression;
-use flate2::write::ZlibEncoder;
 use rayon::prelude::*;
 
 use crate::error::{CspError, Result};
@@ -57,9 +53,8 @@ pub fn encode_block_records(raw_blocks: &[Option<Vec<u8>>], raw_size: usize) -> 
         .par_iter()
         .map(|raw| {
             raw.as_ref().map(|raw| {
-                let mut encoder = ZlibEncoder::new(Vec::new(), Compression::new(1));
-                encoder.write_all(raw).expect("writing to memory");
-                encoder.finish().expect("writing to memory")
+                // CSP's zlib settings, so that blocks come out as CSP writes them.
+                csp_format::offscreen::compress(raw)
             })
         })
         .collect();

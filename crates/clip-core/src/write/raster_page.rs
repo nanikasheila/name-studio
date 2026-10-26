@@ -381,7 +381,7 @@ pub(crate) fn add_vector_layer(
         Ok(())
     };
     let source = &donor.source;
-    let payload = |id: &str| source.container.external_payload(id).map(<[u8]>::to_vec);
+    let payload = |id: &str| source.external_payload(id).map(<[u8]>::to_vec);
     editor.add_layer(
         source.database(),
         &payload,
@@ -413,7 +413,7 @@ fn add_frame_folder(editor: &mut ClipEditor, donor: &PartDonors, name: &str, fra
         Ok(())
     };
     let source = &donor.source;
-    let payload = |id: &str| source.container.external_payload(id).map(<[u8]>::to_vec);
+    let payload = |id: &str| source.external_payload(id).map(<[u8]>::to_vec);
     let id = editor.add_layer(
         source.database(),
         &payload,
@@ -454,7 +454,7 @@ pub(crate) fn add_text_layer(editor: &mut ClipEditor, donor: &PartDonors, text: 
         Ok(())
     };
     let source = &donor.source;
-    let payload = |id: &str| source.container.external_payload(id).map(<[u8]>::to_vec);
+    let payload = |id: &str| source.external_payload(id).map(<[u8]>::to_vec);
     editor.add_layer(source.database(), &payload, layer_id, Some(&mut row_hook), None)
 }
 
@@ -542,7 +542,7 @@ impl PageBuilder<'_> {
         mask: Option<&RgbaImage>,
     ) -> Result<i64> {
         let source = self.source;
-        let payload = |id: &str| source.container.external_payload(id).map(<[u8]>::to_vec);
+        let payload = |id: &str| source.external_payload(id).map(<[u8]>::to_vec);
         let raster = self.raster;
         let blank = |editor: &mut ClipEditor, name: &str| -> Result<i64> {
             let mut rename = |values: &mut Values| -> Result<()> {

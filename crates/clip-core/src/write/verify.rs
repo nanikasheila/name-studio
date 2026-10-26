@@ -5,7 +5,9 @@
 //! layers that opened empty (no `Canvas.BrushStyleManager`), white text drawn
 //! black (the font run's own colour wins over the text colour), text stored
 //! as TEXT instead of a blob (CSP shows garbage) and works whose page links
-//! point nowhere. Messages are in Japanese for the user.
+//! point nowhere. On top of these, csp-format's own self-check looks at the
+//! container, the database, the pixel blocks, vectors and text as CSP
+//! stores them. Messages are in Japanese for the user.
 
 use std::path::{Path, PathBuf};
 
@@ -361,7 +363,94 @@ fn hex(color: [u8; 3]) -> String {
 }
 
 /// Checks that need no knowledge of what was written: faults CSP has shown.
+/// csp-format's self-check of the file as stored: what it finds wrong, in
+/// a few words each. Blocks are decoded but not compressed again (slow on
+/// large pages; written blocks use CSP's zlib settings already).
+fn format_problems(path: &Path) -> Vec<String> {
+    let data = match std::fs::read(path) {
+        Ok(data) => data,
+        Err(error) => return vec![format!("読み直せません: {error}")],
+    };
+    let options = csp_format::verify::CheckOptions {
+        decode_pixels: true,
+        reencode_pixels: false,
+    };
+    let report = csp_format::verify::check_clip(data, options);
+    if report.ok() {
+        return Vec::new();
+    }
+    let mut problems: Vec<String> = report.errors.iter().map(|error| format!("CSP 形式: {error}")).collect();
+    let (container, pixels) = (&report.container, &report.pixels);
+    let mut found = |broken: bool, what: &str| {
+        if broken {
+            problems.push(format!("CSP 形式: {what}"));
+        }
+    };
+    found(
+        !container.findings.is_empty(),
+        &format!("ファイルの構造 {}", container.findings.join(" / ")),
+    );
+    found(
+        !container.reassembles || !container.writer_reproduces || !container.external_offsets_match,
+        "ファイルの組み立てが CSP と違います",
+    );
+    found(!container.external_ids_text, "外部データの id の型が違います");
+    found(
+        !report.database.unreadable_tables.is_empty(),
+        &format!("読めない表 {:?}", report.database.unreadable_tables),
+    );
+    found(
+        report.layers.unreachable > 0 || report.layers.tree_error.is_some(),
+        "レイヤーのつながりが壊れています",
+    );
+    found(
+        pixels.attribute_errors
+            + pixels.attribute_round_trip_failures
+            + pixels.payload_errors
+            + pixels.payload_round_trip_failures
+            > 0,
+        "画素の記録が読めません",
+    );
+    found(
+        pixels.block_size_table_mismatches > 0,
+        "画素のブロックの大きさの表が合いません",
+    );
+    found(
+        pixels.checksum_mismatches + pixels.decode_errors > 0,
+        &format!(
+            "画素のブロックが壊れています（{}）",
+            pixels.first_error.as_deref().unwrap_or("")
+        ),
+    );
+    found(
+        report.references.unreferenced_chunks > 0,
+        "どこからも使われない外部データがあります",
+    );
+    found(
+        report.vectors.parse_errors + report.vectors.round_trip_failures > 0,
+        &format!(
+            "ベクターの記録（{}）",
+            report.vectors.first_error.as_deref().unwrap_or("")
+        ),
+    );
+    found(
+        report.texts.parse_errors + report.texts.round_trip_failures > 0,
+        &format!(
+            "テキストの記録（{}）",
+            report.texts.first_error.as_deref().unwrap_or("")
+        ),
+    );
+    found(
+        report.effects.parse_errors + report.effects.round_trip_failures > 0,
+        "レイヤー効果の記録",
+    );
+    found(report.preview_error.is_some(), "サムネイルを読めません");
+    found(!report.unchanged_save_identical, "そのまま保存し直すと中身が変わります");
+    problems
+}
+
 fn check_document(document: &ClipDocument, check: &mut FileCheck) {
+    check.problems.extend(format_problems(&document.path));
     let database = document.database();
     let layers = document.layers();
     check.layers = layers.len();

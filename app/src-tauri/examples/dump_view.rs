@@ -14,7 +14,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let document = ClipDocument::read(input)?;
     let view = name_studio_app::sheet::build_view(&document)?;
     std::fs::write(format!("{output}/view.json"), serde_json::to_string(&view)?)?;
-    let factor = (document.canvas.width_px as u32).div_ceil(4096).max(1);
+    let factor = (document.canvas.width_px as u32)
+        .div_ceil(4096)
+        .max(1)
+        .next_power_of_two();
     for layer in document.layers() {
         if let Some(image) = document.render_layer_scaled(layer, factor)? {
             std::fs::write(format!("{output}/overview-{}.png", layer.main_id), image.to_png()?)?;

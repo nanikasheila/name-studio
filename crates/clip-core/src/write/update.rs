@@ -435,7 +435,7 @@ pub fn update_dialogue(
             }
             PageLayer::Raster(raster) => {
                 let source = &own.source;
-                let payload = |id: &str| source.container.external_payload(id).map(<[u8]>::to_vec);
+                let payload = |id: &str| source.external_payload(id).map(<[u8]>::to_vec);
                 let mut rename = |values: &mut Values| -> Result<()> {
                     set_value(values, "LayerName", Value::Text(raster.name.clone()));
                     for (column, value) in [("LayerVisibility", 1), ("DraftLayer", 0), ("LayerLock", 0)] {
@@ -467,7 +467,7 @@ pub fn update_dialogue(
             None => {
                 // A page written without memos: a new 下描き layer on top.
                 let source = &own.source;
-                let payload = |id: &str| source.container.external_payload(id).map(<[u8]>::to_vec);
+                let payload = |id: &str| source.external_payload(id).map(<[u8]>::to_vec);
                 let raster = editor.first_raster_layer()?;
                 let mut rename = |values: &mut Values| -> Result<()> {
                     set_value(values, "LayerName", Value::Text(notes.name.clone()));

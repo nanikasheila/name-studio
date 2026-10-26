@@ -77,7 +77,7 @@
 
 | 場所 | 中身 |
 | --- | --- |
-| `crates/clip-core` | .clip / .cmc の読み取り（レイヤーツリー、ラスター画素、ベクター、テキスト、ページ枠、ページ一覧） |
+| `crates/clip-core` | .clip / .cmc の読み書きのうちこのツールの規則（レイヤーの種類、ページ枠、ページ一覧、書き出し）。形式そのもの（コンテナ・DB・画素のブロック・自己検査）は [CLIP_STUDIO_PAINT_Format](https://github.com/nanikasheila/CLIP_STUDIO_PAINT_Format) の `csp-format` に任せ、ルートの `Cargo.toml` で rev を決めて使う（C の zlib をビルドするので C コンパイラが要る） |
 | `crates/name-model` | ネームデータ（正本、.namestudio）。ページ・コマ・セリフ・ラフ線・シーン・登場人物・感情の値 |
 | `crates/name-cli` | コマンドライン（`inspect` / `cells` / `import` / `split` / `decode-time`） |
 | `app/` | 画面（Tauri 2 + TypeScript）。`app/src-tauri` が Rust 側 |

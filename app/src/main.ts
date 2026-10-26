@@ -96,7 +96,8 @@ async function openSheet(path: string): Promise<void> {
     state.regions = new Map();
     state.spreadIndex = 0;
     state.view = null;
-    state.overviewFactor = Math.max(1, Math.ceil(sheet.canvas.widthPx / OVERVIEW_MAX_WIDTH));
+    // A power of two: the overview halves the stored blocks (1/2, 1/4, ...).
+    state.overviewFactor = 2 ** Math.ceil(Math.log2(Math.max(1, sheet.canvas.widthPx / OVERVIEW_MAX_WIDTH)));
     $("file-name").textContent = sheet.fileName;
     $("empty").hidden = true;
     for (const id of ["mode-sheet", "mode-spread", "next", "prev", "export", "import-project"]) {
@@ -123,9 +124,10 @@ async function loadOverview(sheet: SheetView): Promise<void> {
         const image = await pngToImage(bytes);
         if (!image || state.sheet !== sheet) return;
         const [x, y] = layer.pixelOrigin;
+        const [width, height] = layer.pixelSize ?? [image.width * factor, image.height * factor];
         state.overview.set(layer.id, {
           image,
-          box: { x0: x, y0: y, x1: x + image.width * factor, y1: y + image.height * factor },
+          box: { x0: x, y0: y, x1: x + width, y1: y + height },
         });
         draw();
       }),

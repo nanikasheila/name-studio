@@ -1,3 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/clip-core", "crates/name-cli", "app/src-tauri", "crates/name-model"]
+
+[workspace.dependencies]
+# CSP の形式（読む・検査する・書き戻す）。rev を上げるときは CLIP_STUDIO_PAINT_Format の main を見て。
+csp-format = { git = "https://github.com/nanikasheila/CLIP_STUDIO_PAINT_Format", rev = "b7d1b50d1975569fcc4d0a3a8fe3ced505bd8a7a" }

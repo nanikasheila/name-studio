@@ -4,11 +4,11 @@
 //! linked list: the root node's `FirstChildIndex` points at the first page
 //! and each page's `NextIndex` at the following one. Pages are referenced by
 //! `LinkPath` such as ".:page0001.clip" (":" is CSP's path separator).
+//! The file is opened by csp-format; this module keeps what the tool reads
+//! from it.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-
-use rusqlite::{Connection, OpenFlags};
 
 use crate::error::{CspError, Result};
 use crate::sql::{Row, select_rows};
@@ -63,13 +63,13 @@ impl CmcProject {
                 path.display()
             )));
         }
-        let mut connection = Connection::open_in_memory_with_flags(OpenFlags::SQLITE_OPEN_READ_WRITE)?;
-        connection.deserialize_read_exact("main", &data[..], data.len(), true)?;
-        let project = select_rows(&connection, "SELECT * FROM Project", [])?
+        let file = csp_format::CmcFile::from_bytes(data)?;
+        let connection = file.database();
+        let project = select_rows(connection, "SELECT * FROM Project", [])?
             .into_iter()
             .next()
             .ok_or_else(|| CspError::format(format!("Project row not found: {}", path.display())))?;
-        let nodes: HashMap<i64, Row> = select_rows(&connection, "SELECT * FROM CanvasNode", [])?
+        let nodes: HashMap<i64, Row> = select_rows(connection, "SELECT * FROM CanvasNode", [])?
             .into_iter()
             .map(|row| (row.int("MainId"), row))
             .collect();

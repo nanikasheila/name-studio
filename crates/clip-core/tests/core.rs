@@ -1,8 +1,6 @@
 //! Unit tests on synthetic data. Real CSP files contain artwork and stay out
 //! of the repository; `tools/compare_with_python.py` covers them locally.
 
-use std::io::Write;
-
 use clip_core::container::CsfContainer;
 use clip_core::offscreen::{self, OffscreenParameters};
 use clip_core::text::{
@@ -11,8 +9,6 @@ use clip_core::text::{
 };
 use clip_core::vector::{parse_vector_data, select_vector_objects, transform_vector_data};
 use clip_core::{ClipDocument, LayerKind};
-use flate2::Compression;
-use flate2::write::ZlibEncoder;
 use rusqlite::Connection;
 
 fn be32(value: u32) -> [u8; 4] {
@@ -101,8 +97,40 @@ fn attribute(width: u32, height: u32) -> Vec<u8> {
     data
 }
 
-/// One colour block at `index`: alpha 255 inside `filled` (block pixels), BGRX red.
-fn block_payload(index: u32, filled: (usize, usize, usize, usize)) -> Vec<u8> {
+/// A colour offscreen's attribute as CSP writes it: a header with the
+/// lengths of the Parameter, InitColor and BlockSize sections, then those.
+fn csp_attribute(width: u32, height: u32) -> Vec<u8> {
+    let (blocks_x, blocks_y) = (width.div_ceil(256), height.div_ceil(256));
+    let section = |name: &str, values: &[u32]| {
+        let mut data = utf16(name);
+        for &value in values {
+            data.extend(be32(value));
+        }
+        data
+    };
+    let parameter = section(
+        "Parameter",
+        &[
+            width, height, blocks_x, blocks_y, 0x21, 1, 4, 5, 65536, 4, 1024, 1, 256, 65536, 256, 256, 8, 8, 0, 0,
+        ],
+    );
+    let init = section("InitColor", &[0x14, 0, 0, 0, 0, 4]);
+    let mut sizes = vec![12, blocks_x * blocks_y, 4];
+    sizes.extend(std::iter::repeat_n(0x68, (blocks_x * blocks_y) as usize));
+    let blocks = section("BlockSize", &sizes);
+    let mut data = Vec::new();
+    for length in [16, parameter.len(), init.len(), blocks.len()] {
+        data.extend(be32(length as u32));
+    }
+    data.extend(parameter);
+    data.extend(init);
+    data.extend(blocks);
+    data
+}
+
+/// A 600x300 colour offscreen (3x2 blocks) with block `index` alpha 255
+/// inside `filled` (block pixels), BGRX red.
+fn block_payload(index: usize, filled: (usize, usize, usize, usize)) -> Vec<u8> {
     let mut raw = vec![0u8; 256 * 256 * 5];
     for y in filled.1..filled.3 {
         for x in filled.0..filled.2 {
@@ -111,19 +139,9 @@ fn block_payload(index: u32, filled: (usize, usize, usize, usize)) -> Vec<u8> {
             raw[color + 2] = 200;
         }
     }
-    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-    encoder.write_all(&raw).unwrap();
-    let compressed = encoder.finish().unwrap();
-    let mut record = utf16("BlockDataBeginChunk");
-    for value in [index, raw.len() as u32, 256, 256, 1, compressed.len() as u32 + 4] {
-        record.extend(be32(value));
-    }
-    record.extend((compressed.len() as u32).to_le_bytes());
-    record.extend(&compressed);
-    let mut payload = vec![0; 8];
-    payload.extend(be32(record.len() as u32 + 4));
-    payload.extend(record);
-    payload
+    let mut blocks = vec![None; 6];
+    blocks[index] = Some(raw);
+    clip_core::write::offscreen::encode_block_records(&blocks, 256 * 256 * 5).unwrap()
 }
 
 fn container(database: &Connection, externals: &[(&str, Vec<u8>)]) -> Vec<u8> {
@@ -168,6 +186,8 @@ fn sample_clip(folder: &std::path::Path) -> std::path::PathBuf {
              CREATE TABLE Offscreen(MainId, Attribute, BlockData);
              CREATE TABLE VectorObjectList(MainId, LayerId, VectorData);
              CREATE TABLE CanvasPreview(MainId, ImageData);
+             CREATE TABLE Project(MainId, ProjectInternalVersion, ProjectName, ProjectCanvas);
+             INSERT INTO Project VALUES(1, '1.1.0', '', 1);
              INSERT INTO Canvas VALUES(1, 2, 594.0, 420.0, 600.0, 1, 1, 2, 182.0, 257.0);
              INSERT INTO Layer VALUES(1, '', 256, 1, 1, 256, 0, 0, 0, 0, 0, 0, 2, 0, 0, NULL, NULL, NULL, NULL);
              INSERT INTO Layer VALUES(2, '用紙', 1584, 0, 1, 256, 0, 0, 0, 0, 0, 3, 0, 0, 0, NULL, NULL, NULL, NULL);
@@ -195,7 +215,7 @@ fn sample_clip(folder: &std::path::Path) -> std::path::PathBuf {
     database
         .execute(
             "INSERT INTO Offscreen VALUES(1, ?1, ?2)",
-            rusqlite::params![attribute(600, 300), RASTER_ID.as_bytes()],
+            rusqlite::params![csp_attribute(600, 300), RASTER_ID.as_bytes()],
         )
         .unwrap();
     database
@@ -584,7 +604,11 @@ fn shrinks_raster_layers_without_full_decode() {
     let pixel = ((7 * 150 + 68) * 4) as usize;
     assert_eq!(&small.pixels[pixel..pixel + 4], &[200, 0, 0, 255]);
     let edge = ((7 * 150 + 66) * 4) as usize;
-    assert_eq!(small.pixels[edge + 3], 127, "half-covered pixel keeps half alpha");
+    assert_eq!(
+        small.pixels[edge + 3],
+        128,
+        "half-covered pixel keeps half alpha (rounded)"
+    );
     assert_eq!(
         small.pixels[edge], 200,
         "colour is not darkened by transparent neighbours"

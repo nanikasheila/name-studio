@@ -212,7 +212,7 @@ fn add_right_story_layers(
 ) -> Result<()> {
     let mut layers = story_layers(&editor.db, STORY_INFO)?;
     layers.extend(story_layers(&editor.db, NOMBRE_INFO)?);
-    let payload = |id: &str| source.container.external_payload(id).map(<[u8]>::to_vec);
+    let payload = |id: &str| source.external_payload(id).map(<[u8]>::to_vec);
     for (layer_id, _) in layers {
         let nombre = matches!(
             layer_value(&editor.db, layer_id, "ComicStoryInfoType")?,
