@@ -328,7 +328,7 @@ pub(crate) fn set_layer_mask(file: &mut ClipFile, layer_id: i64, mask: &RgbaImag
         let alpha = GrayImage {
             width: image.width,
             height: image.height,
-            pixels: image.pixels.chunks_exact(4).map(|pixel| pixel[3]).collect(),
+            pixels: image.pixels.as_chunks::<4>().0.iter().map(|pixel| pixel[3]).collect(),
         };
         let data = encode(&parameter, None, Some(&alpha))?;
         attribute.set_block_sizes(&data.record_sizes());
