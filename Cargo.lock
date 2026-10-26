@@ -488,7 +488,7 @@ dependencies = [
 [[package]]
 name = "csp-format"
 version = "0.1.0"
-source = "git+https://github.com/nanikasheila/CLIP_STUDIO_PAINT_Format?rev=a509215219f51139919c710005b12b23d4c4a589#a509215219f51139919c710005b12b23d4c4a589"
+source = "git+https://github.com/nanikasheila/CLIP_STUDIO_PAINT_Format?rev=301a540eb59b0a088a5c3eec7abaff943e1496b9#301a540eb59b0a088a5c3eec7abaff943e1496b9"
 dependencies = [
  "flate2",
  "libc",
