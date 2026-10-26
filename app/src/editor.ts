@@ -58,6 +58,7 @@ import { LINK_HANDLE } from "./toolsticky";
 import { dragHandler, PRESS } from "./tools";
 import { pickedSummary } from "./toolselect";
 import { snapPointTo, snapTargets, type SnapSettings, type SnapTargets } from "./snapping";
+import { Viewport } from "./viewport";
 
 export type { EditorEraseMode, EditorHost, PanelMode, Selection, Tool } from "./editorcore";
 export { pickedSummary };
@@ -150,10 +151,8 @@ export class PageEditor {
   private transforming = false;
   /** Hidden on screen from the レイヤー list (`kind:id`); exports keep them. */
   readonly hidden = new Set<string>();
-  private zoom = 1;
-  private pan: [number, number] = [0, 0];
-  /** 画面の回転 (radians, clockwise): the whole view turns about the middle of the stage. */
-  private rotation = 0;
+  /** Zoom, pan and 画面の回転 (viewport.ts). */
+  private readonly view = new Viewport(() => this.stageSize());
   private slots: Slot[] = [];
   /** The canvas's size on screen (CSS px), kept by `resize`. */
   private size: { width: number; height: number } | null = null;
@@ -321,8 +320,8 @@ export class PageEditor {
       this.rows = next;
       const after = project && this.spreadBox(this.layout(project));
       if (before && after) {
-        this.pan[0] += before[0] - after[0];
-        this.pan[1] += before[1] - after[1];
+        this.view.pan[0] += before[0] - after[0];
+        this.view.pan[1] += before[1] - after[1];
       }
     });
   }
@@ -333,10 +332,10 @@ export class PageEditor {
     if (!project || !this.continuous) return;
     this.slide(() => {
       const { width, height } = this.stageSize();
-      this.zoom = 1;
-      this.pan = [0, 0];
-      if (this.rotation) {
-        this.rotation = 0;
+      this.view.zoom = 1;
+      this.view.pan = [0, 0];
+      if (this.view.rotation) {
+        this.view.rotation = 0;
         this.applyViewTransform();
       }
       for (let i = 0; i < 3; i++) {
@@ -344,12 +343,12 @@ export class PageEditor {
         const box = this.extent(this.layout(project));
         if (!box) return;
         const factor = Math.min((width - 2 * MARGIN) / (box[2] - box[0]), (height - 2 * MARGIN) / (box[3] - box[1]));
-        this.zoom = Math.min(Math.max(this.zoom * factor, 0.02), 1);
+        this.view.zoom = Math.min(Math.max(this.view.zoom * factor, 0.02), 1);
       }
       const box = this.extent(this.layout(project));
       if (!box) return;
-      this.pan[0] += width / 2 - (box[0] + box[2]) / 2;
-      this.pan[1] += height / 2 - (box[1] + box[3]) / 2;
+      this.view.pan[0] += width / 2 - (box[0] + box[2]) / 2;
+      this.view.pan[1] += height / 2 - (box[1] + box[3]) / 2;
     });
   }
 
@@ -364,7 +363,7 @@ export class PageEditor {
     const { width, height } = this.stageSize();
     const [x0, y0, x1, y1] = box;
     const inside = x0 >= 0 && x1 <= width && y0 >= 0 && y1 <= height;
-    if (inside || this.rotation) {
+    if (inside || this.view.rotation) {
       this.draw();
       return;
     }
@@ -372,8 +371,8 @@ export class PageEditor {
     const dx = x1 - x0 <= width ? width / 2 - (x0 + x1) / 2 : 0;
     const dy = y1 - y0 <= height ? height / 2 - (y0 + y1) / 2 : MARGIN - y0;
     this.slide(() => {
-      this.pan[0] += dx;
-      this.pan[1] += dy;
+      this.view.pan[0] += dx;
+      this.view.pan[1] += dy;
     });
   }
 
@@ -397,8 +396,7 @@ export class PageEditor {
   }
 
   resetView(zoom = 1): void {
-    this.zoom = zoom;
-    this.pan = [0, 0];
+    this.view.reset(zoom);
     this.sliding = null;
   }
 
@@ -406,12 +404,12 @@ export class PageEditor {
   fitView(): void {
     if (this.continuous) {
       const project = this.host.project();
-      this.zoom = 1;
+      this.view.zoom = 1;
       const box = project && this.spreadBox(this.layout(project));
       const { width, height } = this.stageSize();
       if (box) {
-        this.pan[0] += width / 2 - (box[0] + box[2]) / 2;
-        this.pan[1] += height / 2 - (box[1] + box[3]) / 2;
+        this.view.pan[0] += width / 2 - (box[0] + box[2]) / 2;
+        this.view.pan[1] += height / 2 - (box[1] + box[3]) / 2;
       }
       this.sliding = null;
     } else {
@@ -422,62 +420,24 @@ export class PageEditor {
 
   /** Turn the view by `degrees` (Shift + Space + drag turns it freely). */
   rotateView(degrees: number): void {
-    this.setRotation(this.rotation + (degrees * Math.PI) / 180);
+    this.setRotation(this.view.rotation + (degrees * Math.PI) / 180);
   }
 
   private setRotation(radians: number): void {
-    const full = Math.PI * 2;
-    this.rotation = ((((radians + Math.PI) % full) + full) % full) - Math.PI;
-    if (Math.abs(this.rotation) < 1e-9) this.rotation = 0;
+    this.view.turnTo(radians);
     this.applyViewTransform();
     this.draw();
-    const degrees = Math.round((this.rotation * 180) / Math.PI);
+    const degrees = Math.round((this.view.rotation * 180) / Math.PI);
     this.host.status(degrees ? `画面を ${degrees}° 回しています（Ctrl+0 で戻す）` : "画面の回転を戻しました");
-  }
-
-  /** The middle of the stage (CSS px), which the view turns about. */
-  private centre(): Point {
-    const { width, height } = this.stageSize();
-    return [width / 2, height / 2];
-  }
-
-  /** A vector turned by `radians`. */
-  private turn(x: number, y: number, radians: number): Point {
-    const cos = Math.cos(radians);
-    const sin = Math.sin(radians);
-    return [x * cos - y * sin, x * sin + y * cos];
   }
 
   /** Where an event is in the view before turning (what the pages are laid out in). */
   private at(event: MouseEvent): Point {
-    if (!this.rotation) return [event.offsetX, event.offsetY];
-    const [cx, cy] = this.centre();
-    const [x, y] = this.turn(event.offsetX - cx, event.offsetY - cy, -this.rotation);
-    return [cx + x, cy + y];
-  }
-
-  /** Where a point of the unturned view shows on screen. */
-  private onScreen([x, y]: Point): Point {
-    if (!this.rotation) return [x, y];
-    const [cx, cy] = this.centre();
-    const [dx, dy] = this.turn(x - cx, y - cy, this.rotation);
-    return [cx + dx, cy + dy];
-  }
-
-  private angleAt(sx: number, sy: number): number {
-    const [cx, cy] = this.centre();
-    const [x, y] = this.turn(sx - cx, sy - cy, this.rotation);
-    return Math.atan2(y, x);
+    return this.view.unturned([event.offsetX, event.offsetY]);
   }
 
   private applyViewTransform(): void {
-    const ratio = window.devicePixelRatio || 1;
-    this.ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-    if (!this.rotation) return;
-    const [cx, cy] = this.centre();
-    this.ctx.translate(cx, cy);
-    this.ctx.rotate(this.rotation);
-    this.ctx.translate(-cx, -cy);
+    this.ctx.setTransform(...this.view.matrix(window.devicePixelRatio || 1));
   }
 
   setTool(tool: Tool): void {
@@ -536,7 +496,7 @@ export class PageEditor {
       [box[2], box[1]],
       [box[2], box[3]],
       [box[0], box[3]],
-    ].map(([x, y]) => this.onScreen([slot.x + x * slot.scale, slot.y + y * slot.scale]));
+    ].map(([x, y]) => this.view.onScreen([slot.x + x * slot.scale, slot.y + y * slot.scale]));
     return bounds(corners);
   }
 
@@ -595,7 +555,7 @@ export class PageEditor {
 
   private layout(project: Project): Slot[] {
     const { width, height } = this.stageSize();
-    const view = { single: this.single, continuous: this.continuous, rows: this.rows, zoom: this.zoom, pan: this.pan, width, height, gapMm: this.pageGapMm };
+    const view = { single: this.single, continuous: this.continuous, rows: this.rows, zoom: this.view.zoom, pan: this.view.pan, width, height, gapMm: this.pageGapMm };
     return layoutPages(project, this.spreadList(), this.spreadIndex, view);
   }
 
@@ -619,7 +579,7 @@ export class PageEditor {
   /** Whether any of a page (and its number) is on screen. */
   private onCanvas(project: Project, slot: Slot): boolean {
     const { width, height } = this.stageSize();
-    return onStage(slot, project.pageFormat.canvasMm[1], width, height, this.rotation);
+    return onStage(slot, project.pageFormat.canvasMm[1], width, height, this.view.rotation);
   }
 
   private slotAt(sx: number, sy: number, project: Project): Slot | null {
@@ -631,12 +591,7 @@ export class PageEditor {
   clientOf(pageId: string, [x, y]: Point): Point | null {
     const slot = this.slots.find((s) => s.page.id === pageId);
     if (!slot) return null;
-    let [sx, sy] = [slot.x + x * slot.scale, slot.y + y * slot.scale];
-    if (this.rotation) {
-      const [cx, cy] = this.centre();
-      const [tx, ty] = this.turn(sx - cx, sy - cy, this.rotation);
-      [sx, sy] = [cx + tx, cy + ty];
-    }
+    const [sx, sy] = this.view.onScreen([slot.x + x * slot.scale, slot.y + y * slot.scale]);
     const rect = this.canvas.getBoundingClientRect();
     return [rect.left + sx, rect.top + sy];
   }
@@ -645,12 +600,7 @@ export class PageEditor {
     const project = this.host.project();
     if (!project) return null;
     const rect = this.canvas.getBoundingClientRect();
-    let [sx, sy] = [clientX - rect.left, clientY - rect.top];
-    if (this.rotation) {
-      const [cx, cy] = this.centre();
-      const [x, y] = this.turn(sx - cx, sy - cy, -this.rotation);
-      [sx, sy] = [cx + x, cy + y];
-    }
+    const [sx, sy] = this.view.unturned([clientX - rect.left, clientY - rect.top]);
     const slot = this.slotAt(sx, sy, project);
     if (!slot) return null;
     const point = toPage(slot, sx, sy);
@@ -1762,8 +1712,8 @@ export class PageEditor {
     this.pageGapMm = next;
     const after = project && this.continuous ? this.spreadBox(this.layout(project)) : null;
     if (before && after) {
-      this.pan[0] += before[0] - after[0];
-      this.pan[1] += before[1] - after[1];
+      this.view.pan[0] += before[0] - after[0];
+      this.view.pan[1] += before[1] - after[1];
     }
     this.draw();
   }
@@ -2410,16 +2360,14 @@ export class PageEditor {
   private startPinch(): void {
     const [[a, pa], [b, pb]] = [...this.touches.entries()];
     const mid: Point = [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2];
-    const [cx, cy] = this.centre();
-    const [ux, uy] = this.turn(mid[0] - cx, mid[1] - cy, -this.rotation);
     this.drag = {
       kind: "pinch",
       ids: [a, b],
       dist: Math.max(Math.hypot(pb[0] - pa[0], pb[1] - pa[1]), 1),
       angle: Math.atan2(pb[1] - pa[1], pb[0] - pa[0]),
-      zoom: this.zoom,
-      rotation: this.rotation,
-      v: [(ux - this.pan[0]) / this.zoom, (uy - this.pan[1]) / this.zoom],
+      zoom: this.view.zoom,
+      rotation: this.view.rotation,
+      v: this.view.anchorAt(mid),
     };
     this.dragPointer = null;
     this.dragPointerType = "touch";
@@ -2432,21 +2380,11 @@ export class PageEditor {
     if (!pa || !pb) return;
     const mid: Point = [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2];
     const zoom = Math.min(Math.max((drag.zoom * Math.hypot(pb[0] - pa[0], pb[1] - pa[1])) / drag.dist, 0.3), 12);
-    if (penPreferences.settings.pinchRotate) {
-      let rotation = drag.rotation + Math.atan2(pb[1] - pa[1], pb[0] - pa[0]) - drag.angle;
-      const full = Math.PI * 2;
-      rotation = ((((rotation + Math.PI) % full) + full) % full) - Math.PI;
-      // Upright again when close to it.
-      if (Math.abs(rotation) < (3 * Math.PI) / 180) rotation = 0;
-      if (rotation !== this.rotation) {
-        this.rotation = rotation;
-        this.applyViewTransform();
-      }
+    // Upright again when close to it.
+    if (penPreferences.settings.pinchRotate && this.view.turnTo(drag.rotation + Math.atan2(pb[1] - pa[1], pb[0] - pa[0]) - drag.angle, (3 * Math.PI) / 180)) {
+      this.applyViewTransform();
     }
-    const [cx, cy] = this.centre();
-    const [ux, uy] = this.turn(mid[0] - cx, mid[1] - cy, -this.rotation);
-    this.zoom = zoom;
-    this.pan = [ux - drag.v[0] * zoom, uy - drag.v[1] * zoom];
+    this.view.holdAnchor(drag.v, mid, zoom);
     this.requestDraw();
   }
 
@@ -2488,7 +2426,7 @@ export class PageEditor {
     const [sx, sy] = this.at(event);
     // Shift + Space: turn the view (as in CSP); Space or the middle button: move it.
     if (this.spaceHeld && event.shiftKey) {
-      this.drag = { kind: "turn", from: this.angleAt(sx, sy), rotation: this.rotation };
+      this.drag = { kind: "turn", from: this.view.angleAt(sx, sy), rotation: this.view.rotation };
       return;
     }
     if (event.button === 1 || this.spaceHeld) {
@@ -2655,9 +2593,7 @@ export class PageEditor {
     }
     if (drag.kind === "pan") {
       // The pages follow the hand on screen, however the view is turned.
-      const [dx, dy] = this.turn(event.clientX - drag.x, event.clientY - drag.y, -this.rotation);
-      this.pan[0] += dx;
-      this.pan[1] += dy;
+      this.view.dragBy(event.clientX - drag.x, event.clientY - drag.y);
       drag.x = event.clientX;
       drag.y = event.clientY;
       this.requestDraw();
@@ -2665,9 +2601,7 @@ export class PageEditor {
     }
     if (drag.kind === "turn") {
       // The angle on screen: turning the view moves the local frame along.
-      const [lx, ly] = this.at(event);
-      const [wx, wy] = this.turn(lx - this.centre()[0], ly - this.centre()[1], this.rotation);
-      let rotation = drag.rotation + Math.atan2(wy, wx) - drag.from;
+      let rotation = drag.rotation + this.view.angleAt(...this.at(event)) - drag.from;
       if (event.altKey) rotation = Math.round(rotation / (Math.PI / 12)) * (Math.PI / 12);
       this.setRotation(rotation);
       return;
@@ -2894,7 +2828,7 @@ export class PageEditor {
       if (panel) {
         const { x, y } = this.noteBox(slot, panel);
         const [x0, , x1] = bounds(panel.shape);
-        const [left, top] = this.onScreen([x, y]);
+        const [left, top] = this.view.onScreen([x, y]);
         style.left = `${left}px`;
         style.top = `${top}px`;
         style.width = `${Math.max(180, Math.min((x1 - x0) * slot.scale - 8, 320))}px`;
@@ -2915,7 +2849,7 @@ export class PageEditor {
         const along = (longest + 1) * size + 2 * pad;
         const [w, h] = line.vertical ? [across, along] : [along, across];
         // Vertical text starts at the right, as it is read.
-        const [ax, ay] = this.onScreen([line.vertical ? slot.x + x1 * slot.scale + pad : slot.x + x0 * slot.scale - pad, slot.y + y0 * slot.scale - pad]);
+        const [ax, ay] = this.view.onScreen([line.vertical ? slot.x + x1 * slot.scale + pad : slot.x + x0 * slot.scale - pad, slot.y + y0 * slot.scale - pad]);
         style.left = `${line.vertical ? ax - w : ax}px`;
         style.top = `${ay}px`;
         style.width = `${w}px`;
@@ -3008,7 +2942,7 @@ export class PageEditor {
     if (event.altKey && this.resizeText(event.deltaY < 0 ? 0.5 : -0.5)) return;
     if (project.scroll && !event.ctrlKey && !event.metaKey && !event.shiftKey && Math.abs(event.deltaY) >= Math.abs(event.deltaX)) {
       // 縦スクロール: the wheel goes down the strip, as it is read; Ctrl+ホイール (a pinch) zooms.
-      this.pan[1] -= event.deltaY;
+      this.view.pan[1] -= event.deltaY;
       this.sliding = null;
       this.draw();
       return;
@@ -3016,18 +2950,13 @@ export class PageEditor {
     if (event.shiftKey || (event.deltaX && Math.abs(event.deltaX) > Math.abs(event.deltaY))) {
       // Shift+ホイール (or a sideways swipe): along the row, onward in reading order.
       const along = event.deltaX || event.deltaY;
-      this.pan[0] += project.binding === "right" ? along : -along;
+      this.view.pan[0] += project.binding === "right" ? along : -along;
       this.draw();
       return;
     }
     const factor = Math.exp(-event.deltaY * 0.0015);
     // 連続: out far enough to see the whole name.
-    const zoom = Math.min(Math.max(this.zoom * factor, this.continuous ? 0.02 : 0.3), 12);
-    const applied = zoom / this.zoom;
-    // Keep the point under the pointer still.
-    const { width, height } = this.stageSize();
-    const cx = width / 2 + this.pan[0];
-    const cy = height / 2 + this.pan[1];
+    const zoom = Math.min(Math.max(this.view.zoom * factor, this.continuous ? 0.02 : 0.3), 12);
     const [ex, ey] = this.at(event);
     // The page under the pointer, else the nearest one (the point may lie off it).
     const pageH = project.pageFormat.canvasMm[1];
@@ -3035,15 +2964,14 @@ export class PageEditor {
       Math.hypot(ex - (slot.x + ((slot.shown[0] + slot.shown[1]) / 2) * slot.scale), ey - (slot.y + (pageH / 2) * slot.scale));
     const anchor = this.slotAt(ex, ey, project) ?? [...this.slots].sort((a, b) => away(a) - away(b))[0];
     const point = anchor && toPage(anchor, ex, ey);
-    this.pan[0] += (ex - cx) * (1 - applied);
-    this.pan[1] += (ey - cy) * (1 - applied);
-    this.zoom = zoom;
-    if (this.continuous && anchor && point) {
-      // The gaps between spreads are partly px: put the page point itself back under the pointer.
+    // Keep the point under the pointer still.
+    this.view.zoomAbout([ex, ey], zoom);
+    if (anchor && point) {
+      // The page numbers' room and the gaps between spreads are px, not zoomed: put the page point itself back under the pointer.
       const moved = this.layout(project).find((slot) => slot.index === anchor.index);
       if (moved) {
-        this.pan[0] += ex - (moved.x + point[0] * moved.scale);
-        this.pan[1] += ey - (moved.y + point[1] * moved.scale);
+        this.view.pan[0] += ex - (moved.x + point[0] * moved.scale);
+        this.view.pan[1] += ey - (moved.y + point[1] * moved.scale);
       }
     }
     this.sliding = null;
