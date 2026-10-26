@@ -3,6 +3,7 @@
 // full) and hands the modules that compute plain values, so that those never
 // touch the browser's storage themselves.
 import { withBrushes } from "./brush";
+import { memoryFrom, memoryKey, withMemory, type ExportMemory } from "./exportmemory";
 import { defaultsFrom, defaultsOf, type NewNameDefaults } from "./namedefaults";
 import { normalizeCurve, defaultPenSettings, parsePenSettings, type PenSettings } from "./pen";
 import { forgotten, recentFrom, remembered, type RecentName } from "./recent";
@@ -166,4 +167,28 @@ export function rememberName(path: string, project: Pick<Project, "title" | "pag
 
 export function forgetName(path: string): void {
   writeJson(RECENT_NAMES_KEY, forgotten(loadRecentNames(), path));
+}
+
+// --- 書き出しの設定（ネームごと） ------------------------------------------------------
+
+export const EXPORT_MEMORY_KEY = "namestudio.exportMemory";
+
+function exportMemories(): Record<string, ExportMemory> {
+  const kept = readJson(EXPORT_MEMORY_KEY, {});
+  if (typeof kept !== "object" || kept === null || Array.isArray(kept)) return {};
+  const read: Record<string, ExportMemory> = {};
+  for (const [key, value] of Object.entries(kept)) {
+    const memory = memoryFrom(value);
+    if (memory) read[key] = memory;
+  }
+  return read;
+}
+
+/** How the name at `path` was written out last on this computer, if it was. */
+export function loadExportMemory(path: string): ExportMemory | null {
+  return exportMemories()[memoryKey(path)] ?? null;
+}
+
+export function keepExportMemory(path: string, memory: ExportMemory): void {
+  writeJson(EXPORT_MEMORY_KEY, withMemory(exportMemories(), path, memory));
 }

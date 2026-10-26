@@ -327,6 +327,7 @@ export class Workbench {
       },
       openPalette: (id) => this.docks.open(id),
       openCommandPalette: () => this.palette.open(),
+      exportAgain: () => void this.exportDialog.exportAgain(),
       click: (id) => {
         const target = pressable(id);
         target?.click();

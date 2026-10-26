@@ -27,7 +27,7 @@ const LAYERS = {
   model: ["model", "types", "geometry"],
   /** Working on a name: pure computation, no browser, no storage, no Rust side. */
   core: [
-    "alternatives", "arrange", "autotail", "balloon", "brush", "commands", "csppage", "export", "fonts", "history", "hold", "koma", "komaedit",
+    "alternatives", "arrange", "autotail", "balloon", "brush", "commands", "csppage", "export", "exportmemory", "fonts", "history", "hold", "koma", "komaedit",
     "layout", "mask", "namecheck", "namedefaults", "pages", "panelfolders", "pen", "plotimport", "project", "projectjson", "readback",
     "recent", "references", "repair", "roughlayers", "scriptimport", "series", "session", "shapes", "shortcuts", "snapping", "snapshot", "story", "style",
     "transform", "wrap",
