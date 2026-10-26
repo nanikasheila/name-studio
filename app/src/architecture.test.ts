@@ -35,7 +35,7 @@ const LAYERS = {
   /** This computer and the Rust side: storage, settings, commands, the page's elements. */
   platform: ["backend", "dom", "errorlog", "prefs", "settings"],
   /** Drawing a name on a canvas (the screen and the export share it). */
-  render: ["glyph", "notedraw", "pagedraw", "pagethumb", "pictures", "render", "strokecache"],
+  render: ["glyph", "notedraw", "pagedraw", "pagethumb", "pictures", "render", "screendraw", "strokecache"],
   /** Work done for the screens: saving in the background, writing out. */
   service: ["autosave", "batch", "nameexport", "roughcache"],
   /** The screens. */
@@ -82,9 +82,9 @@ describe("module structure", () => {
   });
 
   it("keeps each tool's press and drags out of the page editor", () => {
-    // Tools live in tool*.ts behind tools.ts; editor.ts dispatches and draws.
+    // Tools live in tool*.ts behind tools.ts; editor.ts dispatches, screendraw.ts draws.
     const editor = sources["./editor.ts"];
-    expect(editor.split("\n").length).toBeLessThan(2800);
+    expect(editor.split("\n").length).toBeLessThan(2400);
     expect(editor).not.toMatch(/(?:tool|drag) satisfies never/);
     for (const [path, source] of Object.entries(sources)) {
       if (/^\.\/tool\w*\.ts$/.test(path)) expect(source, path).not.toMatch(/from "\.\/editor"/);
