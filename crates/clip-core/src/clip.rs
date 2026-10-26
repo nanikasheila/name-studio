@@ -223,7 +223,12 @@ pub struct ClipDocument {
 impl ClipDocument {
     pub fn read(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
-        let file = ClipFile::open(path)?;
+        Self::from_file(ClipFile::open(path)?, path)
+    }
+
+    /// A document over an already opened file; `path` names it (in messages
+    /// and [`ClipDocument::path`]) and is not read.
+    pub fn from_file(file: ClipFile, path: &Path) -> Result<Self> {
         let database = file.database();
         let canvas_row = select_rows(database, "SELECT * FROM Canvas", [])?
             .into_iter()

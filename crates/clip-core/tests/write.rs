@@ -549,7 +549,7 @@ fn writes_vector_and_text_layers_copied_from_the_sheet() {
     use clip_core::LayerKind;
     use clip_core::text::NewText;
     use clip_core::vector::NewVectorLine;
-    use clip_core::write::raster_page::{PageLayer, RasterWorkWriter, WorkOptions};
+    use clip_core::write::raster_page::{BUILT_IN_PARTS, PageLayer, PartDonors, RasterWorkWriter, WorkOptions};
     let folder = tempfile::tempdir().unwrap();
     let template_path = template(folder.path());
     let sheet_path = sheet(folder.path());
@@ -568,14 +568,24 @@ fn writes_vector_and_text_layers_copied_from_the_sheet() {
         right_binding: None,
     };
     // The template has no vector or text layer to copy: without the sheet
-    // there is nothing to make them from.
-    let mut bare = RasterWorkWriter::new(options(Vec::new())).unwrap();
-    assert!(bare.donors.vector.is_none() && bare.donors.text.is_none());
+    // they come from csp-format's built-in parts.
+    let bare = RasterWorkWriter::new(options(Vec::new())).unwrap();
+    let from = |donor: &Option<PartDonors>| donor.as_ref().map(|donor| donor.path().to_path_buf());
+    let built_in = Some(PathBuf::from(BUILT_IN_PARTS));
+    assert_eq!(
+        (from(&bare.donors.vector), from(&bare.donors.text)),
+        (built_in.clone(), built_in)
+    );
+    drop(bare);
     // A copy of the sheet next to the template is found without being named.
     let beside = template_path.with_file_name("page0002.clip");
     std::fs::copy(&sheet_path, &beside).unwrap();
     let found = RasterWorkWriter::new(options(Vec::new())).unwrap();
-    assert!(found.donors.vector.is_some() && found.donors.text.is_some());
+    let beside_path = Some(beside.clone());
+    assert_eq!(
+        (from(&found.donors.vector), from(&found.donors.text)),
+        (beside_path.clone(), beside_path)
+    );
     drop(found);
     std::fs::remove_file(&beside).unwrap();
     let panel = NewVectorLine {
@@ -613,8 +623,6 @@ fn writes_vector_and_text_layers_copied_from_the_sheet() {
         },
         PageLayer::Text(text.clone()),
     ];
-    assert!(bare.write_page(&layers, None, false).is_err());
-
     let mut writer = RasterWorkWriter::new(options(vec![sheet_path.clone()])).unwrap();
     assert!(writer.donors.vector.is_some() && writer.donors.text.is_some());
     let page_path = writer.write_page(&layers, None, false).unwrap();
