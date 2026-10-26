@@ -129,6 +129,16 @@ def build_split_inputs(folder: Path) -> tuple[Path, Path]:
     return sheet, template
 
 
+def without_block_sizes(attribute: bytes) -> bytes:
+    """An offscreen Attribute without its BlockSize table: the Rust writer
+    keeps it equal to the payload's record lengths (as CSP does), the Python
+    writer leaves the template's. The records are compared separately."""
+    lengths = struct.unpack(">III", attribute[4:16])
+    if len(attribute) != 16 + sum(lengths):
+        return attribute
+    return attribute[: 16 + lengths[0] + lengths[1]]
+
+
 def database_rows(path: Path) -> dict[str, list[list[object]]]:
     """Every row of every table, sorted, with random ids masked."""
     if path.suffix == ".cmc":
@@ -146,6 +156,8 @@ def database_rows(path: Path) -> dict[str, list[list[object]]]:
                 for column, value in zip(columns, row):
                     if column in MASKED_COLUMNS and value not in (None, b"", ""):
                         value = "<masked>"
+                    elif table == "Offscreen" and column == "Attribute" and isinstance(value, bytes):
+                        value = without_block_sizes(value).hex()
                     elif isinstance(value, bytes):
                         value = value.hex()
                     values.append(value)
