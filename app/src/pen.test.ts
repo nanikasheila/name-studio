@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { PenPreferences, adjustPressure, defaultPenSettings, fitPressureCurve, normalizeCurve, parsePenSettings, LINEAR } from "./pen";
+import { adjustPressure, defaultPenSettings, fitPressureCurve, normalizeCurve, parsePenSettings, LINEAR } from "./pen";
+import { PenPreferences } from "./prefs";
 
 class MemoryStorage {
   private items = new Map<string, string>();

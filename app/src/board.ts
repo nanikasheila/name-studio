@@ -19,27 +19,8 @@ import {
   type Project,
   type StoryShape,
 } from "./project";
-import {
-  addBeat,
-  adoptShape,
-  beatPage,
-  currentShape,
-  editableShape,
-  forgetShape,
-  isBuiltinShape,
-  keepShape,
-  libraryShapes,
-  makeShape,
-  moveBoundary,
-  partColor,
-  removeBeat,
-  removePart,
-  removeShape,
-  setBeat,
-  shapeSpans,
-  splitPart,
-  storyShapes,
-} from "./shapes";
+import { addBeat, adoptShape, beatPage, currentShape, editableShape, isBuiltinShape, makeShape, moveBoundary, partColor, removeBeat, removePart, removeShape, setBeat, shapeSpans, splitPart, storyShapes } from "./shapes";
+import { forgetShape, keepShape, libraryShapes } from "./prefs";
 import {
   emotionRuns,
   emotionSeries,

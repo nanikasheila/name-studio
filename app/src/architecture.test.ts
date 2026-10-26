@@ -16,6 +16,42 @@ function imports(): Map<string, string[]> {
   return graph;
 }
 
+/**
+ * Pace layers, slowest first: a module may import from its own layer and the
+ * ones below, never from above. The name data's types change least (they are
+ * the file format); the screens change most. Every module is listed, so a new
+ * one is placed on purpose.
+ */
+const LAYERS = {
+  /** The name data's types and plane geometry: the file format. */
+  model: ["model", "types", "geometry"],
+  /** Working on a name: pure computation, no browser, no storage, no Rust side. */
+  core: [
+    "alternatives", "arrange", "autotail", "balloon", "brush", "csppage", "export", "fonts", "history", "hold", "koma", "komaedit",
+    "layout", "mask", "namecheck", "namedefaults", "pages", "panelfolders", "pen", "plotimport", "project", "projectjson", "readback",
+    "references", "repair", "roughlayers", "scriptimport", "series", "shapes", "shortcuts", "snapping", "snapshot", "story", "style",
+    "transform", "wrap",
+  ],
+  /** This computer and the Rust side: storage, settings, commands, the page's elements. */
+  platform: ["backend", "dom", "errorlog", "prefs", "settings"],
+  /** Drawing a name on a canvas (the screen and the export share it). */
+  render: ["glyph", "pagedraw", "pictures", "render", "strokecache"],
+  /** Work done for the screens: saving in the background, writing out. */
+  service: ["autosave", "batch", "nameexport"],
+  /** The screens. */
+  ui: [
+    "alerts", "altdialog", "board", "brushdialog", "dock", "dragsort", "editor", "editorcore", "exportdialog", "fontpicker", "inspector",
+    "layers", "pendialog", "roughpanel", "scriptdialog", "seriespanel", "settingsdialog", "shortcutdialog", "tooleraser", "toolfill",
+    "toolpanels", "toolpen", "toolreference", "tools", "toolselect", "toolsticky", "tooltext", "tooltransform", "updater", "versiondialog",
+    "workbench",
+  ],
+  /** Starting the app: puts the rest together. */
+  app: ["main"],
+} as const;
+
+const ORDER = Object.keys(LAYERS) as (keyof typeof LAYERS)[];
+const layerOf = new Map<string, number>(ORDER.flatMap((layer, rank) => LAYERS[layer].map((name) => [`${name}.ts`, rank] as [string, number])));
+
 describe("module structure", () => {
   it("has the name data's types at the bottom", () => {
     expect(imports().get("model.ts")).toEqual([]);
@@ -40,6 +76,33 @@ describe("module structure", () => {
     for (const [path, source] of Object.entries(sources)) {
       if (/^\.\/tool\w*\.ts$/.test(path)) expect(source, path).not.toMatch(/from "\.\/editor"/);
     }
+  });
+
+  it("places every module in a pace layer", () => {
+    const unplaced = [...imports().keys()].filter((file) => !layerOf.has(file));
+    const gone = [...layerOf.keys()].filter((file) => !imports().has(file));
+    expect({ unplaced, gone }).toEqual({ unplaced: [], gone: [] });
+  });
+
+  it("imports only from the same pace layer or slower ones", () => {
+    const upward: string[] = [];
+    for (const [file, used] of imports()) {
+      const rank = layerOf.get(file) ?? 0;
+      for (const other of used) {
+        const otherRank = layerOf.get(other) ?? 0;
+        if (otherRank > rank) upward.push(`${file} (${ORDER[rank]}) → ${other} (${ORDER[otherRank]})`);
+      }
+    }
+    expect(upward).toEqual([]);
+  });
+
+  it("keeps the browser, its storage and the Rust side out of the types and the computation", () => {
+    const browser = /\b(?:document|window|localStorage|sessionStorage|createImageBitmap|requestAnimationFrame)\b|\bnew Image\b|"@tauri-apps\//;
+    const found = [...layerOf]
+      .filter(([, rank]) => rank <= ORDER.indexOf("core"))
+      .filter(([file]) => browser.test(sources[`./${file}`].replace(/\/\/.*$|\/\*[\s\S]*?\*\//gm, "")))
+      .map(([file]) => file);
+    expect(found).toEqual([]);
   });
 
   it("has no import cycles", () => {

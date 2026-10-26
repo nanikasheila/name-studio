@@ -1,10 +1,7 @@
 // 新しいネームの既定: a name's own settings (コマ間, the sizes and line widths,
 // the balloon shapes and fonts for each kind of line) kept on this computer
-// so that the names made from now on start with them.
+// so that the names made from now on start with them (kept by prefs.ts).
 import type { BalloonShape, Gutters, LineFonts, LineKind, NameStyle, Project } from "./model";
-import { readJson, writeJson, writeText } from "./settings";
-
-export const NEW_NAME_KEY = "namestudio.newNameDefaults";
 
 export interface NewNameDefaults {
   gutters?: Gutters;
@@ -27,9 +24,8 @@ export function defaultsOf(project: Project): NewNameDefaults {
   return defaults;
 }
 
-/** The kept defaults, or null when there are none (or they do not read). */
-export function newNameDefaults(): NewNameDefaults | null {
-  const kept = readJson(NEW_NAME_KEY, null);
+/** Defaults as read back, or null when there are none (or they do not read). */
+export function defaultsFrom(kept: unknown): NewNameDefaults | null {
   if (!isObject(kept)) return null;
   const defaults: NewNameDefaults = {};
   if (isObject(kept.gutters) && typeof kept.gutters.across === "number" && typeof kept.gutters.down === "number") {
@@ -41,15 +37,8 @@ export function newNameDefaults(): NewNameDefaults | null {
   return Object.keys(defaults).length ? defaults : null;
 }
 
-export function saveNewNameDefaults(project: Project): NewNameDefaults {
-  const defaults = defaultsOf(project);
-  if (Object.keys(defaults).length) writeJson(NEW_NAME_KEY, defaults);
-  else writeText(NEW_NAME_KEY, null);
-  return defaults;
-}
-
 /** A new name takes the kept defaults; true when there were any. */
-export function applyNewNameDefaults(project: Project, defaults: NewNameDefaults | null = newNameDefaults()): boolean {
+export function applyNewNameDefaults(project: Project, defaults: NewNameDefaults | null): boolean {
   if (!defaults) return false;
   if (defaults.gutters && !project.scroll) project.gutters = copy(defaults.gutters);
   if (defaults.lineShapes) project.lineShapes = copy(defaults.lineShapes);

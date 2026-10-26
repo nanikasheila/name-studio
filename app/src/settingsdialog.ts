@@ -9,14 +9,14 @@ import { SHAPE_LABELS } from "./balloon";
 import { $, choice, element } from "./dom";
 import { fontField } from "./fontpicker";
 import { APP_FONT_LABEL, FONT_ROLES, FONT_ROLE_LABELS, roleFont, setRoleFont } from "./fonts";
-import { BALLOON_TEXT_KEY, PAGE_GAP_KEY, PANEL_CARRIES_KEY, type PageEditor } from "./editor";
+import { type PageEditor } from "./editor";
+import { BALLOON_TEXT_KEY, PAGE_GAP_KEY, PANEL_CARRIES_KEY, saveNewNameDefaults, saveSnap } from "./prefs";
 import { GRID_GAP_MM } from "./layout";
 import type { BalloonShape, LineKind } from "./model";
-import { saveNewNameDefaults } from "./namedefaults";
 import { KIND_LABELS, gutters, nameKind, setBinding, setDefaultLineSize, setDefaultShape, setGutters, setLineSpacing, type Project } from "./project";
 import { readText, writeFlag, writeNumber, writeText } from "./settings";
 import { appVersion, installRelease, releases, setUpdatesPaused, updatesPaused } from "./updater";
-import { DEFAULT_SNAP, MAX_GRID_MM, MIN_GRID_MM, saveSnap, type SnapSettings } from "./snapping";
+import { DEFAULT_SNAP, MAX_GRID_MM, MIN_GRID_MM, type SnapSettings } from "./snapping";
 import {
   APP_BALLOON_LINE_MM,
   APP_FONT_PT,

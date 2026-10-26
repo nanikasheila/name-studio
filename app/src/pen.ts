@@ -69,8 +69,6 @@ export function defaultPenSettings(): PenSettings {
   };
 }
 
-export const PEN_SETTINGS_KEY = "namestudio.pen";
-
 /** The settings as read back, anything missing or broken taken from the defaults. */
 export function parsePenSettings(text: string | null): PenSettings {
   const settings = defaultPenSettings();
@@ -129,46 +127,3 @@ export function fitPressureCurve(samples: readonly number[]): [number, number][]
   if (firm >= 0.999) return normalizeCurve([[0, 0], [usual, 0.5], [1, 1]]);
   return normalizeCurve([[0, 0], [usual, 0.5], [firm, 1], [1, 1]]);
 }
-
-type Listener = (settings: PenSettings) => void;
-
-/** The settings in use; the editor and the dialog share one. */
-export class PenPreferences {
-  private value: PenSettings;
-  private readonly listeners: Listener[] = [];
-
-  constructor(private readonly storage: Storage | null = typeof localStorage === "undefined" ? null : localStorage) {
-    let text: string | null = null;
-    try {
-      text = this.storage?.getItem(PEN_SETTINGS_KEY) ?? null;
-    } catch {
-      // Unreadable storage: the defaults.
-    }
-    this.value = parsePenSettings(text);
-  }
-
-  get settings(): PenSettings {
-    return this.value;
-  }
-
-  update(change: Partial<PenSettings>): void {
-    this.value = { ...this.value, ...change };
-    if (change.pressureCurve) this.value.pressureCurve = normalizeCurve(change.pressureCurve);
-    try {
-      this.storage?.setItem(PEN_SETTINGS_KEY, JSON.stringify(this.value));
-    } catch {
-      // Not kept for the next start; the setting still holds now.
-    }
-    for (const listener of this.listeners) listener(this.value);
-  }
-
-  reset(): void {
-    this.update(defaultPenSettings());
-  }
-
-  onChange(listener: Listener): void {
-    this.listeners.push(listener);
-  }
-}
-
-export const penPreferences = new PenPreferences();

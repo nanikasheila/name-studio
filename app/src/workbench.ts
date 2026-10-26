@@ -9,7 +9,8 @@ import { ask, save } from "@tauri-apps/plugin-dialog";
 import { heldThumbnail, pageGlyph } from "./glyph";
 import { heldNear, holdPanel, movePanelToPage, placeHeld } from "./hold";
 import { Autosaver, autosaveToFile, formatTime } from "./autosave";
-import { addBrushes, loadLibrary } from "./brush";
+import { addBrushes } from "./brush";
+import { loadLibrary, penPreferences, SHOW_NOTES_KEY, SINGLE_PAGE_KEY, CONTINUOUS_KEY, ROWS_KEY } from "./prefs";
 import { BrushDialog } from "./brushdialog";
 import { dragSort } from "./dragsort";
 import { AltDialog } from "./altdialog";
@@ -22,31 +23,18 @@ import { LayerView, moveIntoPanel, type LayerRef } from "./layers";
 import { RoughPanel, type RoughChange } from "./roughpanel";
 import { SeriesPanel } from "./seriespanel";
 import { addRoughLayer, layerOf, moveRoughLayer, moveStrokesToLayer, removeRoughLayer, renameRoughLayer, ROUGH_BASE, roughLayersOf, setRoughLayer } from "./roughlayers";
-import { penPreferences } from "./pen";
 import { comboOf, Shortcuts, type ActionId } from "./shortcuts";
 import { Docks, type PaletteDef, type PaletteId } from "./dock";
 import { alternativesOf, makeAlternative, useAlternative } from "./alternatives";
-import {
-  ERASE_MODE_LABELS,
-  SHOW_NOTES_KEY,
-  SINGLE_PAGE_KEY,
-  CONTINUOUS_KEY,
-  ROWS_KEY,
-  PANEL_MODE_LABELS,
-  PageEditor,
-  isTyping,
-  type EditorEraseMode,
-  type PanelMode,
-  type Selection,
-  type Tool,
-} from "./editor";
+import { ERASE_MODE_LABELS, PANEL_MODE_LABELS, PageEditor, isTyping, type EditorEraseMode, type PanelMode, type Selection, type Tool } from "./editor";
 import { ExportDialog } from "./exportdialog";
 import { History } from "./history";
 import { clearAlert, showAlert } from "./alerts";
 import { logError } from "./errorlog";
 import { projectBody } from "./projectjson";
 import { repair } from "./repair";
-import { addReference, opacityOf, readImage, removeReference, savedForm } from "./references";
+import { readImage } from "./pictures";
+import { addReference, opacityOf, removeReference, savedForm } from "./references";
 import { type Snapshot, Snapshotter, sameSnapshot } from "./snapshot";
 import { VersionDialog, type VersionInfo } from "./versiondialog";
 import {
@@ -86,7 +74,7 @@ import {
   type StoredImage,
   newId,
 } from "./project";
-import { readFlag, writeCount, writeFlag } from "./settings";
+import { localStore, readFlag, writeCount, writeFlag } from "./settings";
 
 export const PROJECT_EXTENSION = "namestudio";
 const ROUGH_MAX_HEIGHT = 1600;
@@ -212,7 +200,7 @@ export class Workbench {
   private readonly exportDialog: ExportDialog;
   private readonly altDialog: AltDialog;
   private readonly scriptDialog: ScriptDialog;
-  readonly shortcuts = new Shortcuts();
+  readonly shortcuts = new Shortcuts(localStore());
   private readonly shortcutDialog = new ShortcutDialog(this.shortcuts);
   private readonly penDialog = new PenDialog(penPreferences);
   private readonly brushDialog: BrushDialog;

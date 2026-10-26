@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { besideCorners, DEFAULT_SNAP, loadSnap, saveSnap, SNAP_KEY, snapBox, snapPointTo, snapTargets, snapValue, type SnapSettings } from "./snapping";
+import { besideCorners, DEFAULT_SNAP, snapBox, snapPointTo, snapTargets, snapValue, type SnapSettings } from "./snapping";
+import { loadSnap, saveSnap, SNAP_KEY } from "./prefs";
 import { basicBox, DEFAULT_GUTTERS, newProject, rectShape, trimBox, type Page } from "./project";
 import { writeText } from "./settings";
 

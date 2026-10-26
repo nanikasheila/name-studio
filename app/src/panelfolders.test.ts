@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { newProject, rectShape } from "./project";
 import type { Stroke } from "./model";
-import { drawPanelMask, panelArea, panelFolders, panelsAbove, strokePanel } from "./panelfolders";
+import { drawPanelMask } from "./pagedraw";
+import { panelArea, panelFolders, panelsAbove, strokePanel } from "./panelfolders";
 
 const m = { scale: 10, x: 0, y: 0 };
 const line = (id: string, points: [number, number][], over = false): Stroke => ({

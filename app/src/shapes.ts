@@ -1,7 +1,6 @@
 // 話の型: the built-in story shapes (起承転結, Save the Cat and the like) and
 // the ones made for a name (オリジナルの型), laid over its pages.
 import { STRUCTURES, type Project, type ShapePart, type StoryShape } from "./project";
-import { readJson, writeJson } from "./settings";
 
 /** Colours of the parts, in turn; used wherever pages are shown by part. */
 export const PART_COLORS = ["#4f86d9", "#e0884a", "#3fae84", "#c9a227", "#d97aa6", "#7d6bd6", "#5aa9c9", "#c25b5b"];
@@ -185,24 +184,7 @@ function round(value: number): number {
   return Math.round(value * 10000) / 10000;
 }
 
-// --- この PC に置く型 --------------------------------------------------------------
-
-const LIBRARY_KEY = "namestudio.storyShapes";
-
-/** Own shapes kept on this computer, to use in other names. */
-export function libraryShapes(): StoryShape[] {
-  const value = readJson(LIBRARY_KEY, []);
+/** Own shapes as read back from this computer (anything that is not a shape is left out). */
+export function shapesFrom(value: unknown): StoryShape[] {
   return Array.isArray(value) ? value.filter((shape) => shape && typeof shape.id === "string" && Array.isArray(shape.parts)) : [];
-}
-
-/** Keep (or update) an own shape on this computer. */
-export function keepShape(shape: StoryShape): void {
-  // Storage may be off; the shape still lives in the name.
-  const kept = libraryShapes().filter((s) => s.id !== shape.id);
-  kept.push(structuredClone(shape));
-  writeJson(LIBRARY_KEY, kept);
-}
-
-export function forgetShape(id: string): void {
-  writeJson(LIBRARY_KEY, libraryShapes().filter((s) => s.id !== id));
 }

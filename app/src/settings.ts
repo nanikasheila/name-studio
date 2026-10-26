@@ -2,7 +2,8 @@
 // Storage can be full, blocked or missing: reading gives the fallback, and a
 // setting that cannot be written still holds for now.
 
-function storage(): Storage | null {
+/** The browser's storage, or null where there is none (or it is blocked). */
+export function localStore(): Storage | null {
   try {
     return typeof localStorage === "undefined" ? null : localStorage;
   } catch {
@@ -13,7 +14,7 @@ function storage(): Storage | null {
 /** The text kept under `key`, or null. */
 export function readText(key: string): string | null {
   try {
-    return storage()?.getItem(key) ?? null;
+    return localStore()?.getItem(key) ?? null;
   } catch {
     return null;
   }
@@ -22,8 +23,8 @@ export function readText(key: string): string | null {
 /** Keeps `value` under `key`; null forgets it. */
 export function writeText(key: string, value: string | null): void {
   try {
-    if (value === null) storage()?.removeItem(key);
-    else storage()?.setItem(key, value);
+    if (value === null) localStore()?.removeItem(key);
+    else localStore()?.setItem(key, value);
   } catch {
     // Not kept for the next start; the setting still holds now.
   }

@@ -2,14 +2,8 @@
 // exported sub tool (.sut) or from CSP's own tool list on this computer.
 import { call, type CspToolLocations } from "./backend";
 import { open } from "@tauri-apps/plugin-dialog";
-import {
-  DEFAULT_BRUSH_DPI,
-  addBrushes,
-  brushFromSubTool,
-  lengthMm,
-  saveToLibrary,
-  type CspSubTool,
-} from "./brush";
+import { DEFAULT_BRUSH_DPI, addBrushes, brushFromSubTool, lengthMm, type CspSubTool } from "./brush";
+import { saveToLibrary } from "./prefs";
 import type { Brush, Project } from "./project";
 import { $ } from "./dom";
 
