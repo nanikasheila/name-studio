@@ -125,7 +125,7 @@ try {
         nextId: project.nextId,
         selection: wb.editor.selection,
         tool: wb.editor.tool,
-        undo: wb.history.undoStack.length,
+        undo: wb.session.history.undoStack.length,
         status: document.getElementById("status").textContent,
       };
     });

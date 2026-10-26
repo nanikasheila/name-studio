@@ -29,7 +29,7 @@ const LAYERS = {
   core: [
     "alternatives", "arrange", "autotail", "balloon", "brush", "commands", "csppage", "export", "fonts", "history", "hold", "koma", "komaedit",
     "layout", "mask", "namecheck", "namedefaults", "pages", "panelfolders", "pen", "plotimport", "project", "projectjson", "readback",
-    "references", "repair", "roughlayers", "scriptimport", "series", "shapes", "shortcuts", "snapping", "snapshot", "story", "style",
+    "references", "repair", "roughlayers", "scriptimport", "series", "session", "shapes", "shortcuts", "snapping", "snapshot", "story", "style",
     "transform", "wrap",
   ],
   /** This computer and the Rust side: storage, settings, commands, the page's elements. */
@@ -41,7 +41,7 @@ const LAYERS = {
   /** The screens. */
   ui: [
     "actions", "alerts", "altdialog", "board", "brushdialog", "dock", "dragsort", "editor", "editorcore", "exportdialog", "fontpicker", "inspector",
-    "layers", "palette", "pendialog", "roughpanel", "scriptdialog", "seriespanel", "settingsdialog", "shortcutdialog", "tooleraser", "toolfill",
+    "layers", "palette", "pendialog", "roughpanel", "scriptdialog", "seriespanel", "settingsdialog", "shortcutdialog", "sidelists", "tooleraser", "toolfill",
     "toolpanels", "toolpen", "toolreference", "tools", "toolselect", "toolsticky", "tooltext", "tooltransform", "updater", "versiondialog",
     "workbench",
   ],

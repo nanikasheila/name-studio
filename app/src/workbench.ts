@@ -1,18 +1,17 @@
-// The name editor around the canvas: the open project, saving, undo, the
-// page list, the script, the cast and the inspector for the selection.
+// The name editor around the canvas: opening and saving the name (the
+// session keeps it and its undo steps), the palettes beside the pages (the
+// lists are in sidelists.ts) and the inspector for the selection.
 import { call } from "./backend";
 import { useFonts } from "./fonts";
 import { useStyle } from "./style";
-import { $, element, plainButton } from "./dom";
+import { $ } from "./dom";
 import { Inspector } from "./inspector";
 import { ask, save } from "@tauri-apps/plugin-dialog";
-import { heldThumbnail, pageGlyph } from "./glyph";
 import { heldNear, holdPanel, movePanelToPage, placeHeld } from "./hold";
 import { Autosaver, autosaveToFile, formatTime } from "./autosave";
 import { addBrushes } from "./brush";
 import { loadLibrary, penPreferences, SHOW_NOTES_KEY, SINGLE_PAGE_KEY, CONTINUOUS_KEY, ROWS_KEY } from "./prefs";
 import { BrushDialog } from "./brushdialog";
-import { dragSort } from "./dragsort";
 import { AltDialog } from "./altdialog";
 import { ScriptDialog } from "./scriptdialog";
 import { ShortcutDialog } from "./shortcutdialog";
@@ -28,44 +27,36 @@ import type { Command } from "./commands";
 import { CommandPalette } from "./palette";
 import { comboOf, Shortcuts, type ActionId } from "./shortcuts";
 import { Docks, type PaletteDef, type PaletteId } from "./dock";
-import { alternativesOf, makeAlternative, useAlternative } from "./alternatives";
+import { makeAlternative, useAlternative } from "./alternatives";
 import { ERASE_MODE_LABELS, PANEL_MODE_LABELS, PageEditor, isTyping, type EditorEraseMode, type PanelMode, type Selection, type Tool } from "./editor";
 import { ExportDialog } from "./exportdialog";
-import { History } from "./history";
 import { clearAlert, showAlert } from "./alerts";
 import { logError } from "./errorlog";
 import { projectBody } from "./projectjson";
 import { repair } from "./repair";
 import { readImage } from "./pictures";
 import { addReference, opacityOf, removeReference, savedForm } from "./references";
-import { type Snapshot, Snapshotter, sameSnapshot } from "./snapshot";
+import { Session } from "./session";
+import { HELD_TYPE, SideLists } from "./sidelists";
 import { VersionDialog, type VersionInfo } from "./versiondialog";
 import {
   spreadTwin,
 } from "./koma";
 import { addAutoTails } from "./autotail";
 import { Board } from "./board";
-import { pageParts } from "./shapes";
 import {
   TONE_LABELS,
-  addCharacter,
   assignPanels,
   insertPage,
   movePagesTo,
-  pageBlock,
   normalize,
   orderPanels,
   pageIndex,
-  removeCharacter,
   removeSticky,
-  STICKY_COLORS,
-  linkLabel,
   removePanel,
-  sceneOf,
   sortLines,
   trailingEmptyPages,
   swapPanelContents,
-  textAmount,
   type Brush,
   type FillTone,
   type Alternatives,
@@ -82,19 +73,6 @@ import { localStore, readFlag, writeCount, writeFlag } from "./settings";
 export const PROJECT_EXTENSION = "namestudio";
 const ROUGH_MAX_HEIGHT = 1600;
 
-interface WorkbenchState {
-  project: Project | null;
-  path: string | null;
-  dirty: boolean;
-  /** Counts changes, so a save knows whether more came while it ran. */
-  revision: number;
-  /** Snapshot taken by `begin`, pushed to history by `commit`. */
-  pending: Snapshot | null;
-  roughs: Map<string, ImageBitmap | "loading" | "failed">;
-}
-
-/** What a held panel is carried as when dragged from the 保留 list. */
-const HELD_TYPE = "application/x-name-studio-held";
 const SIDE_FOLDED_KEY = "namestudio.sideFolded";
 /** The palettes' icons. */
 const PAGES_ICON = '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="2.5" width="12" height="15" rx="1"/><path d="M4 9h12M10 9v8.5"/></svg>';
@@ -131,10 +109,32 @@ const ROWS_TITLE = "見開きを何行に並べるか。1 で全ページを横�
 
 export class Workbench {
   readonly editor: PageEditor;
-  private readonly history = new History<Project, Snapshot>(new Snapshotter<Project>());
-  private readonly state: WorkbenchState = { project: null, path: null, dirty: false, revision: 0, pending: null, roughs: new Map() };
-  /** Characters whose lines are listed in the 人物 tab. */
-  private openCast = new Set<string>();
+  /** The open name, unsaved or not, and its undo steps. */
+  private readonly session = new Session(() => this.autosaver.notify());
+  /** Rough images read from the source sheet, by layer and crop. */
+  private roughs = new Map<string, ImageBitmap | "loading" | "failed">();
+  /** The lists beside the pages: ページ, 台本, 人物, 付箋, 保留. */
+  private readonly lists = new SideLists({
+    edit: (change) => this.edit(change),
+    currentPages: () => this.editor.currentPages(),
+    selection: () => this.editor.selection,
+    focusPage: () => this.editor.focusPage(),
+    openPage: (number) => {
+      this.board.deselect();
+      this.editor.selection = null;
+      this.editor.showPage(number);
+      this.renderAll();
+    },
+    showSelected: (number, selection) => {
+      this.editor.showPage(number);
+      this.editor.select(selection);
+      this.renderAll();
+    },
+    goTo: (pageId, kind, id) => this.goTo(pageId, kind, id),
+    movePages: (first, last, target) => this.movePages(first, last, target),
+    putHeld: (id, page, point, panel) => this.putHeld(id, page, point, panel),
+    openScript: () => this.scriptDialog.open(),
+  });
   /** What the last copy here put on the system clipboard ("failed" when it could not), to tell it from a picture copied later. */
   private copyMark: string | null = null;
   /** The browser's paste event came after Ctrl+V. */
@@ -163,11 +163,11 @@ export class Workbench {
     },
   });
   private readonly roughPanel = new RoughPanel({
-    project: () => this.state.project,
-    active: () => (this.state.project ? layerOf(this.state.project, { layer: this.editor.roughLayer }).id : ROUGH_BASE),
+    project: () => this.session.project,
+    active: () => (this.session.project ? layerOf(this.session.project, { layer: this.editor.roughLayer }).id : ROUGH_BASE),
     setActive: (id) => {
       this.editor.roughLayer = id;
-      const layer = this.state.project && layerOf(this.state.project, { layer: id });
+      const layer = this.session.project && layerOf(this.session.project, { layer: id });
       if (layer) this.setStatus(`ペンでレイヤー「${layer.name}」に描きます`);
       this.renderLayers();
     },
@@ -175,8 +175,8 @@ export class Workbench {
     selectedStrokes: () => this.selectedStrokeIds().length,
   });
   private readonly seriesPanel = new SeriesPanel({
-    project: () => this.state.project,
-    path: () => this.state.path,
+    project: () => this.session.project,
+    path: () => this.session.path,
     edit: (change) => this.edit(change),
     status: (message) => this.setStatus(message),
     save: () => this.save(),
@@ -214,15 +214,15 @@ export class Workbench {
   private readonly versionDialog: VersionDialog;
   private readonly autosaver = new Autosaver(
     () => this.autosave(),
-    () => this.state.pending !== null,
+    () => this.session.inStep,
   );
 
   constructor(private readonly setStatus: (message: string) => void, private readonly onTitle: (title: string) => void) {
     this.editor = new PageEditor($<HTMLCanvasElement>("editor-canvas"), {
-      project: () => this.state.project,
+      project: () => this.session.project,
       begin: () => this.begin(),
       commit: () => this.commit(),
-      cancel: () => (this.state.pending = null),
+      cancel: () => this.session.cancel(),
       selectionChanged: () => {
         this.board.deselect();
         this.renderInspector();
@@ -235,7 +235,7 @@ export class Workbench {
       referenceChanged: () => this.renderReferenceBar(),
     });
     this.board = new Board($("story"), $("story-handle"), {
-      project: () => this.state.project,
+      project: () => this.session.project,
       edit: (change) => this.edit(change),
       openPage: (pageNumber) => {
         this.board.deselect();
@@ -253,7 +253,7 @@ export class Workbench {
     this.inspector = new Inspector({
       editor: this.editor,
       board: this.board,
-      project: () => this.state.project,
+      project: () => this.session.project,
       edit: (change) => this.edit(change),
       status: (message) => this.setStatus(message),
       deleteSelection: () => this.deleteSelection(),
@@ -270,7 +270,7 @@ export class Workbench {
     });
     this.settingsDialog = new SettingsDialog({
       editor: this.editor,
-      project: () => this.state.project,
+      project: () => this.session.project,
       edit: (change) => this.edit(change),
       status: (message) => this.setStatus(message),
       snapChanged: () => this.showPanelModes(),
@@ -282,7 +282,7 @@ export class Workbench {
     this.commands = buildCommands({
       editor: this.editor,
       board: this.board,
-      hasProject: () => this.state.project !== null,
+      hasProject: () => this.session.project !== null,
       status: (message) => this.setStatus(message),
       save: (saveAs) => void this.save(saveAs),
       undo: () => this.undo(),
@@ -348,7 +348,7 @@ export class Workbench {
     // The page takes whatever room the strip and the side panels leave.
     new ResizeObserver(() => this.editor.resize()).observe($("editor-canvas").parentElement!);
     this.scriptDialog = new ScriptDialog({
-      project: () => this.state.project,
+      project: () => this.session.project,
       firstAlone: () => this.editor.firstAlone,
       edit: (change) => this.edit(change),
       done: (report, firstPage) => {
@@ -371,13 +371,13 @@ export class Workbench {
       },
     });
     this.altDialog = new AltDialog({
-      project: () => this.state.project,
+      project: () => this.session.project,
       edit: (change) => this.edit(change),
       shown: (set) => this.showSet(set),
     });
     this.exportDialog = new ExportDialog({
-      project: () => this.state.project,
-      projectPath: () => this.state.path,
+      project: () => this.session.project,
+      projectPath: () => this.session.path,
       rough: (rough) => this.loadRough(rough),
       status: (message) => this.setStatus(message),
       edit: (change) => this.edit(change),
@@ -397,7 +397,7 @@ export class Workbench {
       },
     });
     this.brushDialog = new BrushDialog({
-      project: () => this.state.project,
+      project: () => this.session.project,
       edit: (change) => this.edit(change),
       imported: (brushes) => {
         const kind = this.editor.tool === "eraser" ? "eraser" : "pen";
@@ -406,7 +406,7 @@ export class Workbench {
       },
     });
     this.versionDialog = new VersionDialog({
-      path: () => this.state.path,
+      path: () => this.session.path,
       restore: (version) => this.restoreVersion(version),
       autosaveChanged: () => this.autosaver.notify(),
     });
@@ -416,11 +416,11 @@ export class Workbench {
   }
 
   get project(): Project | null {
-    return this.state.project;
+    return this.session.project;
   }
 
   get dirty(): boolean {
-    return this.state.dirty;
+    return this.session.dirty;
   }
 
   // --- opening and saving --------------------------------------------------------
@@ -430,25 +430,20 @@ export class Workbench {
    * ask before throwing away what is still unsaved (and its autosave copy).
    */
   async confirmDiscard(): Promise<boolean> {
-    if (!this.state.project) return true;
-    if (this.state.dirty && this.state.path && autosaveToFile()) await this.autosaver.flush();
-    if (!this.state.dirty) return true;
+    if (!this.session.project) return true;
+    if (this.session.dirty && this.session.path && autosaveToFile()) await this.autosaver.flush();
+    if (!this.session.dirty) return true;
     const discard = await ask("保存していない変更があります。破棄して続けますか？", { title: "Name Studio", kind: "warning" });
     if (discard) {
       this.autosaver.reset();
-      await call("discard_recovery", { path: this.state.path }).catch(() => undefined);
+      await call("discard_recovery", { path: this.session.path }).catch(() => undefined);
     }
     return discard;
   }
 
   show(project: Project, path: string | null, message: string): void {
-    this.state.project = normalize(project);
-    this.state.path = path;
-    this.seriesPanel.follow(this.state.project, path);
-    this.state.dirty = false;
-    this.state.pending = null;
-    this.state.roughs = new Map();
-    this.history.clear();
+    this.seriesPanel.follow(this.session.open(project, path), path);
+    this.roughs = new Map();
     this.autosaver.reset();
     this.editor.selection = null;
     this.editor.roughLayer = ROUGH_BASE;
@@ -499,9 +494,9 @@ export class Workbench {
   }
 
   async save(saveAs = false): Promise<boolean> {
-    const project = this.state.project;
+    const project = this.session.project;
     if (!project) return false;
-    let path = this.state.path;
+    let path = this.session.path;
     if (!path || saveAs) {
       const suggested = project.source?.path.replace(/\.clip$/i, `.${PROJECT_EXTENSION}`) ?? `${project.title || "ネーム"}.${PROJECT_EXTENSION}`;
       const picked = await save({
@@ -515,17 +510,14 @@ export class Workbench {
     this.begin();
     const mended = repair(project);
     if (mended.length) this.commit();
-    else this.state.pending = null;
+    else this.session.cancel();
     this.seriesPanel.beforeSave(project, path);
-    const revision = this.state.revision;
+    const revision = this.session.revision;
     try {
-      await call("save_project", projectBody({ path, previousPath: this.state.path }, savedForm(project)));
-      this.state.path = path;
+      await call("save_project", projectBody({ path, previousPath: this.session.path }, savedForm(project)));
+      this.session.saved(path, revision);
       await this.seriesPanel.saved(project, path);
-      if (this.state.revision === revision) {
-        this.state.dirty = false;
-        this.autosaver.reset();
-      }
+      if (!this.session.dirty) this.autosaver.reset();
       this.updateTitle();
       clearAlert("save");
       if (mended.length) clearAlert("autosave");
@@ -542,17 +534,17 @@ export class Workbench {
 
   /** Autosave: the file itself when it has one (and that is on), else a copy. */
   private async autosave(): Promise<void> {
-    const project = this.state.project;
+    const project = this.session.project;
     if (!project) return;
-    const path = this.state.path;
-    const revision = this.state.revision;
+    const path = this.session.path;
+    const revision = this.session.revision;
     try {
       const result = await call(
         "autosave_project",
         projectBody({ path, toFile: autosaveToFile() }, savedForm(project)),
       );
-      if (result.savedToFile && this.state.path === path && this.state.revision === revision) {
-        this.state.dirty = false;
+      if (result.savedToFile && this.session.path === path) {
+        this.session.autosaved(revision);
         this.updateTitle();
       }
       if (result.savedToFile && path) await this.seriesPanel.saved(project, path);
@@ -576,21 +568,20 @@ export class Workbench {
 
   /** Show the versions of this project. */
   openVersions(): void {
-    if (this.state.project) void this.versionDialog.open();
+    if (this.session.project) void this.versionDialog.open();
   }
 
   /** Bring an earlier version back as one undoable change. */
   private async restoreVersion(version: VersionInfo): Promise<void> {
-    const current = this.state.project;
+    const current = this.session.project;
     if (!current) return;
-    const path = this.state.path;
+    const path = this.session.path;
     const older = await call("load_version", { path, id: version.id });
     await call("record_version", projectBody({ path, kind: "beforeRestore" }, savedForm(current)));
-    this.history.record(current);
-    this.state.project = normalize(older);
+    this.session.replace(older);
     this.editor.selection = null;
-    this.state.roughs = new Map();
-    this.changed();
+    this.roughs = new Map();
+    this.renderAll();
     this.setStatus(`${formatTime(version.timeMs)} の版に戻しました。「元に戻す」で戻る前に戻せます`);
   }
 
@@ -598,25 +589,20 @@ export class Workbench {
 
   /** Note a change: the title shows it and autosave picks it up. */
   private markDirty(): void {
-    this.state.dirty = true;
-    this.state.revision += 1;
-    this.autosaver.notify();
+    this.session.markDirty();
   }
 
   private begin(): void {
-    if (this.state.project) this.state.pending = this.history.snapshot(this.state.project);
+    this.session.begin();
   }
 
   private commit(): void {
-    if (this.state.pending === null) return;
-    this.history.recordSnapshot(this.state.pending);
-    this.state.pending = null;
-    this.changed();
+    if (this.session.commit()) this.renderAll();
   }
 
   /** Run `change` as one undoable step; a change that fails is undone. */
   edit(change: (project: Project) => void): void {
-    const project = this.state.project;
+    const project = this.session.project;
     if (!project) return;
     this.begin();
     try {
@@ -646,41 +632,34 @@ export class Workbench {
   }
 
   private rollBack(): boolean {
-    const pending = this.state.pending;
-    if (pending === null) return false;
-    this.state.pending = null;
-    this.state.project = this.history.revert(pending);
+    if (!this.session.rollBack()) return false;
     this.editor.dropDrag();
-    const s = this.editor.selection;
-    if (s && !this.findSelected(s)) this.editor.selection = null;
+    this.dropLostSelection();
     this.renderAll();
     return true;
   }
 
-  private changed(): void {
-    this.markDirty();
-    this.renderAll();
-  }
-
   undo(): void {
-    this.restore(this.history.undo(this.state.project!));
+    if (this.session.undo()) this.restored();
   }
 
   redo(): void {
-    this.restore(this.history.redo(this.state.project!));
+    if (this.session.redo()) this.restored();
   }
 
-  private restore(project: Project | null): void {
-    if (!project) return;
-    this.state.project = project;
-    this.markDirty();
-    const s = this.editor.selection;
-    if (s && !this.findSelected(s)) this.editor.selection = null;
+  private restored(): void {
+    this.dropLostSelection();
     this.renderAll();
   }
 
+  /** The selection goes when what it picked is no longer there. */
+  private dropLostSelection(): void {
+    const s = this.editor.selection;
+    if (s && !this.findSelected(s)) this.editor.selection = null;
+  }
+
   private findSelected(s: Selection): boolean {
-    const page = this.state.project?.pages.find((p) => p.id === s.pageId);
+    const page = this.session.project?.pages.find((p) => p.id === s.pageId);
     if (!page) return false;
     const lists = { panel: page.panels, line: page.lines, stroke: page.strokes, breakout: page.breakouts, sticky: page.stickies ?? [], fill: page.fills ?? [] };
     if (s.kind === "group") return !!s.items?.every((item) => lists[item.kind].some((x: { id: string }) => x.id === item.id));
@@ -695,7 +674,7 @@ export class Workbench {
 
   /** A rough as drawn so far, starting to load it when it is not there yet. */
   private rough(rough: RoughImage): CanvasImageSource | null {
-    const cached = this.state.roughs.get(this.roughKey(rough));
+    const cached = this.roughs.get(this.roughKey(rough));
     if (cached instanceof ImageBitmap) return cached;
     if (!cached) void this.loadRough(rough).then((image) => image && this.editor.draw());
     return null;
@@ -703,13 +682,13 @@ export class Workbench {
 
   /** Pixels of a rough from the source sheet (null when the sheet cannot be read). */
   async loadRough(rough: RoughImage): Promise<ImageBitmap | null> {
-    const source = this.state.project?.source;
+    const source = this.session.project?.source;
     if (!source) return null;
     const key = this.roughKey(rough);
-    const cached = this.state.roughs.get(key);
+    const cached = this.roughs.get(key);
     if (cached instanceof ImageBitmap) return cached;
     if (cached === "failed") return null;
-    const roughs = this.state.roughs;
+    const roughs = this.roughs;
     roughs.set(key, "loading");
     try {
       const bytes = await call("rough_image", {
@@ -731,20 +710,20 @@ export class Workbench {
   // --- rendering ------------------------------------------------------------------------
 
   renderAll(): void {
-    useFonts(this.state.project?.fonts);
-    useStyle(this.state.project?.style);
+    useFonts(this.session.project?.fonts);
+    useStyle(this.session.project?.style);
     this.renderBrushBar();
     this.editor.draw();
-    this.board.update(this.state.revision);
+    this.board.update(this.session.revision);
     this.renderSide();
     this.renderInspector();
     this.updateTitle();
-    $<HTMLButtonElement>("undo").disabled = !this.history.canUndo;
-    $<HTMLButtonElement>("redo").disabled = !this.history.canRedo;
+    $<HTMLButtonElement>("undo").disabled = !this.session.canUndo;
+    $<HTMLButtonElement>("redo").disabled = !this.session.canRedo;
     if (this.editor.continuous) this.showRows();
     const pages = this.editor.currentPages().sort((a, b) => a - b);
-    $("editor-page-label").textContent = this.state.project
-      ? `${pages.join("–") || "-"} / ${this.state.project.pages.length}`
+    $("editor-page-label").textContent = this.session.project
+      ? `${pages.join("–") || "-"} / ${this.session.project.pages.length}`
       : "-";
     const leftIsNext = this.leftward() === 1;
     $("editor-next").title = leftIsNext ? "次へ（←）" : "前へ（←）";
@@ -752,30 +731,30 @@ export class Workbench {
     $("first-alone-label").title = `見開きの組み方: 1 ページ目を${leftIsNext ? "左" : "右"}ページだけで始める`;
     // 保留: the held panels meant for around these pages, a click away.
     const badge = $("held-badge");
-    const near = this.state.project && pages.length ? heldNear(this.state.project, pages[0] - 1, pages[pages.length - 1] - 1).length : 0;
-    const all = this.state.project?.held?.length ?? 0;
+    const near = this.session.project && pages.length ? heldNear(this.session.project, pages[0] - 1, pages[pages.length - 1] - 1).length : 0;
+    const all = this.session.project?.held?.length ?? 0;
     badge.hidden = !all;
     badge.textContent = near ? `保留 ${near}（このあたり）` : `保留 ${all}`;
     badge.classList.toggle("near", near > 0);
   }
 
   private updateTitle(): void {
-    const project = this.state.project;
+    const project = this.session.project;
     if (!project) return;
-    const name = this.state.path?.split(/[\\/]/).pop() ?? "（未保存）";
-    this.onTitle(`${this.state.dirty ? "● " : ""}${name} — ${project.title}`);
+    const name = this.session.path?.split(/[\\/]/).pop() ?? "（未保存）";
+    this.onTitle(`${this.session.dirty ? "● " : ""}${name} — ${project.title}`);
   }
 
   /** What the open palettes hold (those folded or hidden wait until they open). */
   private renderSide(): void {
-    const project = this.state.project;
+    const project = this.session.project;
     if (!project || !this.docks) return;
     const open = (id: PaletteId) => this.docks.isOpen(id);
-    if (open("pages")) this.renderPages(project);
-    if (open("script")) this.renderScript(project);
-    if (open("cast")) this.renderCast(project);
-    if (open("notes")) this.renderNotes(project);
-    if (open("held")) this.renderHeld(project);
+    if (open("pages")) this.lists.pages(project);
+    if (open("script")) this.lists.script(project);
+    if (open("cast")) this.lists.cast(project);
+    if (open("notes")) this.lists.notes(project);
+    if (open("held")) this.lists.held(project);
     if (open("layers")) this.renderLayers();
     if (open("series")) this.seriesPanel.render($("side-series"));
   }
@@ -783,7 +762,7 @@ export class Workbench {
   // --- レイヤー（コマ枠フォルダ） ----------------------------------------------------------
 
   private renderLayers(): void {
-    const project = this.state.project;
+    const project = this.session.project;
     if (!project || !this.docks.isOpen("layers")) return;
     const pages = this.editor
       .currentPages()
@@ -804,7 +783,7 @@ export class Workbench {
 
   /** A change to the ラフ線のレイヤー, as one undoable step. */
   private changeRough(change: RoughChange): void {
-    const project = this.state.project;
+    const project = this.session.project;
     if (!project) return;
     let message = "";
     this.edit((p) => {
@@ -873,7 +852,7 @@ export class Workbench {
   }
 
   private dropLayer(ref: LayerRef, to: { pageId: string; panelId: string }): void {
-    const project = this.state.project;
+    const project = this.session.project;
     const from = project?.pages.find((p) => p.id === ref.pageId);
     const page = project?.pages.find((p) => p.id === to.pageId);
     const panel = page?.panels.find((p) => p.id === to.panelId);
@@ -890,76 +869,15 @@ export class Workbench {
       moved = moveIntoPanel(from, ref, page, panel);
       for (const p of new Set([from, page])) {
         assignPanels(p);
-        sortLines(p, this.state.project?.binding);
+        sortLines(p, this.session.project?.binding);
       }
     });
     if (moved) this.setStatus(`コマ ${panel.order} へ移しました（元に戻すは Ctrl+Z）`);
   }
 
-  private renderPages(project: Project): void {
-    const title = element("input", { type: "text", value: project.title, placeholder: "作品名" });
-    title.addEventListener("change", () => this.edit((p) => (p.title = title.value.trim())));
-    const story = element("input", { type: "number", min: "0", value: project.storyIndex === undefined ? "" : String(project.storyIndex), placeholder: "話数" });
-    story.addEventListener("change", () =>
-      this.edit((p) => {
-        const value = parseInt(story.value, 10);
-        if (Number.isInteger(value) && value >= 0) p.storyIndex = value;
-        else delete p.storyIndex;
-      }),
-    );
-    const work = element("div", { className: "cast-item work" }, title, story);
-    const current = new Set(this.editor.currentPages());
-    // 話の型の色分け: each page marked with the part it falls in.
-    const parts = pageParts(project);
-    const items = project.pages.map((page, index) => {
-      const scene = sceneOf(project, page.id);
-      const sceneLabel = scene && scene.firstPage === page.id ? element("span", { className: "scene", textContent: scene.title }) : "";
-      const part = parts[index];
-      const item = element(
-        "div",
-        { className: `page-item${current.has(index + 1) ? " current" : ""}${part ? " tinted" : ""}`, title: part ? `${part.name}` : "" },
-        pageGlyph(project, page),
-        element("span", { className: "number", textContent: String(index + 1) }),
-        element("span", { className: "memo" }, sceneLabel, page.memo.split("\n")[0] || ""),
-        ...this.optionTag(project, page),
-        element(
-          "span",
-          { className: "count", title: `コマ ${page.panels.length}・字 ${textAmount(page)}${page.stickies?.length ? `・付箋 ${page.stickies.length}` : ""}（コマの濃さはセリフの量）` },
-          `${textAmount(page)}字`,
-          ...(page.stickies?.length ? [element("span", { className: "sticky-count", textContent: String(page.stickies.length) })] : []),
-          ...(heldNear(project, index, index).length ? [element("span", { className: "held-count", title: "このあたりに入れたい保留のコマ", textContent: `保${heldNear(project, index, index).length}` })] : []),
-        ),
-      );
-      if (part) item.style.setProperty("--part", part.color);
-      item.addEventListener("click", () => {
-        this.board.deselect();
-        this.editor.selection = null;
-        this.editor.showPage(index + 1);
-        this.renderAll();
-      });
-      return item;
-    });
-    // Drag a page (a 見開き moves as a pair) to put it elsewhere.
-    dragSort(items, {
-      axis: "y",
-      block: (index) => pageBlock(project, index),
-      drop: (first, last, target) => this.movePages(first, last, target),
-    });
-    const add = element("button", { textContent: "最後にページを足す" });
-    add.addEventListener("click", () => this.edit((p) => insertPage(p, p.pages.length)));
-    $("side-pages").replaceChildren(work, ...items, element("div", { className: "side-actions" }, add));
-  }
-
-  /** The 別案 in use on a page, for the page list. */
-  private optionTag(project: Project, page: Page): HTMLElement[] {
-    const set = alternativesOf(project, page.id);
-    const option = set?.options.find((o) => o.id === set.active);
-    return option ? [element("span", { className: "option-tag", textContent: option.name, title: `別案 ${set!.options.length} つのうち使用中の案` })] : [];
-  }
-
   /** Move pages by dragging and keep the same pages in view. */
   movePages(first: number, last: number, target: number): void {
-    const project = this.state.project;
+    const project = this.session.project;
     if (!project) return;
     const shown = this.editor.currentPages().map((number) => project.pages[number - 1]?.id);
     let moved = false;
@@ -972,170 +890,9 @@ export class Workbench {
     this.renderAll();
   }
 
-  private renderScript(project: Project): void {
-    const names = new Map(project.characters.map((character) => [character.id, character.name]));
-    const children: HTMLElement[] = [];
-    project.pages.forEach((page, index) => {
-      children.push(element("div", { className: "script-page", textContent: `${index + 1} ページ` }));
-      for (const line of page.lines) {
-        const who = line.kind === "narration" ? "N" : line.kind === "sfx" ? "音" : names.get(line.speaker ?? "") ?? "？";
-        const selected = this.editor.selection?.kind === "line" && this.editor.selection.id === line.id;
-        const row = element(
-          "div",
-          { className: `script-line ${line.kind}${selected ? " current" : ""}` },
-          element("span", { className: "who", textContent: who }),
-          element("span", { className: "text", textContent: line.text.replace(/\s+/g, " ") }),
-        );
-        row.addEventListener("click", () => {
-            this.editor.showPage(index + 1);
-          this.editor.select({ kind: "line", pageId: page.id, id: line.id });
-          this.renderAll();
-        });
-        children.push(row);
-      }
-    });
-    if (!children.length) children.push(element("p", { className: "hint", textContent: "ページがありません" }));
-    const take = element("button", { textContent: "台本・プロットを取り込む…", title: "Markdown の台本（コマとセリフ）か、プロット（ページごとの文）を取り込む" });
-    take.addEventListener("click", () => this.scriptDialog.open());
-    $("side-script").replaceChildren(element("div", { className: "side-actions top" }, take), ...children);
-  }
-
-  private renderCast(project: Project): void {
-    const rows = project.characters.map((character) => {
-      const name = element("input", { type: "text", value: character.name });
-      name.addEventListener("change", () => this.edit(() => (character.name = name.value.trim() || character.name)));
-      const color = element("input", { type: "color", value: character.color ?? "#2f6fdb" });
-      color.addEventListener("change", () => this.edit(() => (character.color = color.value)));
-      const said = project.pages.flatMap((page, index) => page.lines.filter((l) => l.speaker === character.id).map((line) => ({ page, index, line })));
-      const remove = element("button", { className: "danger", textContent: "削除", title: `セリフ ${said.length} 件の話者が空になります` });
-      remove.addEventListener("click", () => this.edit((p) => removeCharacter(p, character.id)));
-      // 口調: kept beside the name, to write the dialogue in voice.
-      const tone = element("textarea", { className: "tone", rows: 2, placeholder: "口調のメモ（一人称・語尾・口ぐせ）", value: character.tone ?? "" });
-      tone.addEventListener("change", () => {
-        const text = tone.value.trim();
-        // Also fires on the blur when the list is drawn again: only a real change is an edit.
-        if (text === (character.tone ?? "")) return;
-        this.edit(() => {
-          if (text) character.tone = text;
-          else delete character.tone;
-        });
-      });
-      // その人のセリフを並べて、口調が揃っているか見る。
-      const open = this.openCast.has(character.id);
-      const toggle = element("button", { className: "count", textContent: `${open ? "▾" : "▸"} ${said.length}`, title: "この人のセリフを並べる" });
-      toggle.addEventListener("click", () => {
-        if (open) this.openCast.delete(character.id);
-        else this.openCast.add(character.id);
-        this.renderCast(project);
-      });
-      const list = open
-        ? [
-            element(
-              "ol",
-              { className: "cast-lines" },
-              ...said.map(({ page, index, line }) => {
-                const item = element("li", { textContent: `${index + 1}  ${line.text.replace(/\s+/g, "")}`, title: "このセリフへ" });
-                item.addEventListener("click", () => this.goTo(page.id, "line", line.id));
-                return item;
-              }),
-            ),
-          ]
-        : [];
-      return element("div", { className: "cast-block" }, element("div", { className: "cast-item" }, color, name, toggle, remove), tone, ...list);
-    });
-    const add = element("button", { textContent: "人物を足す" });
-    add.addEventListener("click", () => this.edit((p) => addCharacter(p, `人物${p.characters.length + 1}`)));
-    const hint = element("p", { className: "hint", textContent: "セリフを選んで、右の欄で話者を選べます。数を押すとその人のセリフを並べます。" });
-    $("side-cast").replaceChildren(...rows, element("div", { className: "side-actions" }, add), hint);
-  }
-
-  /** 付箋の一覧: every page's stickies in one place, the open questions of the name. */
-  private renderNotes(project: Project): void {
-    const items = project.pages.flatMap((page, index) =>
-      (page.stickies ?? []).map((sticky) => {
-        const swatch = element("span", { className: "swatch" });
-        swatch.style.background = STICKY_COLORS[sticky.color ?? "yellow"].fill;
-        const text = element("span", { className: "note-text", textContent: sticky.text.trim() || "（空の付箋）" });
-        const about = linkLabel(page, sticky);
-        const where = element("span", { className: "count", textContent: `${index + 1}`, title: about ? `${index + 1} ページの${about}` : `${index + 1} ページ` });
-        if (about) text.append(element("small", { className: "note-link", textContent: ` → ${about}` }));
-        const row = element("div", { className: "note-item", title: "この付箋へ" }, swatch, where, text);
-        row.addEventListener("click", () => this.goTo(page.id, "sticky", sticky.id));
-        const done = element("button", { className: "small", textContent: "済み", title: "決まったので付箋を外す（元に戻すで戻せます）" });
-        done.addEventListener("click", (event) => {
-          event.stopPropagation();
-          this.edit(() => removeSticky(page, sticky.id));
-        });
-        row.append(done);
-        return row;
-      }),
-    );
-    const head = element("p", { className: "hint", textContent: items.length ? `付箋 ${items.length} 枚（未決のこと）。押すとその付箋へ、決まったら「済み」。` : "付箋はありません。付箋ツールでページに貼ると、ここに集まります。" });
-    $("side-notes").replaceChildren(head, ...items);
-  }
-
-  /** 保留: panels waiting for a place, with the page each is meant for. */
-  private renderHeld(project: Project): void {
-    const held = project.held ?? [];
-    const shown = new Set(this.editor.currentPages().map((n) => project.pages[n - 1]?.id));
-    const target = this.editor.selection?.kind === "panel" ? this.editor.selection : null;
-    const items = held.map((h) => {
-      const near = element("select", { title: "このあたりのページに入れたい" });
-      near.append(element("option", { value: "", textContent: "ページ未定" }));
-      project.pages.forEach((page, index) => near.append(element("option", { value: page.id, textContent: `${index + 1} ページあたり` })));
-      near.value = project.pages.some((p) => p.id === h.near) ? h.near! : "";
-      near.addEventListener("change", () =>
-        this.edit(() => {
-          if (near.value) h.near = near.value;
-          else delete h.near;
-        }),
-      );
-      const words = h.lines.map((l) => l.text.replace(/\s+/g, "")).filter(Boolean).join(" / ");
-      const put = plainButton("このページに置く", () => {
-        const page = this.editor.focusPage();
-        if (page) this.putHeld(h.id, page);
-      });
-      put.title = "今のページの、元と同じ位置に置く（ページへドラッグしても置けます）";
-      const into = plainButton("選んだコマへ", () => {
-        const page = project.pages.find((p) => p.id === target?.pageId);
-        const panel = page?.panels.find((p) => p.id === target?.id);
-        if (page && panel) this.putHeld(h.id, page, undefined, panel);
-      });
-      into.title = "選んでいるコマに、中身（セリフ・ラフ線）を合わせて入れる";
-      into.disabled = !target;
-      const drop = plainButton("消す", () => this.edit((p) => (p.held = (p.held ?? []).filter((x) => x.id !== h.id))));
-      drop.className = "danger small";
-      const item = element(
-        "div",
-        { className: `held-item${h.near && shown.has(h.near) ? " near" : ""}`, draggable: true, title: "ページへドラッグして置く。コマの上で離すと、そのコマに中身を入れる" },
-        heldThumbnail(project, h),
-        element(
-          "div",
-          { className: "held-body" },
-          element("div", { className: "held-words", textContent: words || h.panel.note || "（セリフなし）" }),
-          ...(h.panel.note && words ? [element("div", { className: "held-note", textContent: h.panel.note })] : []),
-          near,
-          element("div", { className: "held-actions" }, put, into, drop),
-        ),
-      );
-      item.addEventListener("dragstart", (event) => {
-        event.dataTransfer?.setData(HELD_TYPE, h.id);
-        if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
-      });
-      return item;
-    });
-    const head = element("p", {
-      className: "hint",
-      textContent: held.length
-        ? `保留のコマ ${held.length}。ページへドラッグで置く（コマの上で離すと中身をそのコマへ）。`
-        : "保留のコマはありません。コマを選んで「保留」を押すと、中身ごとここへ移ります。置き場所が決まったら、ページへドラッグして戻します。",
-    });
-    $("side-held").replaceChildren(head, ...items);
-  }
-
   /** Put a held panel on `page`: into `panel`, at `point`, or where it was. */
   private putHeld(id: string, page: Page, point?: Point, panel?: Panel): void {
-    const held = this.state.project?.held?.find((h) => h.id === id);
+    const held = this.session.project?.held?.find((h) => h.id === id);
     if (!held) return;
     let placed: Panel | null = null;
     this.edit((p) => {
@@ -1144,7 +901,7 @@ export class Workbench {
       if (at) placed = placeHeld(p, at, held, point, into);
     });
     if (!placed) return;
-    const index = this.state.project!.pages.findIndex((x) => x.id === page.id);
+    const index = this.session.project!.pages.findIndex((x) => x.id === page.id);
     this.editor.showPage(index + 1);
     this.editor.select({ kind: "panel", pageId: page.id, id: (placed as Panel).id });
     this.setStatus(panel ? `保留のコマの中身を ${index + 1} ページのコマ ${(placed as Panel).order} に入れました` : `保留のコマを ${index + 1} ページに置きました（コマ ${(placed as Panel).order}）`);
@@ -1153,7 +910,7 @@ export class Workbench {
 
   /** Take the selected panel off its page into 保留. */
   private holdSelected(page: Page, panel: Panel): void {
-    const index = this.state.project!.pages.indexOf(page);
+    const index = this.session.project!.pages.indexOf(page);
     this.edit((p) => {
       const at = p.pages.find((x) => x.id === page.id);
       const target = at?.panels.find((x) => x.id === panel.id);
@@ -1174,7 +931,7 @@ export class Workbench {
       if (from && target && dest) moved = movePanelToPage(p, from, target, dest);
     });
     if (!moved) return;
-    const index = this.state.project!.pages.findIndex((x) => x.id === to.id);
+    const index = this.session.project!.pages.findIndex((x) => x.id === to.id);
     this.editor.showPage(index + 1);
     this.editor.select({ kind: "panel", pageId: to.id, id: (moved as Panel).id });
     this.setStatus(`コマを中身ごと ${index + 1} ページへ移しました（コマ ${(moved as Panel).order}）。重なったら動かすか、コマ割りで整えてください`);
@@ -1183,7 +940,7 @@ export class Workbench {
 
   /** Show a page in the editor with one of its things selected. */
   private goTo(pageId: string, kind: "line" | "sticky" | "panel", id: string): void {
-    const index = this.state.project?.pages.findIndex((p) => p.id === pageId) ?? -1;
+    const index = this.session.project?.pages.findIndex((p) => p.id === pageId) ?? -1;
     if (index < 0) return;
     if (this.editor.tool !== "select" && !(kind === "panel" && this.editor.tool === "cut")) this.setTool("select");
     this.editor.showPage(index + 1);
@@ -1204,9 +961,8 @@ export class Workbench {
 
   /** A text field edited live; the whole edit becomes one undo step. */
   private liveText(field: HTMLInputElement | HTMLTextAreaElement, apply: (value: string) => void): void {
-    let snapshot: Snapshot | null = null;
-    const take = () => (this.state.project ? this.history.snapshot(this.state.project) : null);
-    field.addEventListener("focus", () => (snapshot = take()));
+    let snapshot: ReturnType<Session["snapshot"]> = null;
+    field.addEventListener("focus", () => (snapshot = this.session.snapshot()));
     field.addEventListener("input", () => {
       apply(field.value);
       this.markDirty();
@@ -1214,11 +970,9 @@ export class Workbench {
       this.updateTitle();
     });
     field.addEventListener("change", () => {
-      const now = take();
-      if (snapshot !== null && now !== null && !sameSnapshot(snapshot, now)) this.history.recordSnapshot(snapshot);
-      snapshot = now;
+      snapshot = this.session.recordSince(snapshot);
       this.renderSide();
-      $<HTMLButtonElement>("undo").disabled = !this.history.canUndo;
+      $<HTMLButtonElement>("undo").disabled = !this.session.canUndo;
     });
   }
 
@@ -1229,20 +983,18 @@ export class Workbench {
    * wheel can go on turning.
    */
   private liveNumber(field: HTMLInputElement, apply: (value: number) => void): void {
-    let snapshot: Snapshot | null = null;
+    let snapshot: ReturnType<Session["snapshot"]> = null;
     let timer: number | undefined;
-    const take = () => (this.state.project ? this.history.snapshot(this.state.project) : null);
     const record = () => {
       window.clearTimeout(timer);
       timer = undefined;
-      const now = take();
-      if (snapshot !== null && now !== null && !sameSnapshot(snapshot, now)) this.history.recordSnapshot(snapshot);
+      this.session.recordSince(snapshot);
       snapshot = null;
-      $<HTMLButtonElement>("undo").disabled = !this.history.canUndo;
+      $<HTMLButtonElement>("undo").disabled = !this.session.canUndo;
     };
     const set = (value: number) => {
       if (!Number.isFinite(value) || value <= 0) return;
-      snapshot ??= take();
+      snapshot ??= this.session.snapshot();
       apply(value);
       this.markDirty();
       this.editor.draw();
@@ -1314,7 +1066,7 @@ export class Workbench {
 
   /** Show the first page of a set's option in use. */
   private showSet(set: Alternatives): void {
-    const project = this.state.project;
+    const project = this.session.project;
     if (!project) return;
     const index = pageIndex(project, set.pageIds[0]);
     if (index < 0) return;
@@ -1347,7 +1099,7 @@ export class Workbench {
     if (!s) return;
     // A chosen しっぽ: that tail alone goes.
     if (s.kind === "line" && s.tail !== undefined) {
-      const line = this.state.project?.pages.find((p) => p.id === s.pageId)?.lines.find((l) => l.id === s.id);
+      const line = this.session.project?.pages.find((p) => p.id === s.pageId)?.lines.find((l) => l.id === s.id);
       if (line?.tails?.[s.tail]) {
         this.removeTail(s.pageId, line.id, s.tail);
         return;
@@ -1431,7 +1183,7 @@ export class Workbench {
   private showViewMode(): void {
     const { continuous } = this.editor;
     // 縦スクロール: no spreads; a piece at a time or the strip.
-    const scroll = !!this.state.project?.scroll;
+    const scroll = !!this.session.project?.scroll;
     const single = this.editor.single || scroll;
     $("spread-mode").hidden = scroll;
     $("first-alone-label").hidden = scroll;
@@ -1453,7 +1205,7 @@ export class Workbench {
     range.max = String(Math.max(1, this.editor.spreadList().length));
     const rows = this.editor.rowCount();
     range.value = String(rows);
-    const scroll = !!this.state.project?.scroll;
+    const scroll = !!this.session.project?.scroll;
     $("rows-value").textContent = scroll ? `${rows} 列` : `${rows} 行`;
     range.parentElement!.title = scroll ? "縦の帯を何列に分けて並べるか。1 で一本の帯に（Alt+↑ / Alt+↓）" : ROWS_TITLE;
   }
@@ -1461,7 +1213,7 @@ export class Workbench {
   /** 見開き, 単独 or 連続 (all pages on one canvas): keeps the page in view. */
   setView(mode: "spread" | "single" | "continuous"): void {
     const page = this.editor.focusPage();
-    const project = this.state.project;
+    const project = this.session.project;
     this.editor.continuous = mode === "continuous";
     if (mode !== "continuous") this.editor.single = mode === "single";
     writeFlag(CONTINUOUS_KEY, this.editor.continuous);
@@ -1525,7 +1277,7 @@ export class Workbench {
   /** The picture chosen with the 資料 tool, and its page. */
   private chosenReference() {
     const chosen = this.editor.reference;
-    const page = chosen && this.state.project?.pages.find((p) => p.id === chosen.pageId);
+    const page = chosen && this.session.project?.pages.find((p) => p.id === chosen.pageId);
     const reference = page?.references?.find((r) => r.id === chosen!.id);
     return page && reference ? { page, reference } : null;
   }
@@ -1552,7 +1304,7 @@ export class Workbench {
    * large, kept once in the name, and chosen with the 資料 tool to move at once.
    */
   async pasteImages(files: File[], where?: { page: Page; point?: Point }): Promise<boolean> {
-    const project = this.state.project;
+    const project = this.session.project;
     const pictures = files.filter((file) => file.type.startsWith("image/"));
     if (!project || !pictures.length) return false;
     const target = where ?? this.editor.pasteTarget();
@@ -1561,7 +1313,7 @@ export class Workbench {
     try {
       const images: StoredImage[] = [];
       for (const file of pictures) images.push(await readImage(file, file.name || "貼り付けた画像"));
-      if (this.state.project !== project || !project.pages.includes(target.page)) return false;
+      if (this.session.project !== project || !project.pages.includes(target.page)) return false;
       let last: string | null = null;
       this.edit(() => {
         images.forEach((image, i) => {
@@ -1600,7 +1352,7 @@ export class Workbench {
     // Ctrl+V: a picture on the clipboard (copied after the last copy made here) is laid on the page.
     document.addEventListener("paste", (event) => {
       this.pasteHandled = true;
-      if (!this.state.project || isTyping(event) || document.querySelector("dialog[open]")) return;
+      if (!this.session.project || isTyping(event) || document.querySelector("dialog[open]")) return;
       if (!$("editor-canvas").getClientRects().length) return;
       const files = [...(event.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/"));
       const ours = this.copyMark === "failed" || (this.copyMark !== null && event.clipboardData?.getData("text/plain") === this.copyMark);
@@ -1645,7 +1397,7 @@ export class Workbench {
     const tool = this.editor.tool;
     const bar = $("brush-bar");
     bar.classList.toggle("off", tool !== "pen" && tool !== "eraser");
-    const project = this.state.project;
+    const project = this.session.project;
     if (!project || (tool !== "pen" && tool !== "eraser")) return;
     const kind = tool;
     const current = this.editor.brush(kind);
@@ -1680,7 +1432,7 @@ export class Workbench {
 
   private chooseBrush(value: string): void {
     const kind = this.editor.tool === "eraser" ? "eraser" : "pen";
-    const project = this.state.project;
+    const project = this.session.project;
     if (!project) return;
     if (value.startsWith("library:")) {
       const brush = loadLibrary()[Number(value.slice("library:".length))];
@@ -1804,7 +1556,7 @@ export class Workbench {
 
   /** The step that goes one spread to the left: on in a right-bound book, back in a left-bound one. */
   private leftward(): number {
-    return this.state.project?.binding === "left" ? -1 : 1;
+    return this.session.project?.binding === "left" ? -1 : 1;
   }
 
   private flip(step: number): void {
@@ -1816,7 +1568,7 @@ export class Workbench {
 
   /** Keyboard shortcuts while the editor is shown; true when handled. */
   handleKey(event: KeyboardEvent): boolean {
-    if (!this.state.project) return false;
+    if (!this.session.project) return false;
     const combo = comboOf(event);
     const action = combo ? this.shortcuts.actionFor(combo) : null;
     // Saving works from a text field too; the rest leaves typing alone.
