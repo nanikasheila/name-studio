@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { SHAPE_LABELS, insideBalloon, pageBalloons, resolvedShape, star, tailGeometry, tailRootAt, withTails } from "./balloon";
-import { emptyPage, insidePolygon, normalize, newProject, type BalloonShape, type Line, type Point } from "./project";
+import { insidePolygon } from "./geometry";
+import type { BalloonShape, Line, Point } from "./model";
+import { emptyPage, newProject, normalize } from "./project";
 
 function line(id: string, box: [number, number, number, number], extra: Partial<Line> = {}): Line {
   return { id, text: "セリフ", kind: "speech", box, fontSizePt: 13, vertical: true, ...extra };

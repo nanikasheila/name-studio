@@ -1,7 +1,9 @@
 // 資料画像: photos, backgrounds or earlier panels laid faintly under a page to
 // draw the name over. The picture is kept once in the project (made smaller
 // when it is taken in) and each page's reference says where it lies.
-import { newId, trimBox, type BoxMm, type Page, type Point, type Project, type ReferenceImage, type StoredImage } from "./project";
+import type { BoxMm, Page, Point, Project, ReferenceImage, StoredImage } from "./model";
+import { trimBox } from "./pagebox";
+import { newId } from "./project";
 
 /** Pictures are made no larger than this on their long side when taken in. */
 export const MAX_IMAGE_PX = 2400;

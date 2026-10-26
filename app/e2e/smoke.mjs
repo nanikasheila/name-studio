@@ -170,7 +170,8 @@ try {
 
   // The right panel follows the selection, and a change made there is one undo step.
   const panelId = await page.evaluate(async () => {
-    const { addPanel, rectShape } = await import("/src/project.ts");
+    const { addPanel } = await import("/src/panels.ts");
+    const { rectShape } = await import("/src/geometry.ts");
     const wb = window.nameStudio.workbench;
     let id = "";
     wb.edit((p) => (id = addPanel(p, p.pages[0], rectShape([20, 20, 100, 100])).id));

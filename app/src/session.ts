@@ -3,7 +3,8 @@
 // draws or stores: the workbench draws after a change and saves; this keeps
 // the steps and the unsaved state straight.
 import { History } from "./history";
-import { normalize, type Project } from "./project";
+import type { Project } from "./model";
+import { normalize } from "./project";
 import { type Snapshot, Snapshotter, sameSnapshot } from "./snapshot";
 
 export class Session {

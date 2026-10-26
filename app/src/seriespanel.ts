@@ -5,7 +5,7 @@ import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import { call } from "./backend";
 import { element, plainButton } from "./dom";
 import type { Project, Series } from "./model";
-import { newProject, nameKind } from "./project";
+import { nameKind, newProject } from "./project";
 import {
   applyShared,
   folderOf,

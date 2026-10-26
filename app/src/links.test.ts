@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { addLine, addPanel, addSticky, linkLabel, linkSticky, movePanel, moveLine, newProject, rectShape, stickyAnchor } from "./project";
+import { addLine, moveLine } from "./dialogue";
+import { rectShape } from "./geometry";
+import { addPanel, movePanel } from "./panels";
+import { newProject } from "./project";
+import { addSticky, linkLabel, linkSticky, stickyAnchor } from "./stickies";
 import { copySelection, pasteClip } from "./transform";
 
 describe("付箋の紐づけ", () => {

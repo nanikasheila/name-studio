@@ -8,21 +8,12 @@ import { heldThumbnail, pageGlyph } from "./glyph";
 import { heldNear } from "./hold";
 import { alternativesOf } from "./alternatives";
 import { pageParts } from "./shapes";
-import {
-  addCharacter,
-  insertPage,
-  linkLabel,
-  pageBlock,
-  removeCharacter,
-  removeSticky,
-  sceneOf,
-  STICKY_COLORS,
-  textAmount,
-  type Page,
-  type Panel,
-  type Point,
-  type Project,
-} from "./project";
+import { addCharacter, removeCharacter, sceneOf } from "./cast";
+import { textAmount } from "./dialogue";
+import type { Page, Panel, Point, Project } from "./model";
+import { insertPage } from "./project";
+import { pageBlock } from "./reorder";
+import { linkLabel, removeSticky, STICKY_COLORS } from "./stickies";
 
 /** What a held panel is carried as when dragged from the 保留 list. */
 export const HELD_TYPE = "application/x-name-studio-held";

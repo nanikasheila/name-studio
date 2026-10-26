@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { alternativesOf, makeAlternative, optionPages, removeAlternative, useAlternative } from "./alternatives";
-import { addCharacter, addLine, addPanel, addScene, insertPage, newProject, rectShape, removePage, setEmotion } from "./project";
+import { addCharacter, addScene, setEmotion } from "./cast";
+import { addLine } from "./dialogue";
+import { rectShape } from "./geometry";
+import { addPanel } from "./panels";
+import { insertPage, newProject, removePage } from "./project";
 
 describe("別案", () => {
   const setup = () => {

@@ -5,7 +5,9 @@
 // head. A speaker who already has a tail in the panel keeps that direction.
 // With nothing drawn, the tail points down into the panel.
 import { balloonExtent, defaultTailStyle, resolvedShape } from "./balloon";
-import { bounds, boxCenter, centroid, insidePolygon, panelContents, type Binding, type BoxMm, type Line, type Page, type Panel, type Point } from "./project";
+import { bounds, boxCenter, centroid, insidePolygon } from "./geometry";
+import type { Binding, BoxMm, Line, Page, Panel, Point } from "./model";
+import { panelContents } from "./panels";
 
 /** How far past the balloon a tail reaches (mm), at most. */
 const REACH = 12;

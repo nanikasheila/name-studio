@@ -3,7 +3,8 @@
 // speaker was removed, two items with one id) would then stop saving and
 // autosave alike. What can be mended without guessing is mended here, the
 // same checks in the same order, and each mend is told.
-import { FORMAT_VERSION, newId, type Project } from "./project";
+import type { Project } from "./model";
+import { FORMAT_VERSION, newId } from "./project";
 
 /** Mend what the save check would refuse; returns what was mended (empty when nothing). */
 export function repair(project: Project): string[] {

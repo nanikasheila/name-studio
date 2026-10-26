@@ -82,7 +82,11 @@ try {
 
   // Opening the heavy name.
   const opened = await page.evaluate(async () => {
-    const { newProject, addPanel, addLine, rectShape, basicBox, cutPanels, setLineText } = await import("/src/project.ts");
+    const { newProject } = await import("/src/project.ts");
+    const { addPanel, cutPanels } = await import("/src/panels.ts");
+    const { addLine, setLineText } = await import("/src/dialogue.ts");
+    const { rectShape } = await import("/src/geometry.ts");
+    const { basicBox } = await import("/src/pagebox.ts");
     const project = newProject("重いネーム", 32);
     let seed = 1;
     const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;

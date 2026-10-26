@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { facingPage } from "./koma";
 import { STRIP_SIDE, layoutPages, slotAt, type Arrangement, type Pair } from "./layout";
-import { addLine, addPanel, gutters, nameKind, newProject, rectShape, SCROLL_GUTTERS, textSize, wantsSpread, wrapTypedLine } from "./project";
+import { addLine, textSize, wrapTypedLine } from "./dialogue";
+import { rectShape } from "./geometry";
+import { addPanel, wantsSpread } from "./panels";
+import { gutters, nameKind, newProject, SCROLL_GUTTERS } from "./project";
 import { wrapDialogue } from "./wrap";
 
 const view = (change: Partial<Arrangement> = {}): Arrangement => ({ single: false, continuous: true, rows: 1, zoom: 1, pan: [0, 0], width: 1200, height: 800, ...change });

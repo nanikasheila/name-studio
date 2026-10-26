@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { LAYER_ORDER, canBeVector, layerForm, placeStacked, placeUnit, checkSummary, clipLines, dialogueUpdateSummary, imagesNote, missingEditable, exportUnits, frameMetas, hasNotes, mapBox, packBody, partCount, projectToTemplate, scriptText, textLayers, vectorLines, type DialogueUpdateReport, type LayerMeta } from "./nameexport";
-import { addCharacter, addLine, addScene, basicBox, newProject, rectShape } from "./project";
+import { addCharacter, addScene } from "./cast";
+import { addLine } from "./dialogue";
+import { rectShape } from "./geometry";
+import { basicBox } from "./pagebox";
+import { newProject } from "./project";
 import { useStyle } from "./style";
 
 describe("projectToTemplate", () => {

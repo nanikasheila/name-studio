@@ -2,7 +2,9 @@
 // the panels on both sides together, or slide a single edge; join two panels
 // across their border. Works on any straight edges, slanted ones included.
 import { snapValue, type SnapTargets } from "./snapping";
-import { area, bounds, insidePolygon, removePanel, segmentDistance, type Binding, type Page, type Panel, type Point } from "./project";
+import { area, bounds, insidePolygon, segmentDistance } from "./geometry";
+import type { Binding, Page, Panel, Point } from "./model";
+import { removePanel } from "./panels";
 
 /** Edges further apart than this (mm) are not one border. */
 export const MAX_GUTTER_MM = 12;

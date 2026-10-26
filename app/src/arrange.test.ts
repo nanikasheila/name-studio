@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { arrangePage, arrangePanel, fitSpills, layOut, placingBox, spills } from "./arrange";
 import { balloonExtent } from "./balloon";
-import type { BoxMm, Point } from "./project";
-import { addLine, addPanel, addStroke, basicBox, boxCenter, fitLine, insidePolygon, newProject, rectShape, setDefaultShape, setLineKind, trimBox } from "./project";
+import { addLine, fitLine, setDefaultShape, setLineKind } from "./dialogue";
+import { boxCenter, insidePolygon, rectShape } from "./geometry";
+import type { BoxMm, Point } from "./model";
+import { basicBox, trimBox } from "./pagebox";
+import { addPanel } from "./panels";
+import { newProject } from "./project";
+import { addStroke } from "./strokes";
 
 describe("セリフの並べ直し", () => {
   it("lays a panel's dialogue out right to left in reading order, broken into short lines, inside the panel", () => {

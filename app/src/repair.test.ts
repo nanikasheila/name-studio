@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { addCharacter, addLine, addPanel, addScene, newProject, rectShape } from "./project";
+import { addCharacter, addScene } from "./cast";
+import { addLine } from "./dialogue";
+import { rectShape } from "./geometry";
+import { addPanel } from "./panels";
+import { newProject } from "./project";
 import { repair } from "./repair";
 
 describe("repair", () => {

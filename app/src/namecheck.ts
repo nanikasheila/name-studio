@@ -4,7 +4,9 @@
 // tail, and balloons over a face in the rough.
 import { onFace, spills } from "./arrange";
 import { balloonExtent, resolvedShape } from "./balloon";
-import { boxCenter, insidePolygon, trimBox, type BoxMm, type Project } from "./project";
+import { boxCenter, insidePolygon } from "./geometry";
+import type { BoxMm, Project } from "./model";
+import { trimBox } from "./pagebox";
 
 export type IssueKind = "overlap" | "outside" | "spill" | "trim" | "tail" | "face";
 

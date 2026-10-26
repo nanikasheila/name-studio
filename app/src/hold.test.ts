@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { heldNear, holdPanel, movePanelToPage, placeHeld } from "./hold";
-import { addLine, addPanel, addSticky, addStroke, bounds, linkSticky, newProject, rectShape, stickyAnchor } from "./project";
+import { addLine } from "./dialogue";
+import { bounds, rectShape } from "./geometry";
+import { addPanel } from "./panels";
+import { newProject } from "./project";
+import { addSticky, linkSticky, stickyAnchor } from "./stickies";
+import { addStroke } from "./strokes";
 
 function setUp() {
   const project = newProject("t", 4);

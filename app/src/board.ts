@@ -7,18 +7,12 @@
 // pages on the canvas are framed here.
 import { drawBalloons, drawPageTexts, drawPageFills, drawPanelBorders, drawPanelFills, drawStrokes, type MmToPx } from "./pagedraw";
 import { fingerprint } from "./snapshot";
-import {
-  addScene,
-  moveScene,
-  pageBlock,
-  pageIndex,
-  setEmotion,
-  swapPanelContents,
-  textAmount,
-  type Panel,
-  type Project,
-  type StoryShape,
-} from "./project";
+import { addScene, setEmotion } from "./cast";
+import { textAmount } from "./dialogue";
+import type { Panel, Project, StoryShape } from "./model";
+import { swapPanelContents } from "./panels";
+import { pageIndex } from "./project";
+import { moveScene, pageBlock } from "./reorder";
 import { addBeat, adoptShape, beatPage, currentShape, editableShape, isBuiltinShape, makeShape, moveBoundary, partColor, removeBeat, removePart, removeShape, setBeat, shapeSpans, splitPart, storyShapes } from "./shapes";
 import { forgetShape, keepShape, libraryShapes } from "./prefs";
 import {

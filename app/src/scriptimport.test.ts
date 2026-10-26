@@ -2,8 +2,14 @@ import { describe, expect, it } from "vitest";
 import { scriptText } from "./nameexport";
 import { faces } from "./arrange";
 import { balloonExtent } from "./balloon";
-import type { BoxMm, Point } from "./project";
-import { addCharacter, addLine, addPanel, addScene, addStroke, basicBox, boxCenter, insidePolygon, moveLine, newProject, rectShape } from "./project";
+import { addCharacter, addScene } from "./cast";
+import { addLine, moveLine } from "./dialogue";
+import { boxCenter, insidePolygon, rectShape } from "./geometry";
+import type { BoxMm, Point } from "./model";
+import { basicBox } from "./pagebox";
+import { addPanel } from "./panels";
+import { newProject } from "./project";
+import { addStroke } from "./strokes";
 import { applyScript, findPattern, likeness, panelBoxes, parseScript, readLine } from "./scriptimport";
 import { applyPlot, parsePlot } from "./plotimport";
 

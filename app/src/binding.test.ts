@@ -3,7 +3,14 @@ import { arrangePanel } from "./arrange";
 import { addAutoTails } from "./autotail";
 import { facingPage, patternPanels } from "./koma";
 import { onLeftHand, spreads } from "./pages";
-import { addLine, addPanel, addStroke, assignPanels, basicBox, boxCenter, bounds, insidePolygon, newProject, rectShape, setBinding, sortLines, type Point } from "./project";
+import { addLine, setBinding } from "./dialogue";
+import { bounds, boxCenter, insidePolygon, rectShape } from "./geometry";
+import type { Point } from "./model";
+import { basicBox } from "./pagebox";
+import { addPanel } from "./panels";
+import { newProject } from "./project";
+import { assignPanels, sortLines } from "./readingorder";
+import { addStroke } from "./strokes";
 import { panelBoxes } from "./scriptimport";
 
 /** A stick figure: head circle and body, `x` its middle, standing on `y`. */

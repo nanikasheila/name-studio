@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { addLine, addScene, addCharacter, newProject, pageIndex, stickyBox } from "./project";
+import { addCharacter, addScene } from "./cast";
+import { addLine } from "./dialogue";
+import { newProject, pageIndex } from "./project";
+import { stickyBox } from "./stickies";
 import { applyPlot, likelyPage, looksLikePlot, parsePlot } from "./plotimport";
 import { parseScript } from "./scriptimport";
 import { emotionRuns, emotionSeries, markSpeakingPages, speakingPages } from "./story";

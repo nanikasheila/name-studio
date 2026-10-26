@@ -2,7 +2,9 @@
 // the chosen tone) and はみ出し (where the drawing goes over the panel borders).
 import type { DragHandler, DragOf, Press, EditorCore } from "./editorcore";
 import { addBreakout } from "./koma";
-import { addFill, bounds, simplify, type Point } from "./project";
+import { bounds } from "./geometry";
+import type { Point } from "./model";
+import { addFill, simplify } from "./strokes";
 
 export function pressFill(editor: EditorCore, { slot, point }: Press): void {
   editor.startDrag({ kind: "fill", slot, points: [point] });

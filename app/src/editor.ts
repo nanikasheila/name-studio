@@ -31,48 +31,15 @@ import { pictureOf } from "./pictures";
 import { corners, imageOf, opacityOf, REFERENCE_HANDLE } from "./references";
 import { StrokeCache } from "./strokecache";
 import { opacityOfLayer, ROUGH_BASE, roughLayersOf, shownStrokes, strokeEditable, strokesOn } from "./roughlayers";
-import {
-  stickyAnchor,
-  assignPanels,
-  basicBox,
-  bounds,
-  insideBox,
-  insidePolygon,
-  MM_PER_PT,
-  moveLine,
-  movePanel,
-  moveStroke,
-  orderPanels,
-  pageIndex,
-  panelContents,
-  snapCut,
-  sortLines,
-  wantsSpread,
-  carryContents,
-  followPanel,
-  gutters,
-  type CarriedContents,
-  strokeHit,
-  keepStickyOnPage,
-  setLineText,
-  wrapTypedLine,
-  trimBox,
-  type Binding,
-  type BoxMm,
-  type Brush,
-  type FillTone,
-  type Line,
-  type Page,
-  type Panel,
-  type Point,
-  type Sticky,
-  STICKY_COLORS,
-  STICKY_TEXT_MM,
-  stickyBox,
-  stickyRows,
-  type Project,
-  type Stroke,
-} from "./project";
+import { moveLine, setLineText, wrapTypedLine } from "./dialogue";
+import { bounds, insideBox, insidePolygon } from "./geometry";
+import type { Binding, BoxMm, Brush, FillTone, Line, Page, Panel, Point, Project, Sticky, Stroke } from "./model";
+import { basicBox, snapCut, trimBox } from "./pagebox";
+import { type CarriedContents, carryContents, followPanel, movePanel, panelContents, wantsSpread } from "./panels";
+import { gutters, MM_PER_PT, pageIndex } from "./project";
+import { assignPanels, orderPanels, sortLines } from "./readingorder";
+import { keepStickyOnPage, STICKY_COLORS, STICKY_TEXT_MM, stickyAnchor, stickyBox, stickyRows } from "./stickies";
+import { moveStroke, strokeHit } from "./strokes";
 import { readCount, readFlag, readNumber } from "./settings";
 import { linePitch } from "./style";
 import {

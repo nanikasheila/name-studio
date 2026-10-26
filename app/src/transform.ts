@@ -3,28 +3,13 @@
 // dialogue keeps its size and moves with its centre, its tails pointing
 // where they pointed (a balloon transformed on its own grows with its text).
 import { storedOutline } from "./balloon";
-import {
-  assignPanels,
-  bounds,
-  carryContents,
-  moveLine,
-  movePanel,
-  moveStroke,
-  newId,
-  orderPanels,
-  sortLines,
-  type BoxMm,
-  type Breakout,
-  type Fill,
-  type Line,
-  type Page,
-  type Panel,
-  type Point,
-  type Project,
-  type Sticky,
-  type Stroke,
-  type StrokePoint,
-} from "./project";
+import { moveLine } from "./dialogue";
+import { bounds } from "./geometry";
+import type { BoxMm, Breakout, Fill, Line, Page, Panel, Point, Project, Sticky, Stroke, StrokePoint } from "./model";
+import { carryContents, movePanel } from "./panels";
+import { newId } from "./project";
+import { assignPanels, orderPanels, sortLines } from "./readingorder";
+import { moveStroke } from "./strokes";
 
 /** x' = a x + c y + e, y' = b x + d y + f. */
 export type Affine = [number, number, number, number, number, number];

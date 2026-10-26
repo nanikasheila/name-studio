@@ -44,30 +44,13 @@ import {
 } from "./koma";
 import { addAutoTails } from "./autotail";
 import { Board } from "./board";
-import {
-  TONE_LABELS,
-  assignPanels,
-  insertPage,
-  movePagesTo,
-  normalize,
-  orderPanels,
-  pageIndex,
-  removeSticky,
-  removePanel,
-  sortLines,
-  trailingEmptyPages,
-  swapPanelContents,
-  type Brush,
-  type FillTone,
-  type Alternatives,
-  type Page,
-  type Panel,
-  type Point,
-  type Project,
-  type RoughImage,
-  type StoredImage,
-  newId,
-} from "./project";
+import type { Alternatives, Brush, FillTone, Page, Panel, Point, Project, RoughImage, StoredImage } from "./model";
+import { removePanel, swapPanelContents } from "./panels";
+import { insertPage, newId, normalize, pageIndex, trailingEmptyPages } from "./project";
+import { assignPanels, orderPanels, sortLines } from "./readingorder";
+import { movePagesTo } from "./reorder";
+import { removeSticky } from "./stickies";
+import { TONE_LABELS } from "./strokes";
 import { localStore, readFlag, writeCount, writeFlag } from "./settings";
 
 export const PROJECT_EXTENSION = "namestudio";

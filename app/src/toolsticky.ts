@@ -4,7 +4,7 @@
 import type { DragHandler, DragOf, EditorCore, Press } from "./editorcore";
 import type { Slot } from "./layout";
 import { toPage } from "./layout";
-import { addSticky, linkSticky } from "./project";
+import { addSticky, linkSticky } from "./stickies";
 
 export function pressSticky(editor: EditorCore, { project, slot, point, sx, sy }: Press): void {
   if (startStickyLink(editor, slot, sx, sy)) return;

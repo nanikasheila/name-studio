@@ -5,7 +5,7 @@
 // page on each frame. While the view is zoomed the old picture is stretched,
 // and drawn again sharp once the zoom stops.
 import { drawStrokes, type MmToPx } from "./pagedraw";
-import type { Brush, Page, Stroke } from "./project";
+import type { Brush, Page, Stroke } from "./model";
 import { listId } from "./snapshot";
 
 /** A picture larger than this (device pixels) is not kept: the page is drawn directly. */

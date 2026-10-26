@@ -16,11 +16,10 @@ import {
 } from "./nameexport";
 import { applyTakeBack, planTakeBack, takeBackSummary } from "./readback";
 import { ISSUE_LABELS, checkName, issueSummary } from "./namecheck";
-import type { Project, RoughImage } from "./project";
 import { $, element } from "./dom";
 import { readText, writeText } from "./settings";
 import { compactStory, cspPageOf, firstPageLeft, joinedPage, pageSetup, piecesPerPage, pixelSize, presetOf, PRESETS, setupProblem, withPreset } from "./csppage";
-import type { CspPage, CspStory, NombrePlace, StoryPosition } from "./model";
+import type { CspPage, CspStory, NombrePlace, Project, RoughImage, StoryPosition } from "./model";
 import { fontField } from "./fontpicker";
 import { againSummary, type ExportKind, type ExportMemory, type PanelExport, type TemplateMode } from "./exportmemory";
 import { keepExportMemory, loadExportMemory } from "./prefs";

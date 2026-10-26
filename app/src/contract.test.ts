@@ -8,19 +8,22 @@
 // the Rust test fails until model.rs has it too. After changing the fixture,
 // run `npx vitest run -u src/contract.test.ts` to write the files again.
 import { describe, expect, it } from "vitest";
-import type { HeldPanel, NombrePlace, Series, StoryPosition } from "./model";
 import type {
   BalloonShape,
   Binding,
   BrushKind,
   EraseMode,
+  HeldPanel,
   LineKind,
+  NombrePlace,
   PanelBorder,
   PanelEffect,
   PanelFill,
   Project,
+  Series,
+  StoryPosition,
   TailStyle,
-} from "./project";
+} from "./model";
 
 /** Every field present (optional ones too), every array with at least one element. */
 type Full<T> = T extends readonly (infer U)[] ? [Full<U>, ...Full<U>[]] : T extends object ? { [K in keyof T]-?: Full<T[K]> } : T;

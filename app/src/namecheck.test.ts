@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { clearFaces } from "./arrange";
 import { checkName, issueSummary } from "./namecheck";
-import type { Point } from "./project";
-import { addLine, addPanel, addStroke, boxCenter, insidePolygon, moveLine, newProject, rectShape, trimBox } from "./project";
+import { addLine, moveLine } from "./dialogue";
+import { boxCenter, insidePolygon, rectShape } from "./geometry";
+import type { Point } from "./model";
+import { trimBox } from "./pagebox";
+import { addPanel } from "./panels";
+import { newProject } from "./project";
+import { addStroke } from "./strokes";
 
 describe("書き出し前の確認", () => {
   it("finds overlapping balloons, lines outside panels and the trim, and speech with no tail", () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { newProject, rectShape } from "./project";
+import { rectShape } from "./geometry";
+import { newProject } from "./project";
 import type { Stroke } from "./model";
 import { drawPanelMask } from "./pagedraw";
 import { panelArea, panelFolders, panelsAbove, strokePanel } from "./panelfolders";

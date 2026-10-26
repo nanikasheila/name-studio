@@ -1,6 +1,7 @@
 // 話の型: the built-in story shapes (起承転結, Save the Cat and the like) and
 // the ones made for a name (オリジナルの型), laid over its pages.
-import { STRUCTURES, type Project, type ShapePart, type StoryShape } from "./project";
+import type { Project, ShapePart, StoryShape } from "./model";
+import { STRUCTURES } from "./structures";
 
 /** Colours of the parts, in turn; used wherever pages are shown by part. */
 export const PART_COLORS = ["#4f86d9", "#e0884a", "#3fae84", "#c9a227", "#d97aa6", "#7d6bd6", "#5aa9c9", "#c25b5b"];

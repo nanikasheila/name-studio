@@ -4,7 +4,9 @@
 // the name's, so only those go back; the name's own changes are left for
 // セリフだけ反映 to bring into the pages.
 
-import { addLine, boxCenter, fitLine, insidePolygon, moveLine, setLineText, type BoxMm, type Line, type Page, type Project } from "./project";
+import { addLine, fitLine, moveLine, setLineText } from "./dialogue";
+import { boxCenter, insidePolygon } from "./geometry";
+import type { BoxMm, Line, Page, Project } from "./model";
 import { likeness } from "./scriptimport";
 
 /** A dialogue text on a page as CSP has it now, its box in mm on its page. */

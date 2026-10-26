@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { PATTERNS, addDrawnPanel, applyPattern, fitPattern, patternCount, bleedPanel, facingPage, spanGutter, spreadPanel, spreadTwin, unspreadPanel, borderLines, borderRuns, clipOutside, dashes, framePanels, isBled, patternPanels, wavy } from "./koma";
-import { inheritOpenEdges } from "./geometry";
-import { addLine, addStroke, basicBox, boxCenter, bounds, cutPanels, emptyPage, gutters, insidePolygon, newProject, rectShape, setGutters, trimBox, type Panel, type Point } from "./project";
+import { bounds, boxCenter, inheritOpenEdges, insidePolygon, rectShape } from "./geometry";
+import { addLine } from "./dialogue";
+import type { Panel, Point } from "./model";
+import { basicBox, trimBox } from "./pagebox";
+import { cutPanels } from "./panels";
+import { emptyPage, gutters, newProject, setGutters } from "./project";
+import { addStroke } from "./strokes";
 
 describe("裁ち切り", () => {
   it("runs a panel off the page and back", () => {

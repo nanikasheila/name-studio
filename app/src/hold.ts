@@ -3,22 +3,11 @@
 // A held panel keeps what is in it (dialogue, rough lines, fills, its 付箋)
 // and comes back whole wherever it is put.
 
-import {
-  assignPanels,
-  bounds,
-  carryContents,
-  followPanel,
-  newId,
-  orderPanels,
-  sortLines,
-  type CarriedContents,
-  type HeldPanel,
-  type Page,
-  type Panel,
-  type Point,
-  type Project,
-  type Sticky,
-} from "./project";
+import { bounds } from "./geometry";
+import type { HeldPanel, Page, Panel, Point, Project, Sticky } from "./model";
+import { type CarriedContents, carryContents, followPanel } from "./panels";
+import { newId } from "./project";
+import { assignPanels, orderPanels, sortLines } from "./readingorder";
 
 /** Take a panel and what is in it off its page, into the 保留 list; `near`: the page it is meant to go near. */
 export function holdPanel(project: Project, page: Page, panel: Panel, near: string | undefined = page.id): HeldPanel {

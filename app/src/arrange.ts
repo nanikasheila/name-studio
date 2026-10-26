@@ -5,25 +5,11 @@
 // top left: the same layouts run on the page seen in a mirror.
 import { figures } from "./autotail";
 import { balloonExtent, resolvedShape, storedOutline } from "./balloon";
-import {
-  assignPanels,
-  basicBox,
-  bounds,
-  boxCenter,
-  centroid,
-  fitLine,
-  insidePolygon,
-  mostlyHalfWidth,
-  moveLine,
-  sortLines,
-  type Binding,
-  type BoxMm,
-  type Line,
-  type Page,
-  type Panel,
-  type Point,
-  type Project,
-} from "./project";
+import { fitLine, mostlyHalfWidth, moveLine } from "./dialogue";
+import { bounds, boxCenter, centroid, insidePolygon } from "./geometry";
+import type { Binding, BoxMm, Line, Page, Panel, Point, Project } from "./model";
+import { basicBox } from "./pagebox";
+import { assignPanels, sortLines } from "./readingorder";
 import { wrapDialogue } from "./wrap";
 
 /** A page seen in a mirror (x → -x) or as it is: what is not mirrored in place goes through it. */

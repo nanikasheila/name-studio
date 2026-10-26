@@ -2,9 +2,10 @@
 // a page as the block diagram of its panels, for the page list; a held
 // panel as it reads, for the 保留 list.
 
-import type { HeldPanel } from "./model";
+import type { HeldPanel, Page, Project } from "./model";
 import { drawBalloons, drawPageFills, drawPageTexts, drawPanelBorders, drawPanelFills, drawStrokes } from "./pagedraw";
-import { bounds, trimBox, type Page, type Project } from "./project";
+import { bounds } from "./geometry";
+import { trimBox } from "./pagebox";
 import { svg } from "./dom";
 
 

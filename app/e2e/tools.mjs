@@ -70,7 +70,10 @@ try {
 
   // A name of four pages, each with the basic frame as one panel; pages 2 and 3 face each other.
   await page.evaluate(async () => {
-    const { newProject, addPanel, rectShape, basicBox } = await import("/src/project.ts");
+    const { newProject } = await import("/src/project.ts");
+    const { addPanel } = await import("/src/panels.ts");
+    const { rectShape } = await import("/src/geometry.ts");
+    const { basicBox } = await import("/src/pagebox.ts");
     const project = newProject("道具の通しテスト", 4);
     for (const p of project.pages) addPanel(project, p, rectShape(basicBox(project.pageFormat)));
     window.nameStudio.show(project);
@@ -309,7 +312,7 @@ try {
     await record("move the sticky");
     // Its round handle dragged onto the first line: tied to that instead.
     const handle = await page.evaluate(async () => {
-      const { stickyAnchor } = await import("/src/project.ts");
+      const { stickyAnchor } = await import("/src/stickies.ts");
       const page = window.nameStudio.workbench.project.pages[1];
       return stickyAnchor(page, page.stickies[0]);
     });

@@ -3,7 +3,8 @@
 // them, the lines of the other panels (and a コマ間 away from them), the
 // frames of the page, and a grid. Settings are kept on this computer (prefs.ts).
 import type { BoxMm, Gutters, Page, PageFormat, Point } from "./model";
-import { basicBox, centroid, trimBox } from "./project";
+import { centroid } from "./geometry";
+import { basicBox, trimBox } from "./pagebox";
 
 export interface SnapSettings {
   /** 水平・垂直: a corner lines up with the corners next to it. */

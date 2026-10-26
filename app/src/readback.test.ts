@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { addLine, addPanel, newProject, rectShape } from "./project";
+import { addLine } from "./dialogue";
+import { rectShape } from "./geometry";
+import { addPanel } from "./panels";
+import { newProject } from "./project";
 import { applyTakeBack, planTakeBack, takeBackSummary, type ReadUnit } from "./readback";
 
 describe("CSP のセリフを読み戻す", () => {

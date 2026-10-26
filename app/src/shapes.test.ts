@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { addScene, newProject, STRUCTURES } from "./project";
+import { addScene } from "./cast";
+import { newProject } from "./project";
+import { STRUCTURES } from "./structures";
 import { addBeat, adoptShape, beatPage, currentShape, editableShape, makeShape, MIN_SHARE, moveBoundary, pageParts, removePart, removeShape, setBeat, shapeSpans, splitPart, storyShapes } from "./shapes";
 import { keepShape, libraryShapes } from "./prefs";
 import { moveSceneEdge, planAdvice, sceneSpans, setStoryRank, timeline } from "./story";

@@ -10,7 +10,10 @@
 //   ## any other section                         its list items (or its text) become 付箋, on the page they name
 //                                                 or else the page they are most about (the first page when none stands out)
 import { onLeftHand, spreads } from "./pages";
-import { addSticky, insertPage, putScene, stickyBox, STICKY_WIDTH_MM, type Project } from "./project";
+import { putScene } from "./cast";
+import type { Project } from "./model";
+import { insertPage } from "./project";
+import { addSticky, STICKY_WIDTH_MM, stickyBox } from "./stickies";
 
 export interface PlotPage {
   /** 1-based page number (the first of a range). */

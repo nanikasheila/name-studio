@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { CAPTION, GRID_GAP_MM, GRID_GAP_PX, extent, layoutPages, onStage, pageGapPx, rowCount, slotAt, spreadWidth, toPage, type Arrangement, type Pair, type Slot } from "./layout";
-import { newProject, trimBox, type Project } from "./project";
+import type { Project } from "./model";
+import { trimBox } from "./pagebox";
+import { newProject } from "./project";
 
 const view = (change: Partial<Arrangement> = {}): Arrangement => ({ single: false, continuous: false, rows: 1, zoom: 1, pan: [0, 0], width: 1200, height: 800, ...change });
 const onScreen = (slot: Slot, [x, y]: [number, number]): [number, number] => [slot.x + x * slot.scale, slot.y + y * slot.scale];

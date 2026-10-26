@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { addCharacter, addLine, addScene, newProject, setEmotion } from "./project";
+import { addCharacter, addScene, setEmotion } from "./cast";
+import { addLine } from "./dialogue";
+import { newProject } from "./project";
 import { emotionSeries, pageStats, sceneSpans, timeline, uncoveredRuns } from "./story";
 
 function sample() {

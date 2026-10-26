@@ -1,7 +1,8 @@
 // The 別案 dialog: the options of a set side by side, to compare and pick.
 import { optionPages, removeAlternative, useAlternative } from "./alternatives";
 import { drawBalloons, drawPageTexts, drawPanelBorders, drawPanelFills, drawStrokes } from "./pagedraw";
-import { trimBox, type Alternatives, type Page, type Project } from "./project";
+import type { Alternatives, Page, Project } from "./model";
+import { trimBox } from "./pagebox";
 import { $ } from "./dom";
 
 export interface AltDialogHost {

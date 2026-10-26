@@ -27,10 +27,10 @@ const LAYERS = {
   model: ["model", "types", "geometry"],
   /** Working on a name: pure computation, no browser, no storage, no Rust side. */
   core: [
-    "alternatives", "arrange", "autotail", "balloon", "brush", "commands", "csppage", "export", "exportmemory", "fonts", "history", "hold", "koma", "komaedit",
-    "layout", "mask", "namecheck", "namedefaults", "pages", "panelfolders", "pen", "plotimport", "project", "projectjson", "readback",
-    "recent", "references", "repair", "roughlayers", "scriptimport", "series", "session", "shapes", "shortcuts", "snapping", "snapshot", "story", "style",
-    "transform", "wrap",
+    "alternatives", "arrange", "autotail", "balloon", "brush", "cast", "commands", "csppage", "dialogue", "export", "exportmemory", "fonts",
+    "history", "hold", "koma", "komaedit", "layout", "mask", "namecheck", "namedefaults", "pagebox", "pages", "panelfolders", "panels", "pen",
+    "plotimport", "project", "projectjson", "readback", "readingorder", "recent", "references", "reorder", "repair", "roughlayers", "scriptimport",
+    "series", "session", "shapes", "shortcuts", "snapping", "snapshot", "stickies", "story", "strokes", "structures", "style", "transform", "wrap",
   ],
   /** This computer and the Rust side: storage, settings, commands, the page's elements. */
   platform: ["backend", "dom", "errorlog", "prefs", "settings"],
