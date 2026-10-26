@@ -380,6 +380,8 @@ export class Board {
   // --- lanes ------------------------------------------------------------------------
 
   private emotionHeight(): number {
+    // No characters yet: one line on how to start.
+    if (!this.project?.characters.length) return 28;
     return this.mode === "wide" ? 150 : 64;
   }
 

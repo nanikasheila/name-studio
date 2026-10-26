@@ -649,6 +649,7 @@ button.with-icon, .page-nav .segmented button { display: inline-flex; align-item
 .held-actions { display: flex; flex-wrap: wrap; gap: 4px; }
 .held-actions button { font-size: 11px; padding: 2px 6px; }
 .held-badge { font-size: 12px; padding: 2px 8px; border-color: var(--c-sticky); }
+.focus-toggle[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 14%, var(--panel)); border-color: var(--accent); }
 .held-badge.near { background: color-mix(in srgb, var(--c-sticky) 22%, var(--panel)); font-weight: 600; }
 .tabs button { font-size: 13px; }
 .held-count { font-size: 10px; padding: 0 3px; border-radius: 3px; border: 1px solid var(--c-sticky); color: var(--text); }
@@ -721,6 +722,8 @@ button.with-icon, .page-nav .segmented button { display: inline-flex; align-item
 .dock.left { border-right: 1px solid var(--line); }
 .dock.right { border-left: 1px solid var(--line); }
 .dock.narrow { width: 52px; }
+/* A narrow window: the open palettes give the pages most of the width. */
+.dock:not(.narrow) { max-width: 26vw; }
 .dock-rail { display: flex; flex-wrap: wrap; gap: 2px; padding: 6px 4px; border-bottom: 1px solid var(--line); }
 .dock-rail button {
   flex: 1 1 38px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 4px 0 3px; font-size: 10.5px;

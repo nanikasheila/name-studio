@@ -1,7 +1,8 @@
 // 物語の帯 folds down to its row of buttons (its button, Shift+F6, a double
 // click on its top edge) and opens again as it was; 連続 fits the rows to
 // the stage's height, again when it changes size (Tab), and zoomed in keeps
-// what was in its middle there; the command palette does not list itself. Run: npm run e2e:band
+// what was in its middle there; the command palette does not list itself;
+// a low window starts with it folded and the ページだけ button does what Tab does. Run: npm run e2e:band
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { createServer } from "vite";
@@ -129,6 +130,38 @@ try {
   const labels = await page.locator("#command-palette .cmdp-label").allTextContents();
   check(labels.length > 20 && !labels.some((label) => label.includes("命令パレット")), `the palette does not list itself (${labels.length} commands)`);
   await page.keyboard.press("Escape");
+  // The button by the page bar does what Tab does.
+  await page.locator("#focus-mode").click();
+  await page.waitForTimeout(300);
+  const focused = await page.evaluate(() => ({ on: document.body.classList.contains("focus-mode"), pressed: document.getElementById("focus-mode").getAttribute("aria-pressed") }));
+  check(focused.on && focused.pressed === "true", "the ページだけ button hides the palettes and the strip");
+  await page.locator("#focus-mode").click();
+  await page.waitForTimeout(300);
+  check(!(await page.evaluate(() => document.body.classList.contains("focus-mode"))), "and brings them back");
+
+  // No characters yet: the emotion lane is one line of how to start.
+  const emotion = await page.evaluate(() => document.querySelector("#story .emotion-lane .lane-bg")?.getAttribute("height"));
+  check(Number(emotion) < 40, `with no characters the emotion lane is one line (${emotion} px)`);
+
+  // A low window, the first time: the strip starts folded, the pages first.
+  const low = await browser.newPage({ viewport: { width: 900, height: 600 } });
+  await low.addInitScript({ path: fileURLToPath(new URL("tauri-mock.js", import.meta.url)) });
+  await low.goto(server.resolvedUrls.local[0]);
+  await low.waitForFunction(() => window.nameStudio);
+  await low.evaluate(async () => {
+    const { newProject } = await import("/src/project.ts");
+    window.nameStudio.show(newProject("低い", 8));
+  });
+  await low.waitForTimeout(300);
+  const lowState = await low.evaluate(() => ({
+    lanes: !document.querySelector("#story .story-lanes").hidden,
+    stage: document.getElementById("editor-canvas").getBoundingClientRect().height,
+    focus: document.getElementById("focus-mode").getBoundingClientRect().right <= window.innerWidth,
+  }));
+  check(!lowState.lanes && lowState.stage > 380, `900×600 the first time: the strip starts folded (${Math.round(lowState.stage)} px for the pages)`);
+  check(lowState.focus, "and the ページだけ button is on screen");
+  await low.close();
+
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(" / ")}` : ""}`);
 } finally {
   await browser.close();

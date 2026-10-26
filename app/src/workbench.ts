@@ -287,14 +287,7 @@ export class Workbench {
       // 左へ・右へ: the next spread is to the left in a right-bound book, to the right in a left-bound one.
       flipLeft: (step) => this.flip(step * this.leftward()),
       makeOption: (first, last) => this.edits.makeOption(first, last),
-      toggleFocus: () => {
-        // As CSP's Tab: the side palettes and the story band go, the pages take the room.
-        const focus = document.body.classList.toggle("focus-mode");
-        this.editor.resize();
-        // Back: the band and the palettes catch up with what changed while they were hidden.
-        if (!focus) this.renderAll();
-        this.setStatus(focus ? "左右の欄と下の帯を隠しました（Tab で戻す）" : "");
-      },
+      toggleFocus: () => this.toggleFocus(),
       arrange: (pageId) => this.edits.arrange(pageId),
       addTails: (pageId) => this.edits.addTails(pageId),
       addPageAfter: (page) => this.edits.addPageAfter(page),
@@ -386,6 +379,16 @@ export class Workbench {
 
   get dirty(): boolean {
     return this.session.dirty;
+  }
+
+  /** As CSP's Tab: the side palettes and the story band go, the pages take the room. */
+  private toggleFocus(): void {
+    const focus = document.body.classList.toggle("focus-mode");
+    $("focus-mode").setAttribute("aria-pressed", String(focus));
+    this.editor.resize();
+    // Back: the band and the palettes catch up with what changed while they were hidden.
+    if (!focus) this.renderAll();
+    this.setStatus(focus ? "左右の欄と下の帯を隠しました（Tab で戻す）" : "");
   }
 
   // --- opening and saving --------------------------------------------------------
@@ -830,6 +833,7 @@ export class Workbench {
     $("redo").addEventListener("click", () => this.redo());
     $("brush-import").addEventListener("click", () => void this.brushDialog.open());
     $("name-export").addEventListener("click", () => this.exportDialog.open());
+    $("focus-mode").addEventListener("click", () => this.toggleFocus());
     $("versions").addEventListener("click", () => this.openVersions());
     $("shortcuts").addEventListener("click", () => this.shortcutDialog.open());
     $("pen-settings").addEventListener("click", () => this.penDialog.open());

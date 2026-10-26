@@ -13,6 +13,8 @@ const FOLDED_KEY = "namestudio.storyFolded";
 /** The strip's own row of buttons, and room for a scroll bar. */
 const CHROME = 32 + 14;
 const MIN_HEIGHT = 96;
+/** A window this low (px) starts with the strip folded, the pages first. */
+const LOW_WINDOW = 760;
 
 /** What the height follows. */
 export interface DockParts {
@@ -32,8 +34,8 @@ export interface DockParts {
 
 export class DockHeight {
   private heights: Record<Mode, number>;
-  /** たたんだ: only the strip's row of buttons shows; the pages get the room. */
-  private folded = readJson(FOLDED_KEY, false) === true;
+  /** たたんだ: only the strip's row of buttons shows; the pages get the room (at first, in a low window). */
+  private folded = (readJson(FOLDED_KEY, null) ?? window.innerHeight < LOW_WINDOW) === true;
 
   constructor(private readonly parts: DockParts) {
     const saved = readJson(HEIGHT_KEY, null);

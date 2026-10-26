@@ -18,12 +18,13 @@ export function emotionLane(view: LaneView, project: Project, top: number): SVGG
   const valueAt = (py: number) => Math.round(Math.max(-1, Math.min(1, 1 - ((py - top - pad) / plot) * 2)) * 10) / 10;
   const bg = svg("rect", { x: 0, y: top, width, height: EMOTION, class: "lane-bg emotion-bg" });
   group.append(bg);
-  for (const value of [1, 0.5, 0, -0.5, -1]) group.append(svg("line", { x1: 0, x2: width, y1: y(value), y2: y(value), class: value === 0 ? "axis" : "grid" }));
-  group.append(svg("text", { x: 4, y: y(1) + 12, class: "lane-hint small" }, "前向き"), svg("text", { x: 4, y: y(-1) - 4, class: "lane-hint small" }, "後ろ向き"));
   if (!project.characters.length) {
-    group.append(svg("text", { x: 8, y: y(0) - 6, class: "lane-hint" }, "左の「人物」で登場人物を足すと、ここをなぞって感情の移り変わりを描けます"));
+    // Nothing to trace yet: a line on how to start, not an empty chart.
+    group.append(svg("text", { x: 8, y: top + EMOTION / 2 + 4, class: "lane-hint" }, "左の欄の「人物」で登場人物を足すと、ここをなぞって感情の移り変わりを描けます"));
     return group;
   }
+  for (const value of [1, 0.5, 0, -0.5, -1]) group.append(svg("line", { x1: 0, x2: width, y1: y(value), y2: y(value), class: value === 0 ? "axis" : "grid" }));
+  group.append(svg("text", { x: 4, y: y(1) + 12, class: "lane-hint small" }, "前向き"), svg("text", { x: 4, y: y(-1) - 4, class: "lane-hint small" }, "後ろ向き"));
   const center = (index: number) => view.x(index) + view.column / 2;
   const series = project.characters.map((character) => ({ character, samples: emotionSeries(project, character.id) }));
   series.sort((a, b) => Number(a.character.id === view.character) - Number(b.character.id === view.character));
