@@ -2,7 +2,7 @@
 
 書き出し画面の「ツールで設定する」（`--builtin`）は、CSP で保存したひな形を選ばずに、
 画面の設定から CSP のページ（.clip）と作品ファイル（.cmc）を作ります。
-CSP の形式は [csp-format](https://github.com/nanikasheila/CLIP_STUDIO_PAINT_Format) の `blank` が持ち、
+CSP の形式は [csp-format](https://github.com/nanikasheila/csp-format) の `blank` が持ち、
 `clip-core` の `write::blank` は設定を確かめて（日本語のメッセージ）そこへ渡し、3 つのファイルを保存するだけです。
 ページを一から組み立てないのは、CSP が読む表と列の組み合わせを崩さないためです。
 
