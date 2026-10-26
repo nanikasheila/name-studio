@@ -28,7 +28,7 @@ def crates() -> list[tuple[str, str, str, str]]:
     meta = json.loads(
         subprocess.run(
             ["cargo", "metadata", "--format-version", "1", "--locked", "--filter-platform", "x86_64-pc-windows-msvc"],
-            cwd=ROOT, check=True, capture_output=True, text=True,
+            cwd=ROOT, check=True, capture_output=True, text=True, encoding="utf-8",
         ).stdout
     )
     packages = {p["id"]: p for p in meta["packages"]}
