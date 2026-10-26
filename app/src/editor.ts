@@ -5,7 +5,7 @@
 // Coordinates on a page are millimetres; each page of the spread has its own
 // mm → screen mapping.
 import { maskShape } from "./mask";
-import { penPreferences } from "./pen";
+import { BALLOON_TEXT_KEY, CONTINUOUS_KEY, loadSnap, PAGE_GAP_KEY, PANEL_CARRIES_KEY, penPreferences, ROWS_KEY, SHOW_NOTES_KEY, SINGLE_PAGE_KEY } from "./prefs";
 import { balloonExtent, insideBalloon, tailGeometry } from "./balloon";
 import { spreads } from "./pages";
 import { GRID_GAP_MM, MARGIN, MAX_PAGE_GAP_MM, extent, layoutPages, onStage, rowCount, slotAt, toPage, type Slot } from "./layout";
@@ -27,7 +27,8 @@ import {
   type ItemRef,
 } from "./transform";
 import { INK, drawBalloons, drawLineText, drawPageFills, drawPanelBorders, drawPanelFills, drawStroke, drawStrokes, onTipLoaded, tracePath } from "./pagedraw";
-import { corners, imageOf, opacityOf, pictureOf, REFERENCE_HANDLE } from "./references";
+import { pictureOf } from "./pictures";
+import { corners, imageOf, opacityOf, REFERENCE_HANDLE } from "./references";
 import { StrokeCache } from "./strokecache";
 import { opacityOfLayer, ROUGH_BASE, roughLayersOf, shownStrokes, strokeEditable, strokesOn } from "./roughlayers";
 import {
@@ -89,7 +90,7 @@ import {
 import { LINK_HANDLE } from "./toolsticky";
 import { dragHandler, PRESS } from "./tools";
 import { pickedSummary } from "./toolselect";
-import { loadSnap, snapPointTo, snapTargets, type SnapSettings, type SnapTargets } from "./snapping";
+import { snapPointTo, snapTargets, type SnapSettings, type SnapTargets } from "./snapping";
 
 export type { EditorEraseMode, EditorHost, PanelMode, Selection, Tool } from "./editorcore";
 export { pickedSummary };
@@ -125,13 +126,6 @@ const ACCENT = "#2f6fdb";
 const GUIDE = "#e0398a";
 const HANDLE = 5;
 
-export const PANEL_CARRIES_KEY = "namestudio.panelCarries";
-export const BALLOON_TEXT_KEY = "namestudio.balloonTextFollows";
-export const SHOW_NOTES_KEY = "namestudio.showNotes";
-export const SINGLE_PAGE_KEY = "namestudio.singlePage";
-export const CONTINUOUS_KEY = "namestudio.continuous";
-export const ROWS_KEY = "namestudio.rows";
-export const PAGE_GAP_KEY = "namestudio.pageGap";
 /** How long the pages take to slide to a new arrangement (ms). */
 const SLIDE_MS = 220;
 /** Pages narrower than this (px) show their drawing without panel numbers or memos. */

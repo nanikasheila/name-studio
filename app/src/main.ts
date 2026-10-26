@@ -13,7 +13,8 @@ import { dialogueByPage, effectiveVisibility, initiallyHidden, spreads } from ".
 import { drawSheet, type PlacedImage, type Transform } from "./render";
 import { applyNewNameDefaults } from "./namedefaults";
 import { newProject, STRUCTURES, type Project } from "./project";
-import { adoptShape, libraryShapes } from "./shapes";
+import { adoptShape } from "./shapes";
+import { libraryShapes, newNameDefaults } from "./prefs";
 import type { LayerView, PageCell, SheetView } from "./types";
 import { PROJECT_EXTENSION, Workbench } from "./workbench";
 import { $ } from "./dom";
@@ -579,7 +580,7 @@ $("new-project").addEventListener("click", async () => {
       const title = $<HTMLInputElement>("nn-title").value.trim() || "新しいネーム";
       const kind = $<HTMLSelectElement>("nn-binding").value;
       const project = newProject(title, pages, kind === "left" || kind === "scroll" ? kind : "right");
-      const usedDefaults = applyNewNameDefaults(project);
+      const usedDefaults = applyNewNameDefaults(project, newNameDefaults());
       if ($<HTMLInputElement>("nn-target").checked) project.plan = { targetPages: pages };
       const kept = libraryShapes().find((s) => s.id === shape.value);
       if (kept) adoptShape(project, kept);

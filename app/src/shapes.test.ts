@@ -1,24 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { addScene, newProject, STRUCTURES } from "./project";
-import {
-  addBeat,
-  adoptShape,
-  beatPage,
-  currentShape,
-  editableShape,
-  keepShape,
-  libraryShapes,
-  makeShape,
-  MIN_SHARE,
-  moveBoundary,
-  pageParts,
-  removePart,
-  removeShape,
-  setBeat,
-  shapeSpans,
-  splitPart,
-  storyShapes,
-} from "./shapes";
+import { addBeat, adoptShape, beatPage, currentShape, editableShape, makeShape, MIN_SHARE, moveBoundary, pageParts, removePart, removeShape, setBeat, shapeSpans, splitPart, storyShapes } from "./shapes";
+import { keepShape, libraryShapes } from "./prefs";
 import { moveSceneEdge, planAdvice, sceneSpans, setStoryRank, timeline } from "./story";
 
 const range = (spans: { first: number; last: number }[]) => spans.map((s) => `${s.first + 1}-${s.last + 1}`);

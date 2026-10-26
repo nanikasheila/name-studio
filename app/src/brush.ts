@@ -2,7 +2,6 @@
 // (crates/clip-core/src/subtool.rs reads the files), and how a brush turns
 // pen pressure and the stroke's length into width and opacity.
 import { newId, type Brush, type PressureCurve, type Project, type Stroke, type StrokePoint } from "./project";
-import { readJson, writeJson } from "./settings";
 
 /** What the Rust side reads from a .sut or CSP's tool database. */
 export interface CspLength {
@@ -294,23 +293,13 @@ export function postCorrect<T extends number[]>(points: T[], strength: number): 
   return current;
 }
 
-// --- brushes kept between projects ---------------------------------------------------
-
-const LIBRARY_KEY = "name-studio.brushes";
-
-/** Brushes taken from CSP before, in any project (this computer only). */
-export function loadLibrary(): Brush[] {
-  const brushes = readJson(LIBRARY_KEY, []);
-  return Array.isArray(brushes) ? (brushes as Brush[]) : [];
-}
-
-export function saveToLibrary(brushes: Brush[]): void {
-  const library = loadLibrary();
+/** The library with `brushes` added; one from the same source, name and kind is replaced. */
+export function withBrushes(library: readonly Brush[], brushes: readonly Brush[]): Brush[] {
+  const merged = [...library];
   for (const brush of brushes) {
-    const index = library.findIndex((b) => b.source === brush.source && b.name === brush.name && b.kind === brush.kind);
-    if (index >= 0) library[index] = brush;
-    else library.push(brush);
+    const index = merged.findIndex((b) => b.source === brush.source && b.name === brush.name && b.kind === brush.kind);
+    if (index >= 0) merged[index] = brush;
+    else merged.push(brush);
   }
-  // Storage full or blocked: the brushes still live in the project.
-  writeJson(LIBRARY_KEY, library);
+  return merged;
 }

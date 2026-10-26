@@ -3,10 +3,9 @@
 // into it. The mask hides rather than cuts: a rough line that runs past the
 // border stays whole in its panel's folder, and a 飛び出し is made in CSP by
 // painting the mask wider.
-import { insidePolygon } from "./geometry";
+import { insidePolygon, type MmToPx } from "./geometry";
 import { bleedOutline, stacked } from "./koma";
 import type { Page, PageFormat, Panel, Point, Stroke } from "./model";
-import { tracePath, type MmToPx } from "./pagedraw";
 import { segmentTouches } from "./project";
 
 /** Folders are named コマ1, コマ2, … in reading order. */
@@ -109,34 +108,4 @@ export function panelFolders(placed: readonly PlacedName[], format: PageFormat):
     }
   }
   return { folders, loose };
-}
-
-/**
- * Draw a folder's mask (opaque where it shows) on a clear canvas; `clip`
- * keeps each page's part to its own half of a spread page.
- */
-export function drawPanelMask(
-  ctx: CanvasRenderingContext2D,
-  folder: PanelFolder,
-  format: PageFormat,
-  scale: (m: MmToPx) => MmToPx,
-  clip: (right: boolean, draw: () => void) => void,
-): void {
-  for (const { page, m, right, panel } of folder.parts) {
-    const at = scale(m);
-    clip(right, () => {
-      ctx.save();
-      ctx.fillStyle = "#000";
-      for (const shape of panelArea(page, panel, format)) {
-        tracePath(ctx, shape, at, true);
-        ctx.fill();
-      }
-      ctx.globalCompositeOperation = "destination-out";
-      for (const shape of panelsAbove(page, panel)) {
-        tracePath(ctx, shape, at, true);
-        ctx.fill();
-      }
-      ctx.restore();
-    });
-  }
 }

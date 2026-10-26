@@ -1,10 +1,9 @@
 // 吸着: what panel corners, borders and whole panels snap to while they are
 // drawn, moved or changed: horizontal and vertical with the corners beside
 // them, the lines of the other panels (and a コマ間 away from them), the
-// frames of the page, and a grid. Settings are kept on this computer.
+// frames of the page, and a grid. Settings are kept on this computer (prefs.ts).
 import type { BoxMm, Gutters, Page, PageFormat, Point } from "./model";
 import { basicBox, centroid, trimBox } from "./project";
-import { readJson, writeJson } from "./settings";
 
 export interface SnapSettings {
   /** 水平・垂直: a corner lines up with the corners next to it. */
@@ -19,13 +18,12 @@ export interface SnapSettings {
 }
 
 export const DEFAULT_SNAP: SnapSettings = { axis: true, panels: true, frame: true, grid: false, gridMm: 5 };
-export const SNAP_KEY = "namestudio.snap";
 export const MIN_GRID_MM = 1;
 export const MAX_GRID_MM = 50;
 
-/** The snap settings kept on this computer (anything unreadable is the default). */
-export function loadSnap(): SnapSettings {
-  const kept = readJson(SNAP_KEY, null) as Partial<SnapSettings> | null;
+/** Snap settings as read back (anything missing or unreadable is the default). */
+export function snapFrom(stored: unknown): SnapSettings {
+  const kept = (typeof stored === "object" ? stored : null) as Partial<SnapSettings> | null;
   const flag = (value: unknown, fallback: boolean) => (typeof value === "boolean" ? value : fallback);
   const gridMm = Number(kept?.gridMm);
   return {
@@ -35,10 +33,6 @@ export function loadSnap(): SnapSettings {
     grid: flag(kept?.grid, DEFAULT_SNAP.grid),
     gridMm: Number.isFinite(gridMm) && gridMm >= MIN_GRID_MM && gridMm <= MAX_GRID_MM ? gridMm : DEFAULT_SNAP.gridMm,
   };
-}
-
-export function saveSnap(settings: SnapSettings): void {
-  writeJson(SNAP_KEY, settings);
 }
 
 /** A line to snap to: `at` is its x (in `xs`) or y (in `ys`); `guide` lines are shown when snapped to. */

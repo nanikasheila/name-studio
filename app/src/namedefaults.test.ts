@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { NEW_NAME_KEY, applyNewNameDefaults, defaultsOf, newNameDefaults, saveNewNameDefaults } from "./namedefaults";
+import { applyNewNameDefaults, defaultsOf } from "./namedefaults";
+import { NEW_NAME_KEY, newNameDefaults, saveNewNameDefaults } from "./prefs";
 import { newProject } from "./project";
 import { writeText } from "./settings";
 
@@ -25,7 +26,7 @@ describe("新しいネームの既定", () => {
     from.lineShapes = { thought: "cloud" };
     saveNewNameDefaults(from);
     const made = newProject("b", 8);
-    expect(applyNewNameDefaults(made)).toBe(true);
+    expect(applyNewNameDefaults(made, newNameDefaults())).toBe(true);
     expect(made).toMatchObject({ gutters: { across: 3, down: 8 }, fonts: { speech: "アンチック" }, style: { fontPt: { speech: 15 }, panelLineMm: 0.5 }, lineShapes: { thought: "cloud" } });
     // Copies, not the same objects.
     made.style!.panelLineMm = 1;
@@ -42,7 +43,7 @@ describe("新しいネームの既定", () => {
   });
 
   it("starts plain when nothing (or nothing readable) is kept", () => {
-    expect(applyNewNameDefaults(newProject("x", 1))).toBe(false);
+    expect(applyNewNameDefaults(newProject("x", 1), newNameDefaults())).toBe(false);
     writeText(NEW_NAME_KEY, "{broken");
     expect(newNameDefaults()).toBeNull();
     writeText(NEW_NAME_KEY, JSON.stringify({ gutters: { across: "2" } }));

@@ -8,13 +8,11 @@ import { borderLines, borderWidthMm, dashes, effectStrokes, stacked } from "./ko
 import { MM_PER_PT, type Brush, type Line, type Page, type Panel, type Point, type Stroke } from "./project";
 import { drawText } from "./render";
 import { balloonLineMm, linePitch } from "./style";
+import type { MmToPx } from "./geometry";
+import { panelArea, panelsAbove, type PanelFolder } from "./panelfolders";
+import type { PageFormat } from "./model";
 
-/** Page millimetres → canvas pixels: `px = mm * scale + offset`. */
-export interface MmToPx {
-  scale: number;
-  x: number;
-  y: number;
-}
+export type { MmToPx };
 
 export const INK = "#1b1a18";
 /** Line widths on the manuscript, in mm. */
@@ -376,4 +374,34 @@ export function drawLineText(ctx: CanvasRenderingContext2D, line: Line, m: MmToP
 
 export function mapPoint([x, y]: Point, m: MmToPx): Point {
   return [x * m.scale + m.x, y * m.scale + m.y];
+}
+
+/**
+ * Draw a folder's mask (opaque where it shows) on a clear canvas; `clip`
+ * keeps each page's part to its own half of a spread page.
+ */
+export function drawPanelMask(
+  ctx: CanvasRenderingContext2D,
+  folder: PanelFolder,
+  format: PageFormat,
+  scale: (m: MmToPx) => MmToPx,
+  clip: (right: boolean, draw: () => void) => void,
+): void {
+  for (const { page, m, right, panel } of folder.parts) {
+    const at = scale(m);
+    clip(right, () => {
+      ctx.save();
+      ctx.fillStyle = "#000";
+      for (const shape of panelArea(page, panel, format)) {
+        tracePath(ctx, shape, at, true);
+        ctx.fill();
+      }
+      ctx.globalCompositeOperation = "destination-out";
+      for (const shape of panelsAbove(page, panel)) {
+        tracePath(ctx, shape, at, true);
+        ctx.fill();
+      }
+      ctx.restore();
+    });
+  }
 }

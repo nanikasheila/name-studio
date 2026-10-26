@@ -119,7 +119,7 @@ const STORAGE_KEY = "namestudio.shortcuts";
 export class Shortcuts {
   private custom: Partial<Record<ActionId, string[]>>;
 
-  constructor(private readonly storage: Pick<Storage, "getItem" | "setItem"> | null = safeStorage()) {
+  constructor(private readonly storage: Pick<Storage, "getItem" | "setItem"> | null) {
     this.custom = {};
     try {
       const saved = this.storage?.getItem(STORAGE_KEY);
@@ -175,13 +175,5 @@ export class Shortcuts {
     } catch {
       // Not kept for the next start; the keys still work now.
     }
-  }
-}
-
-function safeStorage(): Storage | null {
-  try {
-    return typeof localStorage === "undefined" ? null : localStorage;
-  } catch {
-    return null;
   }
 }

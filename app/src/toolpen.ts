@@ -4,7 +4,8 @@
 import { FULL_SPEED_MM, followFactor, postCorrect, tiltOf as penTilt, usesMotion } from "./brush";
 import type { DragHandler, DragOf, EditorCore, Press } from "./editorcore";
 import { toPage } from "./layout";
-import { adjustPressure, penPreferences } from "./pen";
+import { adjustPressure } from "./pen";
+import { penPreferences } from "./prefs";
 import { addStroke, insidePolygon, splitOverPages, type StrokePoint } from "./project";
 import { layerOf, ROUGH_BASE } from "./roughlayers";
 import { densify, straightEnd } from "./transform";

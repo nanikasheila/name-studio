@@ -3,6 +3,13 @@
 
 import type { BoxMm, Point } from "./model";
 
+/** Page millimetres → canvas pixels: `px = mm * scale + offset`. */
+export interface MmToPx {
+  scale: number;
+  x: number;
+  y: number;
+}
+
 export function bounds(points: readonly (readonly number[])[]): BoxMm {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const [x, y] of points) {

@@ -14,6 +14,7 @@ import {
   drawPanelBorders,
   drawPageFills,
   drawPanelFills,
+  drawPanelMask,
   drawStrokes,
   loadTips,
   type MmToPx,
@@ -34,9 +35,10 @@ import {
   type StrokePoint,
   wantsSpread,
 } from "./project";
-import { drawPanelMask, panelFolders } from "./panelfolders";
+import { panelFolders } from "./panelfolders";
 import { layerOf, opacityOfLayer, roughExportNames, roughLayersOf, shownStrokes, strokesOn } from "./roughlayers";
-import { decodePicture, opacityOf, usedImages } from "./references";
+import { decodePicture } from "./pictures";
+import { opacityOf, usedImages } from "./references";
 import { sceneSpans } from "./story";
 import { balloonLineMm, linePitch, lineSpacing, useStyle } from "./style";
 import type { ReadUnit } from "./readback";

@@ -4,6 +4,7 @@
 // their title or hidden to their icon. Their header is dragged to another
 // place or column, the line between two drags their heights and a column's
 // inner edge its width. The arrangement is kept for the next start.
+import { localStore } from "./settings";
 
 export type PaletteId = "pages" | "script" | "cast" | "notes" | "held" | "layers" | "series" | "inspector";
 export type Side = "left" | "right";
@@ -144,7 +145,7 @@ export class Docks {
     defs: PaletteDef[],
     /** The palettes on screen changed: show what they hold. */
     private readonly changed: () => void,
-    private readonly storage: Pick<Storage, "getItem" | "setItem"> | null = safeStorage(),
+    private readonly storage: Pick<Storage, "getItem" | "setItem"> | null = localStore(),
     leftCollapsed = false,
   ) {
     for (const def of defs) this.defs.set(def.id, def);
@@ -419,13 +420,5 @@ export class Docks {
       dock.classList.remove("palette-dragging");
       this.clearMarks(dock);
     }
-  }
-}
-
-function safeStorage(): Storage | null {
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
   }
 }
