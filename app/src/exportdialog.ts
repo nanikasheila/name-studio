@@ -21,7 +21,7 @@ import { readText, writeText } from "./settings";
 import { compactStory, cspPageOf, firstPageLeft, joinedPage, pageSetup, piecesPerPage, pixelSize, presetOf, PRESETS, setupProblem, withPreset } from "./csppage";
 import type { CspPage, CspStory, NombrePlace, Project, RoughImage, StoryPosition } from "./model";
 import { fontField } from "./fontpicker";
-import { againSummary, type ExportKind, type ExportMemory, type PanelExport, type TemplateMode } from "./exportmemory";
+import { againSummary, exportSummary, type ExportKind, type ExportMemory, type PanelExport, type TemplateMode } from "./exportmemory";
 import { keepExportMemory, loadExportMemory } from "./prefs";
 import { installedFont } from "./fonts";
 
@@ -56,6 +56,8 @@ function readDonor(): string {
 
 /** How the CSP pages are made: from the settings here, or from a CSP-made template. */
 const MODE_KEY = "namestudio.exportTemplateMode";
+/** Whether 詳しい設定 was left open. */
+const MORE_KEY = "namestudio.exportMoreOpen";
 
 /** How panels go to CSP (kept on this computer for the next export). */
 const PANELS_KEY = "namestudio.exportPanels";
@@ -223,13 +225,24 @@ export class ExportDialog {
     });
     $<HTMLInputElement>("ne-editable").addEventListener("change", (event) => {
       this.editable = (event.target as HTMLInputElement).checked;
+      this.showSummary();
     });
     $<HTMLInputElement>("ne-draft").addEventListener("change", (event) => {
       this.draftRough = (event.target as HTMLInputElement).checked;
+      this.showSummary();
     });
     $<HTMLInputElement>("ne-notes").addEventListener("change", (event) => {
       this.notes = (event.target as HTMLInputElement).checked;
+      this.showSummary();
     });
+    $<HTMLInputElement>("ne-work-name").addEventListener("input", (event) => {
+      this.form.workName = (event.target as HTMLInputElement).value;
+      this.showSummary();
+    });
+    for (const id of ["ne-pdf-area", "ne-pdf-dpi"]) $(id).addEventListener("change", () => this.showSummary());
+    const more = $<HTMLDetailsElement>("ne-more");
+    more.open = readText(MORE_KEY) === "open";
+    more.addEventListener("toggle", () => writeText(MORE_KEY, more.open ? "open" : null));
     $<HTMLSelectElement>("ne-panels").addEventListener("change", (event) => {
       this.panels = (event.target as HTMLSelectElement).value as PanelExport;
       writeText(PANELS_KEY, this.panels);
@@ -335,8 +348,13 @@ export class ExportDialog {
     if (!path) return;
     const files = { ...(loadExportMemory(path)?.files ?? {}) };
     if (file && this.kind !== "csp") files[this.kind] = file;
-    keepExportMemory(path, {
-      timeMs: Date.now(),
+    keepExportMemory(path, { timeMs: Date.now(), ...this.settings(), files });
+    this.settingsFor = this.host.projectId();
+  }
+
+  /** The choices made here. */
+  private settings(): Omit<ExportMemory, "timeMs" | "files"> {
+    return {
       kind: this.kind,
       form: { ...this.form },
       mode: this.mode,
@@ -345,9 +363,20 @@ export class ExportDialog {
       draftRough: this.draftRough,
       notes: this.notes,
       pdf: { area: $<HTMLSelectElement>("ne-pdf-area").value as "trim" | "canvas", dpi: Number($<HTMLSelectElement>("ne-pdf-dpi").value) },
-      files,
+    };
+  }
+
+  /** What 書き出す will make, in a line above the buttons. */
+  private showSummary(): void {
+    const project = this.host.project();
+    if (!project) return;
+    const page = this.page;
+    const preset = page && PRESETS.find((candidate) => candidate.id === presetOf(page));
+    $("ne-summary").textContent = exportSummary(this.settings(), {
+      pages: project.pages.length,
+      scroll: !!project.scroll,
+      page: page && { trimMm: page.trimMm, resolution: page.resolution, preset: preset ? preset.label.split("（")[0] : null },
     });
-    this.settingsFor = this.host.projectId();
   }
 
   /** 書き出す前の確認: what will need fixing by hand afterwards, each one a click away. */
@@ -411,8 +440,13 @@ export class ExportDialog {
       $(`ne-kind-${kind}`).classList.toggle("active", kind === this.kind);
       $(`ne-${kind}`).hidden = kind !== this.kind;
     }
-    $("ne-update").hidden = this.kind !== "csp";
-    $("ne-readback").hidden = this.kind !== "csp";
+    // Reading back and 反映 work on pages written out before: a folder first.
+    for (const id of ["ne-update", "ne-readback"]) {
+      const button = $<HTMLButtonElement>(id);
+      button.hidden = this.kind !== "csp";
+      button.disabled = !this.form.outDir;
+      button.title = this.form.outDir ? (button.dataset.title ??= button.title) : "書き出し先（前に書き出したフォルダー）を選ぶと使えます";
+    }
     const path = (id: string, value: string) => {
       $(id).textContent = value || "未選択";
       $(id).title = value;
@@ -446,6 +480,9 @@ export class ExportDialog {
     $("ne-pdf-binding").textContent = left ? "左綴じ" : "右綴じ";
     $<HTMLInputElement>("ne-work-name").value = this.form.workName;
     $<HTMLInputElement>("ne-story-index").value = this.form.storyIndex;
+    // A template still to choose: its field in view.
+    if (this.kind === "csp" && !builtin && !this.form.template) $<HTMLDetailsElement>("ne-more").open = true;
+    this.showSummary();
   }
 
   private message(text: string, error = false): void {
@@ -555,6 +592,7 @@ export class ExportDialog {
     $("ne-px").textContent = `${w} × ${h} px`;
     const project = this.host.project();
     const pieces = project ? piecesPerPage(project, this.page) : 1;
+    this.showSummary();
     $("ne-join-info").textContent = pieces > 1 ? `${pieces} 区切りで 1 ページ（${w} × ${pixelSize(joinedPage(this.page, pieces))[1]} px、${Math.ceil(project!.pages.length / pieces)} ページ）` : "";
   }
 

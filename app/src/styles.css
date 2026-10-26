@@ -146,6 +146,13 @@ dialog.export::backdrop { background: rgb(0 0 0 / 0.35); }
 .name-check-list button.fix { align-self: flex-start; border: 1px solid #c9a24a; border-radius: 4px; background: #fff; padding: 3px 8px; margin-bottom: 4px; }
 .export .message.error { color: #c0392b; }
 .export .actions { display: flex; justify-content: flex-end; gap: 8px; }
+/* What 書き出す makes, the messages and the buttons stay at the bottom while the settings scroll. */
+.export .ne-footer { position: sticky; bottom: -20px; margin: 8px -20px -20px; padding: 8px 20px 16px; background: var(--panel); border-top: 1px solid var(--line); }
+.export .ne-summary { margin: 0 0 4px; font-size: 12px; overflow-wrap: anywhere; }
+.export .ne-footer .message { margin: 0 0 6px; }
+.export .ne-more { margin: 12px 0 4px; }
+.export .ne-more > summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.export .ne-more[open] > summary { margin-bottom: 4px; }
 #work-fields[hidden] { display: none; }
 .export .kinds { margin: 10px 0 4px; }
 .export .ne-modes { margin: 12px 0 4px; }

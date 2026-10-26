@@ -182,6 +182,24 @@ try {
     return form;
   });
   check(form.outDir === "" && form.workName === "未保存B", `unsaved B does not get A's folder or title (${form.outDir} / ${form.workName})`);
+  // The dialog: where to first, what it makes in a line by the buttons, and every field named.
+  const dialog = await page.evaluate(() => {
+    window.nameStudio.workbench.exportDialog.open();
+    const named = (el) => el.labels?.length || el.getAttribute("aria-label") || (el.tagName === "BUTTON" && el.textContent.trim());
+    const fields = [...document.querySelectorAll("#ne-csp input, #ne-csp select, #ne-csp button, #ne-pdf select")];
+    const result = {
+      summary: document.getElementById("ne-summary").textContent,
+      readback: document.getElementById("ne-readback").disabled,
+      unnamed: fields.filter((el) => !named(el)).map((el) => el.id || el.outerHTML.slice(0, 50)),
+      outFirst: !!(document.getElementById("ne-out-dir").compareDocumentPosition(document.getElementById("ne-panels")) & Node.DOCUMENT_POSITION_FOLLOWING),
+    };
+    document.getElementById("name-export-dialog").close();
+    return result;
+  });
+  check(dialog.summary.startsWith("2 ページ") && dialog.summary.includes("書き出し先が未選択"), `the dialog says what it will make (${dialog.summary})`);
+  check(dialog.readback, "reading back waits for a folder");
+  check(dialog.unnamed.length === 0, `every field has a name (${dialog.unnamed.join(", ")})`);
+  check(dialog.outFirst, "where to comes before the layer settings");
   await page.evaluate(() => {
     const dialog = window.nameStudio.workbench.exportDialog;
     dialog.open();

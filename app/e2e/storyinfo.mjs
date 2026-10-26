@@ -43,6 +43,8 @@ try {
 
   await page.click("#name-export");
   await page.waitForSelector("#name-export-dialog[open]");
+  // The page settings are under 詳しい設定.
+  await page.click("#ne-more > summary");
   await page.click("#ne-mode-builtin");
   check(await page.locator(".ne-shown").first().isHidden(), "the shown ノンブル's rows are hidden with the hidden ノンブル");
   await page.fill("#ne-subtitle", "はじまり");
