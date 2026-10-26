@@ -637,3 +637,70 @@ fn refuses_settings_csp_cannot_make() {
     );
     assert!(check_setup(&commercial()).is_ok() && check_setup(&small_left()).is_ok());
 }
+
+#[test]
+fn a_plain_page_without_parts_gets_editable_layers_from_the_built_in_parts() {
+    use clip_core::write::raster_page::BUILT_IN_PARTS;
+    let folder = tempfile::tempdir().unwrap();
+    let setup = PageSetup {
+        resolution: 150.0,
+        ..commercial()
+    };
+    let built = write_builtin_template(&setup, &folder.path().join("template")).unwrap();
+    // A page on its own, as a page saved by CSP with only raster layers:
+    // no parts.clip beside it and none named.
+    let alone = folder.path().join("alone").join("page.clip");
+    std::fs::create_dir_all(alone.parent().unwrap()).unwrap();
+    std::fs::copy(&built.page, &alone).unwrap();
+    let mut writer = RasterWorkWriter::new(WorkOptions {
+        template: alone,
+        out_dir: folder.path().join("out"),
+        name_pattern: DEFAULT_NAME_PATTERN.into(),
+        work: None,
+        story_index: None,
+        inputs: Vec::new(),
+        donor_sources: Vec::new(),
+        draft_layers: Vec::new(),
+        layer_looks: Vec::new(),
+        frame_folders: false,
+        right_binding: None,
+    })
+    .unwrap();
+    for donor in [&writer.donors.vector, &writer.donors.text] {
+        assert_eq!(
+            donor.as_ref().map(|donor| donor.path()),
+            Some(Path::new(BUILT_IN_PARTS))
+        );
+    }
+    let canvas = writer.canvas;
+    let (width, height) = (canvas.width_px, canvas.height_px);
+    let layers = vec![
+        PageLayer::Vector {
+            name: "コマ枠".into(),
+            lines: vec![NewVectorLine {
+                points: vec![(300.0, 300.0, 1.0), (1400.0, 300.0, 1.0), (1400.0, 900.0, 1.0)],
+                closed: true,
+                width_px: 3.0,
+            }],
+        },
+        PageLayer::Text(NewText {
+            text: "セリフ".into(),
+            frame: [800, 400, 840, 560],
+            font_size_pt: 9.0,
+            vertical: true,
+            color: None,
+            font: None,
+            line_spacing: None,
+        }),
+    ];
+    let expected: Vec<ExpectedLayer> = layers
+        .iter()
+        .map(|layer| ExpectedLayer::of(layer, width, height))
+        .collect();
+    let page = writer.write_page(&layers, None, false).unwrap();
+    writer.finish().unwrap();
+    let check = verify_page(&page, &expected, &canvas);
+    assert!(check.problems.is_empty(), "{:?}", check.problems);
+    assert_eq!((check.vector_lines, check.texts), (1, 1));
+    assert!(check_clip(&page).ok());
+}

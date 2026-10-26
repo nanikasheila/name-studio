@@ -147,6 +147,11 @@ impl PartDonors {
         })
     }
 
+    /// The file the layers are copied from (a placeholder for the built-in parts).
+    pub fn path(&self) -> &Path {
+        &self.source.path
+    }
+
     pub fn has_vector(&self) -> bool {
         self.vector.is_some()
     }
@@ -173,7 +178,29 @@ impl Donors {
     /// Search the template, then each of `others`, then the other .clip files
     /// next to the template (pages of the same work, such as the name sheet),
     /// for each kind of donor; a frame folder only when `frames` is set.
+    /// What none of them has comes from csp-format's built-in parts, so a
+    /// plain page saved by CSP still gets editable lines and texts.
     pub fn find(template: &Path, others: &[PathBuf], frames: bool) -> Result<Self> {
+        let mut donors = Self::search(template, others, frames)?;
+        if donors.vector.is_none() || donors.text.is_none() || (frames && donors.frame.is_none()) {
+            let built_in = || -> Result<PartDonors> {
+                let parts = csp_format::blank::blank_parts()?;
+                PartDonors::find(ClipDocument::from_file(parts, Path::new(BUILT_IN_PARTS))?)
+            };
+            if donors.vector.is_none() {
+                donors.vector = Some(built_in()?).filter(PartDonors::has_vector);
+            }
+            if donors.text.is_none() {
+                donors.text = Some(built_in()?).filter(PartDonors::has_text);
+            }
+            if frames && donors.frame.is_none() {
+                donors.frame = Some(built_in()?).filter(PartDonors::has_frame);
+            }
+        }
+        Ok(donors)
+    }
+
+    fn search(template: &Path, others: &[PathBuf], frames: bool) -> Result<Self> {
         let mut donors = Donors::default();
         let candidates = std::iter::once((template.to_path_buf(), true))
             .chain(others.iter().map(|path| (path.clone(), false)))
@@ -217,6 +244,9 @@ impl Donors {
         Ok(donors)
     }
 }
+
+/// The name the built-in parts go by (they are not read from a file).
+pub const BUILT_IN_PARTS: &str = "(csp-format blank parts)";
 
 /// How many .clip files next to the template are looked at for donors.
 const NEIGHBOURS: usize = 12;
