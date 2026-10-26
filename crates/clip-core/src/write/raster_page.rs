@@ -13,24 +13,26 @@
 
 use std::path::{Path, PathBuf};
 
+use csp_format::ClipFile;
+use csp_format::database::{Row, select};
+use csp_format::edit::NewLayer;
+use csp_format::vector::VectorData;
 use rusqlite::types::Value;
 use serde::{Deserialize, Serialize};
 
+use super::Values;
 use super::cmc::{work_canvas_values, write_cmc};
-use super::editor::ClipEditor;
+use super::layers::{copy_layer, csp_image, raster_like, renew_layer_uuids, save, set_layer_mask, set_row_value};
 use super::manifest::{PageRecord, image_signature};
-use super::page::{apply_page_settings, merge_page_schema, replace_preview, share_rows};
+use super::page::{apply_page_settings, replace_preview};
 use super::split::page_file_name;
 use super::spread::{SpreadLayout, make_spread_template};
-use super::{Values, set_value, value_of};
 use crate::RgbaImage;
 use crate::clip::{ClipDocument, LayerKind};
 use crate::error::{CspError, Result};
 use crate::raster::{Filter, resize};
 use crate::text::{NewText, retarget_add_attributes, retarget_text_attributes};
-use crate::vector::{
-    FrameTemplate, NewFrame, NewVectorLine, brush_style_of, build_frame_data, build_vector_data, shape_signature,
-};
+use crate::vector::{FrameTemplate, NewFrame, NewVectorLine, brush_style_of, frame_template_of, shape_signature};
 
 /// One raster layer of a page; the image covers the whole page canvas.
 pub struct RasterLayer {
@@ -73,8 +75,6 @@ const TEXT_BLOCK_ARRAYS: [&str; 2] = ["TextLayerStringArray", "TextLayerAttribut
 /// CSP-made layers that new vector and text layers are copied from.
 pub struct PartDonors {
     pub(crate) source: ClipDocument,
-    /// Whether `source` is the template itself (no schema to merge).
-    pub(crate) is_template: bool,
     pub(crate) vector: Option<(i64, u32)>,
     pub(crate) text: Option<i64>,
     /// A frame folder and the layout of its borders.
@@ -84,7 +84,7 @@ pub struct PartDonors {
 impl PartDonors {
     /// Look for a vector layer with a line and a text layer with one plain
     /// text in `source`.
-    pub fn find(source: ClipDocument, is_template: bool) -> Result<Self> {
+    pub fn find(source: ClipDocument) -> Result<Self> {
         let probe = NewText {
             text: "a".to_owned(),
             frame: [0, 0, 10, 10],
@@ -101,7 +101,7 @@ impl PartDonors {
             match layer.kind {
                 LayerKind::FrameFolder if frame.is_none() => {
                     if let Some(payload) = source.vector_payloads(layer)?.first()
-                        && let Ok(Some(template)) = FrameTemplate::of(payload)
+                        && let Some(template) = frame_template_of(payload)
                     {
                         frame = Some((layer.main_id, template));
                     }
@@ -141,7 +141,6 @@ impl PartDonors {
         }
         Ok(PartDonors {
             source,
-            is_template,
             vector,
             text,
             frame,
@@ -192,7 +191,7 @@ impl Donors {
                 Err(_) if !is_template && !others.contains(&path) => continue,
                 Err(error) => return Err(error),
             };
-            let found = PartDonors::find(document, is_template)?;
+            let found = PartDonors::find(document)?;
             let wanted = [
                 found.has_vector() && donors.vector.is_none(),
                 found.has_text() && donors.text.is_none(),
@@ -206,7 +205,7 @@ impl Donors {
                 }
                 let part = match found.take() {
                     Some(part) => part,
-                    None => PartDonors::find(ClipDocument::read(&path)?, is_template)?,
+                    None => PartDonors::find(ClipDocument::read(&path)?)?,
                 };
                 match kind {
                     0 => donors.vector = Some(part),
@@ -266,13 +265,11 @@ const FRESH_LAYER: [(&str, i64); 6] = [
     ("LayerLock", 0),
 ];
 
-fn freshen(values: &mut Values, name: &str) {
+fn freshen(row: &mut Row, name: &str) {
     for (column, value) in FRESH_LAYER {
-        if value_of(values, column).is_some() {
-            set_value(values, column, Value::Integer(value));
-        }
+        row.set(column, Value::Integer(value));
     }
-    set_value(values, "LayerName", Value::Text(name.to_owned()));
+    set_row_value(row, "LayerName", Value::Text(name.to_owned()));
 }
 
 /// Half opacity for a 下描き layer (CSP's full is 256).
@@ -290,17 +287,16 @@ pub(crate) fn layer_name(layer: &PageLayer) -> &str {
 }
 
 /// Make a layer a 下描き layer (CSP: レイヤー > 下描きレイヤーに設定) at half opacity.
-pub(crate) fn make_draft(editor: &ClipEditor, id: i64) -> Result<()> {
-    let has_draft = editor.db.prepare("SELECT DraftLayer FROM Layer LIMIT 0").is_ok();
-    if has_draft {
-        editor
-            .db
-            .execute("UPDATE Layer SET DraftLayer = 1 WHERE MainId = ?1", [id])?;
+pub(crate) fn make_draft(file: &mut ClipFile, id: i64) -> Result<()> {
+    let db = file.database();
+    if csp_format::database::has_column(db, "Layer", "DraftLayer")? {
+        db.execute("UPDATE Layer SET DraftLayer = 1 WHERE MainId = ?1", [id])?;
     }
-    editor.db.execute(
+    db.execute(
         "UPDATE Layer SET LayerOpacity = ?1 WHERE MainId = ?2",
         [DRAFT_OPACITY, id],
     )?;
+    file.reload()?;
     Ok(())
 }
 
@@ -316,77 +312,65 @@ pub struct LayerLook {
 }
 
 /// Give a written layer its look.
-fn apply_look(editor: &ClipEditor, id: i64, look: &LayerLook) -> Result<()> {
+fn apply_look(file: &mut ClipFile, id: i64, look: &LayerLook) -> Result<()> {
+    let db = file.database();
     if look.opacity < 1.0 {
-        editor.db.execute(
+        db.execute(
             "UPDATE Layer SET LayerOpacity = MAX(1, CAST(ROUND(LayerOpacity * ?1) AS INTEGER)) WHERE MainId = ?2",
             rusqlite::params![look.opacity.clamp(0.0, 1.0), id],
         )?;
     }
     if look.hidden {
         // Bit 0 shows the layer; the others (its mask in use) stay.
-        editor.db.execute(
+        db.execute(
             "UPDATE Layer SET LayerVisibility = LayerVisibility & ~1 WHERE MainId = ?1",
             [id],
         )?;
     }
+    file.reload()?;
     Ok(())
 }
 
-/// Make `editor` able to hold the donor's layers (its tables, columns and
-/// brush styles), once per donor document.
-pub(crate) fn prepare_for(editor: &ClipEditor, donor: &PartDonors) -> Result<()> {
-    if !donor.is_template {
-        merge_page_schema(&editor.db, donor.source.database())?;
-        share_rows(&editor.db, donor.source.database())?;
-    }
-    Ok(())
+/// Make `file` able to hold the donor's layers (its tables, columns and
+/// brush styles, with what they refer to), once per donor document.
+pub(crate) fn prepare_for(file: &mut ClipFile, donor: &PartDonors) -> Result<()> {
+    Ok(file.prepare_copy_from(donor.source.file())?)
 }
 
-/// Brush style id for new lines: the donor's, when the page has that style,
-/// else the page's first one.
-fn brush_style_in(editor: &ClipEditor, donor_style: u32) -> Result<u32> {
-    let has = |sql: &str| -> Result<Option<i64>> {
-        Ok(editor
-            .db
-            .query_row(sql, [donor_style], |row| row.get::<_, Option<i64>>(0))
-            .unwrap_or(None))
-    };
-    if has("SELECT MainId FROM BrushStyle WHERE MainId = ?1")?.is_some() {
-        return Ok(donor_style);
-    }
-    Ok(has("SELECT MIN(MainId) FROM BrushStyle WHERE ?1 = ?1")?.map_or(donor_style, |id| id as u32))
-}
-
-pub(crate) fn add_vector_layer(
-    editor: &mut ClipEditor,
-    donor: &PartDonors,
-    name: &str,
-    lines: &[NewVectorLine],
-) -> Result<i64> {
-    let (layer_id, donor_style) = donor
-        .vector
-        .ok_or_else(|| CspError::format("No vector layer to copy"))?;
-    let brush = brush_style_in(editor, donor_style)?;
-    let data = build_vector_data(lines, brush);
-    let payload_hook = |table: &str, column: &str, payload: Vec<u8>| -> Result<Vec<u8>> {
+/// Vector data `data` in place of the copied layer's.
+fn with_vector_data(data: Vec<u8>) -> impl Fn(&str, &str, Vec<u8>) -> csp_format::Result<Vec<u8>> {
+    move |table: &str, column: &str, payload: Vec<u8>| {
         Ok(if table == "VectorObjectList" && column == "VectorData" {
             data.clone()
         } else {
             payload
         })
-    };
-    let mut row_hook = |values: &mut Values| -> Result<()> {
-        freshen(values, name);
+    }
+}
+
+/// A vector layer holding `lines`, on top of `parent`'s children.
+pub(crate) fn add_vector_layer(
+    file: &mut ClipFile,
+    donor: &PartDonors,
+    name: &str,
+    lines: &[NewVectorLine],
+    parent: i64,
+) -> Result<i64> {
+    let (layer_id, donor_style) = donor
+        .vector
+        .ok_or_else(|| CspError::format("No vector layer to copy"))?;
+    let brush = csp_format::copy::brush_style_in(file.database(), donor_style)?;
+    let payload_hook = with_vector_data(VectorData::from_lines(lines, brush).to_bytes());
+    let mut edit = |row: &mut Row| -> Result<()> {
+        freshen(row, name);
         Ok(())
     };
-    let source = &donor.source;
-    let payload = |id: &str| source.external_payload(id).map(<[u8]>::to_vec);
-    editor.add_layer(
-        source.database(),
-        &payload,
+    copy_layer(
+        file,
+        donor.source.file(),
         layer_id,
-        Some(&mut row_hook),
+        parent,
+        &mut edit,
         Some(&payload_hook),
     )
 }
@@ -394,34 +378,32 @@ pub(crate) fn add_vector_layer(
 /// A コマ枠フォルダー holding `frames`, copied from the donor's frame folder
 /// (without its layers). Its mask and border images are left for CSP to
 /// draw from the frames, as CSP itself saves them.
-fn add_frame_folder(editor: &mut ClipEditor, donor: &PartDonors, name: &str, frames: &[NewFrame]) -> Result<i64> {
+fn add_frame_folder(
+    file: &mut ClipFile,
+    donor: &PartDonors,
+    name: &str,
+    frames: &[NewFrame],
+    parent: i64,
+) -> Result<i64> {
     let (layer_id, template) = donor
         .frame
         .as_ref()
         .ok_or_else(|| CspError::format("No frame folder to copy"))?;
-    let brush = brush_style_in(editor, template.brush_style())?;
-    let data = build_frame_data(frames, template, brush);
-    let payload_hook = |table: &str, column: &str, payload: Vec<u8>| -> Result<Vec<u8>> {
-        Ok(if table == "VectorObjectList" && column == "VectorData" {
-            data.clone()
-        } else {
-            payload
-        })
-    };
-    let mut row_hook = |values: &mut Values| -> Result<()> {
-        freshen(values, name);
+    let brush = csp_format::copy::brush_style_in(file.database(), template.brush_style())?;
+    let payload_hook = with_vector_data(VectorData::from_frames(frames, template, brush).to_bytes());
+    let mut edit = |row: &mut Row| -> Result<()> {
+        freshen(row, name);
         Ok(())
     };
-    let source = &donor.source;
-    let payload = |id: &str| source.external_payload(id).map(<[u8]>::to_vec);
-    let id = editor.add_layer(
-        source.database(),
-        &payload,
+    let id = copy_layer(
+        file,
+        donor.source.file(),
         *layer_id,
-        Some(&mut row_hook),
+        parent,
+        &mut edit,
         Some(&payload_hook),
     )?;
-    editor.add_frame_offscreens(id)?;
+    file.add_frame_images(id)?;
     Ok(id)
 }
 
@@ -431,31 +413,28 @@ fn text_layer_name(text: &NewText) -> String {
     first.chars().take(32).collect()
 }
 
-pub(crate) fn add_text_layer(editor: &mut ClipEditor, donor: &PartDonors, text: &NewText) -> Result<i64> {
+/// A text layer holding `text`, on top of `parent`'s children.
+pub(crate) fn add_text_layer(file: &mut ClipFile, donor: &PartDonors, text: &NewText, parent: i64) -> Result<i64> {
     let layer_id = donor.text.ok_or_else(|| CspError::format("No text layer to copy"))?;
     let name = text_layer_name(text);
-    let mut row_hook = |values: &mut Values| -> Result<()> {
-        freshen(values, &name);
+    let mut edit = |row: &mut Row| -> Result<()> {
+        freshen(row, &name);
         // CSP keeps the text as a UTF-8 blob and misreads a TEXT value.
-        set_value(values, "TextLayerString", Value::Blob(text.stored_text().into_bytes()));
-        if let Some(Value::Blob(blob)) = value_of(values, "TextLayerAttributes") {
+        set_row_value(row, "TextLayerString", Value::Blob(text.stored_text().into_bytes()));
+        if let Some(blob) = row.blob("TextLayerAttributes") {
             let blob = retarget_text_attributes(blob, text)?;
-            set_value(values, "TextLayerAttributes", Value::Blob(blob));
+            row.set("TextLayerAttributes", Value::Blob(blob));
         }
-        if let Some(Value::Blob(blob)) = value_of(values, "TextLayerAddAttributesV01") {
+        if let Some(blob) = row.blob("TextLayerAddAttributesV01") {
             let blob = retarget_add_attributes(blob, text)?;
-            set_value(values, "TextLayerAddAttributesV01", Value::Blob(blob));
+            row.set("TextLayerAddAttributesV01", Value::Blob(blob));
         }
         for column in TEXT_BLOCK_ARRAYS {
-            if value_of(values, column).is_some() {
-                set_value(values, column, Value::Null);
-            }
+            row.set(column, Value::Null);
         }
         Ok(())
     };
-    let source = &donor.source;
-    let payload = |id: &str| source.external_payload(id).map(<[u8]>::to_vec);
-    editor.add_layer(source.database(), &payload, layer_id, Some(&mut row_hook), None)
+    copy_layer(file, donor.source.file(), layer_id, parent, &mut edit, None)
 }
 
 /// Size and frames of the template page, in its pixels.
@@ -520,9 +499,9 @@ fn masked(image: &RgbaImage, mask: &RgbaImage) -> RgbaImage {
 
 /// Adds the layers of one page, keeping the thumbnail's picture of them.
 struct PageBuilder<'a> {
-    /// The template's raster layer, which new raster layers and folders copy.
-    raster: i64,
+    /// The template and its raster layer, which new raster layers look like.
     source: &'a ClipDocument,
+    raster: Option<Row>,
     donors: &'a Donors,
     width: u32,
     height: u32,
@@ -534,23 +513,8 @@ struct PageBuilder<'a> {
 impl PageBuilder<'_> {
     /// Add `layer` at the top of `parent`; `mask` is the folder mask over it
     /// (page size), for the thumbnail.
-    fn add(
-        &mut self,
-        editor: &mut ClipEditor,
-        layer: &PageLayer,
-        parent: i64,
-        mask: Option<&RgbaImage>,
-    ) -> Result<i64> {
-        let source = self.source;
-        let payload = |id: &str| source.external_payload(id).map(<[u8]>::to_vec);
-        let raster = self.raster;
-        let blank = |editor: &mut ClipEditor, name: &str| -> Result<i64> {
-            let mut rename = |values: &mut Values| -> Result<()> {
-                set_value(values, "LayerName", Value::Text(name.to_owned()));
-                Ok(())
-            };
-            editor.add_layer(source.database(), &payload, raster, Some(&mut rename), None)
-        };
+    fn add(&mut self, file: &mut ClipFile, layer: &PageLayer, parent: i64, mask: Option<&RgbaImage>) -> Result<i64> {
+        let like = self.raster.as_ref().map(|row| (self.source.file(), row));
         let missing = |kind: &str| CspError::format(format!("No {kind} layer to copy (template or name sheet)"));
         let (width, height) = (self.width, self.height);
         let fit = |image: &RgbaImage| -> Option<RgbaImage> {
@@ -560,9 +524,9 @@ impl PageBuilder<'_> {
             PageLayer::Raster(layer) => {
                 let image = fit(&layer.image);
                 let image = image.as_ref().unwrap_or(&layer.image);
-                let id = blank(editor, &layer.name)?;
+                let id = raster_like(file, parent, &layer.name, like)?;
                 if !image.is_transparent() {
-                    editor.set_layer_image(id, image, (0, 0))?;
+                    file.set_layer_pixels(id, &csp_image(image), (0, 0))?;
                     match mask {
                         Some(mask) => self.composite.blend_over(&masked(image, mask), 0, 0),
                         None => self.composite.blend_over(image, 0, 0),
@@ -572,28 +536,26 @@ impl PageBuilder<'_> {
             }
             PageLayer::Frames { name, frames, ink } => {
                 let donor = self.donors.frame.as_ref().ok_or_else(|| missing("frame folder"))?;
-                let id = add_frame_folder(editor, donor, name, frames)?;
+                let id = add_frame_folder(file, donor, name, frames, parent)?;
                 if let Some(ink) = ink {
-                    let inside = blank(editor, ink)?;
-                    editor.append_to_folder(id, inside, None)?;
+                    raster_like(file, id, ink, like)?;
                 }
                 id
             }
             PageLayer::Vector { name, lines } => {
                 let donor = self.donors.vector.as_ref().ok_or_else(|| missing("vector"))?;
-                add_vector_layer(editor, donor, name, lines)?
+                add_vector_layer(file, donor, name, lines, parent)?
             }
             PageLayer::Text(text) => {
                 let donor = self.donors.text.as_ref().ok_or_else(|| missing("text"))?;
-                add_text_layer(editor, donor, text)?
+                add_text_layer(file, donor, text, parent)?
             }
             PageLayer::Folder {
                 name,
                 mask: own,
                 children,
             } => {
-                let id = blank(editor, name)?;
-                editor.make_folder(id)?;
+                let id = file.add_layer(parent, NewLayer::Folder, name)?;
                 // Scaled without Lanczos' ringing, which would show as a faint halo.
                 let own = own.as_ref().map(|image| {
                     if (image.width, image.height) == (width, height) {
@@ -603,7 +565,7 @@ impl PageBuilder<'_> {
                     }
                 });
                 if let Some(own) = &own {
-                    editor.set_layer_mask(id, own)?;
+                    set_layer_mask(file, id, own)?;
                 }
                 // Inside a masked folder in a masked folder, both masks hide.
                 let inner = match (mask, &own) {
@@ -612,20 +574,30 @@ impl PageBuilder<'_> {
                     (outer, None) => outer.cloned(),
                 };
                 for child in children {
-                    self.add(editor, child, id, inner.as_ref())?;
+                    self.add(file, child, id, inner.as_ref())?;
                 }
                 id
             }
         };
-        editor.append_to_folder(parent, id, None)?;
         if self.draft_layers.iter().any(|draft| *draft == layer_name(layer)) {
-            make_draft(editor, id)?;
+            make_draft(file, id)?;
         }
         if let Some(look) = self.looks.iter().find(|look| look.name == layer_name(layer)) {
-            apply_look(editor, id, look)?;
+            apply_look(file, id, look)?;
         }
         Ok(id)
     }
+}
+
+/// The first raster layer of a page, which new raster layers look like.
+fn first_raster_row(document: &ClipDocument) -> Result<Option<Row>> {
+    Ok(select(
+        document.database(),
+        "SELECT * FROM Layer WHERE LayerType = 1 ORDER BY MainId LIMIT 1",
+        [],
+    )?
+    .into_iter()
+    .next())
 }
 
 /// Write one page: a copy of `template` with `layers` added on top, bottom
@@ -651,9 +623,11 @@ pub fn write_name_page(
 ) -> Result<Vec<i64>> {
     let source = ClipDocument::read(template)?;
     let (width, height) = (source.canvas.width_px as u32, source.canvas.height_px as u32);
-    let mut editor = ClipEditor::open(template)?;
-    editor.renew_ids()?;
-    apply_page_settings(&editor.db, page_index, canvas_values, zero_left)?;
+    let mut file = ClipFile::open(template)?;
+    file.renew_file_id();
+    renew_layer_uuids(&file)?;
+    apply_page_settings(file.database(), page_index, canvas_values, zero_left)?;
+    file.reload()?;
     let needs = |kind: u8| layers.iter().any(|layer| holds(layer, kind));
     for (needed, donor) in [
         (needs(0), &donors.vector),
@@ -661,11 +635,11 @@ pub fn write_name_page(
         (needs(2), &donors.frame),
     ] {
         if needed && let Some(donor) = donor {
-            prepare_for(&editor, donor)?;
+            prepare_for(&mut file, donor)?;
         }
     }
     let mut builder = PageBuilder {
-        raster: editor.first_raster_layer()?,
+        raster: first_raster_row(&source)?,
         source: &source,
         donors,
         width,
@@ -680,8 +654,8 @@ pub fn write_name_page(
     };
     let mut ids = Vec::new();
     for layer in layers {
-        let root = editor.root_id;
-        ids.push(builder.add(&mut editor, layer, root, None)?);
+        let root = file.canvas.root_folder;
+        ids.push(builder.add(&mut file, layer, root, None)?);
     }
     let composite = builder.composite;
     let thumbnail = match overlay {
@@ -692,8 +666,8 @@ pub fn write_name_page(
         }
         None => composite,
     };
-    replace_preview(&editor.db, &thumbnail)?;
-    editor.save(output)?;
+    replace_preview(file.database(), &thumbnail)?;
+    save(&file, output)?;
     Ok(ids)
 }
 
@@ -854,8 +828,8 @@ impl RasterWorkWriter {
         };
         if let Some(right) = options.right_binding {
             // 1 in CSP's right-bound works, on the work and on each page.
-            let was_right = super::page::canvas_value(template.database(), "ComicBindPosition")?
-                .or_else(|| value_of(&canvas_values, "ComicBindPosition").cloned())
+            let was_right = csp_format::story::canvas_value(template.database(), "ComicBindPosition")?
+                .or_else(|| super::value_of(&canvas_values, "ComicBindPosition").cloned())
                 .map(|value| super::int_value(Some(&value)) != 0);
             // Bound on the other side, the book starts on the other side too:
             // a right-bound work's first page is a left page, a left-bound one's a right page.

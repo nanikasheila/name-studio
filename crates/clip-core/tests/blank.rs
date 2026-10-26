@@ -6,7 +6,8 @@ use clip_core::offscreen::OffscreenParameters;
 use clip_core::text::{NewText, parse_tlv};
 use clip_core::vector::NewVectorLine;
 use clip_core::write::blank::{
-    NombrePlace, PageNumber, PageSetup, ShownNombre, StoryFont, StoryLayout, StoryPosition, write_builtin_template,
+    NombrePlace, PageNumber, PageSetup, ShownNombre, StoryFont, StoryLayout, StoryPosition, check_setup,
+    write_builtin_template,
 };
 use clip_core::write::raster_page::{PageLayer, RasterLayer, RasterWorkWriter, WorkOptions};
 use clip_core::write::split::DEFAULT_NAME_PATTERN;
@@ -522,8 +523,7 @@ fn lays_out_the_story_info_and_a_shown_nombre_as_csp_does() {
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .unwrap();
-    let edge = std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/nombre-edge.bin")).unwrap();
-    assert_eq!((attached, info), (1, edge));
+    assert_eq!((attached, info.as_slice()), (1, csp_format::blank::NOMBRE_EDGE));
     assert!(check_clip(&built.page).ok());
     // On G1's own canvas the three rows go up, inside it, in the same order.
     let folder = tempfile::tempdir().unwrap();
@@ -621,7 +621,7 @@ fn refuses_settings_csp_cannot_make() {
     let check = |change: &dyn Fn(&mut PageSetup)| {
         let mut setup = commercial();
         change(&mut setup);
-        setup.check().unwrap_err().to_string()
+        check_setup(&setup).unwrap_err().to_string()
     };
     assert!(check(&|setup| setup.trim_mm = [300.0, 364.0]).contains("仕上がり"));
     assert!(check(&|setup| setup.resolution = 2400.0).contains("解像度"));
@@ -630,6 +630,11 @@ fn refuses_settings_csp_cannot_make() {
     assert!(check(&|setup| setup.canvas_mm = [2000.0, 2000.0]).contains("大きすぎ"));
     let mut nombre = shown(NombrePlace::Top, StoryPosition::Left);
     nombre.story.nombre.as_mut().unwrap().size_pt = 200.0;
-    assert!(nombre.check().unwrap_err().to_string().contains("ノンブルの大きさ"));
-    assert!(commercial().check().is_ok() && small_left().check().is_ok());
+    assert!(
+        check_setup(&nombre)
+            .unwrap_err()
+            .to_string()
+            .contains("ノンブルの大きさ")
+    );
+    assert!(check_setup(&commercial()).is_ok() && check_setup(&small_left()).is_ok());
 }

@@ -290,6 +290,11 @@ impl ClipDocument {
         self.layer_rows.get(&main_id)
     }
 
+    /// The opened file, to copy layers from.
+    pub fn file(&self) -> &ClipFile {
+        &self.file
+    }
+
     pub fn database(&self) -> &Connection {
         self.file.database()
     }

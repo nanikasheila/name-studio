@@ -141,7 +141,9 @@ fn block_payload(index: usize, filled: (usize, usize, usize, usize)) -> Vec<u8> 
     }
     let mut blocks = vec![None; 6];
     blocks[index] = Some(raw);
-    clip_core::write::offscreen::encode_block_records(&blocks, 256 * 256 * 5).unwrap()
+    csp_format::offscreen::BlockData::from_raw_blocks(&blocks, 256 * 256 * 5)
+        .unwrap()
+        .to_bytes()
 }
 
 fn container(database: &Connection, externals: &[(&str, Vec<u8>)]) -> Vec<u8> {

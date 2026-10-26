@@ -16,15 +16,15 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use csp_format::ClipFile;
 use rusqlite::types::Value;
 use serde::Serialize;
 
-use super::editor::ClipEditor;
+use super::layers::{csp_image, place_above, raster_like, save};
 use super::manifest::{PageRecord, image_signature};
 use super::raster_page::{
     Donors, PageLayer, PartDonors, RasterLayer, add_text_layer, add_vector_layer, layer_name, make_draft, prepare_for,
 };
-use super::{Values, set_value};
 use crate::RgbaImage;
 use crate::clip::{ClipDocument, ClipLayer, LayerKind};
 use crate::error::{CspError, Result};
@@ -132,26 +132,13 @@ fn named_layer<'a>(document: &'a ClipDocument, name: &str) -> Option<&'a ClipLay
 }
 
 /// Hide a layer and mark it as the old one.
-fn retire(editor: &ClipEditor, id: i64, name: &str) -> Result<()> {
-    let visibility = super::int_value(super::value_of(&editor.layer_row(id)?, "LayerVisibility"));
-    editor.update_layer(
-        id,
-        &[
-            ("LayerVisibility", Value::Integer(visibility & !1)),
-            ("LayerName", Value::Text(format!("{RETIRED_PREFIX}{name}"))),
-        ],
-    )
-}
-
-/// Put `id` right above `anchor` in `parent`.
-fn place_above(editor: &ClipEditor, parent: i64, anchor: i64, id: i64) -> Result<()> {
-    let siblings = editor.children(parent)?;
-    let next = siblings
-        .iter()
-        .position(|sibling| *sibling == anchor)
-        .and_then(|index| siblings.get(index + 1))
-        .copied();
-    editor.append_to_folder(parent, id, next)
+fn retire(file: &mut ClipFile, id: i64, name: &str) -> Result<()> {
+    file.database().execute(
+        "UPDATE Layer SET LayerVisibility = LayerVisibility & ~1, LayerName = ?1 WHERE MainId = ?2",
+        (format!("{RETIRED_PREFIX}{name}"), id),
+    )?;
+    file.reload()?;
+    Ok(())
 }
 
 /// A dialogue text on a page, as CSP has it now.
@@ -344,14 +331,14 @@ pub fn update_dialogue(
     let mut parent_of = HashMap::new();
     parents(&document.root, &mut parent_of);
     let (width, height) = (document.canvas.width_px as u32, document.canvas.height_px as u32);
-    let mut editor = ClipEditor::open(path)?;
-    let root = editor.root_id;
+    let mut file = ClipFile::open(path)?;
+    let root = file.canvas.root_folder;
     // New texts go above the topmost dialogue text (old or kept), else on top.
     let anchor = ours
         .last()
         .map(|text| (parent_of.get(&text.id).copied().unwrap_or(root), text.id));
     for old in &unmatched {
-        retire(&editor, old.id, &old.name)?;
+        retire(&mut file, old.id, &old.name)?;
         report.retired.push(old.key.clone());
     }
 
@@ -375,7 +362,7 @@ pub fn update_dialogue(
         .collect();
     let named_layer_id = notes.and_then(|notes| named_layer(&document, &notes.name).map(|layer| layer.main_id));
     // The page's own layers are copied first: what CSP saved there fits it.
-    let mut own = PartDonors::find(document, true)?;
+    let mut own = PartDonors::find(document)?;
     let text_donor = if own.has_text() {
         &own
     } else {
@@ -383,14 +370,12 @@ pub fn update_dialogue(
             .text
             .as_ref()
             .ok_or_else(|| CspError::format("No text layer to copy"))?;
-        prepare_always(&editor, donor)?;
+        prepare_for(&mut file, donor)?;
         donor
     };
     let mut new_texts = Vec::new();
     for text in &added {
-        let id = add_text_layer(&mut editor, text_donor, text)?;
-        editor.clear_layer_image(id)?;
-        new_texts.push(id);
+        new_texts.push(add_text_layer(&mut file, text_donor, text, root)?);
         report.added.push(text_key(&text.text));
     }
     // A changed text goes next to its old one, to compare; new ones above the topmost text.
@@ -399,9 +384,8 @@ pub fn update_dialogue(
             .get(index)
             .map(|old| (parent_of.get(&old.id).copied().unwrap_or(root), old.id))
             .or(anchor);
-        match next_to {
-            Some((parent, anchor)) => place_above(&editor, parent, anchor, *id)?,
-            None => editor.append_to_folder(root, *id, None)?,
+        if let Some((parent, anchor)) = next_to {
+            place_above(&mut file, parent, anchor, *id)?;
         }
     }
 
@@ -425,39 +409,32 @@ pub fn update_dialogue(
                             .vector
                             .as_ref()
                             .ok_or_else(|| CspError::format("No vector layer to copy"))?;
-                        prepare_always(&editor, donor)?;
+                        prepare_for(&mut file, donor)?;
                         donor
                     }
                 };
-                let id = add_vector_layer(&mut editor, donor, name, lines)?;
-                editor.clear_layer_image(id)?;
-                id
+                add_vector_layer(&mut file, donor, name, lines, parent)?
             }
             PageLayer::Raster(raster) => {
-                let source = &own.source;
-                let payload = |id: &str| source.external_payload(id).map(<[u8]>::to_vec);
-                let mut rename = |values: &mut Values| -> Result<()> {
-                    set_value(values, "LayerName", Value::Text(raster.name.clone()));
+                // Looks like the old one (shown, not a 下描き, not locked), with the new pixels.
+                let mut row = own.source.file().row("Layer", old)?;
+                if let Some(row) = row.as_mut() {
                     for (column, value) in [("LayerVisibility", 1), ("DraftLayer", 0), ("LayerLock", 0)] {
-                        if super::value_of(values, column).is_some() {
-                            set_value(values, column, Value::Integer(value));
-                        }
+                        row.set(column, Value::Integer(value));
                     }
-                    Ok(())
-                };
-                let id = editor.add_layer(source.database(), &payload, old, Some(&mut rename), None)?;
-                if raster.image.is_transparent() {
-                    editor.clear_layer_image(id)?;
-                } else {
+                }
+                let like = row.as_ref().map(|row| (own.source.file(), row));
+                let id = raster_like(&mut file, parent, &raster.name, like)?;
+                if !raster.image.is_transparent() {
                     let image = fit(&raster.image, width, height);
-                    editor.set_layer_image(id, image.as_ref().unwrap_or(&raster.image), (0, 0))?;
+                    file.set_layer_pixels(id, &csp_image(image.as_ref().unwrap_or(&raster.image)), (0, 0))?;
                 }
                 id
             }
             _ => return Err(CspError::format("Only balloon lines and images are swapped")),
         };
-        retire(&editor, old, &name)?;
-        place_above(&editor, parent, old, id)?;
+        retire(&mut file, old, &name)?;
+        place_above(&mut file, parent, old, id)?;
         report.replaced.push(name);
     }
 
@@ -466,36 +443,44 @@ pub fn update_dialogue(
             Some(id) => id,
             None => {
                 // A page written without memos: a new 下描き layer on top.
-                let source = &own.source;
-                let payload = |id: &str| source.external_payload(id).map(<[u8]>::to_vec);
-                let raster = editor.first_raster_layer()?;
-                let mut rename = |values: &mut Values| -> Result<()> {
-                    set_value(values, "LayerName", Value::Text(notes.name.clone()));
+                let like = first_raster(&own.source)?;
+                let like = like.as_ref().map(|row| {
+                    let mut row = row.clone();
                     for (column, value) in [("LayerVisibility", 1), ("LayerLock", 0)] {
-                        if super::value_of(values, column).is_some() {
-                            set_value(values, column, Value::Integer(value));
-                        }
+                        row.set(column, Value::Integer(value));
                     }
-                    Ok(())
-                };
-                let id = editor.add_layer(source.database(), &payload, raster, Some(&mut rename), None)?;
-                editor.append_to_folder(root, id, None)?;
-                make_draft(&editor, id)?;
+                    row
+                });
+                let id = raster_like(
+                    &mut file,
+                    root,
+                    &notes.name,
+                    like.as_ref().map(|row| (own.source.file(), row)),
+                )?;
+                make_draft(&mut file, id)?;
                 id
             }
         };
-        if notes.image.is_transparent() {
-            editor.clear_layer_image(id)?;
-        } else {
-            let image = fit(&notes.image, width, height);
-            editor.set_layer_image(id, image.as_ref().unwrap_or(&notes.image), (0, 0))?;
-        }
+        // Drawn anew: the old pixels go.
+        let image = fit(&notes.image, width, height);
+        file.set_layer_pixels(id, &csp_image(image.as_ref().unwrap_or(&notes.image)), (0, 0))?;
         report.notes = true;
     }
 
-    editor.save_with(path, true)?;
+    save(&file, path)?;
     report.problems = check_update(path, update, &report);
     Ok(report)
+}
+
+/// The first raster layer of a page, which a new one looks like.
+fn first_raster(document: &ClipDocument) -> Result<Option<csp_format::database::Row>> {
+    Ok(csp_format::database::select(
+        document.database(),
+        "SELECT * FROM Layer WHERE LayerType = 1 ORDER BY MainId LIMIT 1",
+        [],
+    )?
+    .into_iter()
+    .next())
 }
 
 /// Whether `layer` holds `image` (at the page's size): the same coverage,
@@ -529,18 +514,6 @@ fn same_pixels(document: &ClipDocument, layer: &ClipLayer, image: &RgbaImage) ->
 /// `image` at the page's size, when it is not already.
 fn fit(image: &RgbaImage, width: u32, height: u32) -> Option<RgbaImage> {
     ((image.width, image.height) != (width, height)).then(|| resize(image, width, height, Filter::Lanczos3))
-}
-
-/// Schema and shared rows for a donor from another file (always: the page
-/// is not the template, whatever the donor is).
-fn prepare_always(editor: &ClipEditor, donor: &PartDonors) -> Result<()> {
-    if donor.is_template {
-        super::page::merge_page_schema(&editor.db, donor.source.database())?;
-        super::page::share_rows(&editor.db, donor.source.database())?;
-        Ok(())
-    } else {
-        prepare_for(editor, donor)
-    }
 }
 
 /// Read the page back: every new text is there and visible, the old ones

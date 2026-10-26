@@ -2,17 +2,14 @@
 
 書き出し画面の「ツールで設定する」（`--builtin`）は、CSP で保存したひな形を選ばずに、
 画面の設定から CSP のページ（.clip）と作品ファイル（.cmc）を作ります。
-`clip-core` の `write::blank` が、プログラムに入れた CSP 製の白紙の値を書き換えて作ります。
+CSP の形式は [csp-format](https://github.com/nanikasheila/CLIP_STUDIO_PAINT_Format) の `blank` が持ち、
+`clip-core` の `write::blank` は設定を確かめて（日本語のメッセージ）そこへ渡し、3 つのファイルを保存するだけです。
 ページを一から組み立てないのは、CSP が読む表と列の組み合わせを崩さないためです。
 
-## 内蔵の白紙（crates/clip-core/assets）
+## 内蔵の白紙（csp-format の crates/csp-format/assets）
 
-CSP EX 5.1.4 が保存したファイルから、次の例で作り直せます（作品名・作者名・フォントは置き換え、
-使っていない描画キャッシュは消し、SQLite は VACUUM して消した文字が残らないようにする）:
-
-```bash
-cargo run -p clip-core --example make_blank_assets -- <ページ.clip> <作品.cmc> <ベクターとテキストのあるページ.clip> crates/clip-core/assets
-```
+CSP EX 5.1.4 が保存したファイルから作ったもの（作品名・作者名・フォントは置き換え、使っていない描画キャッシュは消し、
+SQLite は VACUUM して消した文字が残らないようにしてある）。作り直すときは csp-format の Issue で頼む。
 
 | ファイル | 中身 |
 | --- | --- |
@@ -26,7 +23,7 @@ cargo run -p clip-core --example make_blank_assets -- <ページ.clip> <作品.c
 
 - キャンバス: `CanvasWidth/Height`（mm から px、四捨五入）、`CanvasResolution`、`CanvasUnit` = 2（mm）。
   大きさが変わるときは、キャンバスに合わせた Offscreen（ルートはキャンバスちょうど、レイヤーは 256 px 単位に切り上げ、ミップマップの各段）、
-  レイヤーのサムネイルの元の大きさ、キャンバスのプレビュー（1/8）も作り直す（`write::canvas`、見開きと共通）。
+  レイヤーのサムネイルの元の大きさ、キャンバスのプレビュー（1/8）も作り直す（csp-format の `blank::apply_setup`）。
 - 枠: `CropFrameWidth/Height`（仕上がり）、`CropFrameDitch`（裁ち落とし）、`CropFrameInnerWidth/Height` と `CropFrameInnerOffsetX/Y`（基本枠）。
   CSP と同じく、キャンバスの真ん中に置き、左上は `(W − w) div 2`。
 - 左右: 1 ページ目が右ページなら `ComicIsLeftPage` = 0、`CropFrameOptionFlag` の左右の印 4、ノンブルを反対側（ノド）へ。
@@ -41,7 +38,7 @@ cargo run -p clip-core --example make_blank_assets -- <ページ.clip> <作品.c
   - ページ番号は作品情報の文字配列の 2 つめ（「7ページ」）。属性は作者名のブロックを写し、部品の印 TLV 0x2e を 4 にする
     （0x2e: 1 作品名・2 作者名・4 ページ番号・16 ノンブル・32 隠しノンブル）。番号は `PageNumberStart + ComicPageIndex` で、ページごとに書き換える。
   - 見えるノンブル（`UseShownNombre` 1・`UseHiddenNombre` 0）: 文字は前置き＋番号＋後ろ（「p.1-」）、大きさは `ComicStoryNombreFontSize`（TLV 0x20 = pt × 100）、
-    白は TLV 0x22 = ff × 12。フチは文字の属性ではなく (ノンブル) レイヤーの効果（`LayerEffectInfo` の EffectEdge: 太さ px の f64 と色 RGB の u32、ビッグエンディアン。`LayerEffectAttached` 1 など。assets/nombre-edge.bin が G1 の値）で、白い文字に黒いフチ。フチがないと白いノンブルは白い紙で見えない。
+    白は TLV 0x22 = ff × 12。フチは文字の属性ではなく (ノンブル) レイヤーの効果（`LayerEffectInfo` の EffectEdge: 太さ px の f64 と色 RGB の u32、ビッグエンディアン。`LayerEffectAttached` 1 など。csp-format の `blank::NOMBRE_EDGE` が G1 の値）で、白い文字に黒いフチ。フチがないと白いノンブルは白い紙で見えない。
     `NombrePosition` 1 上部内側・2 上部・3 上部外側・4 下部内側・5 下部・6 下部外側。上部は基本枠の上から縦の間隔だけ上に下端、下部は基本枠の下から縦の間隔だけ下に上端。
     内側は綴じる側（左ページの右）で、基本枠の端にそろえる。横の間隔は内へ寄せるものとした（G1/G2 は 0 で未確認）。
 - 作品ファイル: `ComicBindPosition`（右綴じ 1・左綴じ 0）、`ComicStartPage`（1 ページ目が右なら 1）、`DefaultPage*`、作品情報の列、ページの大きさ。

@@ -10,22 +10,27 @@
 
 use std::path::Path;
 
+use csp_format::ClipFile;
+use csp_format::copy::CopyLayer;
+use csp_format::database::{Row, has_table, select, value_as_text};
+use csp_format::offscreen::{Attribute, BlockData, Offscreen, Parameter, PixelKind, encode};
+use csp_format::story::{
+    FOR_RIGHT_PAGE, LEFT_PAGE_FLAG, NOMBRE_INFO, RIGHT_PAGE_FLAG, STORY_INFO, canvas_value, drop_render_cache,
+    edit_text_blocks, map_bbox_x, story_layers,
+};
 use rusqlite::Connection;
 use rusqlite::types::Value;
 use serde::Serialize;
 
-use super::canvas::resize_offscreens;
-use super::editor::ClipEditor;
-use super::page::{
-    FOR_RIGHT_PAGE, LEFT_PAGE_FLAG, NOMBRE_INFO, RIGHT_PAGE_FLAG, STORY_INFO, TextItems, canvas_value,
-    drop_render_cache, edit_text_blocks, has_column, layer_offset_x, map_bbox_x, story_layers,
-};
-use super::{Values, set_value};
+use super::layers::{parent_of, place, renew_layer_uuids, save, set_row_value};
+use super::page::has_column;
+use crate::RgbaImage;
 use crate::clip::{ClipDocument, round_half_even};
 use crate::error::{CspError, Result};
-use crate::offscreen::RgbaImage;
 use crate::raster::{Filter, decode_png, resize};
 
+/// Offscreen blocks are 256 px square.
+const BLOCK_SIZE: u32 = 256;
 /// CropFrameOptionFlag of the spreads CSP EX 5 makes (no page side bit).
 const SPREAD_FRAME_FLAG: i64 = 17;
 /// Canvas columns CSP sets once a spread has its right page's story info layers.
@@ -96,26 +101,30 @@ pub fn make_spread_template(single: &Path, output: &Path) -> Result<SpreadLayout
     }
     let layout = spread_layout(&source)?;
     let (old_width, old_height) = (source.canvas.width_px, source.canvas.height_px);
-    let mut editor = ClipEditor::open(single)?;
-    editor.renew_ids()?;
-    let was_left = matches!(canvas_value(&editor.db, "ComicIsLeftPage")?, Some(Value::Integer(1)));
-    set_spread_canvas(&editor.db)?;
-    widen_offscreens(&mut editor, (old_width, old_height), layout.width_px as i64)?;
+    let mut file = ClipFile::open(single)?;
+    file.renew_file_id();
+    renew_layer_uuids(&file)?;
+    let was_left = matches!(
+        canvas_value(file.database(), "ComicIsLeftPage")?,
+        Some(Value::Integer(1))
+    );
+    set_spread_canvas(file.database())?;
+    widen_offscreens(&mut file, (old_width, old_height), layout.width_px as i64)?;
     for column in ["ThumbnailCanvasWidth", "ThumbnailCanvasHeight"] {
-        if has_column(&editor.db, "LayerThumbnail", column)? {
+        if has_column(file.database(), "LayerThumbnail", column)? {
             let value = if column.ends_with("Width") {
                 layout.width_px
             } else {
                 layout.height_px
             };
-            editor
-                .db
+            file.database()
                 .execute(&format!("UPDATE LayerThumbnail SET \"{column}\" = ?1"), [value])?;
         }
     }
-    widen_preview(&editor.db, old_width, layout.width_px as i64)?;
-    add_right_story_layers(&mut editor, &source, old_width, was_left, &layout)?;
-    editor.save(output)?;
+    widen_preview(file.database(), old_width, layout.width_px as i64)?;
+    file.reload()?;
+    add_right_story_layers(&mut file, &source, old_width, was_left, &layout)?;
+    save(&file, output)?;
     Ok(layout)
 }
 
@@ -147,23 +156,103 @@ fn set_spread_canvas(db: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// Widen every offscreen sized by the canvas to the spread. What an
-/// offscreen showed is kept on the left and repeated on the right (a blank
-/// paper stays blank on both pages).
-fn widen_offscreens(editor: &mut ClipEditor, size: (i64, i64), new_width: i64) -> Result<()> {
-    resize_offscreens(editor, size, (new_width, size.1), &|old, width, height| {
-        let mut image = RgbaImage::transparent(width, height);
-        if let Some(old) = old {
-            image.paste(&old, 0, 0);
-            image.paste(&old, old.width as i64, 0);
+/// Mipmap level sizes from a base size: each level is half of the one
+/// before, rounded down.
+fn levels(base: i64) -> Vec<i64> {
+    let mut result = vec![base];
+    while result.len() < 16 && *result.last().unwrap() > 1 {
+        result.push(result.last().unwrap() / 2);
+    }
+    result
+}
+
+fn padded(size: i64) -> i64 {
+    let block = BLOCK_SIZE as i64;
+    (size + block - 1) / block * block
+}
+
+/// Widen every offscreen sized by the canvas to the spread: render mipmaps
+/// (the root's at the exact canvas size, the layers' padded to whole
+/// blocks) at every level. What an offscreen showed is kept on the left and
+/// repeated on the right (a blank paper stays blank on both pages); one with
+/// no pixels stored stays so.
+fn widen_offscreens(file: &mut ClipFile, (width, height): (i64, i64), new_width: i64) -> Result<()> {
+    let families = [
+        (levels(width), levels(height), levels(new_width)),
+        (levels(padded(width)), levels(padded(height)), levels(padded(new_width))),
+    ];
+    for row in select(
+        file.database(),
+        "SELECT MainId, Attribute, BlockData FROM Offscreen",
+        [],
+    )? {
+        let Some(attribute) = row.blob("Attribute") else {
+            continue;
+        };
+        let Ok(mut attribute) = Attribute::parse(attribute) else {
+            continue;
+        };
+        let Ok(parameter) = attribute.parameter() else { continue };
+        let size = (parameter.width as i64, parameter.height as i64);
+        let Some((target_width, target_height)) = families.iter().find_map(|(widths, heights, new_widths)| {
+            let count = widths.len().min(heights.len()).min(new_widths.len());
+            (0..count)
+                .find(|level| (widths[*level], heights[*level]) == size)
+                .map(|level| (new_widths[level], heights[level]))
+        }) else {
+            continue;
+        };
+        let external = row.get("BlockData").and_then(value_as_text).unwrap_or_default();
+        let stored = file.external(&external).map(<[u8]>::to_vec);
+        let resized = Parameter {
+            width: target_width as u32,
+            height: target_height as u32,
+            blocks_x: (target_width as u32).div_ceil(BLOCK_SIZE),
+            blocks_y: (target_height as u32).div_ceil(BLOCK_SIZE),
+            ..parameter
+        };
+        let data = match &stored {
+            Some(payload) => {
+                let old = Offscreen::parse(&attribute.to_bytes(), Some(payload))?;
+                match old.kind() {
+                    PixelKind::Color | PixelKind::Gray => {
+                        let old = old.to_rgba()?;
+                        let mut image = csp_format::RgbaImage::new(resized.width, resized.height);
+                        image.paste(&old, 0, 0);
+                        image.paste(&old, old.width as i64, 0);
+                        encode(&resized, Some(&image), None)?
+                    }
+                    kind => {
+                        return Err(CspError::format(format!(
+                            "Widening {kind:?} offscreens is not supported"
+                        )));
+                    }
+                }
+            }
+            None => BlockData::from_raw_blocks(&vec![None; resized.block_count()], resized.block_bytes())?,
+        };
+        let values = &mut attribute
+            .sections
+            .iter_mut()
+            .find(|section| section.name == "Parameter")
+            .ok_or_else(|| CspError::format("Offscreen attribute has no Parameter section"))?
+            .values;
+        values[..4].copy_from_slice(&[resized.width, resized.height, resized.blocks_x, resized.blocks_y]);
+        attribute.set_block_sizes(&data.record_sizes());
+        file.database().execute(
+            "UPDATE Offscreen SET Attribute = ?1 WHERE MainId = ?2",
+            (attribute.to_bytes(), row.int("MainId")),
+        )?;
+        if stored.is_some() {
+            file.set_external(&external, data.to_bytes());
         }
-        image
-    })
+    }
+    Ok(())
 }
 
 /// A blank (white) preview as wide as the spread, at the template's scale.
 fn widen_preview(db: &Connection, old_width: i64, new_width: i64) -> Result<()> {
-    if !super::schema::table_names(db)?.contains("CanvasPreview") {
+    if !has_table(db, "CanvasPreview")? {
         return Ok(());
     }
     let row: Option<(i64, Option<Vec<u8>>)> = db
@@ -204,55 +293,43 @@ fn widen_preview(db: &Connection, old_width: i64, new_width: i64) -> Result<()> 
 /// Move the template's 作品情報 / ノンブル to the left page and add a copy of
 /// each for the right page, as CSP's own spreads have them.
 fn add_right_story_layers(
-    editor: &mut ClipEditor,
+    file: &mut ClipFile,
     source: &ClipDocument,
     page_width: i64,
     was_left: bool,
     layout: &SpreadLayout,
 ) -> Result<()> {
-    let mut layers = story_layers(&editor.db, STORY_INFO)?;
-    layers.extend(story_layers(&editor.db, NOMBRE_INFO)?);
-    let payload = |id: &str| source.external_payload(id).map(<[u8]>::to_vec);
+    let mut layers = story_layers(file.database(), STORY_INFO)?;
+    layers.extend(story_layers(file.database(), NOMBRE_INFO)?);
     for (layer_id, _) in layers {
         let nombre = matches!(
-            layer_value(&editor.db, layer_id, "ComicStoryInfoType")?,
+            layer_value(file.database(), layer_id, "ComicStoryInfoType")?,
             Value::Integer(NOMBRE_INFO)
         );
-        let original: Values = editor.layer_row(layer_id)?;
-        let mut keep = |values: &mut Values| -> Result<()> {
-            for column in [
-                "LayerOffsetX",
-                "LayerOffsetY",
-                "LayerRenderOffscrOffsetX",
-                "LayerRenderOffscrOffsetY",
-            ] {
-                if let Some((_, value)) = original.iter().find(|(name, _)| name == column) {
-                    set_value(values, column, value.clone());
-                }
-            }
-            set_value(values, FOR_RIGHT_PAGE, Value::Integer(1));
+        // In the same place as the left page's (the source's), with render
+        // images the size of the (now spread) canvas.
+        let folder = parent_of(file, layer_id)?;
+        let mut right_page = |row: &mut Row| -> csp_format::Result<()> {
+            set_row_value(row, FOR_RIGHT_PAGE, Value::Integer(1));
             Ok(())
         };
-        // Its render offscreens (and thumbnail settings) are the text layer's own.
-        let render_from = match layer_value(&editor.db, layer_id, "LayerRenderMipmap")? {
-            Value::Integer(mipmap) if mipmap != 0 => layer_id,
-            _ => editor.first_raster_layer()?,
+        let options = CopyLayer {
+            row_hook: Some(&mut right_page),
+            parent: Some(folder),
+            ..Default::default()
         };
-        let right = editor.add_layer_rendered_like(
-            source.database(),
-            &payload,
-            layer_id,
-            Some(&mut keep),
-            None,
-            render_from,
-        )?;
+        let right = file.copy_layer_from(source.file(), layer_id, options)?;
         // The hidden ノンブル sits at the binding edge: the right edge of a
         // left page, the left edge of a right page.
         for (id, right_page) in [(layer_id, false), (right, true)] {
-            let offset = layer_offset_x(&editor.db, id)?;
+            let offset = layer_value(file.database(), id, "LayerOffsetX")?;
+            let offset = match offset {
+                Value::Integer(offset) => offset,
+                _ => 0,
+            };
             let mirror = nombre && was_left == right_page;
             let dx = round_half_even(if right_page { layout.right_dx } else { layout.left_dx });
-            let place = |x0: i64, x1: i64| {
+            let place_x = |x0: i64, x1: i64| {
                 // CSP's right-page ノンブル starts where the left page's ends,
                 // one pixel in from the edge.
                 let (x0, x1) = if mirror {
@@ -265,11 +342,11 @@ fn add_right_story_layers(
                 };
                 (x0 + dx, x1 + dx)
             };
-            edit_text_blocks(&editor.db, id, &|items: TextItems| map_bbox_x(items, &place))?;
-            drop_render_cache(&editor.db, id)?;
+            edit_text_blocks(file.database(), id, &|attributes| map_bbox_x(attributes, &place_x))?;
+            drop_render_cache(file.database(), id)?;
         }
-        let folder = parent_of(editor, layer_id)?;
-        editor.append_to_folder(folder, right, Some(layer_id))?;
+        file.reload()?;
+        place(file, folder, right, Some(layer_id))?;
     }
     Ok(())
 }
@@ -280,22 +357,4 @@ fn layer_value(db: &Connection, layer_id: i64, column: &str) -> Result<Value> {
         [layer_id],
         |row| row.get(0),
     )?)
-}
-
-/// The folder whose children include `layer_id` (the root when none does).
-fn parent_of(editor: &ClipEditor, layer_id: i64) -> Result<i64> {
-    let folders: Vec<i64> = {
-        let mut statement = editor
-            .db
-            .prepare("SELECT MainId FROM Layer WHERE LayerFirstChildIndex IS NOT NULL AND LayerFirstChildIndex != 0")?;
-        statement
-            .query_map([], |row| row.get(0))?
-            .collect::<std::result::Result<_, _>>()?
-    };
-    for folder in folders {
-        if editor.children(folder)?.contains(&layer_id) {
-            return Ok(folder);
-        }
-    }
-    Ok(editor.root_id)
 }
