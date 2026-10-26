@@ -48,6 +48,23 @@ describe("an editing session", () => {
     expect(session.dirty).toBe(false);
   });
 
+  it("leaves a name opened since alone when an older save ends", () => {
+    const session = new Session();
+    session.open(newProject("A", 1), "a.namestudio");
+    const a = session.id;
+    session.markDirty();
+    const revision = session.revision;
+    session.open(newProject("B", 1), "b.namestudio");
+    session.markDirty();
+    expect(session.saved("a.namestudio", revision, a)).toBe(false);
+    expect(session.autosaved(revision, a)).toBe(false);
+    expect([session.path, session.dirty]).toEqual(["b.namestudio", true]);
+    // Save As keeps the same name.
+    const b = session.id;
+    expect(session.saved("c.namestudio", session.revision, b)).toBe(true);
+    expect([session.id, session.path, session.dirty]).toEqual([b, "c.namestudio", false]);
+  });
+
   it("records many small edits as one step, only when they changed something", () => {
     const session = new Session();
     session.open(newProject("テスト", 1), null);

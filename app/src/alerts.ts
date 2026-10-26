@@ -3,11 +3,23 @@
 
 const shown = new Map<string, HTMLElement>();
 
+/** A button on an alert that deals with it (try again). */
+export interface AlertAction {
+  label: string;
+  run: () => void;
+}
+
 /**
  * Show `message` at the top of the window until closed (or, when `seconds`
  * is given, for that long). A message with the same `key` replaces the last.
  */
-export function showAlert(key: string, message: string, kind: "error" | "warning" = "error", seconds?: number): void {
+export function showAlert(
+  key: string,
+  message: string,
+  kind: "error" | "warning" = "error",
+  seconds?: number,
+  action?: AlertAction,
+): void {
   const host = document.getElementById("alerts");
   if (!host) return;
   clearAlert(key);
@@ -21,7 +33,19 @@ export function showAlert(key: string, message: string, kind: "error" | "warning
   const alert = document.createElement("div");
   alert.className = `alert ${kind}`;
   alert.setAttribute("role", "alert");
-  alert.append(text, close);
+  alert.append(text);
+  if (action) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "alert-action";
+    button.textContent = action.label;
+    button.addEventListener("click", () => {
+      clearAlert(key);
+      action.run();
+    });
+    alert.append(button);
+  }
+  alert.append(close);
   host.append(alert);
   shown.set(key, alert);
   if (seconds) window.setTimeout(() => shown.get(key) === alert && clearAlert(key), seconds * 1000);

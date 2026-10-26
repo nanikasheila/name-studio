@@ -112,28 +112,38 @@ export class SeriesPanel {
     if (link) project.series = link;
   }
 
-  /** The name was written: the series takes what it shares now and lists it. */
-  async saved(project: Project, namePath: string): Promise<void> {
+  /**
+   * The name was written: the series takes what it shares now and lists it.
+   * Null when the series has it, else why not (the series file then stays
+   * behind, and the next save tries again).
+   */
+  async saved(project: Project, namePath: string): Promise<string | null> {
     const current = this.current;
-    if (!current || !project.series) return;
+    if (!current || !project.series) return null;
     const entry = relativePath(folderOf(current.path), namePath);
-    if (!entry) {
-      this.host.status("このネームはシリーズのファイルと別のドライブにあるので、シリーズの一覧には入れられません");
-      return;
-    }
-    await this.write(current, withEpisode(current.data, project, entry));
+    if (!entry) return "このネームはシリーズのファイルと別のドライブにあるので、シリーズの一覧には入れられません";
+    const problem = await this.write(current, withEpisode(current.data, project, entry));
     this.host.refresh();
+    return problem;
   }
 
-  private async write(current: OpenSeries, data: Series): Promise<void> {
+  /** The series file does not have what the open name shares yet (a write failed). */
+  get behind(): boolean {
+    const current = this.current;
+    return !!current && JSON.stringify(current.data, null, 2) !== current.written;
+  }
+
+  /** Null when written (or already so), else why it could not be. */
+  private async write(current: OpenSeries, data: Series): Promise<string | null> {
     const text = JSON.stringify(data, null, 2);
     current.data = data;
-    if (text === current.written) return;
+    if (text === current.written) return null;
     try {
       await call("save_series", { path: current.path, text });
       current.written = text;
+      return null;
     } catch (error) {
-      this.host.status(`シリーズのファイルに書けませんでした: ${error}`);
+      return `シリーズのファイルに書けませんでした: ${error}`;
     }
   }
 
@@ -218,7 +228,8 @@ export class SeriesPanel {
     this.current = { path, data, written: "" };
     this.host.edit((p) => (p.series = link));
     await this.write(this.current, data);
-    await this.host.save();
+    // The save writes the series again when this could not; it tells why.
+    if (!(await this.host.save()) || this.behind) return;
     this.host.status(`シリーズ「${data.title}」を作りました。「次の話を作る」で同じ人物・設定の次の話を作れます`);
   }
 
@@ -260,7 +271,11 @@ export class SeriesPanel {
     if (!current || !namePath) return;
     if (!(await ask(`このネームをシリーズ「${current.data.title}」から外しますか？（人物・設定はネームに残ります）`, { title: "Name Studio", kind: "info" }))) return;
     const entry = relativePath(folderOf(current.path), namePath);
-    if (entry) await this.write(current, withoutEpisode(current.data, entry));
+    const problem = entry ? await this.write(current, withoutEpisode(current.data, entry)) : null;
+    if (problem) {
+      this.host.status(`${problem}（シリーズから外していません）`);
+      return;
+    }
     this.current = null;
     this.host.edit((p) => delete p.series);
     this.host.status(`シリーズ「${current.data.title}」から外しました`);

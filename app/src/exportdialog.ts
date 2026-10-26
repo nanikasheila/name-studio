@@ -29,6 +29,8 @@ export interface ExportDialogHost {
   project(): Project | null;
   /** Where the name data is saved, if it is. */
   projectPath(): string | null;
+  /** Which opened name it is (a new one per name opened, even unsaved ones). */
+  projectId(): number;
   rough(rough: RoughImage): Promise<CanvasImageSource | null>;
   status(message: string): void;
   /** Run `change` as one undoable step. */
@@ -199,7 +201,8 @@ export class ExportDialog {
   private page: CspPage | null = null;
   private author = "";
   /** The name the settings here are for (another name starts from its own last export). */
-  private settingsFor: string | null = null;
+  /** The opened name (`projectId`) the form is for. */
+  private settingsFor: number | null = null;
 
   constructor(private readonly host: ExportDialogHost) {
     for (const kind of ["csp", "pdf", "text"] as const) {
@@ -262,8 +265,10 @@ export class ExportDialog {
     const project = this.host.project();
     if (!project) return;
     const path = this.host.projectPath();
-    if (path !== this.settingsFor) {
-      this.settingsFor = path;
+    // Another name: its own last export, else nothing from the one before
+    // (two unsaved names have no path to tell them apart).
+    if (this.host.projectId() !== this.settingsFor) {
+      this.settingsFor = this.host.projectId();
       const memory = path ? loadExportMemory(path) : null;
       if (memory) this.apply(memory);
       else this.forgetOtherName();
@@ -342,7 +347,7 @@ export class ExportDialog {
       pdf: { area: $<HTMLSelectElement>("ne-pdf-area").value as "trim" | "canvas", dpi: Number($<HTMLSelectElement>("ne-pdf-dpi").value) },
       files,
     });
-    this.settingsFor = path;
+    this.settingsFor = this.host.projectId();
   }
 
   /** 書き出す前の確認: what will need fixing by hand afterwards, each one a click away. */

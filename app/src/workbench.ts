@@ -172,6 +172,8 @@ export class Workbench {
   private readonly brushDialog: BrushDialog;
   private readonly settingsDialog: SettingsDialog;
   private readonly versionDialog: VersionDialog;
+  /** The save or autosave being written, which the next one waits for. */
+  private writing: Promise<unknown> = Promise.resolve();
   private readonly autosaver = new Autosaver(
     () => this.autosave(),
     () => this.session.inStep,
@@ -345,6 +347,7 @@ export class Workbench {
     this.exportDialog = new ExportDialog({
       project: () => this.session.project,
       projectPath: () => this.session.path,
+      projectId: () => this.session.id,
       rough: (rough) => this.roughs.load(rough),
       status: (message) => this.setStatus(message),
       edit: (change) => this.edit(change),
@@ -400,6 +403,7 @@ export class Workbench {
 
   show(project: Project, path: string | null, message: string): void {
     this.seriesPanel.follow(this.session.open(project, path), path);
+    clearAlert("series");
     this.roughs.clear();
     this.autosaver.reset();
     this.editor.selection = null;
@@ -470,25 +474,71 @@ export class Workbench {
     if (mended.length) this.commit();
     else this.session.cancel();
     this.seriesPanel.beforeSave(project, path);
-    const revision = this.session.revision;
+    const id = this.session.id;
+    const previousPath = this.session.path;
     try {
-      await call("save_project", projectBody({ path, previousPath: this.session.path }, savedForm(project)));
-      this.session.saved(path, revision);
+      const revision = await this.queued(async () => {
+        const revision = this.session.revision;
+        await call("save_project", projectBody({ path, previousPath }, savedForm(project)));
+        return revision;
+      });
       rememberName(path, project);
-      await this.seriesPanel.saved(project, path);
+      if (!this.session.saved(path, revision, id)) {
+        // Another name was opened while this one was written: it keeps its own file and state.
+        this.setStatus(`前に開いていたネームを保存しました: ${path}`);
+        return true;
+      }
+      const series = await this.saveSeries(project, path);
       if (!this.session.dirty) this.autosaver.reset();
       this.updateTitle();
       clearAlert("save");
       if (mended.length) clearAlert("autosave");
       const note = mended.length ? `（保存の前に ${mended.length} か所直しました: ${mended.slice(0, 2).join("／")}${mended.length > 2 ? " ほか" : ""}。元に戻すは Ctrl+Z）` : "";
-      this.setStatus(`保存しました: ${path}${note}`);
+      this.setStatus(series ? `ネームは保存しました（シリーズには未反映）: ${path}` : `保存しました: ${path}${note}`);
       return true;
     } catch (error) {
-      this.setStatus(`保存できませんでした: ${error}`);
-      showAlert("save", `保存できませんでした。\n${error}`, "error");
+      if (this.session.id !== id) {
+        this.setStatus(`前に開いていたネームを保存できませんでした: ${error}`);
+      } else {
+        this.setStatus(`保存できませんでした: ${error}`);
+      }
+      showAlert("save", `保存できませんでした。\n${path}\n${error}`, "error");
       void logError(`save: ${error}`);
       return false;
     }
+  }
+
+  /**
+   * Saves and autosaves one after another, so an older version never lands
+   * after a newer one.
+   */
+  private queued<T>(write: () => Promise<T>): Promise<T> {
+    const run = this.writing.then(write, write);
+    this.writing = run.catch(() => undefined);
+    return run;
+  }
+
+  /**
+   * The series after the open name was saved: an alert stays while the series
+   * file lags behind, with a way to try again. Null when it has it.
+   */
+  private async saveSeries(project: Project, path: string): Promise<string | null> {
+    const problem = await this.seriesPanel.saved(project, path);
+    if (problem) {
+      showAlert("series", `ネームは保存しました。シリーズのファイルには反映できていません（次の保存でもう一度試します）。\n${problem}`, "warning", undefined, {
+        label: "もう一度",
+        run: () => void this.retrySeries(),
+      });
+    } else {
+      clearAlert("series");
+    }
+    return problem;
+  }
+
+  private async retrySeries(): Promise<void> {
+    const project = this.session.project;
+    const path = this.session.path;
+    if (project && path && !(await this.saveSeries(project, path))) this.setStatus("シリーズに反映しました");
   }
 
   /** Autosave: the file itself when it has one (and that is on), else a copy. */
@@ -496,17 +546,20 @@ export class Workbench {
     const project = this.session.project;
     if (!project) return;
     const path = this.session.path;
-    const revision = this.session.revision;
+    const id = this.session.id;
     try {
-      const result = await call(
-        "autosave_project",
-        projectBody({ path, toFile: autosaveToFile() }, savedForm(project)),
-      );
+      const [result, revision] = await this.queued(async () => {
+        const revision = this.session.revision;
+        const result = await call("autosave_project", projectBody({ path, toFile: autosaveToFile() }, savedForm(project)));
+        return [result, revision] as const;
+      });
+      // A name opened meanwhile is not this one: its state and alerts stay as they are.
+      if (this.session.id !== id) return;
       if (result.savedToFile && this.session.path === path) {
-        this.session.autosaved(revision);
+        this.session.autosaved(revision, id);
         this.updateTitle();
       }
-      if (result.savedToFile && path) await this.seriesPanel.saved(project, path);
+      if (result.savedToFile && path) await this.saveSeries(project, path);
       if (result.problems?.length) {
         const list = result.problems.slice(0, 3).join("\n");
         showAlert(
@@ -518,6 +571,7 @@ export class Workbench {
         clearAlert("autosave");
       }
     } catch (error) {
+      if (this.session.id !== id) return;
       this.setStatus(`自動保存できませんでした: ${error}`);
       showAlert("autosave", `自動保存できませんでした（次の変更でもう一度試します）。\n${error}`, "error");
       void logError(`autosave: ${error}`);

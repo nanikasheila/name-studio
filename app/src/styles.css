@@ -106,6 +106,7 @@ body:has(#viewer.start) .viewer-only { display: none; }
 .alert.warning { background: #fff6dc; color: #5a4300; border-color: #e3c873; }
 .alert p { margin: 0; flex: 1; white-space: pre-line; }
 .alert button { border: 0; background: transparent; color: inherit; font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 4px; }
+.alert button.alert-action { font-size: 12px; padding: 2px 8px; border: 1px solid currentColor; border-radius: 4px; white-space: nowrap; }
 @media (prefers-color-scheme: dark) {
   .alert.error { background: #4a1c17; color: #ffd9d3; border-color: #8a3a30; }
   .alert.warning { background: #463a12; color: #ffecb0; border-color: #8a7330; }
@@ -571,6 +572,15 @@ button.with-icon, .page-nav .segmented button { display: inline-flex; align-item
   .toolbar button.labelled span { display: inline; }
   .page-nav .segmented button span { display: none; }
   .rows-control input[type="range"] { width: 80px; }
+}
+/* The undo and export buttons never give way: they stay on screen at the smallest window. */
+.toolbar .app-bar { flex-shrink: 0; }
+/* A narrow window keeps the top buttons as icons (the names stay for screen readers and tips). */
+@media (max-width: 1180px) {
+  .toolbar button.labelled span, .toolbar #name-export span {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+  .toolbar { gap: 4px; }
 }
 .tool-options .brush-bar .size input { width: 4em; }
 
