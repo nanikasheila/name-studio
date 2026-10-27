@@ -5,7 +5,6 @@ import { buildRequest, folderOf, overwriteWarning, type ExportForm } from "./exp
 import {
   checkSummary,
   dialogueUpdateSummary,
-  exportPdf,
   exportToCsp,
   ExportStopped,
   imagesNote,
@@ -15,6 +14,8 @@ import {
   scriptText,
   updateCspDialogue,
 } from "./nameexport";
+import { exportMiniName, exportPdf } from "./flatpage";
+import { MINI_DEFAULTS, type MiniFormat, type MiniOptions } from "./mininame";
 import { applyTakeBack, planTakeBack, takeBackSummary } from "./readback";
 import { ISSUE_LABELS, checkName, issueSummary } from "./namecheck";
 import { tidyPanels } from "./tidy";
@@ -35,6 +36,8 @@ export interface ExportDialogHost {
   /** Which opened name it is (a new one per name opened, even unsaved ones). */
   projectId(): number;
   rough(rough: RoughImage): Promise<CanvasImageSource | null>;
+  /** 見開きの組み方: the first page on its own (the ミニネーム pairs pages as the editor does). */
+  firstAlone(): boolean;
   status(message: string): void;
   /** Run `change` as one undoable step. */
   edit(change: (project: Project) => void): void;
@@ -49,6 +52,36 @@ export interface ExportDialogHost {
 }
 
 type Kind = ExportKind;
+
+/** The ミニネーム's fields (its form, resolution, how many across, area, numbers and title). */
+const MINI_FIELDS = ["ne-mini-format", "ne-mini-dpi", "ne-mini-columns", "ne-mini-area", "ne-mini-numbers", "ne-mini-title"];
+const MINI_EXTENSIONS: Record<MiniFormat, string> = { png: "png", jpeg: "jpg", pdf: "pdf" };
+
+function readMini(): MiniOptions & { format: MiniFormat } {
+  return {
+    format: $<HTMLSelectElement>("ne-mini-format").value as MiniFormat,
+    dpi: Number($<HTMLSelectElement>("ne-mini-dpi").value) || MINI_DEFAULTS.dpi,
+    columns: Number($<HTMLSelectElement>("ne-mini-columns").value) || 0,
+    area: $<HTMLSelectElement>("ne-mini-area").value === "canvas" ? "canvas" : "trim",
+    numbers: $<HTMLInputElement>("ne-mini-numbers").checked,
+    title: $<HTMLInputElement>("ne-mini-title").checked,
+  };
+}
+
+function showMini(mini: MiniOptions & { format: MiniFormat }): void {
+  const choose = (id: string, value: string) => {
+    const select = $<HTMLSelectElement>(id);
+    // A value the list does not have (kept by hand, or an older list): added, so that it is kept.
+    if (![...select.options].some((option) => option.value === value)) select.append(new Option(value, value));
+    select.value = value;
+  };
+  choose("ne-mini-format", mini.format);
+  choose("ne-mini-dpi", String(mini.dpi));
+  choose("ne-mini-columns", String(mini.columns));
+  choose("ne-mini-area", mini.area);
+  $<HTMLInputElement>("ne-mini-numbers").checked = mini.numbers;
+  $<HTMLInputElement>("ne-mini-title").checked = mini.title;
+}
 
 /** 見本のページ: kept on this computer for the next export. */
 const DONOR_KEY = "namestudio.exportDonor";
@@ -212,7 +245,7 @@ export class ExportDialog {
   private settingsFor: number | null = null;
 
   constructor(private readonly host: ExportDialogHost) {
-    for (const kind of ["csp", "pdf", "text"] as const) {
+    for (const kind of ["csp", "pdf", "mini", "text"] as const) {
       $(`ne-kind-${kind}`).addEventListener("click", () => {
         this.kind = kind;
         this.show();
@@ -244,7 +277,7 @@ export class ExportDialog {
       this.form.workName = (event.target as HTMLInputElement).value;
       this.showSummary();
     });
-    for (const id of ["ne-pdf-area", "ne-pdf-dpi"]) $(id).addEventListener("change", () => this.showSummary());
+    for (const id of ["ne-pdf-area", "ne-pdf-dpi", ...MINI_FIELDS]) $(id).addEventListener("change", () => this.showSummary());
     const more = $<HTMLDetailsElement>("ne-more");
     more.open = readText(MORE_KEY) === "open";
     more.addEventListener("toggle", () => writeText(MORE_KEY, more.open ? "open" : null));
@@ -356,6 +389,7 @@ export class ExportDialog {
     this.notes = memory.notes;
     $<HTMLSelectElement>("ne-pdf-area").value = memory.pdf.area;
     $<HTMLSelectElement>("ne-pdf-dpi").value = String(memory.pdf.dpi);
+    showMini(memory.mini);
   }
 
   /** Another name with no export kept: not the last name's folder or work name (one name must not write over another's pages). */
@@ -386,6 +420,7 @@ export class ExportDialog {
       draftRough: this.draftRough,
       notes: this.notes,
       pdf: { area: $<HTMLSelectElement>("ne-pdf-area").value as "trim" | "canvas", dpi: Number($<HTMLSelectElement>("ne-pdf-dpi").value) },
+      mini: readMini(),
     };
   }
 
@@ -479,7 +514,7 @@ export class ExportDialog {
   }
 
   private show(): void {
-    for (const kind of ["csp", "pdf", "text"] as const) {
+    for (const kind of ["csp", "pdf", "mini", "text"] as const) {
       $(`ne-kind-${kind}`).classList.toggle("active", kind === this.kind);
       $(`ne-${kind}`).hidden = kind !== this.kind;
     }
@@ -521,6 +556,8 @@ export class ExportDialog {
       ? "このネームは縦スクロールです。区切りごとに CSP のページになり、ページはひな形の基本枠に合わせて置かれます。区切りと同じ縦横比（幅 120 × 高さ 240 mm など）で作った CSP のページをひな形にしてください。作品（.cmc）は区切りを順に並べたものになります。"
       : "このネームは左綴じです。作品の綴じ方はひな形の作品のままになるので、CSP で左綴じにして保存した作品をひな形に選んでください（ページの中身は左から右へ読む並びで書き出します）。";
     $("ne-pdf-binding").textContent = left ? "左綴じ" : "右綴じ";
+    $("ne-mini-binding").textContent = project?.scroll ? "縦スクロールは上から下へ、列は左から右" : left ? "左綴じは左上から右へ" : "右綴じは右上から左へ";
+    $("ne-mini-columns-label").textContent = project?.scroll ? "列の数" : "横に並べる見開き";
     $<HTMLInputElement>("ne-work-name").value = this.form.workName;
     $<HTMLInputElement>("ne-story-index").value = this.form.storyIndex;
     // A template still to choose: its field in view.
@@ -746,15 +783,20 @@ export class ExportDialog {
             : `書き出したページに問題があります: ${check.lines[1]}`,
         );
       } else {
-        const extension = this.kind === "pdf" ? "pdf" : "txt";
+        const mini = readMini();
+        const extension = this.kind === "pdf" ? "pdf" : this.kind === "mini" ? MINI_EXTENSIONS[mini.format] : "txt";
         const base = (this.host.projectPath() ?? project.title ?? "ネーム").replace(/\.[^.\\/]+$/, "");
-        const last = this.host.projectPath() ? loadExportMemory(this.host.projectPath()!)?.files[this.kind] : undefined;
+        const kept = this.host.projectPath() ? loadExportMemory(this.host.projectPath()!)?.files[this.kind] : undefined;
+        // The ミニネーム written last as another form: the same name with this form's extension.
+        const last = kept && kept.replace(/\.[^.\\/]+$/, `.${extension}`);
+        const suffix = this.kind === "text" ? "_台本" : this.kind === "mini" ? "_ミニネーム" : "";
+        const filter = this.kind === "pdf" || extension === "pdf" ? "PDF" : this.kind === "mini" ? "画像" : "テキスト";
         const path =
           again && last
             ? last
             : await save({
-                defaultPath: last ?? `${base}${this.kind === "text" ? "_台本" : ""}.${extension}`,
-                filters: [{ name: this.kind === "pdf" ? "PDF" : "テキスト", extensions: [extension] }],
+                defaultPath: last ?? `${base}${suffix}.${extension}`,
+                filters: [{ name: filter, extensions: extension === "jpg" ? ["jpg", "jpeg"] : [extension] }],
               });
         if (!path) return;
         if (this.sources().some((source) => source.toLowerCase() === path.toLowerCase())) {
@@ -772,6 +814,13 @@ export class ExportDialog {
             (rough) => this.host.rough(rough),
             progress,
           );
+        } else if (this.kind === "mini") {
+          const result = await exportMiniName(project, path, mini, mini.format, this.host.firstAlone(), (rough) => this.host.rough(rough), progress);
+          const note = result.reduced ? `。大きすぎるので ${result.dpi} dpi に下げました` : "";
+          this.message(`ミニネームを書き出しました（${result.widthPx}×${result.heightPx} px・横に ${result.columns}${note}・${seconds()} 秒）: ${path}`);
+          this.remember(path);
+          this.host.status(`ミニネームを書き出しました: ${path}`);
+          return;
         } else {
           await call("write_text_file", { path, text: scriptText(project) });
         }

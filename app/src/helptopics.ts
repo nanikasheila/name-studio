@@ -473,7 +473,8 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
   { target: "#pen-settings", name: "ペン設定", text: "筆圧・タブレット", side: "below" },
   { target: "#save-state", name: "保存の状態", text: "保存済み・未保存・自動保存の写し", side: "below" },
   { target: "#undo", name: "元に戻す", text: "", command: "undo", side: "below" },
-  { target: "#name-export", name: "書き出す", text: "CSP のページと作品・PDF・台本", command: "exportAgain", side: "below" },
+  { target: "#image-import", name: "取り込む", text: "1 枚にまとめたネーム画像をページに分けて置く", command: "button.image-import", side: "below" },
+  { target: "#name-export", name: "書き出す", text: "CSP のページと作品・PDF・ミニネーム・台本", command: "exportAgain", side: "below" },
   { target: "#help", name: "ヘルプ", text: "この画面。もう一度で閉じる", command: "help.overlay", side: "below" },
   // The tools.
   tool("select", "選択", "選ぶ・動かす・ダブルクリックで書く"),
@@ -501,6 +502,7 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
   // The start screen.
   { target: "#start-open", name: "開く", text: "ネームデータか CSP のネーム用紙", command: "button.open", side: "below" },
   { target: "#start-new", name: "新しいネーム", text: "白紙から作る", side: "below" },
+  { target: "#start-image", name: "ネーム画像から", text: "1 枚にまとめたネームをページに分けて新しいネームに", side: "below" },
   { target: "#start-recent", name: "最近のネーム", text: "クリックで開く", side: "inside" },
 ];
 
@@ -557,7 +559,7 @@ export const TOUR_STOPS: TourStop[] = [
   {
     target: "#name-export",
     title: "書き出す",
-    text: ["CSP のページと作品（.clip/.cmc）・PDF・台本に書き出します。2 回目からは {exportAgain} で同じ設定のまま。", "保存は自動でもされます（{save} でいつでも）。"],
+    text: ["CSP のページと作品（.clip/.cmc）・PDF・全ページを 1 枚にまとめたミニネーム・台本に書き出します。2 回目からは {exportAgain} で同じ設定のまま。", "保存は自動でもされます（{save} でいつでも）。"],
   },
   {
     target: "#help-bar",

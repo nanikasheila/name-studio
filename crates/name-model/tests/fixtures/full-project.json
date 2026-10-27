@@ -234,7 +234,8 @@
             110,
             95
           ],
-          "opacity": 0.35
+          "opacity": 0.35,
+          "kind": "name"
         }
       ]
     }
@@ -599,7 +600,8 @@
                     110,
                     95
                   ],
-                  "opacity": 0.35
+                  "opacity": 0.35,
+                  "kind": "name"
                 }
               ]
             }

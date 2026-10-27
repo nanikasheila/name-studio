@@ -226,6 +226,10 @@ pub struct ReferenceImage {
     /// How strongly it shows (0–1); none is half.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub opacity: Option<f64>,
+    /// "name": the name itself, taken in from a picture of it (a ミニネーム
+    /// or a page drawn on paper), written out with the name's own lines.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
 }
 
 /// A picture kept in the name (made smaller when it was taken in).

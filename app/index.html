@@ -38,7 +38,8 @@
         <div class="spacer"></div>
         <button id="undo" class="icon-button" data-command="undo" title="元に戻す" disabled><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M7 4L3 8l4 4"/><path d="M3 8h9a5 5 0 0 1 0 10H8"/></svg></button>
         <button id="redo" class="icon-button" data-command="redo" title="やり直す" disabled><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M13 4l4 4-4 4"/><path d="M17 8H8a5 5 0 0 0 0 10h4"/></svg></button>
-        <button id="name-export" class="with-icon" title="CSP のページと作品、PDF、台本に書き出す（前回と同じ設定でそのまま書き出すのは Ctrl+Shift+E）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5v10M6 8.5l4 4 4-4"/><path d="M3 13.5v3.5h14v-3.5"/></svg><span>書き出す…</span></button>
+        <button id="image-import" class="with-icon" title="全ページを 1 枚にまとめたネーム画像（ミニネーム・スキャンしたネーム）をページに分けて取り込む"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 12.5v-10M6 6.5l4-4 4 4"/><path d="M3 13.5v3.5h14v-3.5"/></svg><span>取り込む…</span></button>
+        <button id="name-export" class="with-icon" title="CSP のページと作品、PDF、ミニネーム、台本に書き出す（前回と同じ設定でそのまま書き出すのは Ctrl+Shift+E）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5v10M6 8.5l4 4 4-4"/><path d="M3 13.5v3.5h14v-3.5"/></svg><span>書き出す…</span></button>
       </div>
       <button id="help" class="icon-button help-button" data-command="help.overlay" title="画面のヘルプ: 各部の名前と使い方を画面に重ねて出す" aria-label="ヘルプ" aria-pressed="false"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><path d="M7.7 7.6a2.4 2.4 0 1 1 3.4 2.2c-.7.3-1.1.9-1.1 1.6v.6"/><circle cx="10" cy="14.6" r=".6" class="fill"/></svg></button>
     </header>
@@ -58,6 +59,7 @@
             <div class="start-actions">
               <button id="start-open" class="primary">開く…</button>
               <button id="start-new">新しいネーム…</button>
+              <button id="start-image" title="全ページを 1 枚にまとめたネーム画像（ミニネーム・スキャンしたネーム）をページに分けて、新しいネームにする">ネーム画像から…</button>
             </div>
             <p class="start-hint">ネームデータ（.namestudio）か CLIP STUDIO PAINT のネーム用紙（.clip）を開いてください。Ctrl+K で命令を名前で探せます</p>
             <section class="start-recent" id="start-recent" hidden>
@@ -207,6 +209,7 @@
         <div class="segmented kinds" role="group" aria-label="書き出す形">
           <button type="button" id="ne-kind-csp" class="active">CSP のページ</button>
           <button type="button" id="ne-kind-pdf">PDF</button>
+          <button type="button" id="ne-kind-mini" title="全ページを 1 枚の画像か 1 ページの PDF にまとめる">ミニネーム</button>
           <button type="button" id="ne-kind-text">台本（テキスト）</button>
         </div>
         <details id="ne-check" class="name-check"><summary id="ne-check-summary"></summary><div id="ne-check-list" class="name-check-list"></div></details>
@@ -319,6 +322,45 @@
             </select>
           </div>
         </div>
+        <div id="ne-mini" hidden>
+          <p class="hint">全ページを 1 枚にまとめます（ミニネーム）。見開きごとに読む順（<span id="ne-mini-binding">右綴じは右上から左へ</span>）、行は上から下に並べます。全体の流れを見る・印刷する・送るのに。</p>
+          <div class="field">
+            <label for="ne-mini-format">形式</label>
+            <select id="ne-mini-format">
+              <option value="png">PNG 画像</option>
+              <option value="jpeg">JPEG 画像（軽い）</option>
+              <option value="pdf">PDF（1 ページ）</option>
+            </select>
+            <label for="ne-mini-dpi">解像度</label>
+            <select id="ne-mini-dpi">
+              <option value="50">50 dpi（ごく小さく）</option>
+              <option value="72">72 dpi</option>
+              <option value="100" selected>100 dpi</option>
+              <option value="150">150 dpi</option>
+              <option value="200">200 dpi（印刷向け）</option>
+            </select>
+            <label for="ne-mini-columns" id="ne-mini-columns-label">横に並べる見開き</label>
+            <select id="ne-mini-columns">
+              <option value="0" selected>おまかせ（横長の紙に近く）</option>
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+              <option value="6">6</option>
+              <option value="8">8</option>
+              <option value="10">10</option>
+            </select>
+            <label for="ne-mini-area">範囲</label>
+            <select id="ne-mini-area">
+              <option value="trim">仕上がりで切る</option>
+              <option value="canvas">キャンバス全体</option>
+            </select>
+          </div>
+          <label class="check"><input type="checkbox" id="ne-mini-numbers" checked /> ページ番号を入れる</label>
+          <label class="check"><input type="checkbox" id="ne-mini-title" checked /> 題名（作品名・話数・ページ数）を入れる</label>
+          <p class="hint">付箋・メモ・資料画像は入りません（取り込んだネーム画像は入ります）。大きくなりすぎるときは解像度を下げて描きます。書き出したミニネームは「ネーム画像を取り込む」でページに分けて取り込み直せます。</p>
+        </div>
         <div id="ne-text" hidden>
           <p class="hint">全ページのセリフを、ページ・コマ・話者つきのテキスト（.txt）にします。写植や打ち合わせに使えます。</p>
         </div>
@@ -332,6 +374,45 @@
           <button type="button" id="ne-stop" hidden title="ページの切れ目で止めます（書き終えたページはそのまま）">中止</button>
           <button type="button" id="ne-run" class="primary">書き出す</button>
         </div>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="image-import-dialog" class="export image-import">
+      <form method="dialog">
+        <h2 id="ii-title">ネーム画像を取り込む</h2>
+        <p class="hint">全ページを 1 枚にまとめたネーム（ミニネーム、CSP で書き出したネーム用紙、紙に描いてスキャンしたもの）を、ページの枠を見つけて分け、読む順にページに置きます。置いた画像は「ネーム画像」として、その上にコマ・セリフ・ラフを足せます（読む表示・PDF・ミニネームに入り、CSP には下描きレイヤー「ネーム画像」で出ます）。</p>
+        <div class="field">
+          <label for="ii-pick">画像</label>
+          <output id="ii-file" class="path">未選択</output>
+          <button type="button" id="ii-pick">選ぶ…</button>
+        </div>
+        <input type="file" id="ii-input" accept="image/png,image/jpeg,image/webp,image/bmp,image/gif" hidden />
+        <canvas id="ii-preview" class="ii-preview" title="押したページを外す・戻す"></canvas>
+        <div class="field">
+          <label for="ii-split">分け方</label>
+          <select id="ii-split">
+            <option value="auto">ページの枠を見つける</option>
+            <option value="grid">縦横に等分する</option>
+          </select>
+          <label for="ii-rows" id="ii-grid-label">段 × 列</label>
+          <span class="row" id="ii-grid"><input id="ii-rows" type="number" min="1" max="40" value="4" /> × <input id="ii-columns" type="number" min="1" max="40" value="4" /></span>
+          <label for="ii-order">読む順</label>
+          <select id="ii-order"></select>
+          <label for="ii-fit">合わせ方</label>
+          <select id="ii-fit"></select>
+          <label for="ii-start" id="ii-into">入れる先</label>
+          <span class="row" id="ii-into-row"><input id="ii-start" type="number" min="1" value="1" /> ページから</span>
+          <label for="ii-binding" id="ii-new">読む向き</label>
+          <select id="ii-binding">
+            <option value="right">右綴じ（縦書きのマンガ）</option>
+            <option value="left">左綴じ（横書き）</option>
+          </select>
+        </div>
+        <p id="ii-summary" class="hint"></p>
+        <p id="ii-message" class="message" role="status"></p>
+        <div class="actions">
+          <button value="cancel" formnovalidate>やめる</button>
+          <button type="button" id="ii-run" class="primary">取り込む</button>
         </div>
       </form>
     </dialog>

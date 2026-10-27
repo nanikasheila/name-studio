@@ -28,7 +28,7 @@ const LAYERS = {
   /** Working on a name: pure computation, no browser, no storage, no Rust side. */
   core: [
     "alternatives", "arrange", "aside", "autotail", "balloon", "brush", "callouts", "cast", "commands", "csppage", "dialogue", "export", "exportmemory", "fonts",
-    "helptopics", "history", "hold", "koma", "komaedit", "layout", "mask", "namecheck", "namedefaults", "pagebox", "pages", "panelfolders", "panels", "pen",
+    "helptopics", "history", "hold", "koma", "komaedit", "layout", "mask", "mininame", "minisplit", "namecheck", "namedefaults", "pagebox", "pages", "panelfolders", "panels", "pen",
     "plotimport", "project", "projectjson", "readback", "readingorder", "recent", "references", "removal", "reorder", "repair", "roughlayers", "scriptimport",
     "savestate", "series", "session", "shapes", "shortcuts", "sketchpanels", "snapping", "snapshot", "springtool", "stickies", "story", "strokes", "structures", "style", "tidy", "transform", "viewport", "wrap",
   ],
@@ -37,10 +37,10 @@ const LAYERS = {
   /** Drawing a name on a canvas (the screen and the export share it). */
   render: ["asidedraw", "glyph", "notedraw", "pagedraw", "pagethumb", "pictures", "render", "screendraw", "strokecache"],
   /** Work done for the screens: saving in the background, writing out. */
-  service: ["autosave", "batch", "nameexport", "roughcache"],
+  service: ["autosave", "batch", "flatpage", "nameexport", "roughcache"],
   /** The screens. */
   ui: [
-    "actions", "alerts", "altdialog", "board", "boarddock", "boardemotion", "boardpages", "boardscene", "boardshape", "boardview", "brushdialog", "controlbar", "dock", "dragsort", "drophint", "editor", "editorcore", "exportdialog", "fontpicker", "helpbar", "helpoverlay", "inplace", "inspector",
+    "actions", "alerts", "altdialog", "board", "boarddock", "boardemotion", "boardpages", "boardscene", "boardshape", "boardview", "brushdialog", "controlbar", "dock", "dragsort", "drophint", "editor", "editorcore", "exportdialog", "fontpicker", "helpbar", "helpoverlay", "imageimport", "inplace", "inspector",
     "layers", "livefields", "nameedits", "palette", "palettes", "pendialog", "reader", "readbackpick", "referencebar", "roughpanel", "scriptdialog", "seriespanel", "settingsdialog", "sheetexport", "shortcutdialog", "sidelists", "startscreen", "toolaside", "tooleraser", "toolfill",
     "toolpanels", "toolpen", "toolreference", "tools", "toolselect", "toolsticky", "tooltext", "tooltransform", "tour", "updater", "versiondialog",
     "viewer", "workbench",

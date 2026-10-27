@@ -201,6 +201,10 @@ dialog.export::backdrop { background: rgb(0 0 0 / 0.35); }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); direction: rtl; text-align: left;
 }
 .export .message { min-height: 1.5em; white-space: pre-line; }
+dialog.image-import { width: min(820px, 94vw); }
+.image-import .field .row { grid-column: 2 / -1; align-items: center; }
+.image-import .field .row input { width: 6em; }
+.ii-preview { display: block; width: 100%; height: 380px; background: #ecebe7; border-radius: 6px; cursor: pointer; }
 .name-check { margin: 10px 0; padding: 6px 10px; border: 1px solid #e3c16f; border-radius: 6px; background: #fff8e1; font-size: 12px; }
 .name-check.clean { border-color: var(--line); background: transparent; color: var(--muted); }
 .name-check summary { cursor: pointer; }

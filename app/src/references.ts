@@ -5,13 +5,23 @@ import { offPage } from "./aside";
 import type { Slot } from "./layout";
 import type { BoxMm, Page, Point, Project, ReferenceImage, StoredImage } from "./model";
 import { trimBox } from "./pagebox";
-import { newId } from "./project";
+import { insertPage, newId } from "./project";
 
 /** Pictures are made no larger than this on their long side when taken in. */
 export const MAX_IMAGE_PX = 2400;
 export const DEFAULT_OPACITY = 0.5;
 /** A corner handle's reach, in screen px. */
 export const REFERENCE_HANDLE = 7;
+
+/** A picture of the name itself (取り込んだネーム画像), read and written out with the name; else a 資料 picture. */
+export function isNamePicture(reference: ReferenceImage): boolean {
+  return reference.kind === "name";
+}
+
+/** How strongly a picture is written out where the reader sees it (PDF, ミニネーム, 読む): twice the screen's faintness. */
+export function writtenOpacity(reference: ReferenceImage): number {
+  return Math.min(1, opacityOf(reference) * 2);
+}
 
 export function opacityOf(reference: ReferenceImage): number {
   return reference.opacity ?? DEFAULT_OPACITY;
@@ -41,6 +51,32 @@ export function addReference(project: Project, page: Page, image: StoredImage, a
   if (offPage(reference.box, project.pageFormat)) reference.opacity = 1;
   page.references = [...(page.references ?? []), reference];
   return reference;
+}
+
+/** 取り込んだネーム画像 are kept no larger than this on their long side (a page of a name read small). */
+export const MAX_NAME_PICTURE_PX = 2000;
+
+/**
+ * Pictures of pages of the name (cut from a ミニネーム) laid on the pages
+ * from index `first` on, one each where `box` says, as the pages' pictures
+ * of the name: one taken in before on those pages is replaced, 資料 pictures
+ * stay. Pages are added at the end when there are too few; how many.
+ */
+export function placeNamePictures(project: Project, first: number, pictures: readonly { image: StoredImage; box: BoxMm }[]): number {
+  let added = 0;
+  while (project.pages.length < first + pictures.length) {
+    insertPage(project, project.pages.length);
+    added++;
+  }
+  project.images ??= [];
+  pictures.forEach(({ image, box }, i) => {
+    const page = project.pages[first + i];
+    const stored: StoredImage = { ...image, id: newId(project, "image") };
+    project.images!.push(stored);
+    const kept = (page.references ?? []).filter((reference) => !isNamePicture(reference));
+    page.references = [...kept, { id: newId(project, "reference"), image: stored.id, box, kind: "name" }];
+  });
+  return added;
 }
 
 export function removeReference(page: Page, id: string): void {
