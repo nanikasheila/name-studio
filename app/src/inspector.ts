@@ -33,6 +33,7 @@ import {
   type Side,
 } from "./koma";
 import { joinPanels, joinedShape, neighbours } from "./komaedit";
+import { tidyPanels } from "./tidy";
 import { addCharacter } from "./cast";
 import { fitLine, KIND_LABELS, setDefaultLineSize, setDefaultShape, setLineKind, setLineText, wrapTypedLine } from "./dialogue";
 import { rectShape } from "./geometry";
@@ -617,13 +618,25 @@ export class Inspector {
       this.host.editor.panelCarries = carries.checked;
       writeFlag(PANEL_CARRIES_KEY, carries.checked);
     });
+    // 仮のコマ: still rough; 整える makes it exact, lined up with the panels around.
+    const draft = element("input", { type: "checkbox", checked: !!panel.draft, title: "まだ決めていないコマ。鉛筆の線で描かれます（書き出しはふつうのコマと同じ）" });
+    draft.addEventListener("change", () => set("draft", draft.checked, false));
+    const tidy = element("button", { className: "small", textContent: "整える", title: "このコマの線をまっすぐに、まわりのコマ・基本枠にそろえ、コマ間を設定の幅にする（仮でなくなります）" });
+    tidy.addEventListener("click", () => {
+      this.host.edit((p) => {
+        const at = p.pages.find((x) => x.id === page.id);
+        if (at) tidyPanels(p, at, [panel.id]);
+      });
+      this.host.status("コマを整えました（元に戻すは Ctrl+Z）");
+    });
     const note = element("input", { type: "text", value: panel.note ?? "", placeholder: "例: 俯瞰で教室全体 / 間" });
     this.host.liveText(note, (value) => {
       if (value) panel.note = value;
       else delete panel.note;
     });
     return [
-      element("h2", { textContent: `${pageIndex(project, page.id) + 1} ページ ${order} コマ目` }),
+      element("h2", { textContent: `${pageIndex(project, page.id) + 1} ページ ${order} コマ目${panel.draft ? "（仮）" : ""}` }),
+      element("div", { className: "row" }, element("label", { className: "inline" }, draft, "仮のコマ（あとで決める）"), tidy),
       element("label", {}, "メモ（ページの上にも出ます。コマをダブルクリックでその場で書けます。札はドラッグで好きな所へ）", note),
       ...(panel.noteAt ? [plainButton("メモの札をコマの角に戻す", () => this.host.edit(() => delete panel.noteAt))] : []),
       element("div", { className: "row" }, element("label", {}, "枠線", border), element("label", {}, "塗り", fill)),

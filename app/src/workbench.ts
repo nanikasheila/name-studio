@@ -295,13 +295,8 @@ export class Workbench {
       setTool: (tool) => this.setTool(tool),
       setEraseMode: (mode) => this.setEraseMode(mode),
       setPanelMode: (mode) => this.bars.setPanelMode(mode),
-      holdSelected: () => {
-        const selection = this.editor.selection;
-        const page = selection && this.session.project?.pages.find((p) => p.id === selection.pageId);
-        const panel = selection?.kind === "panel" ? page?.panels.find((p) => p.id === selection.id) : undefined;
-        if (page && panel) this.edits.holdSelected(page, panel);
-        return !!panel;
-      },
+      holdSelected: () => this.edits.holdSelection(),
+      tidyPanels: () => this.edits.tidyPanels(),
       readBack: () => void this.exportDialog.readBackAgain(),
       nextStory: () => {
         if (!this.seriesPanel.inSeries) return false;
@@ -912,6 +907,7 @@ export class Workbench {
     $("editor-prev").addEventListener("click", () => this.flip(-this.leftward()));
     this.docks = editorDocks(() => this.renderSide());
     $("held-badge").addEventListener("click", () => this.docks.open("held"));
+    $("panel-tidy").addEventListener("click", () => this.edits.tidyPanels());
     this.references.bind();
     // A held panel dropped on a page: into the panel there, else where it is dropped.
     const canvas = $("editor-canvas");

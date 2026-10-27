@@ -255,17 +255,25 @@ export function drawPanelFills(ctx: CanvasRenderingContext2D, page: Page, m: MmT
   }
 }
 
-/** Panel borders as drawn (open edges, insets and はみ出し taken out). */
+/** Pencil grey: 仮のコマ on the screen. */
+export const PENCIL = "#5b6b82";
+
+/** Panel borders as drawn (open edges, insets and はみ出し taken out); `pencil`: 仮のコマ drawn as by hand (the screen). */
 export function drawPanelBorders(
   ctx: CanvasRenderingContext2D,
   page: Page,
   m: MmToPx,
   color: (panel: Panel) => string = () => INK,
   minWidthPx = 1,
+  pencil = false,
 ): void {
   ctx.lineJoin = "miter";
   ctx.lineCap = "butt";
   for (const line of borderLines(page)) {
+    if (pencil && line.panel.draft) {
+      drawPencil(ctx, line.points, line.closed, m, color(line.panel), line.panel.id);
+      continue;
+    }
     ctx.strokeStyle = color(line.panel);
     ctx.lineWidth = Math.max(borderWidthMm(line.panel) * m.scale, minWidthPx);
     const parts = line.panel.border === "dashed" ? dashes(line.points, line.closed).map((points) => ({ points, closed: false })) : [line];
@@ -274,6 +282,51 @@ export function drawPanelBorders(
       ctx.stroke();
     }
   }
+}
+
+/**
+ * A border drawn as by hand in pencil (仮のコマ): each edge twice, a little
+ * wavy and running past the corners, the same each time for the same panel.
+ */
+function drawPencil(ctx: CanvasRenderingContext2D, points: readonly Point[], closed: boolean, m: MmToPx, color: string, seed: string): void {
+  let state = [...seed].reduce((sum, c) => (sum * 31 + c.charCodeAt(0)) % 2147483647, 7) || 7;
+  const random = () => {
+    state = (state * 16807) % 2147483647;
+    return state / 2147483647 - 0.5;
+  };
+  const wave = Math.min(0.45, 2 / m.scale);
+  const past = Math.min(1.6, 6 / m.scale);
+  ctx.save();
+  ctx.strokeStyle = color === INK ? PENCIL : color;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  const count = closed ? points.length : points.length - 1;
+  for (const pass of [0, 1]) {
+    ctx.globalAlpha = pass ? 0.55 : 0.85;
+    ctx.lineWidth = Math.max((pass ? 0.18 : 0.3) * m.scale, pass ? 0.7 : 1.1);
+    ctx.beginPath();
+    for (let i = 0; i < count; i++) {
+      const a = points[i];
+      const b = points[(i + 1) % points.length];
+      const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (length < 0.1) continue;
+      const [dx, dy] = [(b[0] - a[0]) / length, (b[1] - a[1]) / length];
+      // Past the corner at each end, a different amount each pass.
+      const from = -past * (0.4 + random() + 0.5);
+      const to = length + past * (0.4 + random() + 0.5);
+      const steps = Math.max(2, Math.ceil(length / 7));
+      for (let k = 0; k <= steps; k++) {
+        const t = from + ((to - from) * k) / steps;
+        const off = k === 0 || k === steps ? 0 : random() * 2 * wave;
+        const x = (a[0] + dx * t - dy * off) * m.scale + m.x;
+        const y = (a[1] + dy * t + dx * off) * m.scale + m.y;
+        if (k === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 /** Balloons of a page: tails, links, shapes, 白抜き. */

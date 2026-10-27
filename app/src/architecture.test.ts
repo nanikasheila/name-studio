@@ -30,7 +30,7 @@ const LAYERS = {
     "alternatives", "arrange", "aside", "autotail", "balloon", "brush", "callouts", "cast", "commands", "csppage", "dialogue", "export", "exportmemory", "fonts",
     "helptopics", "history", "hold", "koma", "komaedit", "layout", "mask", "mininame", "minisplit", "namecheck", "namedefaults", "pagebox", "pages", "panelfolders", "panels", "pen",
     "plotimport", "project", "projectjson", "readback", "readingorder", "recent", "references", "removal", "reorder", "repair", "roughlayers", "scriptimport",
-    "savestate", "series", "session", "shapes", "shortcuts", "snapping", "snapshot", "springtool", "stickies", "story", "strokes", "structures", "style", "transform", "viewport", "wrap",
+    "savestate", "series", "session", "shapes", "shortcuts", "sketchpanels", "snapping", "snapshot", "springtool", "stickies", "story", "strokes", "structures", "style", "tidy", "transform", "viewport", "wrap",
   ],
   /** This computer and the Rust side: storage, settings, commands, the page's elements. */
   platform: ["backend", "dom", "errorlog", "prefs", "settings"],

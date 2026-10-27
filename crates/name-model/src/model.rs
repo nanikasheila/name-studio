@@ -526,6 +526,10 @@ pub struct Panel {
     /// 枠線の太さ (mm) of this panel alone; none: the name's for its border.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub line_mm: Option<f64>,
+    /// 仮のコマ: laid out roughly (drawn by hand) and not decided yet;
+    /// 整える makes it exact. Exported like any panel.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub draft: bool,
 }
 
 fn is_default<T: Default + PartialEq>(value: &T) -> bool {
