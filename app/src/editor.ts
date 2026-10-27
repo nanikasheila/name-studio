@@ -46,6 +46,8 @@ import { moveStroke, strokeHit } from "./strokes";
 import { readCount, readFlag, readNumber } from "./settings";
 import {
   FRAME_HANDLES,
+  framedAtOnce,
+  toolHolds,
   type EditorCore,
   type EditorEraseMode,
   type EditorHost,
@@ -451,12 +453,19 @@ export class PageEditor {
     this.tool = tool;
     this.transforming = false;
     if (tool !== "cut") this.cancelPolygon();
+    // What the tool taken up does not keep is let go: Delete and the arrows never act on what is not shown as picked.
+    if (this.selection && !toolHolds(tool, this.selection.kind)) {
+      this.selection = null;
+      this.host.selectionChanged(null);
+    }
     this.updateCursor();
     this.renderBar();
     this.draw();
   }
 
   select(selection: Selection | null): void {
+    // What the tool in hand does not keep is picked with the select tool (from a list, a paste, Ctrl+A).
+    if (selection && !toolHolds(this.tool, selection.kind)) this.host.useTool("select");
     const same = selection && this.selection && selection.kind === this.selection.kind && selection.id === this.selection.id && selection.pageId === this.selection.pageId;
     if (!same) this.transforming = false;
     this.selection = selection;
@@ -477,7 +486,7 @@ export class PageEditor {
     const s = this.selection;
     const slot = s && this.slots.find((x) => x.page.id === s.pageId);
     if (!s || !slot) return null;
-    const box = selectionBox(slot.page, s.kind, s.id, this.selectedItems());
+    const box = selectionBox(slot.page, s.kind, s.id, this.pickedItems());
     if (!box) return null;
     const corners = [
       [box[0], box[1]],
@@ -711,7 +720,7 @@ export class PageEditor {
     if (drag?.kind === "vertex") ids.add(drag.panelId);
     else if (drag?.kind === "seam") for (const edge of drag.seam.edges) ids.add(edge.panelId);
     else if (drag && (drag.kind === "scale" || drag.kind === "rotate" || drag.kind === "warp")) for (const panel of drag.base.panels ?? []) ids.add(panel.id);
-    const corners = !this.transforming && s?.kind === "panel" && s.pageId === slot.page.id ? s.id : null;
+    const corners = this.tool === "select" && !this.transforming && s?.kind === "panel" && s.pageId === slot.page.id ? s.id : null;
     if (corners) ids.add(corners);
     const panels = slot.page.panels.filter((panel) => ids.has(panel.id) && !panel.spread);
     drawOverflowPanels(this.ctx, project, slot, panels, corners);
@@ -967,7 +976,7 @@ export class PageEditor {
       small,
       showNotes: this.showNotes,
       selected: (kind, id) => this.isSelected(slot.page, kind, id),
-      panelCorners: !this.transforming && this.selection?.kind === "panel",
+      panelCorners: this.tool === "select" && !this.transforming && this.selection?.kind === "panel",
       swapInto: swap ?? null,
       stickyHandle: this.tool === "select" || this.tool === "sticky" ? LINK_HANDLE : null,
       rough: (rough) => this.host.rough(rough),
@@ -1044,8 +1053,8 @@ export class PageEditor {
       ctx.setLineDash([3, 3]);
       ctx.strokeRect(sx(x0) - 3, sy(y0) - 3, (x1 - x0) * scale + 6, (y1 - y0) * scale + 6);
       ctx.setLineDash([]);
-      // しっぽの先 (drag to point at the speaker) and its middle (drag to bend it).
-      this.drawTailHandles(slot, line, true);
+      // しっぽの先 (drag to point at the speaker) and its middle (drag to bend it): handles are the select tool's.
+      if (this.tool === "select") this.drawTailHandles(slot, line, true);
     }
   }
 
@@ -1319,33 +1328,19 @@ export class PageEditor {
 
   // --- 変形（拡大縮小・回転・反転） -------------------------------------------------------
 
-  /** What the transform frame works on: rough lines and dialogue picked, or what is being transformed. */
+  /** What is picked, as things to move or turn: a panel (and a group's panels) with what is drawn in it (コマ枠フォルダ). */
+  private pickedItems(): ItemRef[] {
+    const s = this.selection;
+    const page = s && this.host.project()?.pages.find((p) => p.id === s.pageId);
+    if (!s || !page || s.kind === "sticky") return [];
+    return withContents(page, s.kind === "group" ? (s.items ?? []) : [{ kind: s.kind, id: s.id }], this.panelCarries);
+  }
+
+  /** What the transform frame works on: with the select tool, what has no handles of its own, or anything with 変形 on. */
   private selectedItems(): ItemRef[] {
     const s = this.selection;
-    if (s?.kind === "group") {
-      const page = this.host.project()?.pages.find((p) => p.id === s.pageId);
-      return page ? withContents(page, s.items ?? [], this.panelCarries) : [];
-    }
-    if (s?.kind === "stroke") return [{ kind: "stroke", id: s.id }];
-    if (!s || !this.transforming) return [];
-    if (s.kind === "panel") {
-      const page = this.host.project()?.pages.find((p) => p.id === s.pageId);
-      const panel = page?.panels.find((p) => p.id === s.id);
-      if (!page || !panel) return [];
-      const items: ItemRef[] = [{ kind: "panel", id: panel.id }];
-      if (this.panelCarries) {
-        // コマ枠フォルダ: what is drawn in the panel goes with it.
-        const carried = carryContents(page, panel);
-        items.push(
-          ...carried.strokes.map(({ id }) => ({ kind: "stroke" as const, id })),
-          ...carried.lines.map(({ id }) => ({ kind: "line" as const, id })),
-          ...(carried.fills ?? []).map(({ id }) => ({ kind: "fill" as const, id })),
-        );
-      }
-      return items;
-    }
-    if (s.kind === "line" || s.kind === "fill" || s.kind === "breakout") return [{ kind: s.kind, id: s.id }];
-    return [];
+    if (!s || this.tool !== "select") return [];
+    return framedAtOnce(s.kind) || this.transforming ? this.pickedItems() : [];
   }
 
   get isTransforming(): boolean {
@@ -1362,7 +1357,7 @@ export class PageEditor {
         this.host.status("見開きのコマは変形できません。頂点や間白で形を変えてください");
         return false;
       }
-      if (this.tool !== "select") this.setTool("select");
+      if (this.tool !== "select") this.host.useTool("select");
     }
     this.transforming = on;
     this.renderBar();
@@ -1424,10 +1419,16 @@ export class PageEditor {
     return handle === FRAME_HANDLES ? "grab" : ["nwse-resize", "nesw-resize", "nwse-resize", "nesw-resize", "ns-resize", "ew-resize", "ns-resize", "ew-resize"][handle];
   }
 
-  /** 左右反転 / 上下反転 / 90° turns of the selected rough lines and dialogue. */
+  /** 左右反転 / 上下反転 / 90° turns of what is selected. */
   transformSelection(how: "flipH" | "flipV" | "left" | "right"): boolean {
     const page = this.focusPage();
-    const items = this.selectedItems();
+    const s = this.selection;
+    if (s?.kind === "panel" && page?.panels.find((p) => p.id === s.id)?.spread) {
+      this.host.status("見開きのコマは反転・回転できません。頂点や間白で形を変えてください");
+      return false;
+    }
+    // Whatever is picked, 変形 on or not; a panel with what is drawn in it.
+    const items = this.pickedItems();
     if (!page || !items.length) return false;
     const base = transformBase(page, items);
     const box = baseBounds(base);
@@ -1523,7 +1524,6 @@ export class PageEditor {
       ...page.breakouts.map((b) => ({ kind: "breakout" as const, id: b.id })),
     ];
     if (!items.length) return false;
-    this.setTool("select");
     this.select(items.length === 1 ? { kind: items[0].kind, pageId: page.id, id: items[0].id } : { kind: "group", pageId: page.id, id: "group", items });
     this.host.status(`${pickedSummary(items)}を選びました。枠の四角で大きさ、丸で向き、Ctrl + 角で自由変形`);
     return true;
@@ -2139,7 +2139,7 @@ export class PageEditor {
       const fill = page.fills?.find((f) => f.id === s.id);
       if (fill) fill.shape = fill.shape.map(([x, y]) => [x + dx, y + dy]);
     } else if (s.kind === "group") {
-      moveItems(page, items ?? this.selectedItems(), dx, dy);
+      moveItems(page, items ?? this.pickedItems(), dx, dy);
     } else {
       const stroke = page.strokes.find((p) => p.id === s.id);
       if (stroke) moveStroke(stroke, dx, dy);
@@ -2296,12 +2296,16 @@ export class PageEditor {
     writeInPlace(host, this.canvas.parentElement!, pageId, panel ? { panel } : { line: line! }, fresh);
   }
 
-  /** Nudge the selection with the arrow keys (mm). */
+  /** Nudge the selection with the arrow keys (mm), as a drag moves it (a panel with what is drawn in it). */
   nudge(dx: number, dy: number): boolean {
     const page = this.focusPage();
     if (!page || !this.selection) return false;
+    const s = this.selection;
+    const panel = s.kind === "panel" ? page.panels.find((p) => p.id === s.id) : undefined;
+    const carried = panel && this.panelCarries ? carryContents(page, panel) : undefined;
     this.host.begin();
     this.moveSelection(page, dx, dy);
+    this.follow(page, carried);
     const sticky = this.selection.kind === "sticky" ? page.stickies?.find((n) => n.id === this.selection!.id) : undefined;
     if (sticky) settleSticky(this.host.project()!, sticky);
     if (this.selection.kind === "panel" || this.selection.items?.some((item) => item.kind === "panel")) orderPanels(page, this.host.project()!.binding);

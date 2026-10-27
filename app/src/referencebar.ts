@@ -57,6 +57,17 @@ export class ReferenceBar {
     this.render();
   }
 
+  /** The chosen picture moved by the arrow keys (mm). */
+  nudgeChosen(dx: number, dy: number): boolean {
+    const chosen = this.chosen();
+    if (!chosen) return false;
+    this.host.edit(() => {
+      const [x0, y0, x1, y1] = chosen.reference.box;
+      chosen.reference.box = [x0 + dx, y0 + dy, x1 + dx, y1 + dy];
+    });
+    return true;
+  }
+
   removeChosen(): void {
     const chosen = this.chosen();
     if (!chosen) return;

@@ -202,6 +202,7 @@ export class Workbench {
         this.board.deselect();
         this.renderInspector();
       },
+      useTool: (tool) => this.setTool(tool),
       rough: (rough) => this.roughs.get(rough),
       status: (message) => this.setStatus(message),
       actions: (selection) => this.inspector.actions(selection),
@@ -963,7 +964,7 @@ export class Workbench {
       return true;
     }
     if (isTyping(event) || document.querySelector("dialog[open]")) return false;
-    // Arrows move what is selected (Shift: further) before anything else.
+    // Arrows move what is selected (資料: the chosen picture; Shift: further) before anything else.
     const step = event.shiftKey ? 5 : 0.5;
     const arrows: Record<string, [number, number]> = {
       ArrowLeft: [-step, 0],
@@ -972,9 +973,8 @@ export class Workbench {
       ArrowDown: [0, step],
     };
     const arrow = arrows[event.key];
-    if (arrow && this.editor.selection && !event.ctrlKey && !event.metaKey && !event.altKey) {
-      return this.editor.nudge(...arrow);
-    }
+    const plain = arrow && !event.ctrlKey && !event.metaKey && !event.altKey;
+    if (plain && (this.editor.selection ? this.editor.nudge(...arrow) : this.references.nudgeChosen(...arrow))) return true;
     // A tool's key held: its repeats change nothing (the eraser's would cycle how it erases).
     if (event.repeat && this.spring.holds(event.code)) return true;
     const from = this.editor.tool;

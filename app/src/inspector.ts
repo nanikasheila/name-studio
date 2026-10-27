@@ -91,6 +91,11 @@ export class Inspector {
       this.host.editor.isTransforming ? "active" : "",
     );
     const remove = button("消す", "消す（Delete）", () => this.host.deleteSelection(), "danger");
+    // What shows the transform frame as soon as it is picked: no 変形 button, the turns at hand.
+    const turns = () => [
+      button("左右反転", "左右を入れ替える", () => this.host.editor.transformSelection("flipH")),
+      button("⟳ 90°", "右に 90° 回す", () => this.host.editor.transformSelection("right")),
+    ];
     switch (selection.kind) {
       case "panel": {
         const panel = page.panels.find((p) => p.id === selection.id);
@@ -150,12 +155,7 @@ export class Inspector {
       }
       case "stroke":
       case "group":
-        return [
-          button("左右反転", "左右を入れ替える", () => this.host.editor.transformSelection("flipH")),
-          button("⟳ 90°", "右に 90° 回す", () => this.host.editor.transformSelection("right")),
-          copy,
-          remove,
-        ];
+        return [...turns(), copy, remove];
       case "fill": {
         const fill = page.fills?.find((f) => f.id === selection.id);
         if (!fill) return [];
@@ -165,10 +165,10 @@ export class Inspector {
             else fill.tone = value;
           }),
         );
-        return [tone, transform, copy, remove];
+        return [tone, ...turns(), copy, remove];
       }
       case "breakout":
-        return [transform, copy, remove];
+        return [...turns(), copy, remove];
       default:
         return [copy, remove];
     }
@@ -226,7 +226,8 @@ export class Inspector {
         return panel.replaceChildren(
           element("h2", { textContent: "塗り" }),
           element("label", {}, "色", tone),
-          element("p", { className: "hint", textContent: "ドラッグや矢印キーで動かせます。コマを動かすと一緒に動きます。CSP には「コマの塗り・効果」の画像レイヤーで書き出します。" }),
+          element("p", { className: "hint", textContent: "ドラッグや矢印キーで動かせます。枠の四角で大きさ、丸で向きを変えられます。コマを動かすと一緒に動きます。CSP には「コマの塗り・効果」の画像レイヤーで書き出します。" }),
+          ...this.transformButtons(),
           remove,
         );
       }
@@ -280,6 +281,7 @@ export class Inspector {
             textContent: "この中ではコマ枠と間白が消えます。中でペンを描き始めた線は、コマ枠の上に描かれます（CSP では「はみ出し（ラフ線）」レイヤー）。",
           }),
           element("label", {}, "メモ", note),
+          ...this.transformButtons(),
           remove,
         );
       }
@@ -646,13 +648,13 @@ export class Inspector {
       ...this.joinButtons(page, panel),
       element("p", {
         className: "hint",
-        textContent: `セリフ ${lines} 件。コマの境目（間白）をドラッグすると両側のコマが一緒に動き、外側の辺なら辺だけが動きます。境目をダブルクリックで隣とつなげます。角の四角をドラッグすると形を変えられます（枠に吸い付きます。Alt で吸い付かない）。右上の番号を別のコマへドラッグ（または Alt + ドラッグ）すると中身を入れ替えます。重なり ${panel.z ?? 0}。`,
+        textContent: `セリフ ${lines} 件。コマの境目（間白）をドラッグすると両側のコマが一緒に動き、外側の辺なら辺だけが動きます。境目をダブルクリックで隣とつなげます。角の四角をドラッグすると形を変えられます（枠に吸い付きます。Alt で吸い付かない）。右上の番号を別のコマへドラッグすると中身を入れ替えます。重なり ${panel.z ?? 0}。`,
       }),
       remove,
     ];
   }
 
-  /** 反転・回転 of the selected rough lines and dialogue. */
+  /** 反転・回転 of what is selected. */
   private transformButtons(): HTMLElement[] {
     const make = (label: string, how: "flipH" | "flipV" | "left" | "right", title: string) => {
       const b = element("button", { textContent: label, title });

@@ -385,15 +385,16 @@ try {
   await record("warp a corner");
   await page.evaluate(() => window.nameStudio.workbench.editor.toggleTransform(false));
 
-  // コマの入れ替え: Alt + drag a panel onto another.
-  await dragMm(
-    2,
-    [
-      [100, 300],
-      [200, 120],
-    ],
-    ["Alt"],
-  );
+  // コマの入れ替え: drag a panel's number onto another (Alt + drag moves a panel without snapping).
+  const number = await page.evaluate(() => {
+    const editor = window.nameStudio.workbench.editor;
+    const project = window.nameStudio.workbench.project;
+    const slot = editor.slots.find((s) => s.page.id === project.pages[1].id);
+    const panel = editor.panelAt(slot.page, [100, 300]);
+    const { x, y } = editor.badge(slot, panel, project.pageFormat.canvasMm[0]);
+    return editor.clientOf(slot.page.id, [(x - slot.x) / slot.scale, (y - slot.y) / slot.scale]);
+  });
+  await drag([number, await at(2, [200, 120])]);
   await record("swap panels");
 
   // Undo everything: back to the four plain pages.
