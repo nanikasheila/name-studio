@@ -219,6 +219,7 @@ export const HOVER_TOPICS: Record<string, HelpTopic> = {
       { input: "Alt+ドラッグ", does: "吸い付かずに動かす" },
       { input: "Shift+クリック", does: "選択に足す" },
       { command: "transform", does: "変形" },
+      { command: "panel.tidy", does: "整える（仮のコマを清書）" },
       { command: "delete", does: "消す" },
     ],
   },
@@ -486,6 +487,7 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
   tool("reference", "資料", "写真や背景を薄く敷く"),
   // Around the pages.
   { target: "#tool-options", name: "道具の設定", text: "持っている道具の設定と使い方のひと言", side: "below" },
+  { target: "#panel-tidy", name: "整える", text: "仮のコマを清書（線をそろえ、コマ間を設定の幅に）", command: "panel.tidy", side: "below" },
   { target: "#editor-canvas", name: "紙面", text: "ここに描く。Space+ドラッグで動かす・ホイールで拡大縮小・Shift+Space+ドラッグで回す", command: "view.fit", side: "inside" },
   { target: "#editor-next", name: "ページをめくる", text: "", command: "page.next", side: "above" },
   { target: "#spread-mode", name: "見開き・単独・連続", text: "連続は全ページを一枚に並べる", command: "view.continuous", side: "above" },
