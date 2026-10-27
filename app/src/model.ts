@@ -77,6 +77,8 @@ export interface Panel {
   spread?: string;
   /** 枠線の太さ (mm) of this panel alone; none: the name's for its border (NameStyle). */
   lineMm?: number;
+  /** 仮のコマ: laid out roughly (drawn by hand), not decided yet; 整える makes it exact. */
+  draft?: boolean;
 }
 
 /** はみ出し: an area over the panels where borders and gutters are blanked. */

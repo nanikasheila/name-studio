@@ -61,7 +61,8 @@
             3.5
           ],
           "spread": "spread1",
-          "lineMm": 0.8
+          "lineMm": 0.8,
+          "draft": true
         }
       ],
       "lines": [
@@ -425,7 +426,8 @@
                     3.5
                   ],
                   "spread": "spread1",
-                  "lineMm": 0.8
+                  "lineMm": 0.8,
+                  "draft": true
                 }
               ],
               "lines": [
@@ -673,7 +675,8 @@
           3.5
         ],
         "spread": "spread1",
-        "lineMm": 0.8
+        "lineMm": 0.8,
+        "draft": true
       },
       "lines": [
         {

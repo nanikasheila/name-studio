@@ -56,6 +56,7 @@ function fullPage(id: string): Full<Project["pages"][number]> {
         noteAt: [2.5, 3.5],
         spread: "spread1",
         lineMm: 0.8,
+        draft: true,
       },
     ],
     lines: [

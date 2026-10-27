@@ -30,6 +30,7 @@ const TOOL_HINTS: Record<Tool, string> = {
 /** コマ割り: the hint for each way of making panels. */
 const PANEL_HINTS: Record<PanelMode, string> = {
   cut: TOOL_HINTS.cut,
+  sketch: "紙のように描く: 囲むと仮のコマ、横切ると割る、コマの間をぐしゃぐしゃでつなげる。決まったら「整える」で清書",
   rect: "ドラッグで四角いコマを描く。コマの中に描くと、はめ込み（Alt で吸着しない）",
   polygon: "クリックで角を置く。最初の角・ダブルクリック・Enter で閉じてコマに。Backspace で 1 つ戻す、Esc でやめる",
 };
@@ -71,6 +72,7 @@ export class ControlBar {
     $("fill-tones").hidden = tool !== "fill";
     $("panel-modes").hidden = tool !== "cut";
     $("grid-snap-label").hidden = tool !== "cut";
+    $("panel-tidy").hidden = tool !== "cut";
     $("reference-bar").classList.toggle("off", tool !== "reference");
     this.host.toolChanged(tool);
     // The options row names the tool and shows only what it has; nothing else moves.

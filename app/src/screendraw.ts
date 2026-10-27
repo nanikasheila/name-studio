@@ -9,10 +9,11 @@ import { bounds } from "./geometry";
 import { basicBox, trimBox } from "./pagebox";
 import { type Slot } from "./layout";
 import { maskShape } from "./mask";
+import { stickyBox } from "./stickies";
 import { wantsSpread } from "./panels";
 import { stacked } from "./koma";
-import { ACCENT, drawNote, drawSticky, wrapText } from "./notedraw";
-import { INK, drawBalloons, drawLineText, drawPageFills, drawPanelBorders, drawPanelFills, drawStrokes, tracePath } from "./pagedraw";
+import { ACCENT, drawLeader, drawNote, drawSticky, wrapText } from "./notedraw";
+import { INK, PENCIL, drawBalloons, drawLineText, drawPageFills, drawPanelBorders, drawPanelFills, drawStrokes, tracePath } from "./pagedraw";
 import { pictureOf } from "./pictures";
 import { imageOf, opacityOf } from "./references";
 import { markColor, markLayersOf, opacityOfLayer, roughLayersOf, strokesOn } from "./roughlayers";
@@ -117,7 +118,7 @@ export function drawScreenPage(ctx: CanvasRenderingContext2D, project: Project, 
     ctx.fillStyle = "rgba(47, 111, 219, 0.08)";
     ctx.fill();
   }
-  drawPanelBorders(ctx, page, m, (panel) => (selectedPanels.includes(panel) ? ACCENT : INK));
+  drawPanelBorders(ctx, page, m, (panel) => (selectedPanels.includes(panel) ? ACCENT : INK), 1, true);
   drawRoughs(true);
 
   // はみ出し: shown by a dashed outline (only here, not in exports).
@@ -353,6 +354,34 @@ export function drawCutOrFrame(ctx: CanvasRenderingContext2D, slot: Slot, a: Poi
     ctx.strokeRect(slot.x + x0 * slot.scale, slot.y + y0 * slot.scale, (x1 - x0) * slot.scale, (y1 - y0) * slot.scale);
   }
   ctx.setLineDash([]);
+}
+
+/** なぐり描きのコマ割り: the line as it is drawn, in pencil. */
+export function drawSketch(ctx: CanvasRenderingContext2D, slot: Slot, points: readonly Point[]): void {
+  if (points.length < 2) return;
+  ctx.save();
+  ctx.strokeStyle = PENCIL;
+  ctx.lineWidth = 1.6;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  tracePath(ctx, points, at(slot), false);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** 付箋の紐づけ: a leader from the sticky to the pointer, the panel it would link to lit, and what letting go does. */
+export function drawStickyLink(ctx: CanvasRenderingContext2D, slot: Slot, stickyId: string, to: { kind: string; id: string } | null, pointer: Point): void {
+  const sticky = slot.page.stickies?.find((n) => n.id === stickyId);
+  if (!sticky) return;
+  const [x0, y0, x1, y1] = stickyBox(sticky);
+  const box = to?.kind === "panel" ? slot.page.panels.find((p) => p.id === to.id)?.shape : null;
+  if (box) {
+    tracePath(ctx, box, at(slot), true);
+    ctx.fillStyle = "rgba(201, 154, 18, 0.18)";
+    ctx.fill();
+  }
+  drawLeader(ctx, pointer[0], pointer[1], [slot.x + x0 * slot.scale, slot.y + y0 * slot.scale, slot.x + x1 * slot.scale, slot.y + y1 * slot.scale], ACCENT);
+  drawPointerNote(ctx, pointer, to ? (to.kind === "panel" ? "このコマに紐づける" : "このセリフに紐づける") : sticky.link ? "ここで離すと紐づけを外す" : "コマかセリフの上で離す");
 }
 
 /** The area as it will be filled (`color`), while it is drawn round. */

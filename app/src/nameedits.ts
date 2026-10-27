@@ -11,6 +11,7 @@ import { holdPanel, movePanelToPage, placeHeld } from "./hold";
 import { moveIntoPanel, type LayerRef } from "./layers";
 import type { Alternatives, Page, Panel, Point, Project } from "./model";
 import { swapPanelContents } from "./panels";
+import { panelsToTidy, tidyPanels } from "./tidy";
 import { insertPage, newId, pageIndex } from "./project";
 import { assignPanels, sortLines } from "./readingorder";
 import { removePicked } from "./removal";
@@ -199,6 +200,48 @@ export class NameEdits {
     this.editor.select(null);
     this.status(`${index + 1} ページのコマ ${panel.order} を中身ごと保留にして、ページの上の欄外に置きました（ページへドラッグで戻せます。一覧は「保留」）`);
     this.host.renderAll();
+  }
+
+  /** The selected panel into 保留 (the command); false when no panel is selected. */
+  holdSelection(): boolean {
+    const selection = this.editor.selection;
+    const page = selection && this.host.project()?.pages.find((p) => p.id === selection.pageId);
+    const panel = selection?.kind === "panel" ? page?.panels.find((p) => p.id === selection.id) : undefined;
+    if (page && panel) this.holdSelected(page, panel);
+    return !!panel;
+  }
+
+  /**
+   * 整える (清書) on the page worked on: the panels selected there, else its
+   * 仮のコマ, else all its panels; false when there is nothing to tidy.
+   */
+  tidyPanels(): boolean {
+    const project = this.host.project();
+    const selection = this.editor.selection;
+    const page = (selection && project?.pages.find((p) => p.id === selection.pageId)) || this.editor.focusPage();
+    if (!project || !page) return false;
+    const chosen =
+      selection?.pageId !== page.id ? [] : selection.kind === "panel" ? [selection.id] : selection.kind === "group" ? (selection.items ?? []).filter((item) => item.kind === "panel").map((item) => item.id) : [];
+    const targets = panelsToTidy(page, chosen);
+    if (!targets.length) {
+      this.status("整えるコマがありません");
+      return false;
+    }
+    const drafts = targets.filter((panel) => panel.draft).length;
+    let result = { tidied: 0, kept: 0 };
+    this.edit((p) => {
+      const at = p.pages.find((x) => x.id === page.id);
+      if (at) result = tidyPanels(p, at, targets.map((panel) => panel.id));
+    });
+    const index = project.pages.indexOf(page) + 1;
+    const what = drafts === targets.length ? "仮のコマ" : "コマ";
+    this.status(
+      result.kept
+        ? `${index} ページの${what} ${result.tidied} 個を整えました（${result.kept} 個は形が読み取れず、そのまま）`
+        : `${index} ページの${what} ${result.tidied} 個を整えました（線をそろえ、コマ間を設定の幅に。元に戻すは Ctrl+Z）`,
+    );
+    this.host.renderAll();
+    return true;
   }
 
   /** Lay a held panel in the 欄外 of `page`: with its middle at `point` (mm on the page, off it), else above the page. */
