@@ -37,7 +37,7 @@ describe("ヘルプの帯の中身", () => {
   });
 
   it("has a topic for every tool and everything the select tool can grab", () => {
-    for (const tool of ["select", "cut", "cut.rect", "cut.polygon", "text", "pen", "eraser", "fill", "breakout", "sticky", "reference"]) expect(TOOL_TOPICS[tool], tool).toBeDefined();
+    for (const tool of ["select", "cut", "cut.rect", "cut.polygon", "text", "pen", "mark", "eraser", "fill", "breakout", "sticky", "reference"]) expect(TOOL_TOPICS[tool], tool).toBeDefined();
     for (const kind of ["panel", "line", "stroke", "breakout", "group", "sticky", "fill"]) expect(HOVER_TOPICS[`item.${kind}`], kind).toBeDefined();
     for (const part of ["tip", "body", "bend", "root"]) expect(HOVER_TOPICS[`tail.${part}`], part).toBeDefined();
     expect(HOVER_TOPICS.seam && HOVER_TOPICS.handle).toBeDefined();

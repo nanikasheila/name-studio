@@ -21,7 +21,7 @@ import { PenDialog } from "./pendialog";
 import { LayerView, type LayerRef } from "./layers";
 import { RoughPanel } from "./roughpanel";
 import { SeriesPanel } from "./seriespanel";
-import { ROUGH_BASE } from "./roughlayers";
+import { isMark, ROUGH_BASE } from "./roughlayers";
 import { buildCommands } from "./actions";
 import type { Command } from "./commands";
 import { CommandPalette } from "./palette";
@@ -122,6 +122,7 @@ export class Workbench {
       const text = page.lines.find((l) => l.id === id)?.text.replace(/\s+/g, " ").trim() ?? "";
       return text.length > 14 ? `${text.slice(0, 14)}…` : text || "（空）";
     },
+    isMark: (page, id) => isMark(this.session.project ?? {}, page.strokes.find((stroke) => stroke.id === id) ?? {}),
   });
   private readonly roughPanel = new RoughPanel({
     project: () => this.session.project,

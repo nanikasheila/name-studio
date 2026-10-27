@@ -151,9 +151,24 @@ export const TOOL_TOPICS: Record<string, HelpTopic> = {
       ...VIEW_STEPS,
     ],
   },
+  mark: {
+    name: "指示",
+    what: "ペン入れする人への指示を色付きで描きなぐる（ラフ線とは別のレイヤー）",
+    steps: [
+      { input: "ドラッグ", does: "描く" },
+      { input: "Shift+ドラッグ", does: "まっすぐな線" },
+      { input: "ペンの消しゴム側", does: "指示だけ消す" },
+      { input: "段の「消す」", does: "指示だけ消す（ラフ線は消えない）" },
+      { input: "段の「＋色」", does: "別の色（別の指示のレイヤー）を足す" },
+      { command: "button.marks-shown", does: "指示を出す・隠す" },
+      { command: "brush.bigger", does: "太く" },
+      { command: "brush.smaller", does: "細く" },
+      ...VIEW_STEPS,
+    ],
+  },
   eraser: {
     name: "消しゴム",
-    what: "ラフの線を消す。消し方は 部分・交点まで・線ごと・囲む",
+    what: "ラフの線を消す（指示は消さない）。消し方は 部分・交点まで・線ごと・囲む",
     steps: [
       { input: "ドラッグ", does: "消す" },
       { command: "tool.eraser", does: "消し方を切り替える（消しゴムを持っているとき）" },
