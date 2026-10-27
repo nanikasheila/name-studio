@@ -86,6 +86,25 @@ try {
   check((await state()).note === null, "Ctrl+Z takes the memo back");
   await page.keyboard.press("Control+z");
   check((await state()).text === "セリフ", "and then the dialogue");
+
+  // The text tool on an empty spot: a new line and a field in it, one step together.
+  const lines = () => page.evaluate(() => window.nameStudio.workbench.project.pages[0].lines.length);
+  const undos = () => page.evaluate(() => window.nameStudio.workbench.session.history.undoStack.length);
+  const [count, steps] = [await lines(), await undos()];
+  await page.evaluate(() => window.nameStudio.workbench.setTool("text"));
+  await page.mouse.click(where.inside[0], where.inside[1] + 40);
+  await field.waitFor({ timeout: 2000 }).catch(() => undefined);
+  check((await field.count()) === 1 && (await lines()) === count + 1, "the text tool places a line and opens a field in it");
+  await page.keyboard.press("Escape");
+  check((await field.count()) === 0 && (await lines()) === count && (await undos()) === steps, "Esc takes the new line away again, with no undo step");
+  await page.mouse.click(where.inside[0], where.inside[1] + 40);
+  await field.waitFor({ timeout: 2000 }).catch(() => undefined);
+  await page.keyboard.type("やあ");
+  await page.keyboard.press("Control+Enter");
+  check((await lines()) === count + 1 && (await undos()) === steps + 1, "written and kept, the line is one undo step");
+  await page.locator("#editor-canvas").click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press("Control+z");
+  check((await lines()) === count, "which Ctrl+Z takes back whole");
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(" / ")}` : ""}`);
 } finally {
   await browser.close();

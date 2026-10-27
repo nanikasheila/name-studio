@@ -73,8 +73,10 @@ try {
   check(await page.locator("#command-palette").evaluate((d) => d.open), "in the editor Ctrl+K is the editor's palette");
   await page.keyboard.press("Escape");
   // Tab, as CSP's: the palettes and the story band go, the page takes the window.
-  const stage = () => page.locator("#editor-canvas").evaluate((c) => c.getBoundingClientRect().height);
+  // (At 900 px high the strip starts folded, the pages first: Tab then gives the width of the side palettes.)
+  const stage = () => page.locator("#editor-canvas").evaluate((c) => Math.round(c.getBoundingClientRect().height * c.getBoundingClientRect().width / 1000));
   const before = await stage();
+  const storyBefore = await page.locator("#story").isVisible();
   await page.locator("#editor-canvas").click({ position: { x: 5, y: 5 } });
   await page.keyboard.press("Tab");
   await page.waitForTimeout(200);
@@ -83,7 +85,7 @@ try {
   await page.keyboard.press("Tab");
   await page.waitForTimeout(200);
   const after = await stage();
-  check((await page.locator("#story").isVisible()) && Math.abs(after - before) < 6, `Tab again brings them back (${before} → ${after})`);
+  check((await page.locator("#story").isVisible()) === storyBefore && Math.abs(after - before) < 6, `Tab again brings them back (${before} → ${after})`);
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(" / ")}` : ""}`);
 } finally {
   await browser.close();

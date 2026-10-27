@@ -38,6 +38,11 @@ pub struct ManifestFile {
 pub struct PageRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub texts: Option<Vec<String>>,
+    /// The `texts` before the name last took CSP's dialogue back (see
+    /// [`super::update::adopt_dialogue`]): a name that undid the take-back
+    /// still has these, and reading back again finds the same changes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adopted_from: Option<Vec<String>>,
     /// Each vector layer's [`crate::vector::shape_signature`], by layer name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub vectors: BTreeMap<String, String>,

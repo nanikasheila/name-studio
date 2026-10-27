@@ -10,9 +10,9 @@ export function pressText(editor: EditorCore, { project, slot, point }: Press): 
     editor.afterUp(() => editor.editInPlace(slot.page.id, "line", hit.id));
     return;
   }
+  // Placing the line and writing in it are one step: Esc in the field takes the line away.
   editor.host.begin();
   const line = addLine(project, slot.page, point);
-  editor.host.commit();
   editor.select({ kind: "line", pageId: slot.page.id, id: line.id });
-  editor.afterUp(() => editor.editInPlace(slot.page.id, "line", line.id));
+  editor.afterUp(() => editor.editInPlace(slot.page.id, "line", line.id, true));
 }

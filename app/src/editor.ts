@@ -38,7 +38,7 @@ import { snapCut, trimBox } from "./pagebox";
 import { type CarriedContents, carryContents, followPanel, movePanel, panelContents } from "./panels";
 import { gutters, pageIndex } from "./project";
 import { assignPanels, orderPanels, sortLines } from "./readingorder";
-import { settleSticky, stickyBox } from "./stickies";
+import { settleSticky, stickyBox, stickyFolds } from "./stickies";
 import { asideRoom, NO_ROOM, offPage, type Room } from "./aside";
 import { drawAside } from "./asidedraw";
 import { asideSlot, pressHeld } from "./toolaside";
@@ -61,7 +61,7 @@ import { dragHandler, PRESS } from "./tools";
 import { pickedSummary } from "./toolselect";
 import { snapPointTo, snapTargets, type SnapSettings, type SnapTargets } from "./snapping";
 import { Viewport } from "./viewport";
-import { ACCENT, drawLeader, NOTE_FONT, NOTE_ROW, noteBox, stickyHandle, type NoteBox } from "./notedraw";
+import { ACCENT, drawLeader, drawSticky, NOTE_FONT, NOTE_ROW, noteBox, stickyHandle, type NoteBox } from "./notedraw";
 import { writeInPlace, type InPlaceEdit, type InPlaceHost } from "./inplace";
 import { drawCorners, drawCutOrFrame, drawDashedLine, drawFillArea, drawGoingTo, drawGuideLines, drawLasso, drawLifted, drawOverflowPanels, drawPenCursor, drawPointerNote, drawReferenceFrames, drawSpreadMarks, drawRing, drawScreenPage, drawSeam, drawSnapGrid, drawTransformFrame, drawWarpCorners, HANDLE, panelBadge } from "./screendraw";
 
@@ -1080,6 +1080,10 @@ export class PageEditor {
             ctx.fillText("＋ メモ", x + 6, y + 4);
           }
         }
+      } else if (target.kind === "sticky") {
+        // A long 付箋 opens to all its text while the pointer is on it.
+        const sticky = slot.page.stickies?.find((n) => n.id === target.id);
+        if (sticky && stickyFolds(sticky) && !this.isSelected(slot.page, "sticky", sticky.id)) drawSticky(ctx, slot, sticky, false, null, true);
       } else if (target.kind === "line") {
         const line = slot.page.lines.find((l) => l.id === target.id);
         if (line) {
@@ -1582,7 +1586,9 @@ export class PageEditor {
     const tolerance = 6 / slot.scale;
     // 付箋 lie on top of everything.
     for (const sticky of [...(page.stickies ?? [])].reverse()) {
-      if (insideBox(stickyBox(sticky), point)) return { kind: "sticky", pageId: page.id, id: sticky.id };
+      // Open (selected or under the pointer), all of its text can be pointed at.
+      const open = this.isSelected(page, "sticky", sticky.id) || (this.hover?.kind === "item" && this.hover.target.id === sticky.id);
+      if (insideBox(stickyBox(sticky, open), point)) return { kind: "sticky", pageId: page.id, id: sticky.id };
     }
     // Overlapping balloons: the selected one stays the one picked (a double-click writes in it).
     const under = this.linesAt(slot, point);
@@ -2004,7 +2010,7 @@ export class PageEditor {
       spanPanels: (project, pageId) => this.spanPanels(project, pageId),
       addFreePanel: (project, page, outline) => this.addFreePanel(project, page, outline),
       placeCorner: (slot, point, free) => this.placeCorner(slot, point, free),
-      editInPlace: (pageId, kind, id) => this.editInPlace(pageId, kind, id),
+      editInPlace: (pageId, kind, id, fresh) => this.editInPlace(pageId, kind, id, fresh),
     };
   }
 
@@ -2249,7 +2255,8 @@ export class PageEditor {
    * Write a panel's memo or a line of dialogue in a field laid over the page,
    * where it is (inplace.ts).
    */
-  editInPlace(pageId: string, kind: "note" | "line", id: string): void {
+  /** `fresh`: a line just placed in the step begun, which the field ends (Esc takes the line away). */
+  editInPlace(pageId: string, kind: "note" | "line", id: string, fresh = false): void {
     this.inline?.finish(true);
     const project = this.host.project();
     const page = project?.pages.find((p) => p.id === pageId);
@@ -2266,12 +2273,17 @@ export class PageEditor {
       slotOf: (id) => this.slots.find((s) => s.page.id === id),
       noteAt: (slot, panel) => this.noteBox(slot, panel),
       onScreen: (point) => this.view.onScreen(point),
+      drop: (pageId, lineId) => {
+        const on = this.host.project()?.pages.find((p) => p.id === pageId);
+        if (on) on.lines = on.lines.filter((l) => l.id !== lineId);
+        if (this.selection?.kind === "line" && this.selection.id === lineId) this.select(null);
+      },
       opened: (edit) => (this.inline = edit),
       closed: (edit) => {
         if (this.inline === edit) this.inline = null;
       },
     };
-    writeInPlace(host, this.canvas.parentElement!, pageId, panel ? { panel } : { line: line! });
+    writeInPlace(host, this.canvas.parentElement!, pageId, panel ? { panel } : { line: line! }, fresh);
   }
 
   /** Nudge the selection with the arrow keys (mm). */

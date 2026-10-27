@@ -39,7 +39,8 @@ import { rectShape } from "./geometry";
 import type { Alternatives, BalloonShape, FillTone, Line, LineKind, Page, Panel, PanelBorder, PanelEffect, PanelFill, Project, Sticky, StickyColor, TailStyle } from "./model";
 import { basicBox } from "./pagebox";
 import { addPanel, wantsSpread } from "./panels";
-import { insertPage, movePage, pageIndex, removePage } from "./project";
+import { insertPage, pageIndex, pageIsEmpty, removePage } from "./project";
+import { moveBlock, pageBlock } from "./reorder";
 import { assignPanels, orderPanels, sortLines } from "./readingorder";
 import { linkLabel, STICKY_COLORS } from "./stickies";
 import { TONE_LABELS } from "./strokes";
@@ -772,10 +773,12 @@ export class Inspector {
     // A page added inside a 別案 belongs to that option (another ページ配分).
     const after = button("後ろにページを足す", () => this.host.edit((p) => joinAlternative(p, insertPage(p, index + 1).id, page.id, true)));
     const before = button("前にページを足す", () => this.host.edit((p) => joinAlternative(p, insertPage(p, index).id, page.id, false)));
-    const earlier = button("1 つ前へ", () => this.host.edit((p) => movePage(p, page.id, -1)), index === 0);
-    const later = button("1 つ後ろへ", () => this.host.edit((p) => movePage(p, page.id, 1)), index === project.pages.length - 1);
+    // With its 見開き partner, past the whole 見開き next to it (as dragging in the list).
+    const [blockFirst, blockLast] = pageBlock(project, index);
+    const earlier = button("1 つ前へ", () => this.host.edit((p) => moveBlock(p, pageIndex(p, page.id), -1)), blockFirst === 0);
+    const later = button("1 つ後ろへ", () => this.host.edit((p) => moveBlock(p, pageIndex(p, page.id), 1)), blockLast === project.pages.length - 1);
     const remove = button("このページを消す", async () => {
-      const filled = page.panels.length + page.lines.length + page.strokes.length > 0;
+      const filled = !pageIsEmpty(page);
       if (filled && !(await ask(`${index + 1} ページを消しますか？（元に戻すで戻せます）`, { title: "Name Studio", kind: "warning" }))) return;
       this.host.edit((p) => removePage(p, page.id));
     });

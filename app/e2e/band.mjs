@@ -1,8 +1,10 @@
-// 物語の帯 folds down to its row of buttons (its button, Shift+F6, a double
-// click on its top edge) and opens again as it was; 連続 fits the rows to
-// the stage's height, again when it changes size (Tab), and zoomed in keeps
-// what was in its middle there; the command palette does not list itself;
-// a low window starts with it folded and the ページだけ button does what Tab does. Run: npm run e2e:band
+// 物語の帯 starts as the window's height allows (描く配置: the pages keep most
+// of the height; at 900 px high it starts folded, taller it opens with the
+// scenes and the pages), folds away (its button at the end of the row under
+// the pages, Shift+F6, a double click on its top edge) and opens again as it
+// was; 連続 fits the rows to the stage's height, again when it changes size
+// (Tab), and zoomed in keeps what was in its middle there; the command palette
+// does not list itself; the ページだけ button does what Tab does. Run: npm run e2e:band
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { createServer } from "vite";
@@ -37,13 +39,19 @@ try {
       stage: document.getElementById("editor-canvas").getBoundingClientRect().height,
       lanes: !document.querySelector("#story .story-lanes").hidden,
     }));
+  const foldButton = page.locator("#page-nav .story-controls button[aria-pressed]").last();
+  const first = await heights();
+  check(!first.lanes && first.band < 2, `900 px high, the first time: the strip starts folded (${Math.round(first.stage)} px for the pages)`);
+  await foldButton.click();
+  await page.waitForTimeout(200);
   const open = await heights();
-  check(open.lanes && open.band > 100, `the strip starts open (${Math.round(open.band)} px)`);
+  check(open.lanes && open.band > 100, `its button opens it (${Math.round(open.band)} px)`);
+  check(open.stage > 0.6 * (open.stage + open.band), `still leaving the pages most of the height (${Math.round(open.stage)} px)`);
 
-  await page.locator("#story .story-controls button[aria-pressed]").last().click();
+  await foldButton.click();
   await page.waitForTimeout(200);
   const folded = await heights();
-  check(!folded.lanes && folded.band < 40, `its button folds it to its row of buttons (${Math.round(folded.band)} px)`);
+  check(!folded.lanes && folded.band < 2, `and folds it again, its buttons staying in the row under the pages (${Math.round(folded.band)} px)`);
   check(folded.stage > open.stage + 60, `and the pages get the room (${Math.round(open.stage)} → ${Math.round(folded.stage)} px)`);
 
   await page.locator("#editor-canvas").click({ position: { x: 5, y: 5 } });
@@ -139,9 +147,35 @@ try {
   await page.waitForTimeout(300);
   check(!(await page.evaluate(() => document.body.classList.contains("focus-mode"))), "and brings them back");
 
-  // No characters yet: the emotion lane is one line of how to start.
+  // No characters yet: the emotion lane (F3; not among the strip's first lanes) is one line of how to start.
+  await page.locator("#editor-canvas").click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("F3");
+  await page.waitForTimeout(200);
   const emotion = await page.evaluate(() => document.querySelector("#story .emotion-lane .lane-bg")?.getAttribute("height"));
   check(Number(emotion) < 40, `with no characters the emotion lane is one line (${emotion} px)`);
+
+  // A tall window, the first time: the strip opens with the scenes and the pages, under pages as tall as most of it.
+  const tall = await browser.newPage({ viewport: { width: 1600, height: 1200 } });
+  await tall.addInitScript({ path: fileURLToPath(new URL("tauri-mock.js", import.meta.url)) });
+  await tall.goto(server.resolvedUrls.local[0]);
+  await tall.waitForFunction(() => window.nameStudio);
+  await tall.evaluate(async () => {
+    const { newProject } = await import("/src/project.ts");
+    window.nameStudio.show(newProject("高い", 8));
+  });
+  await tall.waitForTimeout(300);
+  const tallState = await tall.evaluate(() => ({
+    lanes: !document.querySelector("#story .story-lanes").hidden,
+    band: document.getElementById("story").getBoundingClientRect().height,
+    stage: document.getElementById("editor-canvas").getBoundingClientRect().height,
+  }));
+  check(tallState.lanes && tallState.stage > 2.5 * tallState.band, `1600×1200 the first time: the strip opens, the pages keep most of the height (${Math.round(tallState.stage)} / ${Math.round(tallState.band)} px)`);
+  // Made lower, the strip it sized itself folds away.
+  await tall.setViewportSize({ width: 1600, height: 800 });
+  await tall.waitForTimeout(400);
+  check(await tall.evaluate(() => document.querySelector("#story .story-lanes").hidden), "made lower, it folds away by itself");
+  await tall.close();
 
   // A low window, the first time: the strip starts folded, the pages first.
   const low = await browser.newPage({ viewport: { width: 900, height: 600 } });

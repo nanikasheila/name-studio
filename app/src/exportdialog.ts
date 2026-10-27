@@ -848,8 +848,11 @@ export class ExportDialog {
       }
       this.host.edit((p) => applyTakeBack(p, plan));
       // From now on these texts count as the name's: セリフだけ反映 leaves them as they are.
-      await call("adopt_name_dialogue", { paths: plan.paths });
-      const done = `CSP のセリフを読み戻しました（直した ${plan.retyped.length}・足した ${plan.added.length}・消した ${plan.removed.length}）。元に戻すは Ctrl+Z`;
+      const recorded = await call("adopt_name_dialogue", { paths: plan.paths }).then(
+        () => null,
+        (error) => `ただし書き出し先に記録できませんでした（${error}）。次のセリフだけ反映で、CSP のセリフが「（旧）」になることがあります`,
+      );
+      const done = `CSP のセリフを読み戻しました（直した ${plan.retyped.length}・足した ${plan.added.length}・消した ${plan.removed.length}）。元に戻すは Ctrl+Z${recorded ? `。${recorded}` : ""}`;
       this.message([done, ...summary.filter((line) => !/^CSP で(直した|足した|消した)/.test(line))].join("\n"));
       this.host.status(done);
     } catch (error) {

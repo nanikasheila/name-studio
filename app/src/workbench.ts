@@ -225,7 +225,7 @@ export class Workbench {
       renderAll: () => this.renderAll(),
       layersChanged: () => this.renderLayers(),
     });
-    this.board = new Board($("story"), $("story-handle"), {
+    this.board = new Board($("story"), $("story-handle"), $("page-nav"), {
       project: () => this.session.project,
       edit: (change) => this.edit(change),
       openPage: (pageNumber) => {

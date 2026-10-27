@@ -157,6 +157,8 @@ pub struct CspText {
 pub struct CspDialogue {
     pub texts: Vec<CspText>,
     pub written: Option<Vec<String>>,
+    /// What was written before the name last took this page's dialogue back.
+    pub adopted_from: Option<Vec<String>>,
 }
 
 /// Read the dialogue texts of the page at `path`, with what the last export
@@ -184,20 +186,30 @@ pub fn read_dialogue(path: &Path) -> Result<CspDialogue> {
             CspText { text: text.key, bbox }
         })
         .collect();
+    let record = super::manifest::written(path).unwrap_or_default();
     Ok(CspDialogue {
         texts,
-        written: super::manifest::written(path).and_then(|record| record.texts),
+        written: record.texts,
+        adopted_from: record.adopted_from,
     })
 }
 
 /// Record the page's dialogue as CSP has it now as this tool's: once the
-/// name has taken it back, the next update leaves it as it is.
+/// name has taken it back, the next update leaves it as it is. What was
+/// recorded before is kept (`adopted_from`) for a name that undoes it.
 pub fn adopt_dialogue(path: &Path) -> Result<()> {
     let document = ClipDocument::read(path)?;
-    let texts = page_texts(&document).into_iter().map(|text| text.key).collect();
+    let texts: Vec<String> = page_texts(&document).into_iter().map(|text| text.key).collect();
+    let before = super::manifest::written(path).unwrap_or_default();
+    let adopted_from = if before.texts.as_ref() == Some(&texts) {
+        before.adopted_from.clone()
+    } else {
+        before.texts.clone()
+    };
     let record = PageRecord {
         texts: Some(texts),
-        ..super::manifest::written(path).unwrap_or_default()
+        adopted_from,
+        ..before
     };
     super::manifest::record_page(path, record)?;
     Ok(())
@@ -316,6 +328,7 @@ pub fn update_dialogue(
     });
     report.record = PageRecord {
         texts: Some(update.texts.iter().map(|text| text.text.clone()).collect()),
+        adopted_from: None,
         vectors,
         rasters,
     };

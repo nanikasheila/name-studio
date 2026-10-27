@@ -930,7 +930,7 @@ export async function readCspDialogue(project: Project, request: CspExportReques
         const box = bbox ? (bbox.map((v, i) => (v - (i % 2 ? on.m.y : on.m.x)) / on.m.scale) as BoxMm) : null;
         return { text, page: on.index, box };
       });
-      read.push({ pages: unit, path: page.path, found: page.dialogue !== null, written: page.dialogue?.written ?? null, texts });
+      read.push({ pages: unit, path: page.path, found: page.dialogue !== null, written: page.dialogue?.written ?? null, adoptedFrom: page.dialogue?.adoptedFrom ?? null, texts });
     }
     return read;
   } finally {

@@ -313,5 +313,5 @@ export interface EditorCore {
   spanPanels(project: Project, pageId: string): number;
   addFreePanel(project: Project, page: Page, outline: Point[]): void;
   placeCorner(slot: Slot, point: Point, free: boolean): void;
-  editInPlace(pageId: string, kind: "note" | "line", id: string): void;
+  editInPlace(pageId: string, kind: "note" | "line", id: string, fresh?: boolean): void;
 }

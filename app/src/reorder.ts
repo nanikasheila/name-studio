@@ -46,6 +46,17 @@ export function movePagesTo(project: Project, first: number, last: number, targe
   return true;
 }
 
+/**
+ * Move page `index` with its 見開き partner one place earlier (-1) or later
+ * (1), past the whole 見開き next to it: the same blocks as dragging in the
+ * list or the strip. Returns whether anything moved.
+ */
+export function moveBlock(project: Project, index: number, step: -1 | 1): boolean {
+  const [first, last] = pageBlock(project, index);
+  if (step < 0) return first > 0 && movePagesTo(project, first, last, pageBlock(project, first - 1)[0]);
+  return last < project.pages.length - 1 && movePagesTo(project, first, last, pageBlock(project, last + 1)[1] + 1);
+}
+
 /** Move a scene's pages (with any 見開き partners at its ends) to before page `target`. */
 export function moveScene(project: Project, sceneId: string, target: number): boolean {
   const scene = project.scenes.find((s) => s.id === sceneId);

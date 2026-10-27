@@ -140,7 +140,7 @@ describe("プロットの付箋: 第4話の試作から", () => {
     const project = newProject("新しいネーム", 1);
     const long = "残っている論点の説明。".repeat(12);
     applyPlot(project, { pages: [], scenes: [], notes: Array.from({ length: 9 }, (_, i) => ({ section: "論点", text: `${i}${long}` })) });
-    const boxes = (project.pages[0].stickies ?? []).map(stickyBox);
+    const boxes = (project.pages[0].stickies ?? []).map((sticky) => stickyBox(sticky));
     expect(boxes).toHaveLength(9);
     const [, height] = project.pageFormat.canvasMm;
     for (const [i, a] of boxes.entries()) {

@@ -6,9 +6,9 @@ import { area, boxCenter, rectShape } from "./geometry";
 import type { Point } from "./model";
 import { basicBox, snapCut, snapLines, snapPoint, splitShape } from "./pagebox";
 import { addPanel, carryContents, cutPanels, followPanel, movePanel, panelContents, swapPanelContents } from "./panels";
-import { insertPage, movePage, newProject, removePage, trailingEmptyPages } from "./project";
+import { insertPage, movePage, newProject, pageIsEmpty, removePage, trailingEmptyPages } from "./project";
 import { orderPanels } from "./readingorder";
-import { movePagesTo, moveScene, pageBlock } from "./reorder";
+import { moveBlock, movePagesTo, moveScene, pageBlock } from "./reorder";
 import { addFill, addStroke, eraseInside, eraseStrokes, pickInside, splitAtX, splitOverPages } from "./strokes";
 
 const square = rectShape([0, 0, 100, 100]);
@@ -304,6 +304,31 @@ describe("入れ替え", () => {
     expect(movePagesTo(project, 0, 0, 5)).toBe(true);
     expect(ids(project)).toEqual([p4, p5, p6, p1, p2, p3]);
     expect(movePagesTo(project, 0, 0, 1)).toBe(false);
+  });
+
+  it("moves a page one place with its 見開き partner, past a whole 見開き (B1)", () => {
+    const project = newProject("t", 6);
+    const [p1, p2, p3, p4, p5, p6] = ids(project);
+    project.pages[1].joinNext = true;
+    // 2–3 is one 見開き: 1 つ後ろへ from either half moves both past page 4.
+    expect(moveBlock(project, 1, 1)).toBe(true);
+    expect(ids(project)).toEqual([p1, p4, p2, p3, p5, p6]);
+    expect(project.pages[2].joinNext).toBe(true);
+    expect(moveBlock(project, 3, -1)).toBe(true);
+    expect(ids(project)).toEqual([p1, p2, p3, p4, p5, p6]);
+    // A single page moves past the whole 見開き next to it.
+    expect(moveBlock(project, 3, -1)).toBe(true);
+    expect(ids(project)).toEqual([p1, p4, p2, p3, p5, p6]);
+    expect(moveBlock(project, 0, -1)).toBe(false);
+    expect(moveBlock(project, 5, 1)).toBe(false);
+  });
+
+  it("counts a page with only a 付箋, 資料 or memo as not empty", () => {
+    const project = newProject("t", 1);
+    const page = project.pages[0];
+    expect(pageIsEmpty(page)).toBe(true);
+    page.stickies = [{ id: "s", text: "あとで", at: [0, 0] }];
+    expect(pageIsEmpty(page)).toBe(false);
   });
 
   it("keeps scenes on the pages that stay; a moved page joins the scene it lands in", () => {

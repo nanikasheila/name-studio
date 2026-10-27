@@ -54,6 +54,22 @@ describe("CSP のセリフを読み戻す", () => {
     expect([again.retyped, again.added, again.removed, again.conflicts]).toEqual([[], [], [], []]);
   });
 
+  it("finds the same changes again after the take-back is undone (B2)", () => {
+    const project = newProject("t", 1);
+    const line = addLine(project, project.pages[0], [140, 50], "明日行こう");
+    const box = line.box.slice() as typeof line.box;
+    const unit: ReadUnit = { pages: [0], path: "out/page0001.clip", found: true, written: ["明日行こう"], texts: [{ text: "明後日行こう", page: 0, box }] };
+    const plan = planTakeBack(project, [unit]);
+    expect(plan.retyped.map((r) => r.to)).toEqual(["明後日行こう"]);
+    applyTakeBack(project, plan);
+    // Taken back: the export folder records CSP's texts, and what was written before them.
+    const adopted: ReadUnit = { ...unit, written: ["明後日行こう"], adoptedFrom: ["明日行こう"] };
+    expect(planTakeBack(project, [adopted]).retyped).toEqual([]);
+    // Undone in the name (Ctrl+Z): reading back again offers the same change.
+    line.text = "明日行こう";
+    expect(planTakeBack(project, [adopted]).retyped.map((r) => r.to)).toEqual(["明後日行こう"]);
+  });
+
   it("puts a text on the page of a 見開き it is on", () => {
     const project = newProject("t", 2);
     addLine(project, project.pages[0], [150, 50], "右のページ");

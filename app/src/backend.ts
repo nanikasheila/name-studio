@@ -155,7 +155,7 @@ export interface CspToolLocations {
 /** A page's dialogue as CSP holds it (`read_name_dialogue`). */
 export interface CspPageDialogue {
   path: string;
-  dialogue: { texts: { text: string; bbox: number[] | null }[]; written: string[] | null } | null;
+  dialogue: { texts: { text: string; bbox: number[] | null }[]; written: string[] | null; adoptedFrom: string[] | null } | null;
 }
 
 /**

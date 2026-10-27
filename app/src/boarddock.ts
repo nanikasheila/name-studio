@@ -1,6 +1,8 @@
 // The height of 物語の帯: as tall as its lanes need, dragged to a height by
-// its top edge, or folded down to its row of buttons so the pages get the
-// room. Kept per mode (the strip, 大きく) and for the next time.
+// its top edge, or folded away (its buttons stay in the row under the
+// pages) so the pages get the room. Kept per mode (the strip, 大きく) and for the next time. Sizing
+// itself, the strip leaves the pages most of the height (描く配置): where
+// that leaves too little for its lanes, it starts folded.
 import { readJson, writeJson } from "./settings";
 import { track } from "./boardview";
 
@@ -10,19 +12,19 @@ export type Mode = "strip" | "wide";
 const DEFAULT_HEIGHT: Record<Mode, number> = { strip: 0, wide: 0 };
 const HEIGHT_KEY = "namestudio.storyHeight";
 const FOLDED_KEY = "namestudio.storyFolded";
-/** The strip's own row of buttons, and room for a scroll bar. */
-const CHROME = 32 + 14;
+/** Room for a scroll bar under the lanes. */
+const CHROME = 14;
 const MIN_HEIGHT = 96;
-/** A window this low (px) starts with the strip folded, the pages first. */
-const LOW_WINDOW = 760;
+/** Sizing itself, the strip leaves the pages (the stage) at least this share of the column's height. */
+export const STAGE_SHARE = 0.72;
+/** The least height (px) worth opening the strip for, sizing itself: the ruler, the scenes and the pages. */
+const ROOMY = 160;
 
 /** What the height follows. */
 export interface DockParts {
   dock: HTMLElement;
   /** The top edge, dragged. */
   handle: HTMLElement;
-  /** The row of buttons, the height left when folded. */
-  controls: HTMLElement;
   /** The lanes, hidden when folded. */
   lanes: HTMLElement;
   mode(): Mode;
@@ -34,43 +36,76 @@ export interface DockParts {
 
 export class DockHeight {
   private heights: Record<Mode, number>;
-  /** たたんだ: only the strip's row of buttons shows; the pages get the room (at first, in a low window). */
-  private folded = (readJson(FOLDED_KEY, null) ?? window.innerHeight < LOW_WINDOW) === true;
+  /** たたんだ (true) or open (false) as the person left it; null: as the window's height allows (roomy). */
+  private chosen: boolean | null;
+  private wasRoomy: boolean | null = null;
 
   constructor(private readonly parts: DockParts) {
     const saved = readJson(HEIGHT_KEY, null);
     this.heights = saved && typeof saved === "object" ? { ...DEFAULT_HEIGHT, ...saved } : DEFAULT_HEIGHT;
+    const folded = readJson(FOLDED_KEY, null);
+    this.chosen = typeof folded === "boolean" ? folded : null;
     this.bindHandle();
+    // Folded by the window's height: the window made taller or lower opens or folds it.
+    window.addEventListener("resize", () => {
+      if (this.chosen !== null || this.parts.mode() === "wide") return;
+      if (this.roomy() !== this.wasRoomy) this.parts.changed();
+    });
   }
 
+  /** たたんだ: the lanes are hidden (the buttons stay in the row under the pages). 大きく is never folded. */
   get isFolded(): boolean {
-    return this.folded;
+    if (this.parts.mode() === "wide") return false;
+    return this.chosen ?? !this.roomy();
   }
 
-  /** Fold or open; false when it already was. Folding takes the room at once. */
+  /** Fold or open, kept for the next time; false when it already was. Folding takes the room at once. */
   fold(fold: boolean): boolean {
-    if (fold === this.folded) return false;
-    this.folded = fold;
+    if (fold === this.isFolded) return false;
+    this.chosen = fold;
     writeJson(FOLDED_KEY, fold);
     if (fold) this.apply();
     return true;
   }
 
   apply(): void {
-    const { dock, controls, lanes } = this.parts;
+    const { dock, lanes } = this.parts;
     const mode = this.parts.mode();
-    dock.classList.toggle("folded", this.folded);
-    lanes.hidden = this.folded;
-    if (this.folded) {
-      dock.style.height = `${controls.offsetHeight || 33}px`;
+    const folded = this.isFolded;
+    this.wasRoomy = this.roomy();
+    dock.classList.toggle("folded", folded);
+    dock.classList.toggle("wide", mode === "wide");
+    lanes.hidden = folded;
+    if (folded) {
+      dock.style.height = "0px";
       return;
     }
-    const room = dock.parentElement?.clientHeight || window.innerHeight;
-    const wanted = this.heights[mode] || (mode === "wide" ? Math.round(room * 0.62) : Math.min(this.parts.contentHeight() + CHROME, Math.round(room * 0.38)));
+    const room = this.room();
+    const wanted = this.heights[mode] || (mode === "wide" ? Math.round(room * 0.62) : Math.min(this.parts.contentHeight() + CHROME, this.ownShare()));
     // The page above keeps at least some room.
     const max = Math.max(MIN_HEIGHT, room - 160);
     dock.style.height = `${Math.max(MIN_HEIGHT, Math.min(max, wanted))}px`;
-    dock.classList.toggle("wide", mode === "wide");
+  }
+
+  /** The column's height (px). */
+  private room(): number {
+    return this.parts.dock.parentElement?.clientHeight || window.innerHeight;
+  }
+
+  /** The most the strip takes sizing itself: what the pages (STAGE_SHARE) and the column's other rows leave. */
+  private ownShare(): number {
+    const { dock } = this.parts;
+    const column = dock.parentElement;
+    let rows = 0;
+    for (const child of column ? Array.from(column.children) : []) {
+      if (child !== dock && !child.classList.contains("stage") && child instanceof HTMLElement) rows += child.offsetHeight;
+    }
+    return Math.round(this.room() * (1 - STAGE_SHARE)) - rows;
+  }
+
+  /** Whether the window is tall enough for the lanes beside the pages (else, not chosen otherwise, the strip folds). */
+  private roomy(): boolean {
+    return this.ownShare() >= ROOMY;
   }
 
   private keep(height: number): void {
@@ -90,9 +125,9 @@ export class DockHeight {
       handle.classList.add("dragging");
       track(down, handle, {
         move: (event) => {
-          // Dragging a folded strip opens it from its row of buttons (a click alone does not).
-          if (this.folded) {
-            this.folded = false;
+          // Dragging a folded strip opens it from nothing (a click alone does not).
+          if (this.isFolded) {
+            this.chosen = false;
             writeJson(FOLDED_KEY, false);
             lanes.hidden = false;
             dock.classList.remove("folded");
@@ -109,7 +144,7 @@ export class DockHeight {
     });
     handle.addEventListener("dblclick", () => {
       // Folded: open again. Open at a height dragged to: back to the height the lanes need, then folded.
-      if (this.folded) {
+      if (this.isFolded) {
         if (this.fold(false)) this.parts.changed();
       } else if (this.heights[this.parts.mode()]) this.keep(0);
       else if (this.fold(true)) this.parts.changed();
