@@ -342,8 +342,7 @@ export class Workbench {
       },
       status: (message) => this.setStatus(message),
     });
-    // The page takes whatever room the strip and the side panels leave.
-    new ResizeObserver(() => this.editor.resize()).observe($("editor-canvas").parentElement!);
+    new ResizeObserver(() => this.editor.resize()).observe($("editor-canvas").parentElement!); // the page takes the room the strip and side panels leave
     this.scriptDialog = new ScriptDialog({
       project: () => this.session.project,
       firstAlone: () => this.editor.firstAlone,
