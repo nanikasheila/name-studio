@@ -22,7 +22,7 @@ import {
 } from "./pagedraw";
 import { KIND_LABELS } from "./dialogue";
 import { bounds } from "./geometry";
-import type { BoxMm, Brush, Page, Project, RoughImage, RoughLayer, StrokePoint } from "./model";
+import type { BoxMm, Brush, Page, Project, ReferenceImage, RoughImage, RoughLayer, StrokePoint } from "./model";
 import { basicBox, trimBox } from "./pagebox";
 import { wantsSpread } from "./panels";
 import { MM_PER_PT } from "./project";
@@ -31,7 +31,7 @@ import { panelFolders } from "./panelfolders";
 import { layerOf, markLayersOf, opacityOfLayer, roughExportNames, roughLayersOf, shownStrokes, strokesOn, withoutMarks } from "./roughlayers";
 import { decodePicture } from "./pictures";
 import { onPageOnly } from "./aside";
-import { opacityOf, usedImages } from "./references";
+import { imageOf, isNamePicture, writtenOpacity } from "./references";
 import { sceneSpans } from "./story";
 import { balloonLineMm, linePitch, lineSpacing, useStyle } from "./style";
 import type { ReadUnit } from "./readback";
@@ -307,6 +307,14 @@ export function frameMetas(project: Project, page: Page, m: MmToPx, gutter: Side
 export const NOTES_LAYER_NAME = "メモ（ネーム）";
 /** 資料画像 go to CSP as a 下描き layer under everything. */
 export const REFERENCE_LAYER_NAME = "資料（ネーム）";
+/** 取り込んだネーム画像: the name drawn elsewhere, taken in from a picture, under the name's own lines. */
+export const NAME_PICTURE_LAYER_NAME = "ネーム画像";
+
+/** The picture layers, bottom first: 資料 under the pictures of the name. */
+const PICTURE_LAYERS = [
+  { name: REFERENCE_LAYER_NAME, takes: (reference: ReferenceImage) => !isNamePicture(reference) },
+  { name: NAME_PICTURE_LAYER_NAME, takes: isNamePicture },
+];
 const NOTE_TEXT_MM = 3;
 
 /** Whether a page has any memo to write. */
@@ -447,7 +455,7 @@ export function packBody(meta: unknown, parts: Uint8Array[]): Uint8Array {
   return body;
 }
 
-async function encode(canvas: HTMLCanvasElement, type: "image/png" | "image/jpeg", quality?: number): Promise<Uint8Array> {
+export async function encode(canvas: HTMLCanvasElement, type: "image/png" | "image/jpeg", quality?: number): Promise<Uint8Array> {
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
   if (!blob) throw new Error("画像を作れませんでした（ページが大きすぎる可能性があります）");
   return new Uint8Array(await blob.arrayBuffer());
@@ -554,6 +562,7 @@ function layerNames(project: Project): Map<string, { under: string; over: string
     INK_LAYER_NAME,
     NOTES_LAYER_NAME,
     REFERENCE_LAYER_NAME,
+    NAME_PICTURE_LAYER_NAME,
     SHEET_ROUGH_NAME,
   ]);
 }
@@ -602,8 +611,9 @@ export async function exportToCsp(
   if (notes) request = { ...request, draftLayers: [...(request.draftLayers ?? []), NOTES_LAYER_NAME] };
   // 指示: a 下描き layer each (seen while inking, never printed), on top; the ones with no 指示 in the name are left out.
   const markSet = request.marks === false ? [] : markLayersOf(project).filter((layer) => project.pages.some((page) => strokesOn(project, page.strokes, layer).length));
-  const pictures = await decodeReferences(project);
-  if (pictures.size) request = { ...request, draftLayers: [...(request.draftLayers ?? []), REFERENCE_LAYER_NAME] };
+  // 資料画像 and the pictures of the name: a 下描き layer each, on every page when any page has one.
+  const pictureLayers = PICTURE_LAYERS.filter(({ takes }) => project.pages.some((page) => onPageOnly(page, project.pageFormat).references?.some(takes)));
+  if (pictureLayers.length) request = { ...request, draftLayers: [...(request.draftLayers ?? []), ...pictureLayers.map(({ name }) => name)] };
   // ラフ線のレイヤー: each its own CSP layer (one layer: ラフ線 and はみ出し（ラフ線）, as always).
   const roughSet = roughLayersOf(project);
   const roughNames = layerNames(project);
@@ -675,14 +685,17 @@ export async function exportToCsp(
       const layers: LayerMeta[] = [];
       const pngs: Uint8Array[] = [];
       overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
-      if (pictures.size) {
+      for (const { name, takes } of pictureLayers) {
         let png: Uint8Array = new Uint8Array();
-        if (placed.some(({ page }) => page.references?.length)) {
+        const shown = placed.filter(({ page }) => page.references?.some(takes));
+        if (shown.length) {
+          const pictures = await decodePictures(project, shown, takes);
           ctx.clearRect(0, 0, width, height);
-          for (const { page, m, right } of placed) clipped(ctx, factor, right, () => drawReferences(ctx, page, pictures, scaled(m, factor)));
+          for (const { page, m, right } of placed) clipped(ctx, factor, right, () => drawReferences(ctx, page, pictures, scaled(m, factor), takes));
+          for (const picture of pictures.values()) picture.close();
           png = await encode(drawing, "image/png");
         }
-        layers.push({ kind: "raster", name: REFERENCE_LAYER_NAME, length: png.length });
+        layers.push({ kind: "raster", name, length: png.length });
         pngs.push(png);
       }
       // One kind of part of `pages` as a layer named `name`: vector lines, or a picture (its PNG goes to `pngs`).
@@ -799,7 +812,6 @@ export async function exportToCsp(
     }
     drawing.width = 0;
     overlay.width = 0;
-    for (const picture of pictures.values()) picture.close();
     const report = await call("finish_name_export");
     return { ...report, vectorLayers: vector, textLayers: text, checks, warnings, spreads: pieces > 1 ? 0 : units.filter((unit) => unit.length > 1).length };
   } catch (error) {
@@ -809,26 +821,31 @@ export async function exportToCsp(
   }
 }
 
-/** The 資料画像 the pages show, decoded (by image id); one that cannot be read is left out. */
-async function decodeReferences(project: Project): Promise<Map<string, ImageBitmap>> {
+/** The pictures `takes` picks on `placed` pages, decoded (by image id); one that cannot be read is left out. */
+async function decodePictures(project: Project, placed: readonly PlacedPage[], takes: (reference: ReferenceImage) => boolean): Promise<Map<string, ImageBitmap>> {
   const pictures = new Map<string, ImageBitmap>();
-  for (const image of usedImages(project)) {
-    const picture = await decodePicture(image).catch(() => null);
-    if (picture) pictures.set(image.id, picture);
+  for (const { page } of placed) {
+    for (const reference of page.references ?? []) {
+      if (!takes(reference) || pictures.has(reference.image)) continue;
+      const image = imageOf(project, reference);
+      const picture = image && (await decodePicture(image).catch(() => null));
+      if (picture) pictures.set(reference.image, picture);
+    }
   }
   return pictures;
 }
 
 /**
- * A page's 資料画像 as they lie on it. The layer itself is a 下描き layer at
- * half opacity in CSP, so each is drawn twice as strong as on screen.
+ * A page's pictures (those `takes` picks) as they lie on it. The layer
+ * itself is a 下描き layer at half opacity in CSP, so each is drawn twice as
+ * strong as on screen.
  */
-function drawReferences(ctx: CanvasRenderingContext2D, page: Page, pictures: Map<string, ImageBitmap>, m: MmToPx): void {
+function drawReferences(ctx: CanvasRenderingContext2D, page: Page, pictures: Map<string, ImageBitmap>, m: MmToPx, takes: (reference: ReferenceImage) => boolean): void {
   for (const reference of page.references ?? []) {
-    const picture = pictures.get(reference.image);
+    const picture = takes(reference) ? pictures.get(reference.image) : undefined;
     if (!picture) continue;
     const [x0, y0, x1, y1] = reference.box;
-    ctx.globalAlpha = Math.min(1, opacityOf(reference) * 2);
+    ctx.globalAlpha = writtenOpacity(reference);
     ctx.drawImage(picture, m.x + x0 * m.scale, m.y + y0 * m.scale, (x1 - x0) * m.scale, (y1 - y0) * m.scale);
   }
   ctx.globalAlpha = 1;
@@ -1026,70 +1043,6 @@ export function dialogueUpdateSummary(summary: DialogueUpdateSummary): { ok: boo
   const problems = summary.pages.flatMap((page) => page.problems.map((problem) => `${where(page)}: ${problem}`));
   if (problems.length) lines.push(`自己確認で ${problems.length} 件の問題:`, ...problems);
   return { ok: !problems.length && !missing.length, lines };
-}
-
-export interface PdfOptions {
-  /** Cut each page at the trim (仕上がり) or keep the whole canvas. */
-  area: "trim" | "canvas";
-  dpi: number;
-  /** 指示 over the pages in their colours (the 指示のレイヤー shown; on unless false), for an instruction sheet. */
-  marks?: boolean;
-}
-
-/** Render every page (with the roughs) as JPEG and write one PDF. */
-export async function exportPdf(
-  project: Project,
-  path: string,
-  options: PdfOptions,
-  rough: (rough: RoughImage) => Promise<CanvasImageSource | null>,
-  progress: (message: string) => void,
-): Promise<void> {
-  useFonts(project.fonts);
-  useStyle(project.style);
-  const [w, h] = project.pageFormat.canvasMm;
-  const area = options.area === "trim" ? trimBox(project.pageFormat) : [0, 0, w, h];
-  const scale = options.dpi / 25.4;
-  const width = Math.round((area[2] - area[0]) * scale);
-  const height = Math.round((area[3] - area[1]) * scale);
-  const m: MmToPx = { scale, x: -area[0] * scale, y: -area[1] * scale };
-  await loadTips(project.brushes);
-  const drawing = document.createElement("canvas");
-  drawing.width = width;
-  drawing.height = height;
-  const ctx = drawing.getContext("2d")!;
-  const images: Uint8Array[] = [];
-  for (const [index, page] of project.pages.entries()) {
-    progress(`PDF: ${index + 1} / ${project.pages.length} ページ…`);
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, width, height);
-    ctx.globalAlpha = 0.45;
-    for (const item of page.roughs) {
-      const image = await rough(item);
-      if (!image) continue;
-      const [x0, y0, x1, y1] = mapBox(item.box, m);
-      ctx.drawImage(image, x0, y0, x1 - x0, y1 - y0);
-    }
-    ctx.globalAlpha = 1;
-    const plain = { ...page, strokes: withoutMarks(project, page.strokes) };
-    for (const kind of LAYER_ORDER) drawPart(ctx, plain, kind, m, project.brushes);
-    if (options.marks !== false) drawMarks(ctx, project, page, m);
-    images.push(await encode(drawing, "image/jpeg", 0.88));
-  }
-  drawing.width = 0;
-  const meta = {
-    path,
-    title: project.title,
-    rightToLeft: project.binding === "right",
-    scroll: !!project.scroll,
-    pages: images.map((jpeg) => ({
-      widthMm: area[2] - area[0],
-      heightMm: area[3] - area[1],
-      widthPx: width,
-      heightPx: height,
-      length: jpeg.length,
-    })),
-  };
-  await call("write_pdf", packBody(meta, images));
 }
 
 /** The dialogue as a script: page by page, panel by panel, with speakers. */

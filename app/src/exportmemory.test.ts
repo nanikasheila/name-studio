@@ -12,6 +12,7 @@ const memory = (timeMs: number, outDir = "C:/out"): ExportMemory => ({
   notes: true,
   marks: true,
   pdf: { area: "trim", dpi: 200 },
+  mini: { format: "png", area: "trim", dpi: 100, columns: 0, numbers: true, title: true },
   files: {},
 });
 
@@ -27,6 +28,13 @@ describe("export memory", () => {
     const read = memoryFrom({ timeMs: 1, kind: "zip", form: { outDir: 3, fit: "page" }, panels: "x", pdf: { dpi: -1 }, files: { pdf: "a.pdf", text: 2 } });
     expect(read).toMatchObject({ kind: "csp", form: { outDir: "", fit: "basic", makeWork: true }, panels: "lines", pdf: { area: "trim", dpi: 200 }, files: { pdf: "a.pdf" } });
     expect(read?.files.text).toBeUndefined();
+    // Kept before the ミニネーム: its defaults.
+    expect(read?.mini).toEqual({ format: "png", area: "trim", dpi: 100, columns: 0, numbers: true, title: true });
+    expect(memoryFrom({ timeMs: 1, kind: "mini", mini: { format: "gif", dpi: 72, columns: 3, numbers: false }, files: { mini: "C:/m.png" } })).toMatchObject({
+      kind: "mini",
+      mini: { format: "png", dpi: 72, columns: 3, numbers: false, title: true },
+      files: { mini: "C:/m.png" },
+    });
   });
 
   it("keeps one per name, the same file however its path is written", () => {
@@ -47,6 +55,7 @@ describe("export memory", () => {
     expect(againSummary(memory(1, ""))).toBeNull();
     expect(againSummary({ ...memory(1), kind: "pdf", files: { pdf: "C:/n.pdf" } })).toBe("PDFを C:/n.pdf に");
     expect(againSummary({ ...memory(1), kind: "text" })).toBeNull();
+    expect(againSummary({ ...memory(1), kind: "mini", files: { mini: "C:/n.png" } })).toBe("ミニネームを C:/n.png に");
   });
 });
 
@@ -61,6 +70,7 @@ describe("what 書き出す will make", () => {
     notes: false,
     marks: true,
     pdf: { area: "trim" as const, dpi: 200 },
+    mini: { format: "pdf" as const, area: "trim" as const, dpi: 100, columns: 0, numbers: true, title: true },
   };
   const of = { pages: 21, scroll: false, page: { trimMm: [257, 364] as [number, number], resolution: 600, preset: "商業誌 B4" } };
 
@@ -87,5 +97,12 @@ describe("what 書き出す will make", () => {
   it("reads an older memory as with the 指示", () => {
     const { marks: _, ...older } = memory(3);
     expect(memoryFrom(JSON.parse(JSON.stringify(older)))?.marks).toBe(true);
+  });
+
+  it("says the ミニネーム's form, resolution and how many across", () => {
+    expect(exportSummary({ ...settings, kind: "mini" }, of)).toBe("21 ページを 1 枚のミニネームに（1 ページの PDF・100 dpi・並びはおまかせ）");
+    expect(exportSummary({ ...settings, kind: "mini", mini: { ...settings.mini, format: "jpeg", columns: 4 } }, { ...of, scroll: true })).toBe(
+      "21 区切りを 1 枚のミニネームに（JPEG 画像・100 dpi・横に 4 列）",
+    );
   });
 });

@@ -133,6 +133,7 @@ pub fn run() {
             name_export::check_export_target,
             name_export::prepare_builtin_template,
             files::write_pdf,
+            files::write_binary_file,
             files::write_text_file,
             files::csp_tool_locations,
             files::read_csp_sub_tools,

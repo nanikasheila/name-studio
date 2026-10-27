@@ -6,9 +6,7 @@
 import type { Project, RoughImage } from "./model";
 import type { Pair } from "./layout";
 import { spreads } from "./pages";
-import { LAYER_ORDER, drawPart, mapBox } from "./nameexport";
-import { onPageOnly } from "./aside";
-import { shownStrokes, withoutMarks } from "./roughlayers";
+import { drawFlatPage, flatPictures, releasePictures } from "./flatpage";
 import { trimBox } from "./pagebox";
 import { loadTips } from "./pagedraw";
 import { useFonts } from "./fonts";
@@ -247,10 +245,16 @@ export class Reader {
     const width = window.innerWidth;
     const height = window.innerHeight;
     const placed = placeSpread(project, pair, width, height);
-    // The pictures of the name sheet first, so the spread is drawn at once.
-    const roughs = new Map<RoughImage, CanvasImageSource | null>();
-    for (const { index } of placed) for (const rough of project.pages[index]?.roughs ?? []) roughs.set(rough, await this.host.rough(rough));
-    if (ticket !== this.drawn || !this.isOpen) return;
+    // The pictures first, so the spread is drawn at once.
+    const pictures = await flatPictures(
+      project,
+      placed.flatMap(({ index }) => project.pages[index] ?? []),
+      (rough) => this.host.rough(rough),
+    );
+    if (ticket !== this.drawn || !this.isOpen) {
+      releasePictures(pictures);
+      return;
+    }
 
     const ratio = window.devicePixelRatio || 1;
     this.canvas.width = Math.round(width * ratio);
@@ -262,10 +266,8 @@ export class Reader {
     ctx.clearRect(0, 0, width, height);
     const [x0, y0, x1, y1] = trimBox(project.pageFormat);
     for (const { index, left, top, scale } of placed) {
-      const source = project.pages[index];
-      if (!source) continue;
-      // As a reader sees it: no 指示 either.
-      const page = { ...onPageOnly(source, project.pageFormat), strokes: withoutMarks(project, shownStrokes(project, source.strokes)) };
+      const page = project.pages[index];
+      if (!page) continue;
       const m = { scale, x: left - x0 * scale, y: top - y0 * scale };
       ctx.save();
       ctx.beginPath();
@@ -273,17 +275,10 @@ export class Reader {
       ctx.clip();
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(left, top, (x1 - x0) * scale, (y1 - y0) * scale);
-      ctx.globalAlpha = 0.45;
-      for (const rough of page.roughs) {
-        const image = roughs.get(rough);
-        if (!image) continue;
-        const [bx0, by0, bx1, by1] = mapBox(rough.box, m);
-        ctx.drawImage(image, bx0, by0, bx1 - bx0, by1 - by0);
-      }
-      ctx.globalAlpha = 1;
-      for (const kind of LAYER_ORDER) drawPart(ctx, page, kind, m, project.brushes);
+      drawFlatPage(ctx, project, page, m, pictures);
       ctx.restore();
     }
+    releasePictures(pictures);
     // The gutter, faintly, where two pages meet.
     if (placed.length === 2) {
       const gutter = placed[1].left;

@@ -204,6 +204,7 @@ export interface Commands {
   prepare_builtin_template: [{ setup: PageSetup }, BuiltTemplate];
   // Other files (files.rs)
   write_pdf: [RawBody, void];
+  write_binary_file: [RawBody, void];
   write_text_file: [{ path: string; text: string }, void];
   csp_tool_locations: [void, CspToolLocations];
   read_csp_sub_tools: [{ path: string; materials: string | null }, CspSubTool[]];

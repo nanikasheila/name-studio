@@ -1,4 +1,4 @@
-//! Files outside the name data: CSP's tools, the PDF and the script.
+//! Files outside the name data: CSP's tools, the PDF, the ミニネーム picture and the script.
 
 use std::path::{Path, PathBuf};
 
@@ -87,6 +87,27 @@ pub(crate) async fn write_pdf(request: tauri::ipc::Request<'_>) -> Result<(), St
         };
         let pdf = name_model::pdf::image_pdf(&meta.title, &pages, layout);
         write_through_temporary(Path::new(&meta.path), &pdf)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[derive(Deserialize)]
+pub(crate) struct BinaryMeta {
+    path: String,
+}
+
+/// Write a file the page made (the ミニネーム picture; raw body: JSON with
+/// the path, then the bytes).
+#[tauri::command]
+pub(crate) async fn write_binary_file(request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    let body = raw_body(&request)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let (meta, bytes) = split_body::<BinaryMeta>(&body)?;
+        if bytes.is_empty() {
+            return Err("書き出す中身がありません".to_owned());
+        }
+        write_through_temporary(Path::new(&meta.path), bytes)
     })
     .await
     .map_err(|error| error.to_string())?

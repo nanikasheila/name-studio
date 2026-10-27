@@ -3,8 +3,9 @@
 // needs no dialog. Kept per name on this computer (prefs.ts): the folders are
 // this computer's. The CSP page settings themselves live in the name (cspPage).
 import type { ExportForm, Fit } from "./export";
+import { MINI_DEFAULTS, type MiniFormat, type MiniOptions } from "./mininame";
 
-export type ExportKind = "csp" | "pdf" | "text";
+export type ExportKind = "csp" | "pdf" | "mini" | "text";
 export type TemplateMode = "builtin" | "file";
 export type PanelExport = "lines" | "masks" | "frames";
 
@@ -21,8 +22,10 @@ export interface ExportMemory {
   /** 指示 into the CSP pages (下描き layers) and onto the PDF. */
   marks: boolean;
   pdf: { area: "trim" | "canvas"; dpi: number };
-  /** The PDF and script files written last. */
-  files: { pdf?: string; text?: string };
+  /** ミニネーム: every page on one sheet, as a picture or a one-page PDF. */
+  mini: MiniOptions & { format: MiniFormat };
+  /** The PDF, ミニネーム and script files written last. */
+  files: { pdf?: string; mini?: string; text?: string };
 }
 
 /** How many names' exports are kept (the oldest go first). */
@@ -38,11 +41,12 @@ export function memoryFrom(value: unknown): ExportMemory | null {
   const v = value as Record<string, unknown>;
   const form = (typeof v.form === "object" && v.form !== null ? v.form : {}) as Record<string, unknown>;
   const pdf = (typeof v.pdf === "object" && v.pdf !== null ? v.pdf : {}) as Record<string, unknown>;
+  const mini = (typeof v.mini === "object" && v.mini !== null ? v.mini : {}) as Record<string, unknown>;
   const files = (typeof v.files === "object" && v.files !== null ? v.files : {}) as Record<string, unknown>;
   if (!Number.isFinite(v.timeMs)) return null;
   return {
     timeMs: v.timeMs as number,
-    kind: oneOf(v.kind, ["csp", "pdf", "text"], "csp"),
+    kind: oneOf(v.kind, ["csp", "pdf", "mini", "text"], "csp"),
     form: {
       template: text(form.template),
       outDir: text(form.outDir),
@@ -59,8 +63,17 @@ export function memoryFrom(value: unknown): ExportMemory | null {
     notes: flag(v.notes, true),
     marks: flag(v.marks, true),
     pdf: { area: oneOf(pdf.area, ["trim", "canvas"], "trim"), dpi: Number.isFinite(pdf.dpi) && (pdf.dpi as number) > 0 ? (pdf.dpi as number) : 200 },
+    mini: {
+      format: oneOf<MiniFormat>(mini.format, ["png", "jpeg", "pdf"], "png"),
+      area: oneOf(mini.area, ["trim", "canvas"], MINI_DEFAULTS.area),
+      dpi: Number.isFinite(mini.dpi) && (mini.dpi as number) > 0 ? (mini.dpi as number) : MINI_DEFAULTS.dpi,
+      columns: Number.isInteger(mini.columns) && (mini.columns as number) >= 0 ? (mini.columns as number) : MINI_DEFAULTS.columns,
+      numbers: flag(mini.numbers, MINI_DEFAULTS.numbers),
+      title: flag(mini.title, MINI_DEFAULTS.title),
+    },
     files: {
       ...(text(files.pdf) ? { pdf: text(files.pdf) } : {}),
+      ...(text(files.mini) ? { mini: text(files.mini) } : {}),
       ...(text(files.text) ? { text: text(files.text) } : {}),
     },
   };
@@ -78,12 +91,15 @@ export function withMemory(kept: Record<string, ExportMemory>, path: string, mem
   return Object.fromEntries(keys.slice(0, max).map((key) => [key, next[key]]));
 }
 
+const KIND_NAMES: Record<Exclude<ExportKind, "csp">, string> = { pdf: "PDF", mini: "ミニネーム", text: "台本" };
+const MINI_FORMATS: Record<MiniFormat, string> = { png: "PNG 画像", jpeg: "JPEG 画像", pdf: "1 ページの PDF" };
+
 /** What 「前回と同じ設定で書き出す」 would do, in a line (null: it needs the dialog first). */
 export function againSummary(memory: ExportMemory | null): string | null {
   if (!memory) return null;
   if (memory.kind === "csp") return memory.form.outDir ? `CSP のページを ${memory.form.outDir} に` : null;
   const file = memory.files[memory.kind];
-  return file ? `${memory.kind === "pdf" ? "PDF" : "台本"}を ${file} に` : null;
+  return file ? `${KIND_NAMES[memory.kind]}を ${file} に` : null;
 }
 
 /** What the export about to be made is written from (beyond its settings). */
@@ -104,6 +120,10 @@ const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 export function exportSummary(settings: Omit<ExportMemory, "timeMs" | "files">, of: SummaryOf): string {
   const pages = `${of.pages} ${of.scroll ? "区切り" : "ページ"}`;
   if (settings.kind === "pdf") return `${pages}を 1 つの PDF に（${settings.pdf.dpi} dpi・${settings.pdf.area === "trim" ? "仕上がりで切る" : "キャンバス全体"}${of.marks ? (settings.marks ? "・指示付き" : "・指示なし") : ""}）`;
+  if (settings.kind === "mini") {
+    const across = settings.mini.columns > 0 ? `横に ${settings.mini.columns} ${of.scroll ? "列" : "見開き"}` : "並びはおまかせ";
+    return `${pages}を 1 枚のミニネームに（${MINI_FORMATS[settings.mini.format]}・${settings.mini.dpi} dpi・${across}）`;
+  }
   if (settings.kind === "text") return `${pages}のセリフを台本（.txt）に`;
   const builtin = settings.mode === "builtin" && of.page;
   const parts = [
