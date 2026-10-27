@@ -40,8 +40,8 @@ const LAYERS = {
   service: ["autosave", "batch", "nameexport", "roughcache"],
   /** The screens. */
   ui: [
-    "actions", "alerts", "altdialog", "board", "boarddock", "boardemotion", "boardpages", "boardscene", "boardshape", "boardview", "brushdialog", "controlbar", "dock", "dragsort", "editor", "editorcore", "exportdialog", "fontpicker", "inplace", "inspector",
-    "layers", "livefields", "nameedits", "palette", "palettes", "pendialog", "reader", "referencebar", "roughpanel", "scriptdialog", "seriespanel", "settingsdialog", "sheetexport", "shortcutdialog", "sidelists", "startscreen", "toolaside", "tooleraser", "toolfill",
+    "actions", "alerts", "altdialog", "board", "boarddock", "boardemotion", "boardpages", "boardscene", "boardshape", "boardview", "brushdialog", "controlbar", "dock", "dragsort", "drophint", "editor", "editorcore", "exportdialog", "fontpicker", "inplace", "inspector",
+    "layers", "livefields", "nameedits", "palette", "palettes", "pendialog", "reader", "readbackpick", "referencebar", "roughpanel", "scriptdialog", "seriespanel", "settingsdialog", "sheetexport", "shortcutdialog", "sidelists", "startscreen", "toolaside", "tooleraser", "toolfill",
     "toolpanels", "toolpen", "toolreference", "tools", "toolselect", "toolsticky", "tooltext", "tooltransform", "updater", "versiondialog",
     "viewer", "workbench",
   ],

@@ -7,6 +7,7 @@ import {
   dialogueUpdateSummary,
   exportPdf,
   exportToCsp,
+  ExportStopped,
   imagesNote,
   missingEditable,
   readCspDialogue,
@@ -21,6 +22,7 @@ import { readText, writeText } from "./settings";
 import { compactStory, cspPageOf, firstPageLeft, joinedPage, pageSetup, piecesPerPage, pixelSize, presetOf, PRESETS, setupProblem, withPreset } from "./csppage";
 import type { CspPage, CspStory, NombrePlace, Project, RoughImage, StoryPosition } from "./model";
 import { fontField } from "./fontpicker";
+import { chooseTakeBack } from "./readbackpick";
 import { againSummary, exportSummary, type ExportKind, type ExportMemory, type PanelExport, type TemplateMode } from "./exportmemory";
 import { keepExportMemory, loadExportMemory } from "./prefs";
 import { installedFont } from "./fonts";
@@ -196,6 +198,8 @@ export class ExportDialog {
   /** The name's memos as a 下描き layer, to see while inking. */
   private notes = true;
   private busy = false;
+  /** 中止 was pressed: the export stops at the next page. */
+  private stopping = false;
   /** A CSP page with text and vector layers to copy, when the template has none. */
   private donor = readDonor();
   private mode: TemplateMode = readText(MODE_KEY) === "file" ? "file" : "builtin";
@@ -270,6 +274,12 @@ export class ExportDialog {
     for (const [id] of PAGE_FIELDS) $(id).addEventListener("input", () => this.pageChanged());
     for (const id of ["ne-dpi", "ne-first-side", "ne-nombre-start", "ne-join-pieces", ...STORY_FIELDS]) $(id).addEventListener("change", () => this.pageChanged());
     $("ne-run").addEventListener("click", () => void this.run());
+    $("ne-stop").addEventListener("click", () => {
+      this.stopping = true;
+      const stop = $<HTMLButtonElement>("ne-stop");
+      stop.disabled = true;
+      stop.textContent = "中止しています…";
+    });
     $("ne-update").addEventListener("click", () => void this.update());
     $("ne-readback").addEventListener("click", () => void this.readBack());
   }
@@ -320,6 +330,18 @@ export class ExportDialog {
     this.show();
     this.host.status(`前回と同じ設定で書き出します: ${what}`);
     await this.run(true);
+  }
+
+  /**
+   * CSP のセリフを読み戻す from a command: the dialog opens on CSP, with this
+   * name's last export, and reads back from its folder.
+   */
+  async readBackAgain(): Promise<void> {
+    if (!this.host.project() || this.busy) return;
+    this.open();
+    this.kind = "csp";
+    this.show();
+    await this.readBack();
   }
 
   /** The settings of a name's last export, into the dialog. */
@@ -625,13 +647,20 @@ export class ExportDialog {
     if (!project || this.busy) return;
     this.readFields();
     const button = $<HTMLButtonElement>("ne-run");
+    const stop = $<HTMLButtonElement>("ne-stop");
+    this.stopping = false;
     const progress = (text: string) => {
+      // 中止: at the next page, before it is written.
+      if (this.stopping) throw new ExportStopped();
       this.message(text);
       this.host.status(text);
     };
     try {
       this.busy = true;
       button.disabled = true;
+      stop.hidden = false;
+      stop.disabled = false;
+      stop.textContent = "中止";
       const started = performance.now();
       const seconds = () => ((performance.now() - started) / 1000).toFixed(1);
       if (this.kind === "csp") {
@@ -730,10 +759,17 @@ export class ExportDialog {
         this.host.status(`書き出しました: ${path}`);
       }
     } catch (error) {
-      this.message(`書き出せませんでした: ${error}`, true);
+      if (error instanceof ExportStopped) {
+        const text = error.written
+          ? `${error.written} 枚まで書き出したところでやめました。それより後のページと作品ファイルは前のままです`
+          : "書き出しをやめました（何も書き換えていません）";
+        this.message(text);
+        this.host.status(text);
+      } else this.message(`書き出せませんでした: ${error}`, true);
     } finally {
       this.busy = false;
       button.disabled = false;
+      stop.hidden = true;
     }
   }
 
@@ -836,23 +872,20 @@ export class ExportDialog {
         this.message(["CSP で直したセリフはありませんでした", ...summary].join("\n"));
         return;
       }
-      const go = await ask(`${request.outDir} のページで CSP で変えたセリフを、ネームに入れます。\n\n${summary.join("\n")}\n\nネームで変えたところはそのままです。元に戻すは Ctrl+Z。`, {
-        title: "Name Studio",
-        kind: "info",
-        okLabel: "読み戻す",
-        cancelLabel: "やめる",
-      });
-      if (!go) {
+      // One change at a time: what is left unticked stays as the name has it.
+      const picked = await chooseTakeBack(plan, request.outDir);
+      if (!picked) {
         this.message("読み戻しませんでした");
         return;
       }
-      this.host.edit((p) => applyTakeBack(p, plan));
+      this.host.edit((p) => applyTakeBack(p, picked));
       // From now on these texts count as the name's: セリフだけ反映 leaves them as they are.
       const recorded = await call("adopt_name_dialogue", { paths: plan.paths }).then(
         () => null,
         (error) => `ただし書き出し先に記録できませんでした（${error}）。次のセリフだけ反映で、CSP のセリフが「（旧）」になることがあります`,
       );
-      const done = `CSP のセリフを読み戻しました（直した ${plan.retyped.length}・足した ${plan.added.length}・消した ${plan.removed.length}）。元に戻すは Ctrl+Z${recorded ? `。${recorded}` : ""}`;
+      const left = changes - picked.retyped.length - picked.added.length - picked.removed.length;
+      const done = `CSP のセリフを読み戻しました（直した ${picked.retyped.length}・足した ${picked.added.length}・消した ${picked.removed.length}${left ? `。ネームのままにしたもの ${left}` : ""}）。元に戻すは Ctrl+Z${recorded ? `。${recorded}` : ""}`;
       this.message([done, ...summary.filter((line) => !/^CSP で(直した|足した|消した)/.test(line))].join("\n"));
       this.host.status(done);
     } catch (error) {

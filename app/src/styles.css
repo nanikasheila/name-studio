@@ -870,3 +870,21 @@ dialog.command-palette::backdrop { background: rgb(0 0 0 / 0.2); }
 .reader-hint { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); padding: 6px 12px; border-radius: 6px; background: rgba(0, 0, 0, 0.55); color: #f4f3f0; font-size: 13px; pointer-events: none; transition: opacity 0.6s; }
 .reader-hint.faded { opacity: 0; }
 .reader .reader-close { position: absolute; top: 10px; right: 12px; color: #f4f3f0; background: rgba(0, 0, 0, 0.35); border-color: transparent; }
+
+/* Where a held panel dragged from 保留 would go. */
+.drop-hint { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.drop-hint polygon { fill: color-mix(in srgb, var(--accent) 16%, transparent); stroke: var(--accent); stroke-width: 2; stroke-dasharray: 6 4; }
+.drop-hint[data-kind="into"] polygon { stroke-dasharray: none; fill: color-mix(in srgb, var(--accent) 22%, transparent); }
+.drop-hint[data-kind="aside"] polygon { stroke: #c27a1a; fill: rgba(214, 140, 40, 0.14); }
+.drop-hint-label { position: absolute; pointer-events: none; padding: 2px 8px; border-radius: 4px; background: var(--accent); color: #fff; font-size: 12px; white-space: nowrap; }
+.drop-hint-label[data-kind="aside"] { background: #c27a1a; }
+.side-actions.add-pages { display: flex; gap: 6px; align-items: center; }
+.side-actions.add-pages input { width: 4.5em; }
+.series-tools .row-field input { width: 4.5em; }
+
+/* 読み戻し: one change at a time. */
+dialog.readback-pick { width: min(640px, calc(100vw - 32px)); }
+.readback-pick h3 { margin: 0 0 6px; font-size: 16px; }
+.readback-pick h4 { margin: 10px 0 4px; font-size: 13px; }
+.readback-list { max-height: min(50vh, 420px); overflow: auto; border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px 8px; margin: 8px 0; }
+.readback-item { display: flex; gap: 6px; align-items: flex-start; padding: 2px 0; line-height: 1.5; }

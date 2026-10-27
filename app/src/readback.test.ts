@@ -3,7 +3,7 @@ import { addLine } from "./dialogue";
 import { rectShape } from "./geometry";
 import { addPanel } from "./panels";
 import { newProject } from "./project";
-import { applyTakeBack, planTakeBack, takeBackSummary, type ReadUnit } from "./readback";
+import { applyTakeBack, pickTakeBack, planTakeBack, takeBackSummary, type ReadUnit } from "./readback";
 
 describe("CSP のセリフを読み戻す", () => {
   it("takes back what was retyped, added and deleted in CSP, leaving the name's own changes", () => {
@@ -52,6 +52,35 @@ describe("CSP のセリフを読み戻す", () => {
     // Recorded as the name's, the pages have nothing more to take back.
     const again = planTakeBack(project, [{ ...unit, written: unit.texts.map((text) => text.text) }]);
     expect([again.retyped, again.added, again.removed, again.conflicts]).toEqual([[], [], [], []]);
+  });
+
+  it("takes back only the changes picked; the rest stays as the name has it", () => {
+    const project = newProject("t", 1);
+    const page = project.pages[0];
+    const retyped = addLine(project, page, [140, 50], "今日も");
+    const cut = addLine(project, page, [110, 50], "ねえ");
+    const written = page.lines.map((line) => line.text);
+    const unit: ReadUnit = {
+      pages: [0],
+      path: "out/page0001.clip",
+      found: true,
+      written,
+      texts: [
+        { text: "今夜も", page: 0, box: retyped.box.slice() as typeof retyped.box },
+        { text: "……", page: 0, box: [30, 90, 40, 110] },
+      ],
+    };
+    const plan = planTakeBack(project, [unit]);
+    expect([plan.retyped.length, plan.added.length, plan.removed.length]).toEqual([1, 1, 1]);
+    const picked = pickTakeBack(plan, { retyped: [true], added: [false], removed: [false] });
+    expect([picked.retyped.length, picked.added.length, picked.removed.length, picked.paths]).toEqual([1, 0, 0, plan.paths]);
+    applyTakeBack(project, picked);
+    expect(retyped.text).toBe("今夜も");
+    expect(page.lines.includes(cut)).toBe(true);
+    expect(page.lines.some((line) => line.text === "……")).toBe(false);
+    // Recorded as the name's: what was left counts as the name's own, nothing more to take back.
+    const again = planTakeBack(project, [{ ...unit, written: unit.texts.map((text) => text.text) }]);
+    expect([again.retyped, again.added, again.removed]).toEqual([[], [], []]);
   });
 
   it("finds the same changes again after the take-back is undone (B2)", () => {

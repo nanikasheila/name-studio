@@ -35,11 +35,12 @@ import { projectBody } from "./projectjson";
 import { repair } from "./repair";
 import { savedForm } from "./references";
 import { Session } from "./session";
-import { HELD_TYPE, SideLists } from "./sidelists";
+import { HELD_TYPE, SideLists, draggedHeld } from "./sidelists";
+import { DropHint, dropPlan } from "./drophint";
 import { pointOff } from "./aside";
 import { VersionDialog, type VersionInfo } from "./versiondialog";
 import { Board } from "./board";
-import type { Project } from "./model";
+import type { Point, Project } from "./model";
 import { normalize, trailingEmptyPages } from "./project";
 import { stillThere } from "./removal";
 import { localStore } from "./settings";
@@ -288,6 +289,21 @@ export class Workbench {
       setRows: (rows) => this.bars.setRows(rows),
       setTool: (tool) => this.setTool(tool),
       setEraseMode: (mode) => this.setEraseMode(mode),
+      setPanelMode: (mode) => this.bars.setPanelMode(mode),
+      holdSelected: () => {
+        const selection = this.editor.selection;
+        const page = selection && this.session.project?.pages.find((p) => p.id === selection.pageId);
+        const panel = selection?.kind === "panel" ? page?.panels.find((p) => p.id === selection.id) : undefined;
+        if (page && panel) this.edits.holdSelected(page, panel);
+        return !!panel;
+      },
+      readBack: () => void this.exportDialog.readBackAgain(),
+      nextStory: () => {
+        if (!this.seriesPanel.inSeries) return false;
+        this.docks.open("series");
+        void this.seriesPanel.createNext();
+        return true;
+      },
       resizeBrush: (factor) => this.bars.resizeBrush(factor),
       deleteSelection: () => this.deleteSelection(),
       copyItems: () => this.references.copyItems(),
@@ -872,12 +888,22 @@ export class Workbench {
     this.references.bind();
     // A held panel dropped on a page: into the panel there, else where it is dropped.
     const canvas = $("editor-canvas");
+    // While it is dragged: where it would go.
+    const hint = new DropHint(canvas.parentElement!);
     canvas.addEventListener("dragover", (event) => {
       if (!event.dataTransfer?.types.includes(HELD_TYPE)) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
+      const held = this.session.project?.held?.find((h) => h.id === draggedHeld());
+      const where = held && this.editor.pageAtClient(event.clientX, event.clientY);
+      const plan = where && dropPlan(this.session.project!, held, where);
+      const points = plan?.shape.map((point) => this.editor.clientOf(where!.page.id, point));
+      if (plan && points?.every((p) => p !== null)) hint.show(plan.kind, points as Point[], plan.text);
+      else hint.hide();
     });
+    canvas.addEventListener("dragleave", () => hint.hide());
     canvas.addEventListener("drop", (event) => {
+      hint.hide();
       const id = event.dataTransfer?.getData(HELD_TYPE);
       if (!id) return;
       event.preventDefault();

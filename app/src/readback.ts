@@ -183,6 +183,16 @@ export function applyTakeBack(project: Project, plan: TakeBack): void {
   }
 }
 
+/** The changes kept by `keep` (true: take it back), each list in its order. */
+export function pickTakeBack(plan: TakeBack, keep: { retyped: boolean[]; added: boolean[]; removed: boolean[] }): TakeBack {
+  return {
+    ...plan,
+    retyped: plan.retyped.filter((_, index) => keep.retyped[index] !== false),
+    added: plan.added.filter((_, index) => keep.added[index] !== false),
+    removed: plan.removed.filter((_, index) => keep.removed[index] !== false),
+  };
+}
+
 /** What taking back would do, in a few lines (nothing to do: an empty list). */
 export function takeBackSummary(plan: TakeBack): string[] {
   const lines: string[] = [];

@@ -99,10 +99,16 @@ try {
 
   // The next 話: blank, with the series' cast, saved next to the series.
   await dialogs(SECOND);
+  // As many pages as asked for (the open one has 3).
+  check((await page.inputValue("#series-next-pages")) === "3", "the next 話's page count starts as the open one's");
+  await page.fill("#series-next-pages", "8");
+  await page.dispatchEvent("#series-next-pages", "change");
   await page.click("#series-next");
   await settle();
   s = await state();
   series = await file(SERIES);
+  const made = await page.evaluate(() => ({ pages: window.nameStudio.workbench.project.pages.length, target: window.nameStudio.workbench.project.plan?.targetPages }));
+  check(made.pages === 8 && made.target === 8, `with the pages asked for, as its target too (${JSON.stringify(made)})`);
   check(s.title === "第2話" && s.characters.join() === "ミナ" && s.series === "../作品.nameseries", `the next 話 has the cast (${JSON.stringify(s)})`);
   check(series?.episodes.map((one) => one.storyIndex).join() === "1,2" && (await file(SECOND))?.storyIndex === 2, "the series lists both, in order");
   check(s.rows.length === 2, `the palette lists both (${s.rows})`);

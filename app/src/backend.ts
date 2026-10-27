@@ -193,7 +193,7 @@ export interface Commands {
   read_name_dialogue: [{ spread: boolean }, CspPageDialogue];
   adopt_name_dialogue: [{ paths: string[] }, void];
   finish_name_export: [void, { pages: string[]; work: string | null; workCheck: FileCheck | null }];
-  cancel_name_export: [void, void];
+  cancel_name_export: [void, number];
   check_export_target: [{ outDir: string }, OverwriteCheck];
   prepare_builtin_template: [{ setup: PageSetup }, BuiltTemplate];
   // Other files (files.rs)

@@ -18,6 +18,12 @@ import { linkLabel, removeSticky, STICKY_COLORS } from "./stickies";
 /** What a held panel is carried as when dragged from the 保留 list. */
 export const HELD_TYPE = "application/x-name-studio-held";
 
+/** The held panel being dragged from the 保留 list (a drag's data cannot be read until the drop). */
+let heldDragged: string | null = null;
+export function draggedHeld(): string | null {
+  return heldDragged;
+}
+
 export interface SideListsHost {
   edit(change: (project: Project) => void): void;
   /** Page numbers (from 1) on screen now. */
@@ -42,6 +48,8 @@ export interface SideListsHost {
 export class SideLists {
   /** Characters whose lines are listed in the 人物 tab. */
   private readonly openCast = new Set<string>();
+  /** ページ: how many pages the button adds. */
+  private addCount = 1;
   /** 台本: the words searched for (kept while the list is drawn again). */
   private scriptQuery = "";
 
@@ -97,9 +105,17 @@ export class SideLists {
       block: (index) => pageBlock(project, index),
       drop: (first, last, target) => this.host.movePages(first, last, target),
     });
-    const add = element("button", { textContent: "最後にページを足す" });
-    add.addEventListener("click", () => this.host.edit((p) => insertPage(p, p.pages.length)));
-    $("side-pages").replaceChildren(work, ...items, element("div", { className: "side-actions" }, add));
+    // Many at once (one undo step): a name's pages are often added by the spread or more.
+    const count = element("input", { type: "number", id: "add-page-count", min: "1", max: "100", value: String(this.addCount), title: "足すページ数" });
+    count.addEventListener("change", () => (this.addCount = Math.max(1, Math.min(100, Math.round(Number(count.value)) || 1))));
+    const add = element("button", { id: "add-pages", textContent: "ページを最後に足す" });
+    add.addEventListener("click", () => {
+      const n = Math.max(1, Math.min(100, Math.round(Number(count.value)) || 1));
+      this.host.edit((p) => {
+        for (let i = 0; i < n; i++) insertPage(p, p.pages.length);
+      });
+    });
+    $("side-pages").replaceChildren(work, ...items, element("div", { className: "side-actions add-pages" }, count, add));
   }
 
   /** The 別案 in use on a page, for the page list. */
@@ -294,7 +310,9 @@ export class SideLists {
       item.addEventListener("dragstart", (event) => {
         event.dataTransfer?.setData(HELD_TYPE, h.id);
         if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+        heldDragged = h.id;
       });
+      item.addEventListener("dragend", () => (heldDragged = null));
       return item;
     });
     const head = element("p", {
