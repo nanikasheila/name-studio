@@ -2,8 +2,8 @@
 // pictures laid on a page from a file, the clipboard or a drop, and the
 // clipboard mark that tells a picture copied elsewhere from a copy made here.
 // Moving and sizing a picture is the 資料 tool's (toolreference.ts).
-import { $ } from "./dom";
-import { isTyping, type PageEditor, type Tool } from "./editor";
+import { $, isTyping } from "./dom";
+import { type PageEditor, type Tool } from "./editor";
 import { logError } from "./errorlog";
 import { showAlert } from "./alerts";
 import type { Page, Point, Project, StoredImage } from "./model";

@@ -14,13 +14,18 @@ import type { Project } from "./model";
 import { newProject } from "./project";
 import { STRUCTURES } from "./structures";
 import { adoptShape } from "./shapes";
-import { libraryShapes, newNameDefaults } from "./prefs";
+import { libraryShapes, loadRecentNames, newNameDefaults } from "./prefs";
+import { HelpBar, helpBarShown, showHelpBar } from "./helpbar";
+import { HelpOverlay } from "./helpoverlay";
+import type { HelpKind } from "./helptopics";
+import { comboOf } from "./shortcuts";
+import { Tour } from "./tour";
 import { CommandPalette } from "./palette";
 import { SheetExport } from "./sheetexport";
 import { StartScreen } from "./startscreen";
 import { SheetViewer } from "./viewer";
 import { PROJECT_EXTENSION, Workbench } from "./workbench";
-import { $ } from "./dom";
+import { $, isTyping } from "./dom";
 
 function setStatus(message: string): void {
   $("status").textContent = message;
@@ -31,9 +36,39 @@ let workspace: "viewer" | "editor" = "viewer";
 const viewer = new SheetViewer(setStatus);
 new SheetExport(() => viewer.sheetPath, setStatus);
 
-const workbench = new Workbench(setStatus, (title) => {
-  $("file-name").textContent = title;
-  document.title = `${title} — Name Studio`;
+const workbench = new Workbench(
+  setStatus,
+  (title) => {
+    $("file-name").textContent = title;
+    document.title = `${title} — Name Studio`;
+  },
+  (kind) => askHelp(kind),
+);
+
+// --- help ------------------------------------------------------------------------------
+
+/** No name opened on this computer yet: the guide is offered (once) on the start screen and in the editor. */
+const firstRun = loadRecentNames().length === 0;
+const keysOf = (id: string) => workbench.shortcuts.keys(id);
+const tour = new Tour({ keysOf });
+const helpOverlay = new HelpOverlay({
+  keysOf,
+  actionFor: (combo) => workbench.shortcuts.actionFor(combo),
+  tour: () => tour.start(workspace === "editor" ? "editor" : "start"),
+  openShortcuts: () => $("shortcuts").click(),
+});
+const helpBar = new HelpBar({ editor: () => (workspace === "editor" ? workbench.editor : null), keysOf });
+
+function askHelp(kind: HelpKind): void {
+  if (kind === "overlay") helpOverlay.toggle();
+  else if (kind === "tour") tour.start(workspace === "editor" ? "editor" : "start");
+  else showHelpBar(!helpBarShown());
+}
+
+$("help").addEventListener("click", () => helpOverlay.toggle());
+$("st-tour").addEventListener("click", () => {
+  $<HTMLDialogElement>("settings-dialog").close();
+  tour.start("editor");
 });
 
 function showWorkspace(next: "viewer" | "editor"): void {
@@ -42,8 +77,12 @@ function showWorkspace(next: "viewer" | "editor"): void {
   $("editor").hidden = next !== "editor";
   for (const node of document.querySelectorAll<HTMLElement>(".viewer-only")) node.hidden = next !== "viewer";
   for (const node of document.querySelectorAll<HTMLElement>(".editor-only")) node.hidden = next !== "editor";
-  if (next === "editor") workbench.editor.resize();
-  else {
+  if (next === "editor") {
+    workbench.editor.resize();
+    // The start screen's guide gives way to the editor's (laid out first).
+    tour.close();
+    if (firstRun) requestAnimationFrame(() => tour.offer("editor"));
+  } else {
     $("file-name").textContent = viewer.sheet?.fileName ?? "ファイルが開かれていません";
     document.title = "Name Studio";
     startScreen.render();
@@ -150,10 +189,18 @@ window.addEventListener("keydown", (event) => {
     return;
   }
   if (startPalette.isOpen) return;
-  const ctrl = event.ctrlKey || event.metaKey;
-  if (ctrl && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "o") {
+  const combo = comboOf(event);
+  if (combo && !isTyping(event) && keysOf("help.overlay").includes(combo)) {
     event.preventDefault();
-    void openFile();
+    helpOverlay.toggle();
+    return;
+  }
+  const ctrl = event.ctrlKey || event.metaKey;
+  // 開く・新しいネーム with their keys as set (Ctrl+O, Ctrl+N), as in the editor.
+  if (combo && (keysOf("button.open").includes(combo) || keysOf("button.new-project").includes(combo))) {
+    event.preventDefault();
+    if (keysOf("button.open").includes(combo)) void openFile();
+    else newName();
   } else if (ctrl && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "k") {
     event.preventDefault();
     startPalette.open();
@@ -235,6 +282,7 @@ async function start(): Promise<void> {
   }
   // Work left unsaved comes first: the update check can wait on the network.
   await offerRecovery();
+  if (firstRun && workspace === "viewer") tour.offer("start");
   await checkForUpdate({
     status: setStatus,
     busy: () => workbench.project !== null,
@@ -254,6 +302,7 @@ if (import.meta.env.DEV) {
   Object.assign(window, {
     nameStudio: {
       workbench,
+      helpBar,
       show(project: Project) {
         showWorkspace("editor");
         workbench.show(project, null, "");

@@ -21,6 +21,10 @@ export const SINGLE_PAGE_KEY = "namestudio.singlePage";
 export const CONTINUOUS_KEY = "namestudio.continuous";
 export const ROWS_KEY = "namestudio.rows";
 export const PAGE_GAP_KEY = "namestudio.pageGap";
+/** ヘルプの帯 under the window shown ("1") or not. */
+export const HELP_BAR_KEY = "namestudio.helpBar";
+/** The first-time guide seen (or closed): "editor" and "start" each once. */
+export const TOUR_SEEN_KEY = "namestudio.tourSeen";
 
 // --- 吸着 ------------------------------------------------------------------------------
 

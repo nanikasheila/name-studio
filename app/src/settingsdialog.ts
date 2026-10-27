@@ -10,6 +10,7 @@ import { $, choice, element } from "./dom";
 import { fontField } from "./fontpicker";
 import { APP_FONT_LABEL, FONT_ROLES, FONT_ROLE_LABELS, roleFont, setRoleFont } from "./fonts";
 import { type PageEditor } from "./editor";
+import { helpBarShown, showHelpBar } from "./helpbar";
 import { BALLOON_TEXT_KEY, PAGE_GAP_KEY, PANEL_CARRIES_KEY, saveNewNameDefaults, saveSnap } from "./prefs";
 import { GRID_GAP_MM } from "./layout";
 import type { BalloonShape, LineKind, Project } from "./model";
@@ -138,6 +139,7 @@ export class SettingsDialog {
       notes.checked = (event.target as HTMLInputElement).checked;
       notes.dispatchEvent(new Event("change"));
     });
+    $<HTMLInputElement>("st-help-bar").addEventListener("change", (event) => showHelpBar((event.target as HTMLInputElement).checked));
     $<HTMLInputElement>("st-panel-carries").addEventListener("change", (event) => {
       this.host.editor.panelCarries = (event.target as HTMLInputElement).checked;
       writeFlag(PANEL_CARRIES_KEY, this.host.editor.panelCarries);
@@ -227,9 +229,10 @@ export class SettingsDialog {
       this.host.editor.balloonTextFollows = true;
       writeFlag(BALLOON_TEXT_KEY, true);
       setAutosaveTiming({ delay: AUTOSAVE_DELAY_MS / 1000, maxWait: AUTOSAVE_MAX_WAIT_MS / 1000 });
+      showHelpBar(true);
       this.host.autosaveTimingChanged();
       this.render();
-      this.host.status("この PC の設定（ページの間隔・吸着・コマと中身・フキダシの変形・自動保存の間隔）を初期に戻しました");
+      this.host.status("この PC の設定（ページの間隔・吸着・コマと中身・フキダシの変形・自動保存の間隔・ヘルプの帯）を初期に戻しました");
     });
     $<HTMLInputElement>("st-search").addEventListener("input", () => this.filter());
     // Esc empties the search box first; the dialog closes on the next one.
@@ -421,6 +424,7 @@ export class SettingsDialog {
     const gap = $<HTMLInputElement>("st-page-gap");
     if (document.activeElement !== gap) gap.value = String(this.host.editor.pageGapMm);
     $<HTMLInputElement>("st-show-notes").checked = this.host.editor.showNotes;
+    $<HTMLInputElement>("st-help-bar").checked = helpBarShown();
     $<HTMLInputElement>("st-panel-carries").checked = this.host.editor.panelCarries;
     $<HTMLInputElement>("st-balloon-text").checked = this.host.editor.balloonTextFollows;
     $<HTMLInputElement>("st-autosave").checked = autosaveToFile();

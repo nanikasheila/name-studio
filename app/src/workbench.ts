@@ -6,7 +6,7 @@
 import { call } from "./backend";
 import { useFonts } from "./fonts";
 import { useStyle } from "./style";
-import { $ } from "./dom";
+import { $, isTyping } from "./dom";
 import { Inspector } from "./inspector";
 import { ask, message, save } from "@tauri-apps/plugin-dialog";
 import { heldNear } from "./hold";
@@ -26,8 +26,9 @@ import { buildCommands } from "./actions";
 import type { Command } from "./commands";
 import { CommandPalette } from "./palette";
 import { comboOf, Shortcuts, type ActionId } from "./shortcuts";
+import type { HelpKind } from "./helptopics";
 import type { Docks, PaletteId } from "./dock";
-import { PageEditor, isTyping, type EditorEraseMode, type Tool } from "./editor";
+import { PageEditor, type EditorEraseMode, type Tool } from "./editor";
 import { ExportDialog } from "./exportdialog";
 import { clearAlert, showAlert } from "./alerts";
 import { logError } from "./errorlog";
@@ -192,7 +193,7 @@ export class Workbench {
   /** What the file and the recovery copy hold, so autosave writes only what is new. */
   private readonly written = new Written();
 
-  constructor(private readonly setStatus: (message: string) => void, private readonly onTitle: (title: string) => void) {
+  constructor(private readonly setStatus: (message: string) => void, private readonly onTitle: (title: string) => void, help: (kind: HelpKind) => void = () => {}) {
     this.editor = new PageEditor($<HTMLCanvasElement>("editor-canvas"), {
       project: () => this.session.project,
       begin: () => this.begin(),
@@ -328,6 +329,7 @@ export class Workbench {
         return target !== null;
       },
       canClick: (id) => pressable(id) !== null,
+      help,
     });
     this.shortcuts = new Shortcuts(localStore(), this.commands);
     this.shortcutDialog = new ShortcutDialog(this.shortcuts);

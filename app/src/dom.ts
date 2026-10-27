@@ -1,5 +1,11 @@
 // Small helpers for building the app's HTML from code.
 
+/** Whether a key press is typing into a field (the app's keys leave it alone). */
+export function isTyping(event: Event): boolean {
+  const target = event.target as HTMLElement | null;
+  return !!target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable);
+}
+
 /** The element with this id (the app's page always has it). */
 export const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 

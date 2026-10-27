@@ -6,6 +6,7 @@
 // the page in place is inplace.ts).
 // Coordinates on a page are millimetres; each page of the spread has its own
 // mm → screen mapping.
+import { isTyping } from "./dom";
 import { BALLOON_TEXT_KEY, CONTINUOUS_KEY, loadSnap, PAGE_GAP_KEY, PANEL_CARRIES_KEY, penPreferences, ROWS_KEY, SHOW_NOTES_KEY, SINGLE_PAGE_KEY } from "./prefs";
 import { insideBalloon, tailGeometry } from "./balloon";
 import { spreads } from "./pages";
@@ -1348,6 +1349,11 @@ export class PageEditor {
     return this.transforming;
   }
 
+  /** What the select tool would grab under the pointer, for the help bar: "item.panel", "seam", "tail.tip", "handle". */
+  get hovered(): string | null {
+    return this.hover && (this.hover.kind === "item" ? `item.${this.hover.target.kind}` : this.hover.kind === "tail" ? `tail.${this.hover.hit.part}` : this.hover.kind);
+  }
+
   /** 変形 on or off for the selection (Ctrl+T); false when it cannot be transformed. */
   toggleTransform(on = !this.transforming): boolean {
     const s = this.selection;
@@ -2189,6 +2195,7 @@ export class PageEditor {
       !h ? "" : h.kind === "tail" ? `tail:${h.hit.lineId}:${h.hit.index}:${h.hit.part}` : h.kind === "handle" ? `handle:${h.handle}` : h.kind === "seam" ? `seam:${h.slot.page.id}:${h.seam.edges.map((e) => `${e.panelId}.${e.edge}`).join(",")}` : `item:${h.target.pageId}:${h.target.kind}:${h.target.id}`;
     if (key(hover) === key(this.hover)) return;
     this.hover = hover;
+    this.canvas.dispatchEvent(new Event("hoverchange"));
     this.updateCursor();
     this.requestOverlay();
   }
@@ -2388,9 +2395,4 @@ export class PageEditor {
 
 /** A small dot for drawing (the tablet settings' 点 cursor). */
 const DOT_CURSOR = `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="9" height="9"><circle cx="4.5" cy="4.5" r="2" fill="#222" stroke="#fff" stroke-width="1"/></svg>')}") 4 4, crosshair`;
-
-export function isTyping(event: Event): boolean {
-  const target = event.target as HTMLElement | null;
-  return !!target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable);
-}
 
