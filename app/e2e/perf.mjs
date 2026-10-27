@@ -271,6 +271,17 @@ try {
   });
   results.save = save;
   timed(save, 2 * BUDGET_MS, `autosave makes what it writes in ${save.toFixed(1)} ms (budget ${2 * BUDGET_MS} ms: it waits for a pause)`);
+  // Before it writes, autosave sees whether the file holds the name already (a snapshot, compared).
+  const same = await page.evaluate(async () => {
+    const { sameSnapshot } = await import("/src/snapshot.ts");
+    const session = window.nameStudio.workbench.session;
+    const held = session.snapshot();
+    const start = performance.now();
+    sameSnapshot(held, session.snapshot());
+    return performance.now() - start;
+  });
+  results.unchanged = same;
+  timed(same, BUDGET_MS, `autosave sees whether anything changed in ${same.toFixed(1)} ms (budget ${BUDGET_MS} ms)`);
   check(errors.length === 0, `no errors (${errors.join(" / ")})`);
 } finally {
   await browser.close();
