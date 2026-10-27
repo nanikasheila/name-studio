@@ -330,6 +330,7 @@ dialog.script-import { width: min(720px, calc(100vw - 32px)); }
 .script-import textarea { width: 100%; box-sizing: border-box; font: 13px/1.5 ui-monospace, monospace; margin-top: 8px; }
 .script-import label.check { display: flex; align-items: center; gap: 6px; margin: 8px 0; }
 .side-actions.top { padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.script-search { display: block; width: calc(100% - 24px); margin: 8px 12px 4px; }
 .script-line.thought .who::after { content: "（"; }
 .script-line.thought .text::after { content: "）"; }
 

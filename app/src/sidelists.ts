@@ -42,6 +42,8 @@ export interface SideListsHost {
 export class SideLists {
   /** Characters whose lines are listed in the 人物 tab. */
   private readonly openCast = new Set<string>();
+  /** 台本: the words searched for (kept while the list is drawn again). */
+  private scriptQuery = "";
 
   constructor(private readonly host: SideListsHost) {}
 
@@ -107,15 +109,38 @@ export class SideLists {
     return option ? [element("span", { className: "option-tag", textContent: option.name, title: `別案 ${set!.options.length} つのうち使用中の案` })] : [];
   }
 
-  /** 台本: every line of dialogue, page by page. */
+  /** 台本: every line of dialogue, page by page; a search keeps the lines with those words or speaker. */
   script(project: Project): void {
+    const take = element("button", { textContent: "台本・プロットを取り込む…", title: "Markdown の台本（コマとセリフ）か、プロット（ページごとの文）を取り込む" });
+    take.addEventListener("click", () => this.host.openScript());
+    const search = element("input", { type: "search", className: "script-search", value: this.scriptQuery, placeholder: "セリフ・話す人で探す" });
+    const rows = element("div", { className: "script-rows" });
+    // Only the rows are drawn again as it is typed in, so the field keeps its caret.
+    search.addEventListener("input", () => {
+      this.scriptQuery = search.value;
+      rows.replaceChildren(...this.scriptRows(project));
+    });
+    rows.replaceChildren(...this.scriptRows(project));
+    $("side-script").replaceChildren(element("div", { className: "side-actions top" }, take), search, rows);
+  }
+
+  private scriptRows(project: Project): HTMLElement[] {
     const names = new Map(project.characters.map((character) => [character.id, character.name]));
+    const words = this.scriptQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const picked = this.host.selection();
     const children: HTMLElement[] = [];
+    let found = 0;
     project.pages.forEach((page, index) => {
+      const lines = page.lines
+        .map((line) => ({ line, who: line.kind === "narration" ? "N" : line.kind === "sfx" ? "音" : (names.get(line.speaker ?? "") ?? "？") }))
+        .filter(({ line, who }) => {
+          const hay = `${who} ${line.text.replace(/\s+/g, "")}`.toLowerCase();
+          return words.every((word) => hay.includes(word));
+        });
+      if (words.length && !lines.length) return;
+      found += lines.length;
       children.push(element("div", { className: "script-page", textContent: `${index + 1} ページ` }));
-      for (const line of page.lines) {
-        const who = line.kind === "narration" ? "N" : line.kind === "sfx" ? "音" : (names.get(line.speaker ?? "") ?? "？");
-        const picked = this.host.selection();
+      for (const { line, who } of lines) {
         const selected = picked?.kind === "line" && picked.id === line.id;
         const row = element(
           "div",
@@ -127,10 +152,9 @@ export class SideLists {
         children.push(row);
       }
     });
-    if (!children.length) children.push(element("p", { className: "hint", textContent: "ページがありません" }));
-    const take = element("button", { textContent: "台本・プロットを取り込む…", title: "Markdown の台本（コマとセリフ）か、プロット（ページごとの文）を取り込む" });
-    take.addEventListener("click", () => this.host.openScript());
-    $("side-script").replaceChildren(element("div", { className: "side-actions top" }, take), ...children);
+    if (words.length) children.unshift(element("p", { className: "hint", textContent: found ? `${found} 件` : "見つかりません" }));
+    else if (!children.length) children.push(element("p", { className: "hint", textContent: "ページがありません" }));
+    return children;
   }
 
   /** 人物: the characters, their voice, and their lines. */

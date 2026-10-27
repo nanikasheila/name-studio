@@ -1,7 +1,8 @@
 // Writing on the page itself: a panel's memo or a line of dialogue in a field
 // laid over the page, where it is. The page follows each key; Ctrl+Enter or a
-// click elsewhere keeps it (one undo step), Esc puts it back. A line just
-// placed (fresh) is one step with what is written in it: Esc takes it away.
+// click elsewhere keeps it (one undo step), Esc puts it back; Tab keeps it and
+// goes on to the next line (Shift+Tab: the one before), across the pages. A
+// line just placed (fresh) is one step with what is written in it: Esc takes it away.
 import { setLineText, wrapTypedLine } from "./dialogue";
 import { canvasFont, lineBold, lineFont } from "./fonts";
 import { bounds } from "./geometry";
@@ -35,6 +36,11 @@ export interface InPlaceHost {
   onScreen(point: Point): Point;
   /** A fresh line given up: off the page again, as if never placed. */
   drop(pageId: string, lineId: string): void;
+  /**
+   * The next (1) or previous (-1) line or memo in reading order: what opens
+   * it, found while this one is still open; null at the end.
+   */
+  next(step: 1 | -1): (() => void) | null;
   /** The field is about to show; `closed` when it goes. */
   opened(edit: InPlaceEdit): void;
   closed(edit: InPlaceEdit): void;
@@ -135,6 +141,12 @@ export function writeInPlace(host: InPlaceHost, container: HTMLElement, pageId: 
     } else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
       event.preventDefault();
       finish(true);
+    } else if (event.key === "Tab" && !event.isComposing && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      event.preventDefault();
+      const open = host.next(event.shiftKey ? -1 : 1);
+      finish(true);
+      if (open) open();
+      else host.status(event.shiftKey ? `最初の${panel ? "コマ" : "セリフ"}です` : `最後の${panel ? "コマ" : "セリフ"}です`);
     }
   });
   field.addEventListener("blur", () => finish(true));
@@ -144,6 +156,8 @@ export function writeInPlace(host: InPlaceHost, container: HTMLElement, pageId: 
   field.focus();
   if (line && line.text === "セリフ") field.select();
   host.status(
-    panel ? "コマのメモを書いています（Ctrl+Enter かほかを押すと決定、Esc でやめる）" : "セリフを書いています（改行で行を分ける。Ctrl+Enter かほかを押すと決定、Esc でやめる）",
+    panel
+      ? "コマのメモを書いています（Ctrl+Enter かほかを押すと決定、Tab で次のコマ、Esc でやめる）"
+      : "セリフを書いています（改行で行を分ける。Ctrl+Enter かほかを押すと決定、Tab で次のセリフ、Esc でやめる）",
   );
 }

@@ -31,7 +31,7 @@ import { drawLineText, drawStroke, onTipLoaded, tracePath } from "./pagedraw";
 import { referenceCornerAt } from "./references";
 import { StrokeCache } from "./strokecache";
 import { ROUGH_BASE, shownStrokes, strokeEditable } from "./roughlayers";
-import { moveLine, setLineText } from "./dialogue";
+import { moveLine, neighbour, setLineText } from "./dialogue";
 import { bounds, insideBox, insidePolygon, segmentDistance } from "./geometry";
 import type { Binding, BoxMm, Brush, FillTone, Line, Page, Panel, Point, Project } from "./model";
 import { snapCut, trimBox } from "./pagebox";
@@ -2277,6 +2277,16 @@ export class PageEditor {
         const on = this.host.project()?.pages.find((p) => p.id === pageId);
         if (on) on.lines = on.lines.filter((l) => l.id !== lineId);
         if (this.selection?.kind === "line" && this.selection.id === lineId) this.select(null);
+      },
+      next: (step) => {
+        const to = neighbour(project!, pageId, kind, id, step);
+        if (!to) return null;
+        return () => {
+          const index = pageIndex(project!, to.pageId);
+          if (to.pageId !== pageId) this.showPage(index + 1);
+          this.select({ kind: kind === "line" ? "line" : "panel", pageId: to.pageId, id: to.id });
+          this.editInPlace(to.pageId, kind, to.id);
+        };
       },
       opened: (edit) => (this.inline = edit),
       closed: (edit) => {
