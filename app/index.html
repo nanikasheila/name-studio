@@ -86,9 +86,11 @@
           <span class="tool-name" id="tool-name"></span>
           <div class="segmented" id="panel-modes" role="group" aria-label="コマの作り方" hidden>
             <button id="panel-cut" class="active with-icon" title="コマを横切るように引いて割る（Alt で斜め）。Shift + コマの外のドラッグで四角いコマ"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="2.5" width="15" height="15" rx="1"/><path d="M2.5 8.5l15 2.5"/></svg>割る</button>
+            <button id="panel-sketch" class="with-icon" title="紙のようになぐり描きでコマ割り: 囲むと仮のコマ、横切ると割る、コマの間をぐしゃぐしゃでつなげる。決まったら「整える」"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 4.2c4-.6 9-.3 13 .2M16.2 3.6c.4 4 .2 8.5-.2 12.6M16.7 15.6c-4.5.5-9 .4-13.2 0M4 16.3c-.5-4-.4-8.2.1-12.4"/></svg>描く</button>
             <button id="panel-rect" class="with-icon" title="ドラッグで四角いコマを描く（コマの中に描くと、はめ込み）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="3.5" y="5" width="13" height="10" rx="0.5"/></svg>四角</button>
             <button id="panel-polygon" class="with-icon" title="クリックで角を置いて、台形など好きな形のコマを描く。最初の角・ダブルクリック・Enter で閉じる"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4.5h8l3 11H3z"/></svg>多角形</button>
           </div>
+          <button id="panel-tidy" class="with-icon" data-command="panel.tidy" title="仮のコマを清書する: ほぼ水平・垂直の線をまっすぐに、辺をそろえ、コマ間を設定の幅に、基本枠・裁ち切りへ。選んだコマがあればそのコマだけ" hidden><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="2.5" width="6.5" height="6.5"/><rect x="11" y="2.5" width="6.5" height="6.5"/><rect x="2.5" y="11" width="15" height="6.5"/></svg>整える</button>
           <label class="check" id="grid-snap-label" title="コマの角や辺をグリッドに吸着させる（間隔は 設定 で）" hidden><input type="checkbox" id="grid-snap" /> グリッド</label>
           <div class="segmented" id="fill-tones" role="group" aria-label="塗りの色" hidden>
             <button id="fill-black" class="active" title="黒（ベタ）"><i class="tone black"></i>黒</button>

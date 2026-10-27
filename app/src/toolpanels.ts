@@ -1,14 +1,20 @@
 // コマ割り: a line drawn across panels cuts them apart (割る); a box drawn
-// makes a panel (四角, or off the panels); 多角形 places corners one by one.
+// makes a panel (四角, or off the panels); 多角形 places corners one by one;
+// 描く reads a line drawn by hand (sketchpanels.ts) into 仮のコマ.
 import type { DragHandler, DragOf, EditorCore, Press } from "./editorcore";
 import { bounds, insidePolygon, rectShape } from "./geometry";
 import { snapCut } from "./pagebox";
 import { cutPanels } from "./panels";
+import { applySketch } from "./sketchpanels";
 import { sortLines } from "./readingorder";
 
 export function pressCut(editor: EditorCore, { event, project, slot, point }: Press): void {
   if (editor.panelMode === "polygon") {
     editor.placeCorner(slot, point, event.altKey);
+    return;
+  }
+  if (editor.panelMode === "sketch") {
+    editor.startDrag({ kind: "sketch", slot, points: [point] });
     return;
   }
   const inPanel = slot.page.panels.some((panel) => insidePolygon(panel.shape, point));
@@ -64,4 +70,22 @@ const frame: DragHandler<DragOf<"frame">> = {
   },
 };
 
-export const PANEL_DRAGS = { cut, frame };
+const sketch: DragHandler<DragOf<"sketch">> = {
+  move(_editor, drag, { point }) {
+    drag.points.push(point);
+  },
+  end(editor, drag, project) {
+    editor.host.begin();
+    const done = applySketch(project, drag.slot.page, drag.points);
+    if (!done.changed) {
+      editor.host.cancel();
+      editor.host.status(done.message);
+      return;
+    }
+    editor.host.commit();
+    if (done.panelId) editor.select({ kind: "panel", pageId: drag.slot.page.id, id: done.panelId });
+    editor.host.status(done.message);
+  },
+};
+
+export const PANEL_DRAGS = { cut, frame, sketch };
