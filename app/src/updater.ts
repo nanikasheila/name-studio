@@ -1,6 +1,8 @@
 // 自動更新: a released build looks for a newer release when it starts. With
 // nothing open yet it installs it and starts again at once; with a name open
-// it waits for the user to press the update button (after autosave).
+// it waits for the user to press the update button (after autosave). The
+// setting can make it only tell of a new version, or not look at all (then
+// 「今すぐ確かめる」 in the settings looks when asked).
 // 前の版に戻す: a release that went wrong can be swapped for an earlier one
 // (signed like any update); updates then stay paused until turned on again.
 import { call } from "./backend";
@@ -8,18 +10,26 @@ import { getVersion } from "@tauri-apps/api/app";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { $ } from "./dom";
-import { readFlag, writeFlag } from "./settings";
+import { readFlag, readText, writeText } from "./settings";
 
+/** Before the three ways, a flag: on meant 「notify」. */
 const PAUSED_KEY = "namestudio.updatesPaused";
+const MODE_KEY = "namestudio.updateMode";
 const RELEASES = "https://api.github.com/repos/nanikasheila/name-studio/releases?per_page=60";
 
-/** Whether new versions are put in by themselves when the app starts. */
-export function updatesPaused(): boolean {
-  return readFlag(PAUSED_KEY, false);
+/** On start: put a new version in by itself, only tell of it, or not look. */
+export type UpdateMode = "auto" | "notify" | "off";
+
+export const UPDATE_MODES: readonly UpdateMode[] = ["auto", "notify", "off"];
+
+export function updateMode(): UpdateMode {
+  const mode = readText(MODE_KEY);
+  if (mode && (UPDATE_MODES as readonly string[]).includes(mode)) return mode as UpdateMode;
+  return readFlag(PAUSED_KEY, false) ? "notify" : "auto";
 }
 
-export function setUpdatesPaused(paused: boolean): void {
-  writeFlag(PAUSED_KEY, paused);
+export function setUpdateMode(mode: UpdateMode): void {
+  writeText(MODE_KEY, mode);
 }
 
 export interface UpdateHost {
@@ -38,31 +48,70 @@ export async function appVersion(): Promise<string> {
   }
 }
 
-/** Check once; returns the update found, if any. Never throws. */
-export async function checkForUpdate(host: UpdateHost): Promise<Update | null> {
+/** What one look for a new version found. */
+export type UpdateCheck =
+  | { kind: "found"; update: Update }
+  | { kind: "latest" }
+  /** A build from the source (npm run tauri dev): never updated. */
+  | { kind: "notRelease" }
+  | { kind: "failed"; error: string };
+
+/** Look for a newer release once. Never throws. */
+export async function lookForUpdate(): Promise<UpdateCheck> {
   try {
-    if (!(await call("is_release_build"))) return null;
+    if (!(await call("is_release_build"))) return { kind: "notRelease" };
   } catch {
-    return null;
+    return { kind: "notRelease" };
   }
-  let update: Update | null;
   try {
-    update = await check({ timeout: 15000 });
+    const update = await check({ timeout: 15000 });
+    return update ? { kind: "found", update } : { kind: "latest" };
   } catch (error) {
     // Offline, or no release with an update key yet: try again next start.
     console.warn("update check failed", error);
-    return null;
+    return { kind: "failed", error: String(error) };
   }
-  if (!update) return null;
+}
+
+/**
+ * On start, as the setting says: look (unless it is off) and put a new
+ * version in or tell of it. Returns the update found, if any. Never throws.
+ */
+export async function checkForUpdate(host: UpdateHost, mode: UpdateMode = updateMode()): Promise<Update | null> {
+  if (mode === "off") return null;
+  const found = await lookForUpdate();
+  if (found.kind !== "found") return null;
+  const update = found.update;
+  offer(update, host);
+  if (mode === "notify") host.status(`新しい版 ${update.version} があります（自動では入れない設定です。右上の「更新」で入れます）`);
+  else if (!host.busy()) await install(update, host);
+  else host.status(`新しい版 ${update.version} があります。右上の「更新」で入れ替えます（作業は自動保存してから）`);
+  return update;
+}
+
+/** 「今すぐ確かめる」: look now whatever the setting, and say what was found; a new version waits for the button. */
+export async function checkNow(host: UpdateHost): Promise<UpdateCheck> {
+  host.status("新しい版を確かめています…");
+  const found = await lookForUpdate();
+  if (found.kind === "found") {
+    offer(found.update, host);
+    host.status(`新しい版 ${found.update.version} があります。右上の「更新」で入れます`);
+  } else if (found.kind === "latest") {
+    const version = await appVersion();
+    host.status(`いまの版${version ? ` ${version}` : ""}が最新です`);
+  }
+  else if (found.kind === "notRelease") host.status("開発中の版なので、更新は確かめません");
+  else host.status(`新しい版を確かめられませんでした（ネットにつながっているか確かめてください）: ${found.error}`);
+  return found;
+}
+
+/** The 「更新」 button at the top right, which puts `update` in. */
+function offer(update: Update, host: UpdateHost): void {
   const button = $<HTMLButtonElement>("update");
   button.textContent = `更新 ${update.version}`;
   button.title = `新しい版 ${update.version} を入れて再起動します${update.body ? `\n\n${update.body}` : ""}`;
   button.hidden = false;
-  button.onclick = () => void install(update!, host);
-  if (updatesPaused()) host.status(`新しい版 ${update.version} があります（自動更新は止めています。右上の「更新」で入れます）`);
-  else if (!host.busy()) await install(update, host);
-  else host.status(`新しい版 ${update.version} があります。右上の「更新」で入れ替えます（作業は自動保存してから）`);
-  return update;
+  button.onclick = () => void install(update, host);
 }
 
 async function install(update: Update, host: UpdateHost): Promise<void> {
@@ -125,8 +174,8 @@ export async function releases(): Promise<Release[]> {
 /** Put in release `version` and start again; automatic updates stay paused so it stays. */
 export async function installRelease(version: string, host: Pick<UpdateHost, "status" | "prepare">): Promise<void> {
   if (!(await host.prepare())) return;
-  setUpdatesPaused(true);
-  host.status(`版 ${version} を取り込んでいます…（自動更新は止めました）`);
+  if (updateMode() === "auto") setUpdateMode("notify");
+  host.status(`版 ${version} を取り込んでいます…（新しい版は知らせるだけにしました）`);
   try {
     await call("install_release", { version });
     await relaunch();

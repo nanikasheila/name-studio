@@ -1,5 +1,27 @@
-import { describe, expect, it } from "vitest";
-import { installableReleases } from "./updater";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { installableReleases, setUpdateMode, updateMode } from "./updater";
+
+vi.mock("@tauri-apps/api/app", () => ({ getVersion: async () => "0.2.80" }));
+vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: async () => undefined }));
+vi.mock("@tauri-apps/plugin-updater", () => ({ check: async () => null }));
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe("自動更新の設定", () => {
+  it("is on until set, keeps 「止める」 from before as 「知らせるだけ」, and keeps the three ways", () => {
+    const items = new Map<string, string>();
+    vi.stubGlobal("localStorage", { getItem: (key: string) => items.get(key) ?? null, setItem: (key: string, value: string) => void items.set(key, value), removeItem: (key: string) => void items.delete(key) });
+    expect(updateMode()).toBe("auto");
+    items.set("namestudio.updatesPaused", "1");
+    expect(updateMode()).toBe("notify");
+    for (const mode of ["off", "auto", "notify"] as const) {
+      setUpdateMode(mode);
+      expect(updateMode()).toBe(mode);
+    }
+    items.set("namestudio.updateMode", "sometimes");
+    expect(updateMode()).toBe("notify");
+  });
+});
 
 describe("前の版に戻す", () => {
   it("offers the signed releases (with their latest.json), newest first as GitHub lists them", () => {

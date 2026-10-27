@@ -10,7 +10,7 @@ import { $ } from "./dom";
 import { Inspector } from "./inspector";
 import { ask, message, save } from "@tauri-apps/plugin-dialog";
 import { heldNear } from "./hold";
-import { Autosaver, autosaveToFile, formatTime } from "./autosave";
+import { Autosaver, Written, autosaveToFile, formatTime } from "./autosave";
 import { penPreferences, rememberName } from "./prefs";
 import { BrushDialog } from "./brushdialog";
 import { AltDialog } from "./altdialog";
@@ -188,10 +188,9 @@ export class Workbench {
   private writes = 0;
   /** Where the open name's changes are kept, for the save state beside its name. */
   private kept: Omit<SaveFacts, "hasPath" | "dirty" | "writing"> = { savedAt: null, copyAt: null, failed: null, seriesBehind: false };
-  private readonly autosaver = new Autosaver(
-    () => this.autosave(),
-    () => this.session.inStep,
-  );
+  private readonly autosaver = new Autosaver(() => this.autosave(), () => this.session.inStep).followSettings();
+  /** What the file and the recovery copy hold, so autosave writes only what is new. */
+  private readonly written = new Written();
 
   constructor(private readonly setStatus: (message: string) => void, private readonly onTitle: (title: string) => void) {
     this.editor = new PageEditor($<HTMLCanvasElement>("editor-canvas"), {
@@ -272,7 +271,10 @@ export class Workbench {
       edit: (change) => this.edit(change),
       status: (message) => this.setStatus(message),
       snapChanged: () => this.bars.showPanelModes(),
-      autosaveChanged: () => this.autosaver.notify(),
+      // What is unsaved goes where autosave says now.
+      autosaveChanged: () => void (this.session.dirty && this.autosaver.notify()),
+      autosaveTimingChanged: () => this.autosaver.followSettings(),
+      busy: () => this.session.project !== null,
       openPenSettings: () => this.penDialog.open(),
       openShortcuts: () => this.shortcutDialog.open(),
       prepareRestart: () => this.confirmDiscard(),
@@ -390,7 +392,7 @@ export class Workbench {
     this.versionDialog = new VersionDialog({
       path: () => this.session.path,
       restore: (version) => this.restoreVersion(version),
-      autosaveChanged: () => this.autosaver.notify(),
+      autosaveChanged: () => void (this.session.dirty && this.autosaver.notify()),
     });
     this.reader = new Reader({
       project: () => this.session.project,
@@ -453,6 +455,7 @@ export class Workbench {
     this.kept = { savedAt: null, copyAt: null, failed: null, seriesBehind: false };
     this.roughs.clear();
     this.autosaver.reset();
+    this.written.forget();
     this.editor.selection = null;
     this.editor.roughLayer = ROUGH_BASE;
     this.editor.spreadIndex = 0;
@@ -467,6 +470,7 @@ export class Workbench {
     const project = await call("load_project", { path });
     const series = await this.seriesPanel.attach(project, path);
     this.show(project, path, `${project.pages.length} ページのネームを開きました${series}`);
+    this.written.toFile(this.session.id, path, this.session.snapshot());
     rememberName(path, project);
   }
 
@@ -499,6 +503,7 @@ export class Workbench {
     const note = mended.length ? `（${mended.length} か所の問題を直しました）` : "";
     this.show(project, path, `${name} を ${formatTime(timeMs)} の自動保存から復元しました${note}。保存すると確定します`);
     this.kept.copyAt = timeMs;
+    this.written.toCopy(this.session.id, path, this.session.snapshot());
     this.markDirty();
     this.updateTitle();
   }
@@ -525,10 +530,11 @@ export class Workbench {
     const id = this.session.id;
     const previousPath = this.session.path;
     try {
-      const revision = await this.queued(async () => {
+      const [revision, snapshot] = await this.queued(async () => {
         const revision = this.session.revision;
+        const snapshot = this.session.id === id ? this.session.snapshot() : null;
         await call("save_project", projectBody({ path, previousPath }, savedForm(project)));
-        return revision;
+        return [revision, snapshot] as const;
       });
       rememberName(path, project);
       if (!this.session.saved(path, revision, id)) {
@@ -536,6 +542,7 @@ export class Workbench {
         this.setStatus(`前に開いていたネームを保存しました: ${path}`);
         return true;
       }
+      this.written.toFile(id, path, snapshot);
       this.kept = { ...this.kept, savedAt: Date.now(), copyAt: null, failed: null };
       const series = await this.saveSeries(project, path);
       if (!this.session.dirty) this.autosaver.reset();
@@ -599,20 +606,38 @@ export class Workbench {
     if (project && path && !(await this.saveSeries(project, path))) this.setStatus("シリーズに反映しました");
   }
 
-  /** Autosave: the file itself when it has one (and that is on), else a copy. */
+  /**
+   * Autosave: the file itself when it has one (and that is on), else a copy;
+   * nothing when that already holds the name as it is now.
+   */
   private async autosave(): Promise<void> {
     const project = this.session.project;
     if (!project) return;
     const path = this.session.path;
     const id = this.session.id;
     try {
-      const [result, revision] = await this.queued(async () => {
+      const [result, revision, snapshot] = await this.queued(async () => {
         const revision = this.session.revision;
-        const result = await call("autosave_project", projectBody({ path, toFile: autosaveToFile() }, savedForm(project)));
-        return [result, revision] as const;
+        const toFile = autosaveToFile();
+        const snapshot = this.session.id === id ? this.session.snapshot() : null;
+        const need = this.written.need(id, path, toFile, snapshot);
+        if (need === "clean" || need === "none") return [need, revision, snapshot] as const;
+        const result = await call("autosave_project", projectBody({ path, toFile }, savedForm(project)));
+        return [result, revision, snapshot] as const;
       });
       // A name opened meanwhile is not this one: its state and alerts stay as they are.
       if (this.session.id !== id) return;
+      if (result === "none") return;
+      if (result === "clean") {
+        // Changed and changed back: the file has it all, and a copy kept on the way is stale.
+        this.session.autosaved(revision, id);
+        if (this.kept.copyAt !== null) await call("discard_recovery", { path }).catch(() => undefined);
+        this.kept = { ...this.kept, copyAt: null, failed: null };
+        this.updateTitle();
+        return;
+      }
+      if (result.savedToFile && path) this.written.toFile(id, path, snapshot);
+      else this.written.toCopy(id, path, snapshot);
       if (result.savedToFile && this.session.path === path) {
         this.session.autosaved(revision, id);
         this.kept = { ...this.kept, savedAt: Date.now(), copyAt: null, failed: null };

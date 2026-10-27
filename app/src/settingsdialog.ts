@@ -3,7 +3,7 @@
 // one kind at a time from the list on the left, or all that match what is
 // typed in the search box. Changes apply at once.
 import { ask } from "@tauri-apps/plugin-dialog";
-import { autosaveToFile, setAutosaveToFile } from "./autosave";
+import { AUTOSAVE_DELAY_MS, AUTOSAVE_MAX_WAIT_MS, autosaveTiming, autosaveToFile, setAutosaveTiming, setAutosaveToFile } from "./autosave";
 import { call } from "./backend";
 import { SHAPE_LABELS } from "./balloon";
 import { $, choice, element } from "./dom";
@@ -16,7 +16,7 @@ import type { BalloonShape, LineKind, Project } from "./model";
 import { KIND_LABELS, setBinding, setDefaultLineSize, setDefaultShape, setLineSpacing } from "./dialogue";
 import { gutters, nameKind, setGutters } from "./project";
 import { readText, writeFlag, writeNumber, writeText } from "./settings";
-import { appVersion, installRelease, releases, setUpdatesPaused, updatesPaused } from "./updater";
+import { appVersion, checkNow, installRelease, releases, setUpdateMode, updateMode, type UpdateMode } from "./updater";
 import { DEFAULT_SNAP, MAX_GRID_MM, MIN_GRID_MM, type SnapSettings } from "./snapping";
 import {
   APP_BALLOON_LINE_MM,
@@ -42,11 +42,22 @@ export interface SettingsHost {
   snapChanged(): void;
   /** 自動保存 was turned on or off. */
   autosaveChanged(): void;
+  /** When autosave writes was changed (settings `autosaveTiming`). */
+  autosaveTimingChanged(): void;
+  /** True while a name is open (a new version then waits for the button). */
+  busy(): boolean;
   openPenSettings(): void;
   openShortcuts(): void;
   /** Before the app is closed for another version: false to stay. */
   prepareRestart(): Promise<boolean>;
 }
+
+/** Said when the update setting is changed. */
+const UPDATE_MODE_NOTES: Record<UpdateMode, string> = {
+  auto: "次の起動から、新しい版を自動で入れます",
+  notify: "次の起動から、新しい版は知らせるだけにします（右上の「更新」で入れます）",
+  off: "起動したときに新しい版を確かめません（設定の「今すぐ確かめる」で確かめられます）",
+};
 
 const SNAP_BOXES: [keyof SnapSettings, string][] = [
   ["axis", "st-snap-axis"],
@@ -139,9 +150,35 @@ export class SettingsDialog {
       setAutosaveToFile((event.target as HTMLInputElement).checked);
       this.host.autosaveChanged();
     });
-    $<HTMLInputElement>("st-auto-update").addEventListener("change", (event) => {
-      setUpdatesPaused(!(event.target as HTMLInputElement).checked);
-      this.host.status(updatesPaused() ? "自動更新を止めました" : "自動更新を入れました（次の起動から）");
+    const delay = number("st-autosave-delay");
+    const maxWait = number("st-autosave-max-wait");
+    const timing = (changed: "delay" | "maxWait") => {
+      const now = autosaveTiming();
+      const asked = { delay: Number(delay.value), maxWait: Number(maxWait.value) };
+      // The longest wait is never below the quiet: moving one past the other takes it along.
+      if (changed === "delay" && asked.delay > asked.maxWait) asked.maxWait = asked.delay;
+      if (changed === "maxWait" && asked.maxWait < asked.delay) asked.delay = asked.maxWait;
+      const kept = setAutosaveTiming({ delay: Number.isFinite(asked.delay) ? asked.delay : now.delay, maxWait: Number.isFinite(asked.maxWait) ? asked.maxWait : now.maxWait });
+      delay.value = String(kept.delay);
+      maxWait.value = String(kept.maxWait);
+      this.host.autosaveTimingChanged();
+      this.host.status(`自動保存: 編集をやめて ${kept.delay} 秒、続いていても ${kept.maxWait} 秒ごとに保存します`);
+    };
+    delay.addEventListener("change", () => timing("delay"));
+    maxWait.addEventListener("change", () => timing("maxWait"));
+    $<HTMLSelectElement>("st-update-mode").addEventListener("change", (event) => {
+      const mode = (event.target as HTMLSelectElement).value as UpdateMode;
+      setUpdateMode(mode);
+      this.host.status(UPDATE_MODE_NOTES[mode]);
+    });
+    $<HTMLButtonElement>("st-check-update").addEventListener("click", async (event) => {
+      const button = event.currentTarget as HTMLButtonElement;
+      button.disabled = true;
+      try {
+        await checkNow({ status: (message) => this.host.status(message), busy: () => this.host.busy(), prepare: () => this.host.prepareRestart() });
+      } finally {
+        button.disabled = false;
+      }
     });
     const release = $<HTMLSelectElement>("st-release");
     release.addEventListener("focus", () => void this.loadReleases());
@@ -151,7 +188,7 @@ export class SettingsDialog {
     $("st-install-release").addEventListener("click", async () => {
       const version = release.value;
       if (!version) return;
-      const sure = await ask(`版 ${version} に入れ替えて、アプリを起動し直します。\n\n入れ替えたあとは自動更新を止めます（設定の「更新」でまた入れられます）。`, {
+      const sure = await ask(`版 ${version} に入れ替えて、アプリを起動し直します。\n\n入れ替えたあとは、新しい版を自動では入れず知らせるだけにします（設定の「更新」で戻せます）。`, {
         title: "Name Studio",
         kind: "warning",
         okLabel: "入れ替える",
@@ -189,8 +226,10 @@ export class SettingsDialog {
       writeFlag(PANEL_CARRIES_KEY, true);
       this.host.editor.balloonTextFollows = true;
       writeFlag(BALLOON_TEXT_KEY, true);
+      setAutosaveTiming({ delay: AUTOSAVE_DELAY_MS / 1000, maxWait: AUTOSAVE_MAX_WAIT_MS / 1000 });
+      this.host.autosaveTimingChanged();
       this.render();
-      this.host.status("この PC の設定（ページの間隔・吸着・コマと中身・フキダシの変形）を初期に戻しました");
+      this.host.status("この PC の設定（ページの間隔・吸着・コマと中身・フキダシの変形・自動保存の間隔）を初期に戻しました");
     });
     $<HTMLInputElement>("st-search").addEventListener("input", () => this.filter());
     // Esc empties the search box first; the dialog closes on the next one.
@@ -385,7 +424,12 @@ export class SettingsDialog {
     $<HTMLInputElement>("st-panel-carries").checked = this.host.editor.panelCarries;
     $<HTMLInputElement>("st-balloon-text").checked = this.host.editor.balloonTextFollows;
     $<HTMLInputElement>("st-autosave").checked = autosaveToFile();
-    $<HTMLInputElement>("st-auto-update").checked = !updatesPaused();
+    const timing = autosaveTiming();
+    for (const [id, value] of [["st-autosave-delay", timing.delay], ["st-autosave-max-wait", timing.maxWait]] as const) {
+      const field = $<HTMLInputElement>(id);
+      if (document.activeElement !== field) field.value = String(value);
+    }
+    $<HTMLSelectElement>("st-update-mode").value = updateMode();
     const snap = this.host.editor.snapping;
     for (const [key, id] of SNAP_BOXES) $<HTMLInputElement>(id).checked = snap[key] as boolean;
     const grid = $<HTMLInputElement>("st-grid-mm");
@@ -421,7 +465,7 @@ export class SettingsDialog {
           }),
         ),
       );
-      note.textContent = `今の版は v${this.version} です。選んだ版へ入れ替えます（作業は保存してから）。入れ替えると自動更新は止まります。`;
+      note.textContent = `今の版は v${this.version} です。選んだ版へ入れ替えます（作業は保存してから）。入れ替えると、自動更新は「知らせるだけ」になります。`;
     } catch (error) {
       this.releasesLoaded = false;
       select.replaceChildren(element("option", { value: "", textContent: "（版の一覧を読めませんでした）" }));

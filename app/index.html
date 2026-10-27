@@ -356,7 +356,7 @@
       <form method="dialog">
         <h2>版の履歴</h2>
         <p id="vd-where" class="hint"></p>
-        <label class="check"><input type="checkbox" id="vd-autosave" /> 編集をやめて 3 秒たつと、ネームデータのファイルに自動で上書き保存する</label>
+        <label class="check"><input type="checkbox" id="vd-autosave" /> 自動保存のとき、ネームデータのファイルに上書き保存する</label>
         <p class="hint">切ると、自動保存はアプリの中の控えにだけ書きます（落ちたときは次の起動で復元できます）。</p>
         <div id="vd-list" class="version-list"></div>
         <p id="vd-message" class="message" role="status"></p>
@@ -556,15 +556,34 @@
             <section class="settings-pane" data-pane="save" data-scope="pc" data-title="保存">
               <h3>保存 <small>この PC</small></h3>
               <div class="setting-item" data-keys="自動保存 上書き 保存 ファイル">
-                <label class="check"><input type="checkbox" id="st-autosave" /> 編集をやめて 3 秒たつと、ネームデータのファイルに自動で上書き保存する</label>
-                <p class="hint">切っても、履歴（バージョン）には自動で残ります。「履歴」と同じ設定です。</p>
+                <label class="check"><input type="checkbox" id="st-autosave" /> 自動保存のとき、ネームデータのファイルに上書き保存する</label>
+                <p class="hint">切っても、履歴（バージョン）と復旧用の控えには自動で残ります。「履歴」と同じ設定です。</p>
+              </div>
+              <div class="setting-item" data-keys="自動保存 間隔 周期 秒 タイミング 待つ">
+                <div class="setting-row wide">
+                  <span>編集をやめてから</span>
+                  <label><input type="number" id="st-autosave-delay" min="1" max="600" step="1" /> 秒で自動保存</label>
+                </div>
+                <div class="setting-row wide">
+                  <span>編集が続いていても</span>
+                  <label><input type="number" id="st-autosave-max-wait" min="5" max="3600" step="1" /> 秒ごとに自動保存</label>
+                </div>
+                <p class="hint">初期は 3 秒と 30 秒。変更がないときは自動保存しません（ファイルも履歴もそのまま。変えて元に戻しただけのときも書きません）。</p>
               </div>
             </section>
             <section class="settings-pane" data-pane="update" data-scope="pc" data-title="更新">
               <h3>更新 <small>この PC</small></h3>
               <div class="setting-item" data-keys="更新 自動更新 アップデート 新しい版">
-                <label class="check"><input type="checkbox" id="st-auto-update" /> 起動したとき、新しい版を自動で入れる</label>
-                <p class="hint">切ると、新しい版があっても右上の「更新」を押すまで入れません。</p>
+                <div class="setting-row">
+                  <span>起動したとき</span>
+                  <select id="st-update-mode">
+                    <option value="auto">新しい版を確かめて、自動で入れる</option>
+                    <option value="notify">新しい版を確かめて、知らせるだけ</option>
+                    <option value="off">確かめない</option>
+                  </select>
+                  <button type="button" id="st-check-update">今すぐ確かめる</button>
+                </div>
+                <p class="hint">「自動で入れる」は、ネームを開く前なら入れて起動し直します（開いていれば右上の「更新」を待ちます）。「知らせるだけ」は右上の「更新」を押すまで入れません。「確かめない」は起動時にネットを見ません。</p>
               </div>
               <div class="setting-item" data-keys="前の版 戻す 古い版 ダウングレード 更新 不具合 バージョン">
                 <div class="setting-row">
@@ -572,7 +591,7 @@
                   <select id="st-release"><option value="">（版の一覧を読む）</option></select>
                   <button type="button" id="st-install-release" disabled>この版を入れる…</button>
                 </div>
-                <p class="hint" id="st-release-note">新しい版で困ったときに、選んだ版へ入れ替えます（作業は保存してから）。入れ替えると自動更新は止まります。</p>
+                <p class="hint" id="st-release-note">新しい版で困ったときに、選んだ版へ入れ替えます（作業は保存してから）。入れ替えると、自動更新は「知らせるだけ」になります。</p>
               </div>
             </section>
             <section class="settings-pane" data-pane="more" data-scope="pc" data-title="ペン・キー">

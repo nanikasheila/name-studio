@@ -795,6 +795,7 @@ dialog.settings { width: min(820px, calc(100vw - 32px)); height: min(640px, calc
 .settings .setting-item:last-child { border-bottom: 0; }
 .settings .setting-row { display: flex; align-items: center; gap: 14px; margin: 2px 0; flex-wrap: wrap; }
 .settings .setting-row > span { min-width: 7em; }
+.settings .setting-row.wide > span { min-width: 10em; }
 .settings .setting-row label { display: inline-flex; align-items: center; gap: 4px; }
 .settings input[type="number"] { width: 5.5em; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
 .settings select { font: inherit; }
