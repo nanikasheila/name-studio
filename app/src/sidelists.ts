@@ -181,7 +181,7 @@ export class SideLists {
       const color = element("input", { type: "color", value: character.color ?? "#2f6fdb" });
       color.addEventListener("change", () => this.host.edit(() => (character.color = color.value)));
       const said = project.pages.flatMap((page, index) => page.lines.filter((l) => l.speaker === character.id).map((line) => ({ page, index, line })));
-      const remove = element("button", { className: "danger", textContent: "削除", title: `セリフ ${said.length} 件の話者が空になります` });
+      const remove = element("button", { className: "danger", textContent: "消す", title: `セリフ ${said.length} 件の話者が空になります` });
       remove.addEventListener("click", () => this.host.edit((p) => removeCharacter(p, character.id)));
       // 口調: kept beside the name, to write the dialogue in voice.
       const tone = element("textarea", { className: "tone", rows: 2, placeholder: "口調のメモ（一人称・語尾・口ぐせ）", value: character.tone ?? "" });

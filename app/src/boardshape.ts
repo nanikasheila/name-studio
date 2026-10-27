@@ -161,7 +161,7 @@ export function shapeInspector(view: LaneView, project: Project): HTMLElement[] 
     const pages = html("span", { className: "pages", textContent: span ? `${span.first + 1}〜${span.last + 1}` : "—", title: inside.length ? `シーン: ${inside.join("・")}` : "ここに当たるシーンはありません" });
     const split = html("button", { className: "small", textContent: "分割", title: "この区切りを二つに分ける" });
     split.addEventListener("click", () => change((own) => splitPart(own, i)));
-    const remove = html("button", { className: "danger small", textContent: "✕", title: "この区切りを消す（ページは前の区切りへ）", disabled: shape.parts.length <= 1 });
+    const remove = html("button", { className: "danger small", textContent: "×", title: "この区切りを消す（ページは前の区切りへ）", disabled: shape.parts.length <= 1 });
     remove.addEventListener("click", () => change((own) => removePart(own, i)));
     return html("div", { className: "insp-row part" }, color, name, pages, split, remove);
   });
@@ -173,7 +173,7 @@ export function shapeInspector(view: LaneView, project: Project): HTMLElement[] 
       const value = Number.parseInt(page.value, 10);
       if (Number.isInteger(value)) change((own) => setBeat(own, i, (Math.max(1, Math.min(count, value)) - 0.5) / count));
     });
-    const remove = html("button", { className: "danger small", textContent: "✕" });
+    const remove = html("button", { className: "danger small", textContent: "×" });
     remove.addEventListener("click", () => change((own) => removeBeat(own, i)));
     return html("div", { className: "insp-row beat" }, html("span", { className: "diamond", textContent: "◆" }), name, page, remove);
   });

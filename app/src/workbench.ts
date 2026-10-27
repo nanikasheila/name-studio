@@ -245,7 +245,8 @@ export class Workbench {
       movePages: (first, last, target) => this.edits.movePages(first, last, target),
       makeOption: (first, last) => this.edits.makeOption(first, last),
       currentPages: () => this.editor.currentPages(),
-      inspect: () => this.renderInspector(),
+      // What is picked in the strip is the one selection: the page's lets go.
+      inspect: () => (this.board.selected && this.editor.select(null, true), this.renderInspector()),
       status: (message) => this.setStatus(message),
     });
     this.inspector = new Inspector({
@@ -841,7 +842,6 @@ export class Workbench {
   }
 
   private selectLayer(ref: LayerRef): void {
-    if (this.editor.tool !== "select") this.setTool("select");
     if (ref.kind === "strokes") {
       const items = ref.ids.map((id) => ({ kind: "stroke" as const, id }));
       this.editor.select(items.length === 1 ? { kind: "stroke", pageId: ref.pageId, id: ref.ids[0] } : { kind: "group", pageId: ref.pageId, id: "group", items });
@@ -851,11 +851,10 @@ export class Workbench {
     this.renderLayers();
   }
 
-  /** Show a page in the editor with one of its things selected. */
+  /** Show a page in the editor with one of its things selected (a tool that does not keep it gives way to the select tool). */
   private goTo(pageId: string, kind: "line" | "sticky" | "panel", id: string): void {
     const index = this.session.project?.pages.findIndex((p) => p.id === pageId) ?? -1;
     if (index < 0) return;
-    if (this.editor.tool !== "select" && !(kind === "panel" && this.editor.tool === "cut")) this.setTool("select");
     this.editor.showPage(index + 1);
     this.editor.select({ kind, pageId, id });
     this.renderAll();
