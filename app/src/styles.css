@@ -888,3 +888,4 @@ dialog.readback-pick { width: min(640px, calc(100vw - 32px)); }
 .readback-pick h4 { margin: 10px 0 4px; font-size: 13px; }
 .readback-list { max-height: min(50vh, 420px); overflow: auto; border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px 8px; margin: 8px 0; }
 .readback-item { display: flex; gap: 6px; align-items: flex-start; padding: 2px 0; line-height: 1.5; }
+.script-rows > .hint { margin: 6px 12px 2px; }
