@@ -24,6 +24,7 @@ use super::layers::{csp_image, place_above, raster_like, save};
 use super::manifest::{PageRecord, image_signature};
 use super::raster_page::{
     Donors, PageLayer, PartDonors, RasterLayer, add_text_layer, add_vector_layer, layer_name, make_draft, prepare_for,
+    set_opacity,
 };
 use crate::RgbaImage;
 use crate::clip::{ClipDocument, ClipLayer, LayerKind};
@@ -464,6 +465,7 @@ pub fn update_dialogue(
         report.replaced.push(name);
     }
 
+    let is_notes = |layer: &RasterLayer| update.notes.as_ref().is_some_and(|notes| std::ptr::eq(notes, layer));
     for (layer, found) in redrawn {
         let id = match found {
             Some(id) => id,
@@ -484,13 +486,17 @@ pub fn update_dialogue(
                     like.as_ref().map(|row| (own.source.file(), row)),
                 )?;
                 make_draft(&mut file, id)?;
+                if !is_notes(layer) {
+                    // 指示 keep their colour: a 下描き layer at full opacity.
+                    set_opacity(&mut file, id, 1.0)?;
+                }
                 id
             }
         };
         // Drawn anew: the old pixels go.
         let image = fit(&layer.image, width, height);
         file.set_layer_pixels(id, &csp_image(image.as_ref().unwrap_or(&layer.image)), (0, 0))?;
-        if update.notes.as_ref().is_some_and(|notes| std::ptr::eq(notes, layer)) {
+        if is_notes(layer) {
             report.notes = true;
         } else {
             report.marks.push(layer.name.clone());

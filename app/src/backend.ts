@@ -46,6 +46,8 @@ export interface LayerLook {
   name: string;
   opacity: number;
   hidden: boolean;
+  /** The opacity as is, not times the 下描き half (指示 keep their colour). */
+  whole?: boolean;
 }
 
 export interface CspExportRequest {
