@@ -11,8 +11,8 @@ import type { ItemRef, TransformBase } from "./transform";
 
 export type Tool = "select" | "cut" | "text" | "pen" | "eraser" | "fill" | "breakout" | "sticky" | "reference";
 
-/** コマ割り: cut panels apart, draw a rectangle panel, or place the corners of any shape (台形 and the like). */
-export type PanelMode = "cut" | "rect" | "polygon";
+/** コマ割り: cut panels apart, draw them by hand (仮のコマ), draw a rectangle panel, or place the corners of any shape (台形 and the like). */
+export type PanelMode = "cut" | "sketch" | "rect" | "polygon";
 
 /** How the eraser works: CSP's three vector erasers, and 囲って消す. */
 export type EditorEraseMode = EraseMode | "lasso";
@@ -126,6 +126,8 @@ export type ToolDrag =
       targets: SnapTargets;
     }
   | { kind: "cut"; slot: Slot; a: Point; b: Point; free: boolean }
+  /** なぐり描きのコマ割り: the line drawn so far (mm). */
+  | { kind: "sketch"; slot: Slot; points: Point[] }
   | { kind: "frame"; slot: Slot; a: Point; b: Point; targets: SnapTargets }
   | {
       kind: "pen";

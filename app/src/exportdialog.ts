@@ -17,6 +17,7 @@ import {
 } from "./nameexport";
 import { applyTakeBack, planTakeBack, takeBackSummary } from "./readback";
 import { ISSUE_LABELS, checkName, issueSummary } from "./namecheck";
+import { tidyPanels } from "./tidy";
 import { $, element } from "./dom";
 import { readText, writeText } from "./settings";
 import { compactStory, cspPageOf, firstPageLeft, joinedPage, pageSetup, piecesPerPage, pixelSize, presetOf, PRESETS, setupProblem, withPreset } from "./csppage";
@@ -404,11 +405,16 @@ export class ExportDialog {
   /** 書き出す前の確認: what will need fixing by hand afterwards, each one a click away. */
   private renderCheck(project: Project): void {
     const issues = checkName(project);
+    // 仮のコマ: written as they are, but likely meant to be tidied first.
+    const drafts = project.pages.reduce((sum, page) => sum + page.panels.filter((panel) => panel.draft).length, 0);
     const details = $<HTMLDetailsElement>("ne-check");
-    details.classList.toggle("clean", !issues.length);
+    details.classList.toggle("clean", !issues.length && !drafts);
+    const draftNote = drafts ? `仮のコマ ${drafts}` : "";
     $("ne-check-summary").textContent = issues.length
-      ? `書き出す前の確認: ${issueSummary(issues)}（押すとそのセリフへ）`
-      : "書き出す前の確認: フキダシの重なり・コマの外・はみ出し・仕上がりの外・しっぽなし・顔にかかるセリフはありません";
+      ? `書き出す前の確認: ${[draftNote, issueSummary(issues)].filter(Boolean).join("・")}（押すとそのセリフへ）`
+      : drafts
+        ? `書き出す前の確認: ${draftNote}（整えないとそのままの形で書き出します）`
+        : "書き出す前の確認: フキダシの重なり・コマの外・はみ出し・仕上がりの外・しっぽなし・顔にかかるセリフはありません";
     const list = $("ne-check-list");
     list.replaceChildren(
       ...issues.slice(0, 60).map((issue) => {
@@ -423,6 +429,21 @@ export class ExportDialog {
       }),
     );
     if (issues.length > 60) list.append(Object.assign(document.createElement("p"), { className: "hint", textContent: `ほか ${issues.length - 60} 件` }));
+    if (drafts) {
+      const fix = Object.assign(document.createElement("button"), { type: "button", className: "fix", textContent: `仮のコマ ${drafts} 個を全部整える（線をそろえ、コマ間を設定の幅に）` });
+      fix.addEventListener("click", () => {
+        this.host.edit((p) => {
+          for (const page of p.pages) {
+            const ids = page.panels.filter((panel) => panel.draft && !panel.spread).map((panel) => panel.id);
+            if (ids.length) tidyPanels(p, page, ids);
+          }
+        });
+        this.host.status("仮のコマを整えました（元に戻すは Ctrl+Z）");
+        const updated = this.host.project();
+        if (updated) this.renderCheck(updated);
+      });
+      list.prepend(fix);
+    }
     if (issues.some((issue) => issue.kind === "tail")) {
       const fix = Object.assign(document.createElement("button"), { type: "button", className: "fix", textContent: "しっぽのないセリフ全部にしっぽを付ける（コマのラフの人物へ向ける）" });
       fix.addEventListener("click", () => {

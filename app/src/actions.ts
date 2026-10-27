@@ -26,6 +26,8 @@ export interface CommandHost {
   setPanelMode(mode: PanelMode): void;
   /** The selected panel into 保留, contents and all; false when no panel is selected. */
   holdSelected(): boolean;
+  /** 整える: the selected panels, else the 仮のコマ, else all panels of the page worked on; false when there are none. */
+  tidyPanels(): boolean;
   /** CSP のセリフを読み戻す, from the folder of this name's last CSP export. */
   readBack(): void;
   /** 次の話を作る in the open name's series; false when it is in none. */
@@ -192,8 +194,10 @@ export function buildCommands(host: CommandHost): Command[] {
     tool("tool.sticky", "sticky", "付箋", ["M"], "メモ"),
     tool("tool.reference", "reference", "資料画像", ["I"], "写真 背景 画像"),
     { id: "panel.modeCut", label: "コマ割り: 割る（横切るように引く）", group: "道具", keys: [], words: "コマ 割る", available: named, run: always(() => host.setPanelMode("cut")) },
+    { id: "panel.modeSketch", label: "コマ割り: 描く（なぐり描きで仮のコマ割り）", group: "道具", keys: [], words: "コマ 描く 手描き ラフ 仮 なぐり描き", available: named, run: always(() => host.setPanelMode("sketch")) },
     { id: "panel.modeRect", label: "コマ割り: 四角（ドラッグで四角いコマ）", group: "道具", keys: [], words: "コマ 四角 矩形", available: named, run: always(() => host.setPanelMode("rect")) },
     { id: "panel.modePolygon", label: "コマ割り: 多角形（角を置く）", group: "道具", keys: [], words: "コマ 多角形 台形", available: named, run: always(() => host.setPanelMode("polygon")) },
+    { id: "panel.tidy", label: "コマ割りを整える（仮のコマを清書）", group: "編集", keys: ["Shift+K"], words: "整える 清書 そろえる 仮 コマ間 揃える", available: () => !!page()?.panels.length, run: () => host.tidyPanels() },
     { id: "panel.hold", label: "選んだコマを中身ごと保留にする", group: "編集", keys: [], words: "保留 置き場所 あとで", available: () => editor.selection?.kind === "panel", run: () => host.holdSelected() },
     {
       id: "eraser.next",

@@ -272,7 +272,7 @@ export function snapSeam(seam: Seam, distance: number, targets: SnapTargets, tol
 
 // --- つなげる -----------------------------------------------------------------
 
-function convexHull(points: readonly Point[]): Point[] {
+export function convexHull(points: readonly Point[]): Point[] {
   const sorted = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   const cross = (o: Point, a: Point, b: Point) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
   const lower: Point[] = [];

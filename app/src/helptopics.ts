@@ -107,6 +107,17 @@ export const TOOL_TOPICS: Record<string, HelpTopic> = {
       ...VIEW_STEPS,
     ],
   },
+  "cut.sketch": {
+    name: "コマ割り（描く）",
+    what: "紙のようになぐり描きでコマを割る。できたコマは仮のコマ（鉛筆の線）",
+    steps: [
+      { input: "囲むように描く", does: "仮のコマを足す（コマの中なら、はめ込み）" },
+      { input: "コマを横切って描く", does: "仮に割る（白紙のページは基本枠ごと）" },
+      { input: "コマの間をぐしゃぐしゃ", does: "両側のコマをつなげる" },
+      { command: "panel.tidy", does: "整える（線をそろえ、コマ間を設定の幅に）" },
+      ...VIEW_STEPS,
+    ],
+  },
   "cut.rect": {
     name: "コマ割り（四角）",
     what: "ドラッグで四角いコマを描く",
@@ -208,6 +219,7 @@ export const HOVER_TOPICS: Record<string, HelpTopic> = {
       { input: "Alt+ドラッグ", does: "吸い付かずに動かす" },
       { input: "Shift+クリック", does: "選択に足す" },
       { command: "transform", does: "変形" },
+      { command: "panel.tidy", does: "整える（仮のコマを清書）" },
       { command: "delete", does: "消す" },
     ],
   },
@@ -465,7 +477,7 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
   { target: "#help", name: "ヘルプ", text: "この画面。もう一度で閉じる", command: "help.overlay", side: "below" },
   // The tools.
   tool("select", "選択", "選ぶ・動かす・ダブルクリックで書く"),
-  tool("cut", "コマ割り", "引いて割る・四角・多角形"),
+  tool("cut", "コマ割り", "引いて割る・なぐり描き・四角・多角形"),
   tool("text", "セリフ", "クリックで置いてその場で書く"),
   tool("pen", "ペン", "ラフを描く"),
   tool("eraser", "消しゴム", "もう一度押すと消し方を切り替え"),
@@ -475,6 +487,7 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
   tool("reference", "資料", "写真や背景を薄く敷く"),
   // Around the pages.
   { target: "#tool-options", name: "道具の設定", text: "持っている道具の設定と使い方のひと言", side: "below" },
+  { target: "#panel-tidy", name: "整える", text: "仮のコマを清書（線をそろえ、コマ間を設定の幅に）", command: "panel.tidy", side: "below" },
   { target: "#editor-canvas", name: "紙面", text: "ここに描く。Space+ドラッグで動かす・ホイールで拡大縮小・Shift+Space+ドラッグで回す", command: "view.fit", side: "inside" },
   { target: "#editor-next", name: "ページをめくる", text: "", command: "page.next", side: "above" },
   { target: "#spread-mode", name: "見開き・単独・連続", text: "連続は全ページを一枚に並べる", command: "view.continuous", side: "above" },
@@ -514,7 +527,7 @@ export const TOUR_STOPS: TourStop[] = [
   {
     target: "#tool-options",
     title: "道具の設定",
-    text: ["持っている道具の設定（コマの作り方・ペンの太さ・消し方など）と、使い方のひと言が出ます。"],
+    text: ["持っている道具の設定（コマの作り方・ペンの太さ・消し方など）と、使い方のひと言が出ます。", "コマ割りが決まらないうちは「描く」で仮のコマを描き、決まったら {panel.tidy} で整えます。"],
   },
   {
     target: "#editor-canvas",

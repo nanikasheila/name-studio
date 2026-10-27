@@ -64,14 +64,14 @@ import { dragHandler, PRESS } from "./tools";
 import { pickedSummary } from "./toolselect";
 import { snapPointTo, snapTargets, type SnapSettings, type SnapTargets } from "./snapping";
 import { Viewport } from "./viewport";
-import { ACCENT, drawLeader, drawSticky, NOTE_FONT, NOTE_ROW, noteBox, stickyHandle, type NoteBox } from "./notedraw";
+import { ACCENT, drawSticky, NOTE_FONT, NOTE_ROW, noteBox, stickyHandle, type NoteBox } from "./notedraw";
 import { writeInPlace, type InPlaceEdit, type InPlaceHost } from "./inplace";
-import { drawCorners, drawCutOrFrame, drawDashedLine, drawFillArea, drawGoingTo, drawGuideLines, drawLasso, drawLifted, drawOverflowPanels, drawPenCursor, drawPointerNote, drawReferenceFrames, drawSpreadMarks, drawRing, drawScreenPage, drawSeam, drawSnapGrid, drawTransformFrame, drawWarpCorners, HANDLE, panelBadge } from "./screendraw";
+import { drawCorners, drawCutOrFrame, drawDashedLine, drawFillArea, drawGoingTo, drawGuideLines, drawLasso, drawLifted, drawOverflowPanels, drawPenCursor, drawPointerNote, drawReferenceFrames, drawSpreadMarks, drawRing, drawScreenPage, drawSeam, drawSketch, drawSnapGrid, drawStickyLink, drawTransformFrame, drawWarpCorners, HANDLE, panelBadge } from "./screendraw";
 
 export type { EditorEraseMode, EditorHost, PanelMode, Selection, Tool } from "./editorcore";
 export { pickedSummary };
 
-export const PANEL_MODE_LABELS: Record<PanelMode, string> = { cut: "割る", rect: "四角", polygon: "多角形" };
+export const PANEL_MODE_LABELS: Record<PanelMode, string> = { cut: "割る", sketch: "描く", rect: "四角", polygon: "多角形" };
 
 export const ERASE_MODE_LABELS: Record<EditorEraseMode, string> = {
   touched: "触れた部分",
@@ -1126,24 +1126,8 @@ export class PageEditor {
     if ((drag?.kind === "lasso" || drag?.kind === "pick" || drag?.kind === "eraseLasso") && drag.points.length > 1) {
       drawLasso(ctx, drag.slot, drag.points, drag.kind === "lasso" ? "rgba(214, 120, 40, 0.9)" : drag.kind === "pick" ? ACCENT : "rgba(192, 57, 43, 0.9)");
     }
-    if (drag?.kind === "stickyLink" && this.pointer) {
-      const { slot } = drag;
-      const sticky = slot.page.stickies?.find((n) => n.id === drag.stickyId);
-      if (sticky) {
-        const [x0, y0, x1, y1] = stickyBox(sticky);
-        const [px, py] = this.pointer;
-        if (drag.to) {
-          const box = drag.to.kind === "panel" ? slot.page.panels.find((p) => p.id === drag.to!.id)?.shape : null;
-          if (box) {
-            tracePath(ctx, box, { scale: slot.scale, x: slot.x, y: slot.y }, true);
-            ctx.fillStyle = "rgba(201, 154, 18, 0.18)";
-            ctx.fill();
-          }
-        }
-        drawLeader(ctx, px, py, [slot.x + x0 * slot.scale, slot.y + y0 * slot.scale, slot.x + x1 * slot.scale, slot.y + y1 * slot.scale], ACCENT);
-        drawPointerNote(ctx, this.pointer, drag.to ? (drag.to.kind === "panel" ? "このコマに紐づける" : "このセリフに紐づける") : sticky.link ? "ここで離すと紐づけを外す" : "コマかセリフの上で離す");
-      }
-    }
+    if (drag?.kind === "stickyLink" && this.pointer) drawStickyLink(ctx, drag.slot, drag.stickyId, drag.to, this.pointer);
+    if (drag?.kind === "sketch") drawSketch(ctx, drag.slot, drag.points);
     if (drag?.kind === "swap" && this.pointer) {
       // An arrow from the panel's number to where its contents go.
       drawDashedLine(ctx, drag.at, this.pointer);
