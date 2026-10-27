@@ -1,6 +1,8 @@
 // Stands in for the Tauri side in a plain browser: the app starts, commands
 // are recorded (window.__calls) and answered as an app with no file would.
 window.__calls = [];
+// The first-time guide is seen: it would sit over what the tests press (e2e/help.mjs shows it on purpose).
+if (!localStorage.getItem("namestudio.tourSeen")) localStorage.setItem("namestudio.tourSeen", JSON.stringify({ editor: true, start: true }));
 window.__TAURI_INTERNALS__ = {
   metadata: { currentWindow: { label: "main" }, currentWebview: { windowLabel: "main", label: "main" } },
   async invoke(command, args) {

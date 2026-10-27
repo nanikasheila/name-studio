@@ -5,6 +5,7 @@ import type { Board, LaneId } from "./board";
 import type { Command } from "./commands";
 import type { PaletteId } from "./dock";
 import { ERASE_MODE_LABELS, type EditorEraseMode, type PageEditor, type PanelMode, type Tool } from "./editor";
+import type { HelpKind } from "./helptopics";
 import type { Page } from "./model";
 
 /** What the commands need from the workbench. */
@@ -50,6 +51,8 @@ export interface CommandHost {
   click(buttonId: string): boolean;
   /** Whether that button is there and can be pressed. */
   canClick(buttonId: string): boolean;
+  /** ヘルプ: the help over the whole screen, the first-time guide, the help bar shown or hidden. */
+  help(kind: HelpKind): void;
 }
 
 /** Every command, in the order the key settings and the palette show them. */
@@ -327,5 +330,8 @@ export function buildCommands(host: CommandHost): Command[] {
     button("settings", "設定…", "設定", [], "コマ間 フォント 吸着 読む向き"),
     button("shortcuts", "キー設定…", "設定", [], "ショートカット キーボード"),
     button("pen-settings", "ペン設定…", "設定", [], "筆圧 タブレット"),
+    { id: "help.overlay", label: "画面のヘルプ（各部の名前と使い方を重ねて出す）", group: "ヘルプ", keys: ["?"], words: "ヘルプ 使い方 説明 操作 わからない", run: always(() => host.help("overlay")) },
+    { id: "help.tour", label: "使い方の案内を始める", group: "ヘルプ", keys: [], words: "ヘルプ はじめて 初めて チュートリアル ツアー 使い方", run: always(() => host.help("tour")) },
+    { id: "help.bar", label: "下のヘルプの帯を出す・隠す", group: "ヘルプ", keys: [], words: "ヘルプ 説明 ステータス 帯", run: always(() => host.help("bar")) },
   ];
 }

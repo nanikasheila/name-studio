@@ -83,10 +83,74 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   touch-action: none; user-select: none; -webkit-user-select: none; -webkit-user-drag: none;
 }
 .empty { position: absolute; inset: 0; display: grid; place-items: center; color: #f4f3f0; }
-.status {
-  padding: 4px 12px; font-size: 12px; color: var(--muted); background: var(--panel);
-  border-top: 1px solid var(--line); min-height: 24px;
+/* The bar under the window: ヘルプの帯 (what is under the pointer) on the left, the last message on the right. */
+.status-bar {
+  display: flex; align-items: center; gap: 16px; padding: 0 8px 0 12px; font-size: 12px; color: var(--muted);
+  background: var(--panel); border-top: 1px solid var(--line); min-height: 26px;
 }
+.status { flex: 0 1 auto; max-width: 50%; margin-left: auto; padding: 4px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.help-bar { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.help-bar[hidden] { display: none; }
+.help-bar-text { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 14px; white-space: nowrap; overflow: hidden; mask-image: linear-gradient(to left, transparent, #000 24px); }
+.help-bar-text > * { flex-shrink: 0; }
+.help-name { color: var(--text); font-weight: 600; }
+.help-what { color: var(--muted); flex-shrink: 1; overflow: hidden; text-overflow: ellipsis; max-width: 32em; }
+.help-step { color: var(--text); }
+.help-step kbd, .help-label kbd, .tour-card kbd {
+  font: inherit; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; color: var(--accent); margin-right: 5px;
+}
+.help-step.held kbd { background: var(--accent); color: #fff; border-radius: 3px; padding: 0 4px; }
+.help-idle { color: var(--muted); }
+#help-bar-hide { padding: 0 3px; border: none; background: none; opacity: 0.55; }
+#help-bar-hide:hover { opacity: 1; }
+#help-bar-hide .icon { width: 13px; height: 13px; }
+.help-button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* 画面のヘルプ: the screen dimmed, its parts framed and named with a line to each. */
+.help-overlay { position: fixed; inset: 0; z-index: 90; background: rgba(14, 14, 18, 0.74); color: #f2f0eb; cursor: default; }
+.help-overlay[hidden] { display: none; }
+.help-lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.help-line { stroke: rgba(255, 255, 255, 0.75); stroke-width: 1.2; }
+.help-dot { fill: #fff; }
+.help-target { fill: rgba(255, 255, 255, 0.08); stroke: rgba(255, 255, 255, 0.85); stroke-width: 1.2; }
+.help-area { fill: none; stroke: rgba(255, 255, 255, 0.45); stroke-width: 1.2; stroke-dasharray: 5 4; }
+.help-labels { position: absolute; inset: 0; pointer-events: none; }
+.help-label {
+  position: absolute; max-width: 230px; padding: 4px 8px; border-radius: 6px; font-size: 12px; line-height: 1.45;
+  background: rgba(20, 20, 24, 0.86); box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+}
+.help-label.inside { max-width: 320px; padding: 8px 12px; text-align: center; background: rgba(20, 20, 24, 0.78); }
+.help-label.inside b { font-size: 14px; }
+.help-label-title { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.help-label.inside .help-label-title { justify-content: center; }
+.help-label b { font-weight: 700; color: #fff; }
+.help-label kbd { color: #9cc0ff; margin: 0; }
+.help-label-text { color: #d6d3cc; }
+.help-head {
+  position: absolute; right: 16px; bottom: 40px; width: min(420px, calc(100vw - 32px)); padding: 14px 16px;
+  border-radius: 10px; background: rgba(20, 20, 24, 0.94); box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+}
+.help-head h2 { margin: 0 0 4px; font-size: 16px; color: #fff; }
+.help-intro { margin: 0 0 10px; font-size: 12px; line-height: 1.6; color: #d6d3cc; }
+.help-head-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.help-head-actions button:not(.primary) { background: #2c2b29; border-color: #4a4843; color: #f2f0eb; }
+
+/* 使い方の案内: one part lit, the rest dimmed; the screen stays usable under it. */
+.tour { position: fixed; inset: 0; z-index: 80; pointer-events: none; }
+.tour[hidden] { display: none; }
+.tour-spot {
+  position: absolute; border-radius: 8px; box-shadow: 0 0 0 200vmax rgba(10, 10, 14, 0.5); outline: 2px solid var(--accent);
+  transition: left 0.18s, top 0.18s, width 0.18s, height 0.18s;
+}
+.tour-card {
+  position: absolute; width: min(360px, calc(100vw - 16px)); padding: 14px 16px 12px; border-radius: 10px; pointer-events: auto;
+  background: var(--panel); color: var(--text); border: 1px solid var(--line); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+}
+.tour-card h3 { margin: 0 0 6px; font-size: 15px; }
+.tour-card p { margin: 0 0 6px; font-size: 13px; line-height: 1.65; }
+.tour-count { float: right; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tour-actions { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
+.tour-skip { border: none; background: none; color: var(--muted); padding-left: 0; }
 .empty[hidden] { display: none; }
 /* The start screen: open, new, and the names opened last (the sheet viewer's stage before a sheet is open). */
 #viewer.start .sidebar { display: none; }
