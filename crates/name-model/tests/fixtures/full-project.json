@@ -889,14 +889,18 @@
       "name": "ラフ線",
       "hidden": false,
       "opacity": 1,
-      "locked": false
+      "locked": false,
+      "marks": false,
+      "color": "#e53935"
     },
     {
       "id": "rough2",
       "name": "人物",
       "hidden": true,
       "opacity": 0.5,
-      "locked": true
+      "locked": true,
+      "marks": true,
+      "color": "#1e6fd9"
     }
   ],
   "series": "../作品.nameseries",

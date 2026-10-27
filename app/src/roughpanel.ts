@@ -1,13 +1,21 @@
 // The ラフ線のレイヤー list at the top of the レイヤー palette: the layer the pen
 // draws on (the row picked), and for each layer its eye, lock and opacity, as
-// CSP's layer palette. The top of the list is the top layer.
+// CSP's layer palette. The top of the list is the top layer. Above them the
+// 指示のレイヤー, each in its colour: the row picked is what the 指示 tool
+// draws on.
+import type { PageEditor, Tool } from "./editor";
 import type { Project, RoughLayer } from "./model";
-import { layerStrokeCount, opacityOfLayer, roughLayersOf } from "./roughlayers";
+import { layerOf, layerStrokeCount, markColor, markLayersOf, MARK_COLORS, MARK_COLOR_NAMES, opacityOfLayer, roughLayersOf } from "./roughlayers";
+import { markPen } from "./toolmark";
 
 export type RoughChange =
   | { kind: "add" }
+  /** A 指示のレイヤー in the next colour. */
+  | { kind: "addMarks" }
+  /** Every 指示のレイヤー shown or hidden. */
+  | { kind: "showMarks"; shown: boolean }
   | { kind: "rename"; id: string; name: string }
-  | { kind: "look"; id: string; change: Partial<Pick<RoughLayer, "hidden" | "opacity" | "locked">> }
+  | { kind: "look"; id: string; change: Partial<Pick<RoughLayer, "hidden" | "opacity" | "locked" | "color">> }
   | { kind: "move"; id: string; step: 1 | -1 }
   | { kind: "remove"; id: string; mergeDown: boolean }
   /** The lines selected on the page onto this layer. */
@@ -15,9 +23,10 @@ export type RoughChange =
 
 export interface RoughPanelHost {
   project(): Project | null;
-  /** The layer the pen draws on. */
-  active(): string;
-  setActive(id: string): void;
+  editor(): PageEditor;
+  status(message: string): void;
+  /** A layer was picked: the tool that draws on it taken up (when it changes), the list shown again. */
+  picked(tool: Tool | null): void;
   change(change: RoughChange): void;
   /** How many lines are selected on the page (to move onto a layer). */
   selectedStrokes(): number;
@@ -33,7 +42,15 @@ export class RoughPanel {
       return;
     }
     const layers = roughLayersOf(project);
-    const active = this.host.active();
+    const active = layerOf(project, { layer: this.host.editor().roughLayer }).id;
+    const marks = markLayersOf(project);
+    const activeMark = (marks.find((layer) => layer.id === markPen.layer) ?? marks[marks.length - 1])?.id;
+    const markHead = element("div", "rough-head");
+    markHead.append(element("span", "layer-page", "指示のレイヤー"));
+    const addMarks = button("＋", marks.length ? "別の色の指示のレイヤーを足す" : "指示のレイヤーを作る（指示ツール R で描いても作られます）", () => this.host.change({ kind: "addMarks" }));
+    addMarks.id = "marks-add";
+    markHead.append(addMarks);
+    const markRows = [...marks].reverse().map((layer, fromTop) => this.row(project, layer, layer.id === activeMark, fromTop, marks.length));
     const head = element("div", "rough-head");
     head.append(element("span", "layer-page", "ラフ線のレイヤー"));
     const add = button("＋", "レイヤーを足す（いま選んでいるレイヤーの上に）", () => this.host.change({ kind: "add" }));
@@ -49,14 +66,24 @@ export class RoughPanel {
       take.id = "rough-take";
       tools.append(take);
     }
-    container.replaceChildren(head, ...rows, tools);
+    container.replaceChildren(markHead, ...markRows, head, ...rows, tools);
+  }
+
+  /** A row picked: the pen draws on a ラフ線のレイヤー, the 指示 tool on a 指示のレイヤー. */
+  private pick(layer: RoughLayer): void {
+    const editor = this.host.editor();
+    if (layer.marks) markPen.layer = layer.id;
+    else editor.roughLayer = layer.id;
+    this.host.status(layer.marks ? `指示ツールでレイヤー「${layer.name}」に描きます` : `ペンでレイヤー「${layer.name}」に描きます`);
+    const tool = layer.marks ? (editor.tool === "mark" ? null : "mark") : editor.tool === "mark" ? "pen" : null;
+    this.host.picked(tool);
   }
 
   private row(project: Project, layer: RoughLayer, active: boolean, fromTop: number, count: number): HTMLElement {
     const row = element("div", `rough-row${active ? " selected" : ""}${layer.hidden ? " hidden-layer" : ""}`);
     row.dataset.rough = layer.id;
-    row.title = "押すと、ペンでこのレイヤーに描きます";
-    row.addEventListener("click", () => this.host.setActive(layer.id));
+    row.title = layer.marks ? "押すと、指示ツールでこのレイヤーに描きます" : "押すと、ペンでこのレイヤーに描きます";
+    row.addEventListener("click", () => this.pick(layer));
     const look = (change: RoughChange & { kind: "look" }) => (event: Event) => {
       event.stopPropagation();
       this.host.change(change);
@@ -73,6 +100,19 @@ export class RoughPanel {
       look({ kind: "look", id: layer.id, change: { locked: !layer.locked } }),
     );
     lock.className = `layer-eye rough-lock${layer.locked ? " on" : ""}`;
+    // A 指示のレイヤー's colour: pressed, the next one.
+    const swatches: HTMLElement[] = [];
+    if (layer.marks) {
+      const color = markColor(layer);
+      const named = (c: string) => MARK_COLOR_NAMES[c as (typeof MARK_COLORS)[number]] ?? c;
+      const next = MARK_COLORS[(MARK_COLORS.indexOf(color as (typeof MARK_COLORS)[number]) + 1) % MARK_COLORS.length];
+      const swatch = button("", `色: ${named(color)}（押すと${named(next)}に）`, look({ kind: "look", id: layer.id, change: { color: next } }));
+      swatch.className = "mark-swatch";
+      swatch.style.background = color;
+      swatch.setAttribute("aria-label", `${layer.name}の色: ${named(color)}`);
+      row.dataset.color = color;
+      swatches.push(swatch);
+    }
     const name = element("span", "layer-name", layer.name);
     name.title = "ダブルクリックで名前を変える";
     name.addEventListener("dblclick", (event) => {
@@ -111,9 +151,9 @@ export class RoughPanel {
       event.stopPropagation();
       this.host.change({ kind: "remove", id: layer.id, mergeDown: false });
     });
-    remove.disabled = count < 2;
+    remove.disabled = count < 2 && !layer.marks;
     menu.append(up, down, merge, remove);
-    row.append(eye, lock, name, lines, opacity, menu);
+    row.append(eye, lock, ...swatches, name, lines, opacity, menu);
     return row;
   }
 

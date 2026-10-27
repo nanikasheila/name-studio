@@ -347,6 +347,20 @@ dialog.brushes { width: min(720px, calc(100vw - 32px)); }
 .brush-row .meta { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .brush-row .badge { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
 .brush-bar.off { display: none; }
+.mark-bar { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.mark-bar.off { display: none; }
+.mark-bar .size { display: flex; align-items: center; gap: 2px; color: var(--muted); }
+.mark-bar .size input { width: 4em; font: inherit; padding: 3px 4px; }
+.mark-colors { display: flex; gap: 4px; }
+.mark-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); font: inherit; font-size: 12px; cursor: pointer; }
+.mark-chip i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.mark-chip.active { border-color: var(--text); box-shadow: inset 0 0 0 1px var(--text); font-weight: 600; }
+.mark-chip.hidden-layer { opacity: 0.55; }
+.marks-shown { display: inline-flex; align-items: center; gap: 5px; font: inherit; font-size: 12px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--muted); cursor: pointer; }
+.marks-shown i { width: 10px; height: 10px; border-radius: 2px; border: 1.5px solid #d93a32; }
+.marks-shown[aria-pressed="true"] { color: var(--text); }
+.marks-shown[aria-pressed="true"] i { background: #d93a32; }
+.mark-swatch { width: 14px; height: 14px; min-height: 0; padding: 0; border-radius: 50%; border: 1px solid rgba(0, 0, 0, 0.25); flex: none; cursor: pointer; }
 .reference-bar { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .reference-bar .size { display: flex; align-items: center; gap: 4px; color: var(--muted); }
 .reference-bar input[type="range"] { width: 7em; }
@@ -615,6 +629,7 @@ button.with-icon, .page-nav .segmented button { display: inline-flex; align-item
 #tool-cut { --tool: var(--c-panel); }
 #tool-text { --tool: var(--c-line); }
 #tool-pen, #tool-eraser { --tool: var(--c-pen); }
+#tool-mark { --tool: #d93a32; }
 #tool-fill { --tool: var(--c-fill); }
 #tool-breakout { --tool: var(--c-breakout); }
 #tool-sticky { --tool: var(--c-sticky); }

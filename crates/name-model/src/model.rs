@@ -768,6 +768,13 @@ pub struct RoughLayer {
     /// Not drawn on, erased or picked.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub locked: Option<bool>,
+    /// 指示のレイヤー: notes scribbled over the name for whoever inks it,
+    /// drawn over everything in `color` and kept apart from the rough.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub marks: Option<bool>,
+    /// A 指示のレイヤー's colour (`#rrggbb`); none: red.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
 }
 
 /// A point of a rough line, written as `[x, y, pressure]`, or

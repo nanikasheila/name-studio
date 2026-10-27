@@ -26,6 +26,7 @@ import { chooseTakeBack } from "./readbackpick";
 import { againSummary, exportSummary, type ExportKind, type ExportMemory, type PanelExport, type TemplateMode } from "./exportmemory";
 import { keepExportMemory, loadExportMemory } from "./prefs";
 import { installedFont } from "./fonts";
+import { hasMarks } from "./roughlayers";
 
 export interface ExportDialogHost {
   project(): Project | null;
@@ -197,6 +198,8 @@ export class ExportDialog {
   private panels: PanelExport = readPanels();
   /** The name's memos as a 下描き layer, to see while inking. */
   private notes = true;
+  /** 指示 (the 指示のレイヤー): to CSP as 下描き layers, onto the PDF's pages. */
+  private marks = true;
   private busy = false;
   /** 中止 was pressed: the export stops at the next page. */
   private stopping = false;
@@ -239,6 +242,13 @@ export class ExportDialog {
       this.notes = (event.target as HTMLInputElement).checked;
       this.showSummary();
     });
+    for (const id of ["ne-marks", "ne-pdf-marks"]) {
+      $<HTMLInputElement>(id).addEventListener("change", (event) => {
+        this.marks = (event.target as HTMLInputElement).checked;
+        for (const other of ["ne-marks", "ne-pdf-marks"]) $<HTMLInputElement>(other).checked = this.marks;
+        this.showSummary();
+      });
+    }
     $<HTMLInputElement>("ne-work-name").addEventListener("input", (event) => {
       this.form.workName = (event.target as HTMLInputElement).value;
       this.showSummary();
@@ -353,6 +363,7 @@ export class ExportDialog {
     this.editable = memory.editable;
     this.draftRough = memory.draftRough;
     this.notes = memory.notes;
+    this.marks = memory.marks;
     $<HTMLSelectElement>("ne-pdf-area").value = memory.pdf.area;
     $<HTMLSelectElement>("ne-pdf-dpi").value = String(memory.pdf.dpi);
   }
@@ -384,6 +395,7 @@ export class ExportDialog {
       editable: this.editable,
       draftRough: this.draftRough,
       notes: this.notes,
+      marks: this.marks,
       pdf: { area: $<HTMLSelectElement>("ne-pdf-area").value as "trim" | "canvas", dpi: Number($<HTMLSelectElement>("ne-pdf-dpi").value) },
     };
   }
@@ -398,6 +410,7 @@ export class ExportDialog {
       pages: project.pages.length,
       scroll: !!project.scroll,
       page: page && { trimMm: page.trimMm, resolution: page.resolution, preset: preset ? preset.label.split("（")[0] : null },
+      marks: hasMarks(project),
     });
   }
 
@@ -490,6 +503,7 @@ export class ExportDialog {
     $<HTMLSelectElement>("ne-panels").value = this.panels;
     $("ne-panels-hint").textContent = PANEL_HINTS[this.panels];
     $<HTMLInputElement>("ne-notes").checked = this.notes;
+    for (const id of ["ne-marks", "ne-pdf-marks"]) $<HTMLInputElement>(id).checked = this.marks;
     $<HTMLInputElement>("ne-make-work").checked = this.form.makeWork;
     $("ne-work-fields").hidden = !this.form.makeWork;
     const project = this.host.project();
@@ -691,6 +705,7 @@ export class ExportDialog {
             frameFolders: this.panels === "frames",
             panelMasks: this.panels === "masks",
             notes: this.notes,
+            marks: this.marks,
           },
           this.editable,
           progress,
@@ -747,6 +762,7 @@ export class ExportDialog {
             {
               area: $<HTMLSelectElement>("ne-pdf-area").value as "trim" | "canvas",
               dpi: Number($<HTMLSelectElement>("ne-pdf-dpi").value),
+              marks: this.marks,
             },
             (rough) => this.host.rough(rough),
             progress,

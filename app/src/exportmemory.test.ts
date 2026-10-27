@@ -10,6 +10,7 @@ const memory = (timeMs: number, outDir = "C:/out"): ExportMemory => ({
   editable: true,
   draftRough: false,
   notes: true,
+  marks: true,
   pdf: { area: "trim", dpi: 200 },
   files: {},
 });
@@ -58,6 +59,7 @@ describe("what 書き出す will make", () => {
     editable: true,
     draftRough: true,
     notes: false,
+    marks: true,
     pdf: { area: "trim" as const, dpi: 200 },
   };
   const of = { pages: 21, scroll: false, page: { trimMm: [257, 364] as [number, number], resolution: 600, preset: "商業誌 B4" } };
@@ -73,5 +75,17 @@ describe("what 書き出す will make", () => {
   it("says the PDF's resolution and area, and the script", () => {
     expect(exportSummary({ ...settings, kind: "pdf" }, of)).toBe("21 ページを 1 つの PDF に（200 dpi・仕上がりで切る）");
     expect(exportSummary({ ...settings, kind: "text" }, { ...of, scroll: true })).toBe("21 区切りのセリフを台本（.txt）に");
+  });
+
+  it("says whether the 指示 go too, when the name has any", () => {
+    expect(exportSummary(settings, { ...of, marks: true })).toContain("コマ枠の線・指示付き →");
+    expect(exportSummary({ ...settings, marks: false }, { ...of, marks: true })).not.toContain("指示");
+    expect(exportSummary({ ...settings, kind: "pdf" }, { ...of, marks: true })).toBe("21 ページを 1 つの PDF に（200 dpi・仕上がりで切る・指示付き）");
+    expect(exportSummary({ ...settings, kind: "pdf", marks: false }, { ...of, marks: true })).toBe("21 ページを 1 つの PDF に（200 dpi・仕上がりで切る・指示なし）");
+  });
+
+  it("reads an older memory as with the 指示", () => {
+    const { marks: _, ...older } = memory(3);
+    expect(memoryFrom(JSON.parse(JSON.stringify(older)))?.marks).toBe(true);
   });
 });

@@ -10,6 +10,7 @@ import { borderLines, borderWidthMm, dashes, framePanels, type Side } from "./ko
 import {
   drawBalloonFills,
   drawBalloons,
+  drawMarks,
   drawPageTexts,
   drawPanelBorders,
   drawPageFills,
@@ -27,7 +28,7 @@ import { wantsSpread } from "./panels";
 import { MM_PER_PT } from "./project";
 import { splitAtX } from "./strokes";
 import { panelFolders } from "./panelfolders";
-import { layerOf, opacityOfLayer, roughExportNames, roughLayersOf, shownStrokes, strokesOn } from "./roughlayers";
+import { layerOf, markLayersOf, opacityOfLayer, roughExportNames, roughLayersOf, shownStrokes, strokesOn, withoutMarks } from "./roughlayers";
 import { decodePicture } from "./pictures";
 import { onPageOnly } from "./aside";
 import { opacityOf, usedImages } from "./references";
@@ -568,6 +569,8 @@ export async function exportToCsp(
   await loadTips(project.brushes);
   const notes = request.notes !== false && project.pages.some(hasNotes);
   if (notes) request = { ...request, draftLayers: [...(request.draftLayers ?? []), NOTES_LAYER_NAME] };
+  // 指示: a 下描き layer each (seen while inking, never printed), on top; the ones with no 指示 in the name are left out.
+  const markSet = request.marks === false ? [] : markLayersOf(project).filter((layer) => project.pages.some((page) => strokesOn(project, page.strokes, layer).length));
   const pictures = await decodeReferences(project);
   if (pictures.size) request = { ...request, draftLayers: [...(request.draftLayers ?? []), REFERENCE_LAYER_NAME] };
   // ラフ線のレイヤー: each its own CSP layer (one layer: ラフ線 and はみ出し（ラフ線）, as always).
@@ -585,11 +588,17 @@ export async function exportToCsp(
   const overLayers = roughSet.filter((layer) => layer.id === layerOf(project, {}).id || project.pages.some((page) => strokesOn(project, page.strokes, layer).some((stroke) => stroke.over)));
   const onLayer = <T extends { page: Page }>(place: T, layer: RoughLayer): T => ({ ...place, page: { ...place.page, strokes: strokesOn(project, place.page.strokes, layer) } });
   if (request.draftLayers?.includes(LAYER_NAMES.strokes)) {
-    request = { ...request, draftLayers: [...request.draftLayers, ...[...roughNames.values()].flatMap(({ under, over }) => [under, over])] };
+    request = { ...request, draftLayers: [...request.draftLayers, ...roughSet.flatMap((layer) => [roughName(layer, "strokes"), roughName(layer, "overStrokes")])] };
   }
-  const looks = roughSet
-    .filter((layer) => layer.hidden || opacityOfLayer(layer) < 1)
-    .flatMap((layer) => [roughName(layer, "strokes"), roughName(layer, "overStrokes")].map((name) => ({ name, opacity: opacityOfLayer(layer), hidden: !!layer.hidden })));
+  const markName = (layer: RoughLayer) => roughNames.get(layer.id)!.under;
+  if (markSet.length) request = { ...request, draftLayers: [...(request.draftLayers ?? []), ...markSet.map(markName)] };
+  const looks = [
+    ...roughSet
+      .filter((layer) => layer.hidden || opacityOfLayer(layer) < 1)
+      .flatMap((layer) => [roughName(layer, "strokes"), roughName(layer, "overStrokes")].map((name) => ({ name, opacity: opacityOfLayer(layer), hidden: !!layer.hidden }))),
+    // A 下描き layer is at half opacity already; a hidden 指示のレイヤー goes hidden.
+    ...markSet.filter((layer) => layer.hidden).map((layer) => ({ name: markName(layer), opacity: 1, hidden: true })),
+  ];
   if (looks.length) request = { ...request, layerLooks: looks };
   // The name's binding, not the template's: a left-bound name may start from a right-bound work.
   request = { ...request, rightBinding: !project.scroll && project.binding === "right" };
@@ -679,8 +688,8 @@ export async function exportToCsp(
         if (form !== "raster") {
           const toOverlay = overlay.width / pageWidth;
           for (const { page, m, right } of placed) {
-            // CSP draws these itself when the page is opened; the thumbnail does not (nor hidden rough layers).
-            const shown = { ...page, strokes: shownStrokes(project, page.strokes) };
+            // CSP draws these itself when the page is opened; the thumbnail does not (nor hidden rough layers, nor 指示).
+            const shown = { ...page, strokes: withoutMarks(project, shownStrokes(project, page.strokes)) };
             clipped(overlayCtx, toOverlay, right, () => drawPart(overlayCtx, shown, kind, scaled(m, toOverlay), project.brushes));
           }
         }
@@ -737,6 +746,21 @@ export async function exportToCsp(
           png = await encode(drawing, "image/png");
         }
         layers.push({ kind: "raster", name: NOTES_LAYER_NAME, length: png.length });
+        pngs.push(png);
+      }
+      for (const layer of markSet) {
+        // Each 指示のレイヤー in its colour, cut at the paper's edge as everything is.
+        const only = { roughLayers: [layer], brushes: project.brushes };
+        let png: Uint8Array = new Uint8Array();
+        if (placed.some(({ page }) => strokesOn(project, page.strokes, layer).length)) {
+          ctx.clearRect(0, 0, width, height);
+          for (const { page, m, right } of placed) {
+            const own = { ...page, strokes: strokesOn(project, page.strokes, layer) };
+            clipped(ctx, factor, right, () => drawMarks(ctx, only, own, scaled(m, factor), undefined, true));
+          }
+          png = await encode(drawing, "image/png");
+        }
+        layers.push({ kind: "raster", name: markName(layer), length: png.length });
         pngs.push(png);
       }
       const overlayPng = vector || text ? await encode(overlay, "image/png") : new Uint8Array();
@@ -983,6 +1007,8 @@ export interface PdfOptions {
   /** Cut each page at the trim (仕上がり) or keep the whole canvas. */
   area: "trim" | "canvas";
   dpi: number;
+  /** 指示 over the pages in their colours (the 指示のレイヤー shown; on unless false), for an instruction sheet. */
+  marks?: boolean;
 }
 
 /** Render every page (with the roughs) as JPEG and write one PDF. */
@@ -1019,7 +1045,9 @@ export async function exportPdf(
       ctx.drawImage(image, x0, y0, x1 - x0, y1 - y0);
     }
     ctx.globalAlpha = 1;
-    for (const kind of LAYER_ORDER) drawPart(ctx, page, kind, m, project.brushes);
+    const plain = { ...page, strokes: withoutMarks(project, page.strokes) };
+    for (const kind of LAYER_ORDER) drawPart(ctx, plain, kind, m, project.brushes);
+    if (options.marks !== false) drawMarks(ctx, project, page, m);
     images.push(await encode(drawing, "image/jpeg", 0.88));
   }
   drawing.width = 0;

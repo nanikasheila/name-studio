@@ -15,7 +15,7 @@ import { ACCENT, drawNote, drawSticky, wrapText } from "./notedraw";
 import { INK, drawBalloons, drawLineText, drawPageFills, drawPanelBorders, drawPanelFills, drawStrokes, tracePath } from "./pagedraw";
 import { pictureOf } from "./pictures";
 import { imageOf, opacityOf } from "./references";
-import { opacityOfLayer, roughLayersOf, strokesOn } from "./roughlayers";
+import { markColor, markLayersOf, opacityOfLayer, roughLayersOf, strokesOn } from "./roughlayers";
 import type { StrokeCache } from "./strokecache";
 
 /** Half the size of a corner to drag, px. */
@@ -186,6 +186,15 @@ export function drawScreenPage(ctx: CanvasRenderingContext2D, project: Project, 
     ctx.clip();
     marks.line(line);
     ctx.restore();
+  }
+  // 指示 over everything, each 指示のレイヤー in its colour (hidden ones are not in `page`).
+  for (const layer of markLayersOf(project)) {
+    const lines = strokesOn(project, page.strokes, layer).map((stroke) => (stroke.over ? { ...stroke, over: false } : stroke));
+    if (!lines.length) continue;
+    const color = markColor(layer);
+    ctx.globalAlpha = opacityOfLayer(layer);
+    marks.strokes.draw(ctx, page, project.pageFormat.canvasMm, m, false, { ...style, color: (stroke) => (marks.selected("stroke", stroke.id) ? ACCENT : color) }, `mark:${layer.id}`, lines);
+    ctx.globalAlpha = 1;
   }
   if (marks.showNotes && !small) for (const panel of page.panels) if (panel.note) drawNote(ctx, slot, panel, project.pageFormat);
   for (const sticky of page.stickies ?? []) drawSticky(ctx, slot, sticky, marks.selected("sticky", sticky.id), marks.stickyHandle);

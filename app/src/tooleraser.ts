@@ -3,17 +3,18 @@
 // what is inside the outline drawn.
 import type { DragHandler, DragOf, EditorCore, Press } from "./editorcore";
 import { nearestSlot, toPage, type Slot } from "./layout";
-import type { Point } from "./model";
+import type { Point, Project, Stroke } from "./model";
 import { eraseInside, eraseWith } from "./strokes";
-import { strokeEditable } from "./roughlayers";
+import { isMark, strokeEditable } from "./roughlayers";
 
-export function pressEraser(editor: EditorCore, { slot, point }: Press): void {
+/** `marks`: erase the 指示 only (the 指示 tool); else everything but them. */
+export function pressEraser(editor: EditorCore, { slot, point }: Press, marks = false): void {
   if (editor.eraseMode === "lasso") {
-    editor.startDrag({ kind: "eraseLasso", slot, points: [point] });
+    editor.startDrag({ kind: "eraseLasso", slot, points: [point], marks });
     return;
   }
   editor.host.begin();
-  const drag: DragOf<"erase"> = { kind: "erase", slot, erased: 0 };
+  const drag: DragOf<"erase"> = { kind: "erase", slot, erased: 0, marks };
   editor.startDrag(drag);
   erase(editor, drag, slot, point);
 }
@@ -29,7 +30,7 @@ function erase(editor: EditorCore, drag: DragOf<"erase">, slot: Slot, point: Poi
   for (let i = 1; i <= steps; i++) {
     const t = i / steps;
     const along: Point = [from[0] + (point[0] - from[0]) * t, from[1] + (point[1] - from[1]) * t];
-    drag.erased += eraseWith(project, slot.page, along, radius, mode, (stroke) => strokeEditable(project, stroke));
+    drag.erased += eraseWith(project, slot.page, along, radius, mode, erasable(project, !!drag.marks));
   }
   drag.last = point;
   drag.at = slot.index;
@@ -53,7 +54,7 @@ const eraseLasso: DragHandler<DragOf<"eraseLasso">> = {
   },
   end(editor, drag, project) {
     editor.host.begin();
-    const changed = eraseInside(project, drag.slot.page, drag.points, (stroke) => strokeEditable(project, stroke));
+    const changed = eraseInside(project, drag.slot.page, drag.points, erasable(project, !!drag.marks));
     if (changed) {
       editor.host.commit();
       editor.host.status(`囲んだ中の線を消しました（${changed} 本）`);
@@ -62,5 +63,10 @@ const eraseLasso: DragHandler<DragOf<"eraseLasso">> = {
     }
   },
 };
+
+/** What an eraser may erase: lines on layers shown and unlocked, the 指示 or (else) the rough. */
+function erasable(project: Project, marks: boolean): (stroke: Stroke) => boolean {
+  return (stroke) => strokeEditable(project, stroke) && isMark(project, stroke) === marks;
+}
 
 export const ERASER_DRAGS = { erase: eraseDrag, eraseLasso };

@@ -8,9 +8,9 @@ import type { Pair } from "./layout";
 import { spreads } from "./pages";
 import { LAYER_ORDER, drawPart, mapBox } from "./nameexport";
 import { onPageOnly } from "./aside";
-import { shownStrokes } from "./roughlayers";
+import { shownStrokes, withoutMarks } from "./roughlayers";
 import { trimBox } from "./pagebox";
-import { loadTips } from "./pagedraw";
+import { drawMarks, loadTips } from "./pagedraw";
 import { useFonts } from "./fonts";
 import { useStyle } from "./style";
 
@@ -264,7 +264,8 @@ export class Reader {
     for (const { index, left, top, scale } of placed) {
       const source = project.pages[index];
       if (!source) continue;
-      const page = { ...onPageOnly(source, project.pageFormat), strokes: shownStrokes(project, source.strokes) };
+      const shown = { ...onPageOnly(source, project.pageFormat), strokes: shownStrokes(project, source.strokes) };
+      const page = { ...shown, strokes: withoutMarks(project, shown.strokes) };
       const m = { scale, x: left - x0 * scale, y: top - y0 * scale };
       ctx.save();
       ctx.beginPath();
@@ -281,6 +282,8 @@ export class Reader {
       }
       ctx.globalAlpha = 1;
       for (const kind of LAYER_ORDER) drawPart(ctx, page, kind, m, project.brushes);
+      // 指示 as on the editor's pages: shown or hidden with them.
+      drawMarks(ctx, project, shown, m);
       ctx.restore();
     }
     // The gutter, faintly, where two pages meet.

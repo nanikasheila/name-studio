@@ -8,8 +8,10 @@ import type { Brush, FillTone, Project } from "./model";
 import { CONTINUOUS_KEY, loadLibrary, ROWS_KEY, SHOW_NOTES_KEY, SINGLE_PAGE_KEY } from "./prefs";
 import { writeCount, writeFlag } from "./settings";
 import { TONE_LABELS } from "./strokes";
+import { MarkBar } from "./markbar";
+import type { RoughChange } from "./roughpanel";
 
-const TOOLS = ["select", "cut", "text", "pen", "eraser", "fill", "breakout", "sticky", "reference"] as const satisfies readonly Tool[];
+const TOOLS = ["select", "cut", "text", "pen", "mark", "eraser", "fill", "breakout", "sticky", "reference"] as const satisfies readonly Tool[];
 
 /** One line under the tool's name in the options row. */
 const TOOL_HINTS: Record<Tool, string> = {
@@ -17,6 +19,7 @@ const TOOL_HINTS: Record<Tool, string> = {
   cut: "コマを横切るように引くと割れる（Alt で斜め）。Shift + コマの外のドラッグで新しいコマ",
   text: "クリックした所にセリフを置く。選んで Alt+ホイールで文字の大きさ",
   pen: "",
+  mark: "ページに直接描く指示・注釈（色ごとに指示のレイヤー）。ペンの消しゴム側か「消す」で指示だけ消す。CSP へは下描きレイヤー「指示」で出ます",
   eraser: "",
   fill: "囲んだ所を塗る",
   breakout: "コマを突き抜ける所を囲む。中に描いた線はコマ枠の上に",
@@ -46,10 +49,17 @@ export interface ControlBarHost {
   toolChanged(tool: Tool): void;
   /** The grid check box: panels snap to the grid or not. */
   snapGrid(on: boolean): void;
+  /** A change to the layers (指示のレイヤー), as one undoable step. */
+  rough(change: RoughChange): void;
 }
 
 export class ControlBar {
-  constructor(private readonly host: ControlBarHost) {}
+  /** The 指示 tool's bar. */
+  private readonly marks: MarkBar;
+
+  constructor(private readonly host: ControlBarHost) {
+    this.marks = new MarkBar({ ...host, setTool: (tool) => this.setTool(tool) });
+  }
 
   private get editor(): PageEditor {
     return this.host.editor;
@@ -181,6 +191,7 @@ export class ControlBar {
 
   /** The pen / eraser chooser: the project's brushes, then ones taken in other projects. */
   renderBrushBar(): void {
+    this.marks.render();
     const tool = this.editor.tool;
     const bar = $("brush-bar");
     bar.classList.toggle("off", tool !== "pen" && tool !== "eraser");
@@ -237,6 +248,7 @@ export class ControlBar {
   /** ] / [: the pen or eraser in hand a size up or down. */
   resizeBrush(factor: number): boolean {
     const tool = this.editor.tool;
+    if (tool === "mark") return this.marks.resize(factor), this.editor.draw(), true;
     if (tool !== "pen" && tool !== "eraser") return false;
     const round2 = (value: number) => Math.round(value * 100) / 100;
     if (tool === "pen") this.editor.penWidthMm = Math.min(20, Math.max(0.05, round2(this.editor.penWidthMm * factor)));
@@ -249,6 +261,7 @@ export class ControlBar {
 
   /** The bars' buttons, boxes and sliders. */
   bind(): void {
+    this.marks.bind();
     for (const tone of ["black", "gray", "white"] as const) {
       $(`fill-${tone}`).addEventListener("click", () => this.setFillTone(tone));
     }

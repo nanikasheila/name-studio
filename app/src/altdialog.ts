@@ -4,6 +4,7 @@ import { drawBalloons, drawPageTexts, drawPanelBorders, drawPanelFills, drawStro
 import type { Alternatives, Page, Project } from "./model";
 import { trimBox } from "./pagebox";
 import { $ } from "./dom";
+import { withoutMarks } from "./roughlayers";
 
 export interface AltDialogHost {
   project(): Project | null;
@@ -30,10 +31,11 @@ export function pageThumbnail(project: Project, page: Page, width = THUMB_WIDTH)
   ctx.fillRect(0, 0, width, (y1 - y0) * scale);
   const m = { scale, x: -x0 * scale, y: -y0 * scale };
   const brushes = project.brushes;
-  drawStrokes(ctx, page, m, false, () => "#3a3834", 0.4, brushes);
+  const rough = { ...page, strokes: withoutMarks(project, page.strokes) };
+  drawStrokes(ctx, rough, m, false, () => "#3a3834", 0.4, brushes);
   drawPanelFills(ctx, page, m, 0.4);
   drawPanelBorders(ctx, page, m, undefined, 0.6);
-  drawStrokes(ctx, page, m, true, () => "#3a3834", 0.4, brushes);
+  drawStrokes(ctx, rough, m, true, () => "#3a3834", 0.4, brushes);
   drawBalloons(ctx, page, m, 0.5);
   drawPageTexts(ctx, page, m);
   return canvas;

@@ -144,6 +144,14 @@ export interface RoughLayer {
   opacity?: number;
   /** Not drawn on, erased or picked. */
   locked?: boolean;
+  /**
+   * 指示のレイヤー: notes and instructions scribbled over the name (for whoever
+   * inks it), drawn over everything in `color`, apart from the rough: the pen
+   * and the eraser leave them alone, the 指示 tool draws and erases them.
+   */
+  marks?: boolean;
+  /** A 指示のレイヤー's colour (`#rrggbb`); none: red. */
+  color?: string;
 }
 
 export type BrushKind = "pen" | "eraser";

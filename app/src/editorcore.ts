@@ -9,7 +9,7 @@ import type { CarriedContents } from "./panels";
 import type { SnapTargets } from "./snapping";
 import type { ItemRef, TransformBase } from "./transform";
 
-export type Tool = "select" | "cut" | "text" | "pen" | "eraser" | "fill" | "breakout" | "sticky" | "reference";
+export type Tool = "select" | "cut" | "text" | "pen" | "mark" | "eraser" | "fill" | "breakout" | "sticky" | "reference";
 
 /** コマ割り: cut panels apart, draw a rectangle panel, or place the corners of any shape (台形 and the like). */
 export type PanelMode = "cut" | "rect" | "polygon";
@@ -39,6 +39,7 @@ const HOLDS: Record<Tool, readonly Selection["kind"][]> = {
   breakout: ["breakout"],
   sticky: ["sticky"],
   pen: [],
+  mark: [],
   eraser: [],
   fill: [],
   reference: [],
@@ -136,6 +137,8 @@ export type ToolDrag =
       time: number;
       speed: number;
       straight: boolean;
+      /** 指示: drawn on a 指示のレイヤー in its colour, with the 指示 pen's width and no brush. */
+      mark?: { color: string; widthMm: number; layer: string };
     }
   /** しっぽ: its tip, its whole length (body), or its middle (bend); `created` when pulled out of the balloon. */
   | {
@@ -157,9 +160,10 @@ export type ToolDrag =
       points: Point[];
       add?: { base: ItemRef[]; target: ItemRef | null };
     }
-  | { kind: "eraseLasso"; slot: Slot; points: Point[] }
+  /** `marks`: the 指示 tool erasing, which erases 指示 only (the eraser erases all but them). */
+  | { kind: "eraseLasso"; slot: Slot; points: Point[]; marks?: boolean }
   /** `last`: where the eraser was (on page `at`), to erase all the way between moves. */
-  | { kind: "erase"; slot: Slot; erased: number; last?: Point; at?: number }
+  | { kind: "erase"; slot: Slot; erased: number; last?: Point; at?: number; marks?: boolean }
   | {
       kind: "swap";
       slot: Slot;

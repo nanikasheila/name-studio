@@ -21,7 +21,7 @@ import { PenDialog } from "./pendialog";
 import { LayerView, type LayerRef } from "./layers";
 import { RoughPanel } from "./roughpanel";
 import { SeriesPanel } from "./seriespanel";
-import { layerOf, ROUGH_BASE } from "./roughlayers";
+import { ROUGH_BASE } from "./roughlayers";
 import { buildCommands } from "./actions";
 import type { Command } from "./commands";
 import { CommandPalette } from "./palette";
@@ -125,13 +125,9 @@ export class Workbench {
   });
   private readonly roughPanel = new RoughPanel({
     project: () => this.session.project,
-    active: () => (this.session.project ? layerOf(this.session.project, { layer: this.editor.roughLayer }).id : ROUGH_BASE),
-    setActive: (id) => {
-      this.editor.roughLayer = id;
-      const layer = this.session.project && layerOf(this.session.project, { layer: id });
-      if (layer) this.setStatus(`ペンでレイヤー「${layer.name}」に描きます`);
-      this.renderLayers();
-    },
+    editor: () => this.editor,
+    status: (message) => this.setStatus(message),
+    picked: (tool) => (tool ? this.setTool(tool) : undefined, this.renderLayers()),
     change: (change) => this.edits.changeRough(change),
     selectedStrokes: () => pickedStrokes(this.editor.selection).length,
   });
@@ -222,6 +218,7 @@ export class Workbench {
       renderAll: () => this.renderAll(),
       toolChanged: (tool) => this.references.toolChanged(tool),
       snapGrid: (on) => this.settingsDialog.changeSnap({ grid: on }),
+      rough: (change) => this.edits.changeRough(change),
     });
     this.references = new ReferenceBar({
       ...around,

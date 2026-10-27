@@ -10,7 +10,8 @@ import { drawText } from "./render";
 import { balloonLineMm, linePitch } from "./style";
 import type { MmToPx } from "./geometry";
 import { panelArea, panelsAbove, type PanelFolder } from "./panelfolders";
-import type { Brush, Line, Page, PageFormat, Panel, Point, Stroke } from "./model";
+import type { Brush, Line, Page, PageFormat, Panel, Point, Project, Stroke } from "./model";
+import { markColor, markLayersOf, opacityOfLayer, strokesOn } from "./roughlayers";
 
 export type { MmToPx };
 
@@ -351,6 +352,20 @@ export function drawStrokes(
   for (const stroke of page.strokes) {
     if (!!stroke.over !== over) continue;
     drawStroke(ctx, stroke, m, color(stroke), minWidthPx, brushes.find((brush) => brush.id === stroke.brush));
+  }
+}
+
+/** 指示 over the page, each 指示のレイヤー in its colour (`all`: the hidden ones too). */
+export function drawMarks(ctx: CanvasRenderingContext2D, project: Pick<Project, "roughLayers" | "brushes">, page: Page, m: MmToPx, minWidthPx?: number, all = false): void {
+  for (const layer of markLayersOf(project)) {
+    if (layer.hidden && !all) continue;
+    const strokes = strokesOn(project, page.strokes, layer).map((stroke) => (stroke.over ? { ...stroke, over: false } : stroke));
+    if (!strokes.length) continue;
+    const color = markColor(layer);
+    ctx.save();
+    ctx.globalAlpha *= opacityOfLayer(layer);
+    drawStrokes(ctx, { ...page, strokes }, m, false, () => color, minWidthPx, project.brushes);
+    ctx.restore();
   }
 }
 

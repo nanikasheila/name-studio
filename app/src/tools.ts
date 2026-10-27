@@ -7,6 +7,7 @@ import { ERASER_DRAGS, pressEraser } from "./tooleraser";
 import { FILL_DRAGS, pressBreakout, pressFill } from "./toolfill";
 import { PANEL_DRAGS, pressCut } from "./toolpanels";
 import { PEN_DRAGS, pressPen } from "./toolpen";
+import { pressMark } from "./toolmark";
 import { REFERENCE_DRAGS, pressReference } from "./toolreference";
 import { SELECT_DRAGS, pressSelect } from "./toolselect";
 import { STICKY_DRAGS, pressSticky } from "./toolsticky";
@@ -18,6 +19,7 @@ export const PRESS: Record<Tool, (editor: EditorCore, press: Press) => void> = {
   cut: pressCut,
   text: pressText,
   pen: pressPen,
+  mark: pressMark,
   eraser: pressEraser,
   fill: pressFill,
   breakout: pressBreakout,

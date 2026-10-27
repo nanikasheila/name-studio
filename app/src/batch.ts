@@ -109,6 +109,7 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
           frameFolders: task.frameFolders === true,
           panelMasks: task.panelMasks === true,
           notes: task.notes !== false,
+          marks: task.marks !== false,
         },
         true,
         status,

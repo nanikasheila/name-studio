@@ -40,9 +40,9 @@ const LAYERS = {
   service: ["autosave", "batch", "nameexport", "roughcache"],
   /** The screens. */
   ui: [
-    "actions", "alerts", "altdialog", "board", "boarddock", "boardemotion", "boardpages", "boardscene", "boardshape", "boardview", "brushdialog", "controlbar", "dock", "dragsort", "drophint", "editor", "editorcore", "exportdialog", "fontpicker", "helpbar", "helpoverlay", "inplace", "inspector",
-    "layers", "livefields", "nameedits", "palette", "palettes", "pendialog", "reader", "readbackpick", "referencebar", "roughpanel", "scriptdialog", "seriespanel", "settingsdialog", "sheetexport", "shortcutdialog", "sidelists", "startscreen", "toolaside", "tooleraser", "toolfill",
-    "toolpanels", "toolpen", "toolreference", "tools", "toolselect", "toolsticky", "tooltext", "tooltransform", "tour", "updater", "versiondialog",
+    "actions", "alerts", "altdialog", "board", "boarddock", "boardemotion", "boardpages", "boardscene", "boardshape", "boardview", "brushdialog", "controlbar", "cursors", "dock", "dragsort", "drophint", "editor", "editorcore", "exportdialog", "fontpicker", "helpbar", "helpoverlay", "inplace", "inspector",
+    "layers", "livefields", "markbar", "nameedits", "palette", "palettes", "pendialog", "reader", "readbackpick", "referencebar", "roughpanel", "scriptdialog", "seriespanel", "settingsdialog", "sheetexport", "shortcutdialog", "sidelists", "startscreen", "toolaside", "tooleraser", "toolfill",
+    "toolmark", "toolpanels", "toolpen", "toolreference", "tools", "toolselect", "toolsticky", "tooltext", "tooltransform", "tour", "updater", "versiondialog",
     "viewer", "workbench",
   ],
   /** Starting the app: puts the rest together. */

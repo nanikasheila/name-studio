@@ -230,8 +230,8 @@ export const FULL_PROJECT: Full<Project> = {
     },
   },
   roughLayers: [
-    { id: "rough", name: "ラフ線", hidden: false, opacity: 1, locked: false },
-    { id: "rough2", name: "人物", hidden: true, opacity: 0.5, locked: true },
+    { id: "rough", name: "ラフ線", hidden: false, opacity: 1, locked: false, marks: false, color: "#e53935" },
+    { id: "rough2", name: "人物", hidden: true, opacity: 0.5, locked: true, marks: true, color: "#1e6fd9" },
   ],
   series: "../作品.nameseries",
   nextId: 42,
