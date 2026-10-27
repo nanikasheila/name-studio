@@ -50,6 +50,7 @@ import { editorDocks } from "./palettes";
 import { ReferenceBar } from "./referencebar";
 import { RoughCache } from "./roughcache";
 import { Reader } from "./reader";
+import { SpringTool } from "./springtool";
 import { ControlBar } from "./controlbar";
 
 export const PROJECT_EXTENSION = "namestudio";
@@ -176,6 +177,8 @@ export class Workbench {
   private readonly brushDialog: BrushDialog;
   private readonly settingsDialog: SettingsDialog;
   private readonly versionDialog: VersionDialog;
+  /** 一時切り替え: a tool's key held lends the tool. */
+  private readonly spring = new SpringTool<Tool>();
   /** 読む表示: the name read through as the book. */
   private readonly reader: Reader;
   /** The save or autosave being written, which the next one waits for. */
@@ -852,6 +855,12 @@ export class Workbench {
     $("name-export").addEventListener("click", () => this.exportDialog.open());
     $("focus-mode").addEventListener("click", () => this.toggleFocus());
     $("read-mode").addEventListener("click", () => void this.reader.open());
+    // 一時切り替え: let go of a held tool key (or end the stroke made with it) for the tool from before.
+    const giveBack = (tool: Tool | null) => tool && this.session.project && this.setTool(tool);
+    $("editor-canvas").addEventListener("pointerdown", () => this.spring.pointerDown());
+    window.addEventListener("pointerup", () => giveBack(this.spring.pointerUp()), true);
+    window.addEventListener("keyup", (event) => giveBack(this.spring.release(event.code, performance.now())));
+    window.addEventListener("blur", () => this.spring.reset());
     $("versions").addEventListener("click", () => this.openVersions());
     $("shortcuts").addEventListener("click", () => this.shortcutDialog.open());
     $("pen-settings").addEventListener("click", () => this.penDialog.open());
@@ -915,7 +924,12 @@ export class Workbench {
     if (arrow && this.editor.selection && !event.ctrlKey && !event.metaKey && !event.altKey) {
       return this.editor.nudge(...arrow);
     }
-    return action ? this.run(action) : false;
+    // A tool's key held: its repeats change nothing (the eraser's would cycle how it erases).
+    if (event.repeat && this.spring.holds(event.code)) return true;
+    const from = this.editor.tool;
+    const done = action ? this.run(action) : false;
+    if (done && action?.startsWith("tool.") && this.editor.tool !== from) this.spring.press(event.code, from, performance.now());
+    return done;
   }
 
   /** Run a command (a shortcut's action, an action bar's button); false when it does not apply now. */
