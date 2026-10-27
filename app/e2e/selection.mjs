@@ -4,6 +4,9 @@
 // with no handles of their own show the transform frame at once; the arrows,
 // 反転 and Delete do what a drag and the frame do; Alt + drag moves a panel
 // without snapping; 資料: Delete, the arrows and Esc work on the chosen picture.
+// Beyond the page (操作の決まり): a scene picked in the strip is the one
+// selection, Esc and Delete work on it; a double-click on a 付箋 writes in it;
+// buttons name their keys as set now; Ctrl+O and Ctrl+N work in the editor.
 // Run: npm run e2e:selection
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
@@ -205,6 +208,54 @@ try {
   await page.mouse.click(5, 500);
   s = await state();
   check(s.tool === "text", "the text tool stays in hand");
+
+  // 操作の決まり, beyond the page: the strip's scene is the one selection; Esc and Delete work on it.
+  await tool("select");
+  await click(top);
+  await page.evaluate(async () => {
+    const { addScene } = await import("/src/cast.ts");
+    const wb = window.nameStudio.workbench;
+    const [first, second] = wb.project.pages;
+    const scene = addScene(wb.project, first.id, second.id, "はじまり");
+    wb.renderAll();
+    wb.board.select({ kind: "scene", sceneId: scene.id });
+  });
+  s = await state();
+  check(s.selection === null, "picking a scene in the strip lets the page's selection go");
+  await page.keyboard.press("Escape");
+  check((await page.evaluate(() => window.nameStudio.workbench.board.selected)) === null, "Esc lets the scene go");
+  await page.evaluate(() => {
+    const wb = window.nameStudio.workbench;
+    wb.board.select({ kind: "scene", sceneId: wb.project.scenes[0].id });
+  });
+  await page.keyboard.press("Delete");
+  check((await page.evaluate(() => window.nameStudio.workbench.project.scenes.length)) === 0, "Delete takes the picked scene away (its pages stay)");
+  await page.keyboard.press("Control+z");
+
+  // A double-click on a 付箋 writes in it, as on a balloon or a panel's memo.
+  await tool("sticky");
+  await click([x0 + 120, y1 - 30]);
+  await tool("select");
+  const sticky = await page.evaluate(() => window.nameStudio.workbench.project.pages[1].stickies.at(-1));
+  const [nx, ny] = await at([sticky.at[0] + 3, sticky.at[1] + 3]);
+  await page.mouse.dblclick(nx, ny);
+  await settle();
+  check(
+    await page.evaluate(() => document.activeElement?.tagName === "TEXTAREA" && document.activeElement.closest("#inspector") !== null),
+    "a double-click on a 付箋 writes in it (the right panel's text)",
+  );
+  await page.evaluate(() => document.activeElement?.blur());
+
+  // Buttons name their keys as set now; Ctrl+O and Ctrl+N are the same in the editor as on the start screen.
+  const title = () => page.evaluate(() => document.getElementById("tool-pen").title);
+  check((await title()).endsWith("（P）"), "the pen's button names its key");
+  await page.evaluate(() => window.nameStudio.workbench.shortcuts.bind("tool.pen", "F9"));
+  check((await title()).endsWith("（P / F9）"), "and the keys as changed in キー設定");
+  await page.evaluate(() => window.nameStudio.workbench.shortcuts.reset());
+  check(
+    await page.evaluate(() => window.nameStudio.workbench.shortcuts.actionFor("Ctrl+O") === "button.open" && window.nameStudio.workbench.shortcuts.actionFor("Ctrl+N") === "button.new-project"),
+    "Ctrl+O opens and Ctrl+N makes a new name in the editor too",
+  );
 
   check(errors.length === 0, `no errors (${errors.join(" / ")})`);
 } finally {

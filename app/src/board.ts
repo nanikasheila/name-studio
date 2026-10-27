@@ -245,6 +245,15 @@ export class Board {
     this.host.inspect();
   }
 
+  /** Delete: the scene picked goes (its pages stay); false when no scene is picked. */
+  removeSelectedScene(): boolean {
+    const s = this.selection;
+    if (s?.kind !== "scene") return false;
+    this.host.edit((p) => (p.scenes = p.scenes.filter((scene) => scene.id !== s.sceneId)));
+    this.select(null);
+    return true;
+  }
+
   /** The canvas took the selection: the strip lets go of its own. */
   deselect(): void {
     if (!this.selection) return;

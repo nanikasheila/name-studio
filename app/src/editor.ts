@@ -463,13 +463,14 @@ export class PageEditor {
     this.draw();
   }
 
-  select(selection: Selection | null): void {
+  /** `quiet`: another part of the screen took the selection, and says so itself. */
+  select(selection: Selection | null, quiet = false): void {
     // What the tool in hand does not keep is picked with the select tool (from a list, a paste, Ctrl+A).
     if (selection && !toolHolds(this.tool, selection.kind)) this.host.useTool("select");
     const same = selection && this.selection && selection.kind === this.selection.kind && selection.id === this.selection.id && selection.pageId === this.selection.pageId;
     if (!same) this.transforming = false;
     this.selection = selection;
-    this.host.selectionChanged(selection);
+    if (!quiet) this.host.selectionChanged(selection);
     this.renderBar();
     this.draw();
   }
@@ -2215,6 +2216,8 @@ export class PageEditor {
       this.editInPlace(slot.page.id, "line", target.id);
       return;
     }
+    // 付箋: write in it, in the right panel.
+    if (target?.kind === "sticky") return void (this.select(target), document.querySelector<HTMLTextAreaElement>("#inspector textarea")?.focus());
     if (target && target.kind !== "panel") return;
     // Inside a panel: its memo.
     const panel = this.panelAt(slot.page, point);

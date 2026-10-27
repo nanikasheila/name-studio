@@ -117,8 +117,8 @@ export function buildCommands(host: CommandHost): Command[] {
     { id: "palette.commands", label: "命令を探して実行する（命令パレット）", group: "ファイル", keys: ["Ctrl+K"], words: "コマンド 検索 さがす", run: always(() => host.openCommandPalette()) },
     { id: "save", label: "保存", group: "ファイル", keys: ["Ctrl+S"], available: named, run: always(() => host.save(false)) },
     { id: "saveAs", label: "名前を付けて保存", group: "ファイル", keys: ["Ctrl+Shift+S"], available: named, run: always(() => host.save(true)) },
-    button("open", "開く…", "ファイル", [], "ファイル ネーム 読む"),
-    button("new-project", "新しいネーム…", "ファイル", [], "作る 白紙"),
+    button("open", "開く…", "ファイル", ["Ctrl+O"], "ファイル ネーム 読む"),
+    button("new-project", "新しいネーム…", "ファイル", ["Ctrl+N"], "作る 白紙"),
     button("name-export", "書き出す…（CSP・PDF・台本）", "ファイル", [], "エクスポート clip cmc pdf 台本 テキスト"),
     { id: "export.readBack", label: "CSP のセリフを読み戻す…", group: "ファイル", keys: [], words: "読み戻し 取り込む CSP 直した セリフ", available: named, run: always(() => host.readBack()) },
     { id: "series.next", label: "シリーズの次の話を作る…", group: "ファイル", keys: [], words: "次の話 新しい話 シリーズ", available: named, run: () => host.nextStory() },
@@ -126,7 +126,15 @@ export function buildCommands(host: CommandHost): Command[] {
     button("versions", "版の履歴…", "ファイル", [], "バージョン 戻す 自動保存"),
     { id: "undo", label: "元に戻す", group: "編集", keys: ["Ctrl+Z"], available: named, run: always(() => host.undo()) },
     { id: "redo", label: "やり直す", group: "編集", keys: ["Ctrl+Y", "Ctrl+Shift+Z"], available: named, run: always(() => host.redo()) },
-    { id: "delete", label: "選んだものを消す", group: "編集", keys: ["Delete", "Backspace"], available: () => selected() || (editor.tool === "reference" && editor.reference !== null), run: always(() => host.deleteSelection()) },
+    {
+      id: "delete",
+      label: "選んだものを消す",
+      group: "編集",
+      keys: ["Delete", "Backspace"],
+      // On the page, or the 資料画像 chosen, or a scene picked in the strip under the pages.
+      available: () => selected() || (editor.tool === "reference" && editor.reference !== null) || host.board.selected?.kind === "scene",
+      run: () => (selected() || editor.reference ? (host.deleteSelection(), true) : host.board.removeSelectedScene()),
+    },
     { id: "copy", label: "コピー", group: "編集", keys: ["Ctrl+C"], available: selected, run: () => host.copyItems() },
     {
       id: "cut",
@@ -164,10 +172,11 @@ export function buildCommands(host: CommandHost): Command[] {
       keys: ["Escape"],
       available: named,
       run: always(() => {
-        // Esc goes back a step at a time: 変形 ends first, then the selection (or the chosen 資料画像) is let go.
+        // Esc goes back a step at a time: 変形 ends first, then the selection (or the chosen 資料画像, or what is picked in the strip) is let go.
         if (editor.isTransforming) editor.toggleTransform(false);
         else if (editor.selection) editor.select(null);
         else if (editor.reference) editor.chooseReference(null);
+        else if (host.board.selected) host.board.select(null);
       }),
     },
     tool("tool.select", "select", "選択", ["V"]),

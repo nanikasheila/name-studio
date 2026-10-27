@@ -2,11 +2,25 @@
 import { comboOf, type ActionId, type Shortcuts } from "./shortcuts";
 import { $ } from "./dom";
 
+/**
+ * Buttons that run a command (data-command) name its keys as they are set
+ * now, after their own words: what a tooltip says is what the key does.
+ */
+export function showKeys(shortcuts: Shortcuts, root: ParentNode = document): void {
+  for (const node of root.querySelectorAll<HTMLElement>("[data-command]")) {
+    const words = (node.dataset.words ??= node.title);
+    const keys = shortcuts.keys(node.dataset.command!);
+    node.title = keys.length ? `${words}（${keys.join(" / ")}）` : words;
+  }
+}
+
 export class ShortcutDialog {
   /** The action waiting for a key press, if any. */
   private listening: ActionId | null = null;
 
   constructor(private readonly shortcuts: Shortcuts) {
+    showKeys(shortcuts);
+    shortcuts.onChange(() => showKeys(shortcuts));
     $("sc-reset").addEventListener("click", () => {
       this.shortcuts.reset();
       this.message("初期設定に戻しました");

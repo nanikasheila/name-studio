@@ -52,4 +52,14 @@ describe("ショートカット", () => {
     expect(again.keys("tool.pen")).toEqual(["P"]);
     expect(again.changed()).toBe(false);
   });
+
+  it("tells whoever shows the keys when they change", () => {
+    const shortcuts = new Shortcuts(memory(), ACTIONS);
+    let told = 0;
+    shortcuts.onChange(() => told++);
+    shortcuts.bind("tool.pen", "F9");
+    shortcuts.unbind("tool.pen", "F9");
+    shortcuts.reset();
+    expect(told).toBe(3);
+  });
 });

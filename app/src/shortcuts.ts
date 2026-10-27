@@ -33,6 +33,7 @@ const STORAGE_KEY = "namestudio.shortcuts";
 /** Keys per action: the defaults with this computer's changes on top. */
 export class Shortcuts {
   private custom: Partial<Record<ActionId, string[]>>;
+  private readonly listeners: (() => void)[] = [];
 
   constructor(
     private readonly storage: Pick<Storage, "getItem" | "setItem"> | null,
@@ -88,7 +89,13 @@ export class Shortcuts {
     this.save();
   }
 
+  /** Run `listener` whenever the keys change. */
+  onChange(listener: () => void): void {
+    this.listeners.push(listener);
+  }
+
   private save(): void {
+    for (const listener of this.listeners) listener();
     try {
       this.storage?.setItem(STORAGE_KEY, JSON.stringify(this.custom));
     } catch {
