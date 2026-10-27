@@ -24,10 +24,11 @@ export class DropHint {
 
   /** The outline `points` (window px) with `text` beside it. */
   show(kind: DropKind, points: Point[], text: string): void {
+    // Shown before it is measured: hidden, it has no place on the page.
+    this.layer.style.display = "";
     const box = this.layer.getBoundingClientRect();
     this.outline.setAttribute("points", points.map(([x, y]) => `${x - box.left},${y - box.top}`).join(" "));
     this.layer.dataset.kind = kind;
-    this.layer.style.display = "";
     const xs = points.map(([x]) => x - box.left);
     const ys = points.map(([, y]) => y - box.top);
     this.label.textContent = text;

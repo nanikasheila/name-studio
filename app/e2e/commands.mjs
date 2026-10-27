@@ -76,6 +76,16 @@ try {
   await page.mouse.down();
   await page.mouse.move(target.into[0], target.into[1], { steps: 8 });
   const into = await hint();
+  // The outline lies on the panel it would fill (stage px against window px).
+  const fit = await wb((ids) => {
+    const wb = window.nameStudio.workbench;
+    const panel = wb.project.pages[0].panels.find((p) => p.id === ids.b);
+    const corner = wb.editor.clientOf(ids.page, panel.shape[0]);
+    const stage = document.querySelector(".drop-hint").getBoundingClientRect();
+    const [x, y] = document.querySelector(".drop-hint polygon").getAttribute("points").split(" ")[0].split(",").map(Number);
+    return Math.hypot(stage.left + x - corner[0], stage.top + y - corner[1]);
+  }, ids);
+  check(fit < 1, `the outline lies on that panel (off by ${fit.toFixed(2)} px)`);
   await page.mouse.move(target.place[0], target.place[1], { steps: 8 });
   const place = await hint();
   await page.mouse.up();
