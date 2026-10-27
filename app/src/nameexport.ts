@@ -863,8 +863,8 @@ export async function updateCspDialogue(
   useStyle(project.style);
   await loadTips(project.brushes);
   const notes = request.notes !== false;
-  // 指示 drawn since are redrawn in their layers too (a page without them gets them).
-  const markSet = request.marks === false ? [] : markLayersOf(project);
+  // 指示 drawn since are redrawn in their layers too (a page without them gets them); hidden ones are left be.
+  const markSet = request.marks === false ? [] : markLayersOf(project).filter((layer) => !layer.hidden);
   const names = layerNames(project);
   const start = await call("begin_name_export", { request: { ...request, frameFolders: false, notes: false } });
   try {
