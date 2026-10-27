@@ -63,10 +63,8 @@ export function pressSelect(editor: EditorCore, { event, project, slot, point, s
       return;
     }
   }
-  // コマの入れ替え: drag a panel's number (or Alt + drag the panel) onto another panel.
-  const numbered = editor.badgeAt(slot, sx, sy, project.pageFormat.canvasMm[0]);
-  const altPanel = event.altKey ? editor.panelAt(slot.page, point) : undefined;
-  const swapping = numbered ?? altPanel;
+  // コマの入れ替え: drag a panel's number onto another panel (Alt + drag a panel moves it without snapping, as everywhere).
+  const swapping = editor.badgeAt(slot, sx, sy, project.pageFormat.canvasMm[0]);
   if (swapping) {
     editor.select({ kind: "panel", pageId: slot.page.id, id: swapping.id });
     editor.startDrag({

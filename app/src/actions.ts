@@ -126,7 +126,7 @@ export function buildCommands(host: CommandHost): Command[] {
     button("versions", "版の履歴…", "ファイル", [], "バージョン 戻す 自動保存"),
     { id: "undo", label: "元に戻す", group: "編集", keys: ["Ctrl+Z"], available: named, run: always(() => host.undo()) },
     { id: "redo", label: "やり直す", group: "編集", keys: ["Ctrl+Y", "Ctrl+Shift+Z"], available: named, run: always(() => host.redo()) },
-    { id: "delete", label: "選んだものを消す", group: "編集", keys: ["Delete", "Backspace"], available: selected, run: always(() => host.deleteSelection()) },
+    { id: "delete", label: "選んだものを消す", group: "編集", keys: ["Delete", "Backspace"], available: () => selected() || (editor.tool === "reference" && editor.reference !== null), run: always(() => host.deleteSelection()) },
     { id: "copy", label: "コピー", group: "編集", keys: ["Ctrl+C"], available: selected, run: () => host.copyItems() },
     {
       id: "cut",
@@ -153,9 +153,9 @@ export function buildCommands(host: CommandHost): Command[] {
         return false;
       },
     },
-    { id: "selectAll", label: "ページの線とセリフを全部選ぶ", group: "編集", keys: ["Ctrl+A"], available: named, run: () => editor.selectAll() },
-    { id: "flip.horizontal", label: "選んだ線とセリフを左右反転", group: "編集", keys: [], available: selected, run: () => editor.transformSelection("flipH") },
-    { id: "flip.vertical", label: "選んだ線とセリフを上下反転", group: "編集", keys: [], available: selected, run: () => editor.transformSelection("flipV") },
+    { id: "selectAll", label: "ページのコマ・線・セリフを全部選ぶ（付箋のほか）", group: "編集", keys: ["Ctrl+A"], available: named, run: () => editor.selectAll() },
+    { id: "flip.horizontal", label: "選んだものを左右反転", group: "編集", keys: [], available: selected, run: () => editor.transformSelection("flipH") },
+    { id: "flip.vertical", label: "選んだものを上下反転", group: "編集", keys: [], available: selected, run: () => editor.transformSelection("flipV") },
     { id: "transform", label: "選んだものを変形（拡大縮小・回転・自由変形）", group: "編集", keys: ["Ctrl+T"], available: selected, run: () => editor.toggleTransform() },
     {
       id: "deselect",
@@ -164,9 +164,10 @@ export function buildCommands(host: CommandHost): Command[] {
       keys: ["Escape"],
       available: named,
       run: always(() => {
-        // Esc ends 変形 first, then lets go of the selection.
+        // Esc goes back a step at a time: 変形 ends first, then the selection (or the chosen 資料画像) is let go.
         if (editor.isTransforming) editor.toggleTransform(false);
-        else editor.select(null);
+        else if (editor.selection) editor.select(null);
+        else if (editor.reference) editor.chooseReference(null);
       }),
     },
     tool("tool.select", "select", "選択", ["V"]),

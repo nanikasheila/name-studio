@@ -6710,12 +6710,7 @@
    }
   ],
   "nextId": 16,
-  "selection": {
-   "kind": "line",
-   "pageId": "page2",
-   "id": "line13",
-   "tail": 0
-  },
+  "selection": null,
   "tool": "pen",
   "undo": 11,
   "status": "しっぽを足しました。先をドラッグで向きを、ひし形で曲がりを変えられます"
@@ -8716,12 +8711,7 @@
    }
   ],
   "nextId": 17,
-  "selection": {
-   "kind": "line",
-   "pageId": "page2",
-   "id": "line13",
-   "tail": 0
-  },
+  "selection": null,
   "tool": "pen",
   "undo": 12,
   "status": "しっぽを足しました。先をドラッグで向きを、ひし形で曲がりを変えられます"
@@ -10799,12 +10789,7 @@
    }
   ],
   "nextId": 18,
-  "selection": {
-   "kind": "line",
-   "pageId": "page2",
-   "id": "line13",
-   "tail": 0
-  },
+  "selection": null,
   "tool": "pen",
   "undo": 13,
   "status": "しっぽを足しました。先をドラッグで向きを、ひし形で曲がりを変えられます"
@@ -12775,12 +12760,7 @@
    }
   ],
   "nextId": 18,
-  "selection": {
-   "kind": "line",
-   "pageId": "page2",
-   "id": "line13",
-   "tail": 0
-  },
+  "selection": null,
   "tool": "eraser",
   "undo": 14,
   "status": "消し方: 線全体"
@@ -14034,12 +14014,7 @@
    }
   ],
   "nextId": 18,
-  "selection": {
-   "kind": "line",
-   "pageId": "page2",
-   "id": "line13",
-   "tail": 0
-  },
+  "selection": null,
   "tool": "eraser",
   "undo": 15,
   "status": "囲んだ中の線を消しました（1 本）"
@@ -15293,12 +15268,7 @@
    }
   ],
   "nextId": 19,
-  "selection": {
-   "kind": "line",
-   "pageId": "page2",
-   "id": "line13",
-   "tail": 0
-  },
+  "selection": null,
   "tool": "eraser",
   "undo": 16,
   "status": "消し方: 触れた部分"
@@ -16659,12 +16629,7 @@
    }
   ],
   "nextId": 20,
-  "selection": {
-   "kind": "line",
-   "pageId": "page2",
-   "id": "line13",
-   "tail": 0
-  },
+  "selection": null,
   "tool": "fill",
   "undo": 17,
   "status": "消し方: 触れた部分"

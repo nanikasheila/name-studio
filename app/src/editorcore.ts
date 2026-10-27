@@ -27,6 +27,37 @@ export interface Selection {
   tail?: number;
 }
 
+/**
+ * What each tool keeps picked. The select tool picks anything (and only it
+ * shows handles and the action bar); the others pick only what they make,
+ * so that what is picked is always what is shown as picked.
+ */
+const HOLDS: Record<Tool, readonly Selection["kind"][]> = {
+  select: ["panel", "line", "stroke", "breakout", "group", "sticky", "fill"],
+  cut: ["panel"],
+  text: ["line"],
+  breakout: ["breakout"],
+  sticky: ["sticky"],
+  pen: [],
+  eraser: [],
+  fill: [],
+  reference: [],
+};
+
+/** Whether `tool` keeps a selection of `kind` (else the selection goes when the tool is taken up). */
+export function toolHolds(tool: Tool, kind: Selection["kind"]): boolean {
+  return HOLDS[tool].includes(kind);
+}
+
+/**
+ * Things with no handles of their own show the transform frame as soon as
+ * they are picked; a panel (its corners) and a balloon (its tails) show it
+ * with 変形 (Ctrl+T).
+ */
+export function framedAtOnce(kind: Selection["kind"]): boolean {
+  return kind === "stroke" || kind === "fill" || kind === "breakout" || kind === "group";
+}
+
 /** What the editor needs from the app around it. */
 export interface EditorHost {
   project(): Project | null;
@@ -37,6 +68,8 @@ export interface EditorHost {
   /** The change since `begin` changed nothing. */
   cancel(): void;
   selectionChanged(selection: Selection | null): void;
+  /** Take up a tool (its button and options with it). */
+  useTool(tool: Tool): void;
   /** Pixels of a rough from the source sheet, or null while they load. */
   rough(rough: RoughImage): CanvasImageSource | null;
   status(message: string): void;
