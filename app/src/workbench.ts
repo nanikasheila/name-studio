@@ -49,6 +49,7 @@ import { NameEdits, pickedStrokes } from "./nameedits";
 import { editorDocks } from "./palettes";
 import { ReferenceBar } from "./referencebar";
 import { RoughCache } from "./roughcache";
+import { Reader } from "./reader";
 import { ControlBar } from "./controlbar";
 
 export const PROJECT_EXTENSION = "namestudio";
@@ -175,6 +176,8 @@ export class Workbench {
   private readonly brushDialog: BrushDialog;
   private readonly settingsDialog: SettingsDialog;
   private readonly versionDialog: VersionDialog;
+  /** 読む表示: the name read through as the book. */
+  private readonly reader: Reader;
   /** The save or autosave being written, which the next one waits for. */
   private writing: Promise<unknown> = Promise.resolve();
   /** Saves and autosaves being written. */
@@ -369,6 +372,18 @@ export class Workbench {
       path: () => this.session.path,
       restore: (version) => this.restoreVersion(version),
       autosaveChanged: () => this.autosaver.notify(),
+    });
+    this.reader = new Reader({
+      project: () => this.session.project,
+      firstAlone: () => this.editor.firstAlone,
+      page: () => {
+        const project = this.session.project;
+        const focused = this.editor.focusPage();
+        const index = focused && project ? project.pages.indexOf(focused) : -1;
+        return index >= 0 ? index + 1 : (this.editor.currentPages()[0] ?? 1);
+      },
+      rough: (rough) => this.roughs.load(rough),
+      closed: (pageNumber) => this.editor.showPage(pageNumber),
     });
     this.bindControls();
     this.bars.showViewMode();
@@ -836,6 +851,7 @@ export class Workbench {
     $("brush-import").addEventListener("click", () => void this.brushDialog.open());
     $("name-export").addEventListener("click", () => this.exportDialog.open());
     $("focus-mode").addEventListener("click", () => this.toggleFocus());
+    $("read-mode").addEventListener("click", () => void this.reader.open());
     $("versions").addEventListener("click", () => this.openVersions());
     $("shortcuts").addEventListener("click", () => this.shortcutDialog.open());
     $("pen-settings").addEventListener("click", () => this.penDialog.open());

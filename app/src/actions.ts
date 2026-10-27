@@ -290,6 +290,7 @@ export function buildCommands(host: CommandHost): Command[] {
         editor.fitAll();
       }),
     },
+    button("read-mode", "読む（見開きで通し読み。←→・クリック・ホイールでめくる、Esc で戻る）", "画面", ["F5"], "読む 通し読み プレビュー 確認"),
     { id: "view.focus", label: "左右の欄と物語の帯を隠してページを大きく（もう一度で戻す）", group: "画面", keys: ["Tab"], available: named, run: always(() => host.toggleFocus()) },
     palette("pages", "ページ", "一覧 並べ替え"),
     palette("script", "台本", "台本 プロット 取り込み markdown"),
