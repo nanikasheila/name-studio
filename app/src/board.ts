@@ -26,8 +26,10 @@ const LANES: { id: LaneId; label: string; hint: string }[] = [
   { id: "text", label: "字数", hint: "字数: ページごとのセリフの字数（多いページは色を変える）" },
 ];
 
-const DEFAULT_LANES: Record<Mode, LaneId[]> = { strip: ["shape", "scene", "emotion", "text"], wide: ["shape", "scene", "time", "emotion", "text"] };
-const LANES_KEY = "namestudio.storyLanes";
+// The strip under the pages starts with the scenes alone (描く配置: the pages get the height);
+// F2–F4 or its buttons add lanes, 大きく (F6) shows them all. v2: the strip's first lanes changed.
+const DEFAULT_LANES: Record<Mode, LaneId[]> = { strip: ["scene"], wide: ["shape", "scene", "time", "emotion", "text"] };
+const LANES_KEY = "namestudio.storyLanes.v2";
 
 const LABEL_WIDTH = 66;
 export const MIN_COLUMN = 24;
@@ -77,11 +79,14 @@ export class Board {
   constructor(
     dock: HTMLElement,
     handle: HTMLElement,
+    /** The row under the pages: the strip's buttons go at its end (one row less over the strip). */
+    bar: HTMLElement,
     private readonly host: StoryHost,
   ) {
     this.controls = html("div", { className: "story-controls" });
     this.root = html("div", { className: "story-lanes" });
-    dock.append(this.controls, this.root);
+    bar.append(this.controls);
+    dock.append(this.root);
     this.tipNode = html("div", { className: "chart-tip" });
     this.tipNode.hidden = true;
     this.tip = { show: (event, lines) => this.showTip(event, lines), hide: () => (this.tipNode.hidden = true) };
@@ -89,7 +94,6 @@ export class Board {
     this.height = new DockHeight({
       dock,
       handle,
-      controls: this.controls,
       lanes: this.root,
       mode: () => this.mode,
       contentHeight: () => this.contentHeight,
@@ -253,8 +257,8 @@ export class Board {
   /** 物語の帯 ⇄ 大きく (F6): the strip takes most of the height, with every lane. */
   toggleWide(wide = !this.expanded): void {
     if (this.scroller) this.scroll = { left: this.scroller.scrollLeft, top: 0 };
+    // 大きく is never folded; back to the strip, it folds again if it was.
     this.mode = wide ? "wide" : "strip";
-    this.height.fold(false);
     this.render();
   }
 
@@ -264,7 +268,8 @@ export class Board {
 
   /** たたむ ⇄ 広げる (Shift+F6, a double click on the top edge): the strip down to its row of buttons. */
   toggleFold(fold = !this.isFolded): void {
-    if (this.height.fold(fold)) this.render();
+    if (fold && this.mode === "wide") this.mode = "strip";
+    if (this.height.fold(fold) || fold) this.render();
   }
 
   /** Show or hide a lane (in the current mode); `on` forces it. */

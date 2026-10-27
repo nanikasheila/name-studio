@@ -4,7 +4,7 @@
 import type { Board, LaneId } from "./board";
 import type { Command } from "./commands";
 import type { PaletteId } from "./dock";
-import { ERASE_MODE_LABELS, type EditorEraseMode, type PageEditor, type Tool } from "./editor";
+import { ERASE_MODE_LABELS, type EditorEraseMode, type PageEditor, type PanelMode, type Tool } from "./editor";
 import type { Page } from "./model";
 
 /** What the commands need from the workbench. */
@@ -21,6 +21,14 @@ export interface CommandHost {
   setRows(rows: number): void;
   setTool(tool: Tool): void;
   setEraseMode(mode: EditorEraseMode): void;
+  /** コマ割り: how a drag makes panels (the tool comes too). */
+  setPanelMode(mode: PanelMode): void;
+  /** The selected panel into 保留, contents and all; false when no panel is selected. */
+  holdSelected(): boolean;
+  /** CSP のセリフを読み戻す, from the folder of this name's last CSP export. */
+  readBack(): void;
+  /** 次の話を作る in the open name's series; false when it is in none. */
+  nextStory(): boolean;
   resizeBrush(factor: number): boolean;
   deleteSelection(): void;
   copyItems(): boolean;
@@ -112,6 +120,8 @@ export function buildCommands(host: CommandHost): Command[] {
     button("open", "開く…", "ファイル", [], "ファイル ネーム 読む"),
     button("new-project", "新しいネーム…", "ファイル", [], "作る 白紙"),
     button("name-export", "書き出す…（CSP・PDF・台本）", "ファイル", [], "エクスポート clip cmc pdf 台本 テキスト"),
+    { id: "export.readBack", label: "CSP のセリフを読み戻す…", group: "ファイル", keys: [], words: "読み戻し 取り込む CSP 直した セリフ", available: named, run: always(() => host.readBack()) },
+    { id: "series.next", label: "シリーズの次の話を作る…", group: "ファイル", keys: [], words: "次の話 新しい話 シリーズ", available: named, run: () => host.nextStory() },
     { id: "exportAgain", label: "前回と同じ設定で書き出す", group: "ファイル", keys: ["Ctrl+Shift+E"], words: "もう一度 再書き出し エクスポート clip pdf", available: named, run: always(() => host.exportAgain()) },
     button("versions", "版の履歴…", "ファイル", [], "バージョン 戻す 自動保存"),
     { id: "undo", label: "元に戻す", group: "編集", keys: ["Ctrl+Z"], available: named, run: always(() => host.undo()) },
@@ -168,6 +178,10 @@ export function buildCommands(host: CommandHost): Command[] {
     tool("tool.breakout", "breakout", "はみ出し", ["B"]),
     tool("tool.sticky", "sticky", "付箋", ["M"], "メモ"),
     tool("tool.reference", "reference", "資料画像", ["I"], "写真 背景 画像"),
+    { id: "panel.modeCut", label: "コマ割り: 割る（横切るように引く）", group: "道具", keys: [], words: "コマ 割る", available: named, run: always(() => host.setPanelMode("cut")) },
+    { id: "panel.modeRect", label: "コマ割り: 四角（ドラッグで四角いコマ）", group: "道具", keys: [], words: "コマ 四角 矩形", available: named, run: always(() => host.setPanelMode("rect")) },
+    { id: "panel.modePolygon", label: "コマ割り: 多角形（角を置く）", group: "道具", keys: [], words: "コマ 多角形 台形", available: named, run: always(() => host.setPanelMode("polygon")) },
+    { id: "panel.hold", label: "選んだコマを中身ごと保留にする", group: "編集", keys: [], words: "保留 置き場所 あとで", available: () => editor.selection?.kind === "panel", run: () => host.holdSelected() },
     {
       id: "eraser.next",
       label: "消し方を切り替える",
@@ -290,6 +304,7 @@ export function buildCommands(host: CommandHost): Command[] {
         editor.fitAll();
       }),
     },
+    button("read-mode", "読む（見開きで通し読み。←→・クリック・ホイールでめくる、Esc で戻る）", "画面", ["F5"], "読む 通し読み プレビュー 確認"),
     { id: "view.focus", label: "左右の欄と物語の帯を隠してページを大きく（もう一度で戻す）", group: "画面", keys: ["Tab"], available: named, run: always(() => host.toggleFocus()) },
     palette("pages", "ページ", "一覧 並べ替え"),
     palette("script", "台本", "台本 プロット 取り込み markdown"),

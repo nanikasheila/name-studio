@@ -107,8 +107,8 @@ export function drawNote(ctx: CanvasRenderingContext2D, slot: Slot, panel: Panel
  * it is outlined, and `handle` (a radius) draws the handle that ties it to a
  * panel or a line.
  */
-export function drawSticky(ctx: CanvasRenderingContext2D, slot: Slot, sticky: Sticky, selected: boolean, handle: number | null): void {
-  const [x0, y0, x1, y1] = stickyBox(sticky);
+export function drawSticky(ctx: CanvasRenderingContext2D, slot: Slot, sticky: Sticky, selected: boolean, handle: number | null, open = selected): void {
+  const [x0, y0, x1, y1] = stickyBox(sticky, open);
   const sx = slot.x + x0 * slot.scale;
   const sy = slot.y + y0 * slot.scale;
   const w = (x1 - x0) * slot.scale;
@@ -140,7 +140,7 @@ export function drawSticky(ctx: CanvasRenderingContext2D, slot: Slot, sticky: St
   ctx.font = `${size}px sans-serif`;
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
-  stickyRows(sticky.text).forEach((row, i) => ctx.fillText(row, sx + 2 * slot.scale, sy + 2 * slot.scale + i * size * 1.3));
+  stickyRows(sticky.text, open).forEach((row, i) => ctx.fillText(row, sx + 2 * slot.scale, sy + 2 * slot.scale + i * size * 1.3));
   if (selected && handle !== null) {
     // The handle to tie it to a panel or a line: drag it there.
     const [hx, hy] = stickyHandle(slot, sticky);

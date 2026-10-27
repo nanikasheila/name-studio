@@ -33,6 +33,8 @@ try {
     const panel = addPanel(project, first, rectShape([20, 20, 200, 160]));
     const line = addLine(project, first, [150, 50], "セリフ");
     line.panel = panel.id;
+    // A line on the next spread, for Tab.
+    addLine(project, project.pages[1], [100, 100], "二枚目");
     window.nameStudio.show(project);
     // Once the pages have slid into place.
     await new Promise((done) => setTimeout(done, 400));
@@ -86,6 +88,60 @@ try {
   check((await state()).note === null, "Ctrl+Z takes the memo back");
   await page.keyboard.press("Control+z");
   check((await state()).text === "セリフ", "and then the dialogue");
+
+  // The text tool on an empty spot: a new line and a field in it, one step together.
+  const lines = () => page.evaluate(() => window.nameStudio.workbench.project.pages[0].lines.length);
+  const undos = () => page.evaluate(() => window.nameStudio.workbench.session.history.undoStack.length);
+  const [count, steps] = [await lines(), await undos()];
+  await page.evaluate(() => window.nameStudio.workbench.setTool("text"));
+  await page.mouse.click(where.inside[0], where.inside[1] + 40);
+  await field.waitFor({ timeout: 2000 }).catch(() => undefined);
+  check((await field.count()) === 1 && (await lines()) === count + 1, "the text tool places a line and opens a field in it");
+  await page.keyboard.press("Escape");
+  check((await field.count()) === 0 && (await lines()) === count && (await undos()) === steps, "Esc takes the new line away again, with no undo step");
+  await page.mouse.click(where.inside[0], where.inside[1] + 40);
+  await field.waitFor({ timeout: 2000 }).catch(() => undefined);
+  await page.keyboard.type("やあ");
+  await page.keyboard.press("Control+Enter");
+  check((await lines()) === count + 1 && (await undos()) === steps + 1, "written and kept, the line is one undo step");
+  await page.locator("#editor-canvas").click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press("Control+z");
+  check((await lines()) === count, "which Ctrl+Z takes back whole");
+
+  // Tab: kept, and on to the next line in reading order (across the pages); Shift+Tab back.
+  await page.evaluate(() => window.nameStudio.workbench.setTool("select"));
+  const second = () => page.evaluate(() => window.nameStudio.workbench.project.pages[1].lines[0].text);
+  const shown = () => page.evaluate(() => window.nameStudio.workbench.editor.currentPages());
+  const steps2 = await undos();
+  await page.mouse.dblclick(...where.line);
+  await field.waitFor({ timeout: 2000 }).catch(() => undefined);
+  await page.keyboard.press("Tab");
+  await field.waitFor({ timeout: 2000 }).catch(() => undefined);
+  check((await field.count()) === 1 && (await field.inputValue()) === "二枚目", "Tab opens the next line, on the next page");
+  check((await shown()).includes(2) && (await undos()) === steps2, "the spread turns to it, and an unchanged line is no undo step");
+  await page.keyboard.press("Control+a");
+  await page.keyboard.type("直した");
+  await page.keyboard.press("Shift+Tab");
+  await field.waitFor({ timeout: 2000 }).catch(() => undefined);
+  check((await second()) === "直した" && (await undos()) === steps2 + 1, "what was written is kept as one step");
+  check((await field.count()) === 1 && (await field.inputValue()) === "セリフ" && (await shown()).includes(1), "Shift+Tab goes back to the line before");
+  await page.keyboard.press("Tab");
+  await field.waitFor({ timeout: 2000 }).catch(() => undefined);
+  await page.keyboard.press("Tab");
+  check((await field.count()) === 0 && (await status()) === "最後のセリフです", "Tab on the last line closes it and says so");
+
+  // 台本: a search keeps the lines with those words (or that speaker), and keeps its caret while typed in.
+  await page.evaluate(() => window.nameStudio.workbench.docks.open("script"));
+  const search = page.locator("#side-script .script-search");
+  await search.click();
+  await page.keyboard.type("直し");
+  const rows = () => page.locator("#side-script .script-line .text").allTextContents();
+  check(JSON.stringify(await rows()) === JSON.stringify(["直した"]), `the 台本 search keeps the matching line (${await rows()})`);
+  check((await page.locator("#side-script .hint").first().textContent()) === "1 件" && (await search.evaluate((f) => document.activeElement === f)), "says how many, and the field keeps the caret");
+  await search.fill("ないことば");
+  check((await rows()).length === 0 && (await page.locator("#side-script .hint").first().textContent()) === "見つかりません", "nothing found says so");
+  await search.fill("");
+  check((await rows()).length === 2, "an empty search shows every line again");
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(" / ")}` : ""}`);
 } finally {
   await browser.close();

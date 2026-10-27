@@ -30,7 +30,7 @@ const LAYERS = {
     "alternatives", "arrange", "aside", "autotail", "balloon", "brush", "cast", "commands", "csppage", "dialogue", "export", "exportmemory", "fonts",
     "history", "hold", "koma", "komaedit", "layout", "mask", "namecheck", "namedefaults", "pagebox", "pages", "panelfolders", "panels", "pen",
     "plotimport", "project", "projectjson", "readback", "readingorder", "recent", "references", "removal", "reorder", "repair", "roughlayers", "scriptimport",
-    "savestate", "series", "session", "shapes", "shortcuts", "snapping", "snapshot", "stickies", "story", "strokes", "structures", "style", "transform", "viewport", "wrap",
+    "savestate", "series", "session", "shapes", "shortcuts", "snapping", "snapshot", "springtool", "stickies", "story", "strokes", "structures", "style", "transform", "viewport", "wrap",
   ],
   /** This computer and the Rust side: storage, settings, commands, the page's elements. */
   platform: ["backend", "dom", "errorlog", "prefs", "settings"],
@@ -40,8 +40,8 @@ const LAYERS = {
   service: ["autosave", "batch", "nameexport", "roughcache"],
   /** The screens. */
   ui: [
-    "actions", "alerts", "altdialog", "board", "boarddock", "boardemotion", "boardpages", "boardscene", "boardshape", "boardview", "brushdialog", "controlbar", "dock", "dragsort", "editor", "editorcore", "exportdialog", "fontpicker", "inplace", "inspector",
-    "layers", "livefields", "nameedits", "palette", "palettes", "pendialog", "referencebar", "roughpanel", "scriptdialog", "seriespanel", "settingsdialog", "sheetexport", "shortcutdialog", "sidelists", "startscreen", "toolaside", "tooleraser", "toolfill",
+    "actions", "alerts", "altdialog", "board", "boarddock", "boardemotion", "boardpages", "boardscene", "boardshape", "boardview", "brushdialog", "controlbar", "dock", "dragsort", "drophint", "editor", "editorcore", "exportdialog", "fontpicker", "inplace", "inspector",
+    "layers", "livefields", "nameedits", "palette", "palettes", "pendialog", "reader", "readbackpick", "referencebar", "roughpanel", "scriptdialog", "seriespanel", "settingsdialog", "sheetexport", "shortcutdialog", "sidelists", "startscreen", "toolaside", "tooleraser", "toolfill",
     "toolpanels", "toolpen", "toolreference", "tools", "toolselect", "toolsticky", "tooltext", "tooltransform", "updater", "versiondialog",
     "viewer", "workbench",
   ],

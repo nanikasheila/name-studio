@@ -171,14 +171,15 @@ export function movePage(project: Project, pageId: string, step: number): void {
   }
 }
 
-/** How many pages at the end have nothing on them (no panels, lines, strokes, roughs, fills or memo). */
+/** Whether nothing is on a page: no panels, lines, strokes, roughs, はみ出し, fills, 資料, 付箋 or memo. */
+export function pageIsEmpty(page: Page): boolean {
+  const things = page.panels.length + page.lines.length + page.strokes.length + page.roughs.length + page.breakouts.length;
+  return things + (page.fills?.length ?? 0) + (page.references?.length ?? 0) + (page.stickies?.length ?? 0) === 0 && page.memo.trim() === "";
+}
+
+/** How many pages at the end have nothing on them. */
 export function trailingEmptyPages(project: Project): number {
   let count = 0;
-  for (let i = project.pages.length - 1; i >= 0; i--) {
-    const page = project.pages[i];
-    const filled = page.panels.length + page.lines.length + page.strokes.length + page.roughs.length + (page.fills?.length ?? 0) + (page.references?.length ?? 0) > 0 || page.memo.trim() !== "";
-    if (filled) break;
-    count++;
-  }
+  for (let i = project.pages.length - 1; i >= 0 && pageIsEmpty(project.pages[i]); i--) count++;
   return count;
 }

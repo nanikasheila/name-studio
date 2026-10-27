@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { History } from "./history";
 import { addCharacter, addScene, removeCharacter, sceneOf, setEmotion } from "./cast";
-import { addLine, setLineText, textSize, wrapTypedLine } from "./dialogue";
+import { addLine, neighbour, setLineText, textSize, wrapTypedLine } from "./dialogue";
 import { area, boxCenter, rectShape } from "./geometry";
 import type { Point } from "./model";
 import { basicBox, snapCut, snapLines, snapPoint, splitShape } from "./pagebox";
 import { addPanel, carryContents, cutPanels, followPanel, movePanel, panelContents, swapPanelContents } from "./panels";
-import { insertPage, movePage, newProject, removePage, trailingEmptyPages } from "./project";
+import { insertPage, movePage, newProject, pageIsEmpty, removePage, trailingEmptyPages } from "./project";
 import { orderPanels } from "./readingorder";
-import { movePagesTo, moveScene, pageBlock } from "./reorder";
+import { moveBlock, movePagesTo, moveScene, pageBlock } from "./reorder";
 import { addFill, addStroke, eraseInside, eraseStrokes, pickInside, splitAtX, splitOverPages } from "./strokes";
 
 const square = rectShape([0, 0, 100, 100]);
@@ -306,6 +306,31 @@ describe("入れ替え", () => {
     expect(movePagesTo(project, 0, 0, 1)).toBe(false);
   });
 
+  it("moves a page one place with its 見開き partner, past a whole 見開き (B1)", () => {
+    const project = newProject("t", 6);
+    const [p1, p2, p3, p4, p5, p6] = ids(project);
+    project.pages[1].joinNext = true;
+    // 2–3 is one 見開き: 1 つ後ろへ from either half moves both past page 4.
+    expect(moveBlock(project, 1, 1)).toBe(true);
+    expect(ids(project)).toEqual([p1, p4, p2, p3, p5, p6]);
+    expect(project.pages[2].joinNext).toBe(true);
+    expect(moveBlock(project, 3, -1)).toBe(true);
+    expect(ids(project)).toEqual([p1, p2, p3, p4, p5, p6]);
+    // A single page moves past the whole 見開き next to it.
+    expect(moveBlock(project, 3, -1)).toBe(true);
+    expect(ids(project)).toEqual([p1, p4, p2, p3, p5, p6]);
+    expect(moveBlock(project, 0, -1)).toBe(false);
+    expect(moveBlock(project, 5, 1)).toBe(false);
+  });
+
+  it("counts a page with only a 付箋, 資料 or memo as not empty", () => {
+    const project = newProject("t", 1);
+    const page = project.pages[0];
+    expect(pageIsEmpty(page)).toBe(true);
+    page.stickies = [{ id: "s", text: "あとで", at: [0, 0] }];
+    expect(pageIsEmpty(page)).toBe(false);
+  });
+
   it("keeps scenes on the pages that stay; a moved page joins the scene it lands in", () => {
     const project = newProject("t", 6);
     const [p1, p2, p3, p4, p5, p6] = ids(project);
@@ -400,5 +425,32 @@ describe("連続のキャンバスでページをまたぐ線", () => {
     const runs = splitOverPages<string>([[50, 10, 1], [-20, 10, 1], [-30, 20, 1]], "a", pageOf, gutter);
     expect(runs).toHaveLength(1);
     expect(runs[0].points).toHaveLength(3);
+  });
+});
+
+describe("the next line to write (Tab)", () => {
+  it("goes on in reading order across the pages, and stops at either end", () => {
+    const project = newProject("t", 3);
+    const [one, , three] = project.pages;
+    const a = addLine(project, one, [100, 50], "a");
+    const b = addLine(project, one, [40, 150], "b");
+    const c = addLine(project, three, [100, 50], "c");
+    expect(neighbour(project, one.id, "line", a.id, 1)).toEqual({ pageId: one.id, id: b.id });
+    expect(neighbour(project, one.id, "line", b.id, 1)).toEqual({ pageId: three.id, id: c.id });
+    expect(neighbour(project, three.id, "line", c.id, -1)).toEqual({ pageId: one.id, id: b.id });
+    expect(neighbour(project, three.id, "line", c.id, 1)).toBeNull();
+    expect(neighbour(project, one.id, "line", a.id, -1)).toBeNull();
+  });
+
+  it("goes by panel number for the panels' memos", () => {
+    const project = newProject("t", 2);
+    const [one, two] = project.pages;
+    const p1 = addPanel(project, one, rectShape([20, 20, 100, 100]));
+    const p2 = addPanel(project, one, rectShape([120, 20, 200, 100]));
+    const q1 = addPanel(project, two, rectShape([20, 20, 100, 100]));
+    p1.order = 2;
+    p2.order = 1;
+    expect(neighbour(project, one.id, "note", p2.id, 1)).toEqual({ pageId: one.id, id: p1.id });
+    expect(neighbour(project, one.id, "note", p1.id, 1)).toEqual({ pageId: two.id, id: q1.id });
   });
 });

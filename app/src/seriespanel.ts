@@ -49,6 +49,8 @@ export const NAME_EXTENSION = "namestudio";
 
 export class SeriesPanel {
   private current: OpenSeries | null = null;
+  /** The page count chosen for the next 話 (none: as many as the open one aims for). */
+  private nextPages: number | null = null;
   /** The series file last looked for and not read (not looked for again at each render). */
   private missing: string | null = null;
 
@@ -190,6 +192,8 @@ export class SeriesPanel {
       if (!mine) row.addEventListener("click", () => void this.host.open(file));
       list.append(row);
     }
+    const pages = element("input", { type: "number", id: "series-next-pages", min: "1", max: "400", value: String(this.nextPages ?? project.plan?.targetPages ?? project.pages.length) });
+    pages.addEventListener("change", () => (this.nextPages = Math.max(1, Math.min(400, Math.round(Number(pages.value)) || 1))));
     const next = plainButton("次の話を作る…", () => void this.createNext());
     next.id = "series-next";
     next.title = `第${nextStoryIndex(data)}話を、シリーズの人物・設定で白紙から作る`;
@@ -200,7 +204,7 @@ export class SeriesPanel {
       head,
       list,
       element("p", { className: "hint", textContent: `共有: ${sharedSummary(data.shared)}。保存するとシリーズにも入り、ほかの話を開くとそれに合わせます。` }),
-      element("div", { className: "series-tools" }, next, leave),
+      element("div", { className: "series-tools" }, element("label", { className: "row-field", title: "次の話のページ数（目標ページ数にもなる）" }, "ページ数 ", pages), next, leave),
     );
   }
 
@@ -282,7 +286,12 @@ export class SeriesPanel {
   }
 
   /** The next 話: a blank name with the series' characters and settings, saved next to the series. */
-  private async createNext(): Promise<void> {
+  /** Whether the open name is in a series (so a next 話 can be made). */
+  get inSeries(): boolean {
+    return this.current !== null;
+  }
+
+  async createNext(): Promise<void> {
     const current = this.current;
     const project = this.host.project();
     if (!current || !project) return;
@@ -299,7 +308,9 @@ export class SeriesPanel {
       this.host.status("ネームは、シリーズのファイルと同じドライブに置いてください");
       return;
     }
-    const next = newProject(title, project.pages.length, nameKind(project));
+    const count = this.nextPages ?? project.plan?.targetPages ?? project.pages.length;
+    const next = newProject(title, count, nameKind(project));
+    next.plan = { ...next.plan, targetPages: count };
     next.storyIndex = index;
     next.author = current.data.author || project.author;
     next.pageFormat = structuredClone(project.pageFormat);

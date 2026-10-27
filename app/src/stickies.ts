@@ -15,8 +15,11 @@ export const STICKY_COLORS: Record<StickyColor, { label: string; fill: string }>
 export const STICKY_WIDTH_MM = 64;
 export const STICKY_TEXT_MM = 6;
 
-/** The rows a sticky's text takes (wrapped to its width). */
-export function stickyRows(text: string): string[] {
+/** Rows a long sticky shows on the page; selected or under the pointer it opens to all of them. */
+export const STICKY_FOLDED_ROWS = 4;
+
+/** The rows a sticky's text takes (wrapped to its width): folded to the first few, ending in …, unless `open`. */
+export function stickyRows(text: string, open = false): string[] {
   const perRow = Math.floor((STICKY_WIDTH_MM - 4) / STICKY_TEXT_MM);
   const rows: string[] = [];
   for (const paragraph of (text || "メモ").replace(/\r\n?/g, "\n").split("\n")) {
@@ -24,12 +27,21 @@ export function stickyRows(text: string): string[] {
     if (!chars.length) rows.push("");
     for (let i = 0; i < chars.length; i += perRow) rows.push(chars.slice(i, i + perRow).join(""));
   }
-  return rows;
+  if (open || rows.length <= STICKY_FOLDED_ROWS) return rows;
+  const shown = rows.slice(0, STICKY_FOLDED_ROWS);
+  shown[shown.length - 1] = [...shown[shown.length - 1]].slice(0, perRow - 1).join("") + "…";
+  return shown;
 }
 
-export function stickyBox(sticky: Sticky): BoxMm {
+/** Whether a sticky has more text than it shows folded. */
+export function stickyFolds(sticky: Sticky): boolean {
+  return stickyRows(sticky.text, true).length > STICKY_FOLDED_ROWS;
+}
+
+/** Where a sticky lies (mm): folded, or as tall as all its text when `open`. */
+export function stickyBox(sticky: Sticky, open = false): BoxMm {
   const [x, y] = sticky.at;
-  return [x, y, x + STICKY_WIDTH_MM, y + 4 + stickyRows(sticky.text).length * STICKY_TEXT_MM * 1.3];
+  return [x, y, x + STICKY_WIDTH_MM, y + 4 + stickyRows(sticky.text, open).length * STICKY_TEXT_MM * 1.3];
 }
 
 export function addSticky(project: Project, page: Page, at: Point, text = ""): Sticky {

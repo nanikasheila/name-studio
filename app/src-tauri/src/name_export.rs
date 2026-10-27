@@ -568,9 +568,20 @@ pub(crate) async fn check_export_target(out_dir: String) -> manifest::OverwriteC
 }
 
 #[tauri::command]
-pub(crate) async fn cancel_name_export(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    *state.name_export.lock().map_err(lock_error)? = None;
-    Ok(())
+pub(crate) async fn cancel_name_export(state: tauri::State<'_, AppState>) -> Result<u32, String> {
+    let writer = state.name_export.lock().map_err(lock_error)?.take();
+    let Some(writer) = writer else {
+        return Ok(0);
+    };
+    // Pages already written are this tool's again: recorded, so the next
+    // export does not take them for pages drawn on in CSP.
+    let (pages, records) = writer.abandon();
+    let count = pages.len() as u32;
+    if let Some(dir) = pages.first().and_then(|page| page.parent()).map(Path::to_path_buf) {
+        let written: Vec<(PathBuf, manifest::PageRecord)> = pages.into_iter().zip(records).collect();
+        let _ = manifest::merge_manifest(&dir, &written);
+    }
+    Ok(count)
 }
 
 #[cfg(test)]

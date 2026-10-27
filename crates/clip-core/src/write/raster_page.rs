@@ -951,6 +951,12 @@ impl RasterWorkWriter {
         path
     }
 
+    /// Stopped before the end: the pages written so far and what each holds
+    /// (no work file is written).
+    pub fn abandon(mut self) -> (Vec<PathBuf>, Vec<PageRecord>) {
+        (std::mem::take(&mut self.pages), std::mem::take(&mut self.records))
+    }
+
     pub fn finish(mut self) -> Result<WorkReport> {
         let work = match &self.options.work {
             Some((name, cmc)) => {

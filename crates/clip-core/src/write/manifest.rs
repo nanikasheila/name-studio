@@ -38,6 +38,11 @@ pub struct ManifestFile {
 pub struct PageRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub texts: Option<Vec<String>>,
+    /// The `texts` before the name last took CSP's dialogue back (see
+    /// [`super::update::adopt_dialogue`]): a name that undid the take-back
+    /// still has these, and reading back again finds the same changes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adopted_from: Option<Vec<String>>,
     /// Each vector layer's [`crate::vector::shape_signature`], by layer name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub vectors: BTreeMap<String, String>,
@@ -95,6 +100,30 @@ pub fn write_manifest(dir: &Path, files: &[(PathBuf, PageRecord)]) -> std::io::R
             files,
         },
     )
+}
+
+/// Record `files` as this tool's, keeping what the manifest says of the
+/// others: an export stopped part way through rewrote only these pages.
+pub fn merge_manifest(dir: &Path, files: &[(PathBuf, PageRecord)]) -> std::io::Result<()> {
+    let mut manifest = load(dir).unwrap_or(Manifest {
+        written_ms: now_ms(),
+        files: Vec::new(),
+    });
+    for (path, record) in files.iter().filter(|(path, _)| path.parent() == Some(dir)) {
+        let (Some((size, modified_ms)), Some(name)) = (stamp(path), path.file_name()) else {
+            continue;
+        };
+        let name = name.to_string_lossy().into_owned();
+        manifest.files.retain(|file| file.name != name);
+        manifest.files.push(ManifestFile {
+            name,
+            size,
+            modified_ms,
+            record: record.clone(),
+        });
+    }
+    manifest.files.sort_by(|a, b| a.name.cmp(&b.name));
+    save(dir, &manifest)
 }
 
 fn save(dir: &Path, manifest: &Manifest) -> std::io::Result<()> {
@@ -224,6 +253,13 @@ mod tests {
         assert_eq!(check.changed, ["page0002.clip"]);
         assert_eq!(check.unknown, ["page0003.clip"]);
         assert_eq!(check.existing.len(), 4);
+        // An export stopped after page 1: page 1 is this tool's again, page 2 is still CSP's.
+        std::fs::write(&pages[0], b"written again").unwrap();
+        merge_manifest(&dir, &[(pages[0].clone(), record("また"))]).unwrap();
+        assert_eq!(written(&pages[0]), Some(record("また")));
+        let check = check_overwrite(&dir);
+        assert_eq!(check.changed, ["page0002.clip"]);
+        assert_eq!(check.unknown, ["page0003.clip"]);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

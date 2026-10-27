@@ -545,6 +545,14 @@ export function layerForm(kind: LayerKind, vector: boolean, text: boolean): "vec
   return vector && canBeVector(kind) ? "vector" : "raster";
 }
 
+/** Thrown from an export's `progress` to stop it at the next page; `written` pages were written by then. */
+export class ExportStopped extends Error {
+  written = 0;
+  constructor() {
+    super("書き出しをやめました");
+  }
+}
+
 export async function exportToCsp(
   project: Project,
   request: CspExportRequest,
@@ -755,7 +763,8 @@ export async function exportToCsp(
     const report = await call("finish_name_export");
     return { ...report, vectorLayers: vector, textLayers: text, checks, warnings, spreads: pieces > 1 ? 0 : units.filter((unit) => unit.length > 1).length };
   } catch (error) {
-    await call("cancel_name_export").catch(() => undefined);
+    const written = await call("cancel_name_export").catch(() => 0);
+    if (error instanceof ExportStopped) error.written = written ?? 0;
     throw error;
   }
 }
@@ -930,7 +939,7 @@ export async function readCspDialogue(project: Project, request: CspExportReques
         const box = bbox ? (bbox.map((v, i) => (v - (i % 2 ? on.m.y : on.m.x)) / on.m.scale) as BoxMm) : null;
         return { text, page: on.index, box };
       });
-      read.push({ pages: unit, path: page.path, found: page.dialogue !== null, written: page.dialogue?.written ?? null, texts });
+      read.push({ pages: unit, path: page.path, found: page.dialogue !== null, written: page.dialogue?.written ?? null, adoptedFrom: page.dialogue?.adoptedFrom ?? null, texts });
     }
     return read;
   } finally {

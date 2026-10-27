@@ -26,6 +26,8 @@ export interface ReadUnit {
   found: boolean;
   /** What the last export or update wrote there; null when not recorded. */
   written: string[] | null;
+  /** What was written before the name last took this page back (see `baseline`). */
+  adoptedFrom?: string[] | null;
   texts: ReadText[];
 }
 
@@ -69,6 +71,27 @@ function overlap(a: BoxMm, b: BoxMm): number {
 /** Below this a text gone from CSP and one new there are taken as two lines, not one retyped. */
 const SAME_LINE = 0.3;
 
+/**
+ * What CSP's texts are compared with: what was written there, or, when the
+ * name undid its last take-back of the page (it has the texts the take-back
+ * replaced rather than the ones it brought), what was written before it, so
+ * that reading back again finds the same changes.
+ */
+function baseline(project: Project, unit: ReadUnit, written: string[]): string[] {
+  const before = unit.adoptedFrom;
+  if (!before) return written;
+  const named = () => unit.pages.flatMap((page) => project.pages[page].lines.map((line) => textKey(line.text)));
+  const brought = written.map(textKey);
+  const replaced = before.map(textKey);
+  for (const key of written.map(textKey)) take(replaced, key);
+  for (const key of before.map(textKey)) take(brought, key);
+  const count = (keys: string[]) => {
+    const left = named();
+    return keys.filter((key) => take(left, key)).length;
+  };
+  return count(replaced) > count(brought) ? before : written;
+}
+
 /** What reading `units` back would change in the name (nothing is changed yet). */
 export function planTakeBack(project: Project, units: readonly ReadUnit[]): TakeBack {
   const plan: TakeBack = { retyped: [], added: [], removed: [], conflicts: [], unrecorded: [], missing: [], paths: [] };
@@ -82,14 +105,15 @@ export function planTakeBack(project: Project, units: readonly ReadUnit[]): Take
       continue;
     }
     plan.paths.push(unit.path);
+    const written = baseline(project, unit, unit.written);
     // CSP's changes: texts there now that were not written, and written ones gone.
-    const gone = unit.written.map(textKey);
+    const gone = written.map(textKey);
     const typed: ReadText[] = [];
     for (const text of unit.texts) if (!take(gone, textKey(text.text))) typed.push(text);
     if (!gone.length && !typed.length) continue;
     // The name's lines on these pages, and what of them is as written.
     const lines = unit.pages.flatMap((page) => project.pages[page].lines.filter((line) => line.text.trim()).map((line) => ({ page, line })));
-    const asWritten = unit.written.map(textKey);
+    const asWritten = written.map(textKey);
     const used = new Set<Line>();
     const lineFor = (key: string) => lines.find(({ line }) => !used.has(line) && textKey(line.text) === key);
     // Lines the name has that were not written (added or changed in the name since).
@@ -157,6 +181,16 @@ export function applyTakeBack(project: Project, plan: TakeBack): void {
     const panel = page.panels.find((p) => insidePolygon(p.shape, boxCenter(line.box)));
     if (panel) line.panel = panel.id;
   }
+}
+
+/** The changes kept by `keep` (true: take it back), each list in its order. */
+export function pickTakeBack(plan: TakeBack, keep: { retyped: boolean[]; added: boolean[]; removed: boolean[] }): TakeBack {
+  return {
+    ...plan,
+    retyped: plan.retyped.filter((_, index) => keep.retyped[index] !== false),
+    added: plan.added.filter((_, index) => keep.added[index] !== false),
+    removed: plan.removed.filter((_, index) => keep.removed[index] !== false),
+  };
 }
 
 /** What taking back would do, in a few lines (nothing to do: an empty list). */

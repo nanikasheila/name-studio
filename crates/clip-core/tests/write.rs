@@ -1648,4 +1648,12 @@ fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
         manifest::written(&page_path).and_then(|record| record.texts),
         Some(vec!["こんばんは".to_owned(), "さようなら".to_owned()])
     );
+    // What was written before stays, for a name that undoes the take-back (taking it back again keeps it).
+    let read = read_dialogue(&page_path).unwrap();
+    assert_eq!(
+        read.adopted_from,
+        Some(vec!["こんばんは".to_owned(), "またね".to_owned()])
+    );
+    adopt_dialogue(&page_path).unwrap();
+    assert_eq!(read_dialogue(&page_path).unwrap().adopted_from, read.adopted_from);
 }

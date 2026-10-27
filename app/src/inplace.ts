@@ -1,6 +1,8 @@
 // Writing on the page itself: a panel's memo or a line of dialogue in a field
 // laid over the page, where it is. The page follows each key; Ctrl+Enter or a
-// click elsewhere keeps it (one undo step), Esc puts it back.
+// click elsewhere keeps it (one undo step), Esc puts it back; Tab keeps it and
+// goes on to the next line (Shift+Tab: the one before), across the pages. A
+// line just placed (fresh) is one step with what is written in it: Esc takes it away.
 import { setLineText, wrapTypedLine } from "./dialogue";
 import { canvasFont, lineBold, lineFont } from "./fonts";
 import { bounds } from "./geometry";
@@ -32,13 +34,23 @@ export interface InPlaceHost {
   noteAt(slot: Slot, panel: Panel): { x: number; y: number };
   /** Where a point of the upright view shows on screen (the view may be turned). */
   onScreen(point: Point): Point;
+  /** A fresh line given up: off the page again, as if never placed. */
+  drop(pageId: string, lineId: string): void;
+  /**
+   * The next (1) or previous (-1) line or memo in reading order: what opens
+   * it, found while this one is still open; null at the end.
+   */
+  next(step: 1 | -1): (() => void) | null;
   /** The field is about to show; `closed` when it goes. */
   opened(edit: InPlaceEdit): void;
   closed(edit: InPlaceEdit): void;
 }
 
-/** Opens a field over `panel`'s memo or over `line` on the page `pageId`, inside `container`. */
-export function writeInPlace(host: InPlaceHost, container: HTMLElement, pageId: string, target: { panel: Panel } | { line: Line }): void {
+/**
+ * Opens a field over `panel`'s memo or over `line` on the page `pageId`, inside `container`.
+ * `fresh`: the line was just placed, in the step already begun (it ends here).
+ */
+export function writeInPlace(host: InPlaceHost, container: HTMLElement, pageId: string, target: { panel: Panel } | { line: Line }, fresh = false): void {
   const panel = "panel" in target ? target.panel : undefined;
   const line = "line" in target ? target.line : undefined;
   const field = document.createElement("textarea");
@@ -91,19 +103,26 @@ export function writeInPlace(host: InPlaceHost, container: HTMLElement, pageId: 
       style.lineHeight = String(linePitch());
     }
   };
-  host.begin();
+  if (!fresh) host.begin();
   let done = false;
   const finish = (keep: boolean) => {
     if (done) return;
     done = true;
     host.closed(edit);
+    field.remove();
+    if (fresh && line && (!keep || !field.value.trim())) {
+      host.drop(pageId, line.id);
+      host.cancel();
+      host.status(keep ? "" : "セリフを置くのをやめました");
+      host.draw();
+      return;
+    }
     if (!keep) apply(original);
     // A long line typed in one go: broken into short lines.
     else if (line && field.value !== original) wrapTypedLine(line);
-    field.remove();
-    if (keep && field.value !== original) {
+    if (keep && (fresh || field.value !== original)) {
       host.commit();
-      host.status(panel ? "コマのメモを書きました" : "セリフを直しました");
+      host.status(panel ? "コマのメモを書きました" : fresh ? "セリフを置きました" : "セリフを直しました");
     } else {
       host.cancel();
       host.status("");
@@ -122,6 +141,12 @@ export function writeInPlace(host: InPlaceHost, container: HTMLElement, pageId: 
     } else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
       event.preventDefault();
       finish(true);
+    } else if (event.key === "Tab" && !event.isComposing && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      event.preventDefault();
+      const open = host.next(event.shiftKey ? -1 : 1);
+      finish(true);
+      if (open) open();
+      else host.status(event.shiftKey ? `最初の${panel ? "コマ" : "セリフ"}です` : `最後の${panel ? "コマ" : "セリフ"}です`);
     }
   });
   field.addEventListener("blur", () => finish(true));
@@ -131,6 +156,8 @@ export function writeInPlace(host: InPlaceHost, container: HTMLElement, pageId: 
   field.focus();
   if (line && line.text === "セリフ") field.select();
   host.status(
-    panel ? "コマのメモを書いています（Ctrl+Enter かほかを押すと決定、Esc でやめる）" : "セリフを書いています（改行で行を分ける。Ctrl+Enter かほかを押すと決定、Esc でやめる）",
+    panel
+      ? "コマのメモを書いています（Ctrl+Enter かほかを押すと決定、Tab で次のコマ、Esc でやめる）"
+      : "セリフを書いています（改行で行を分ける。Ctrl+Enter かほかを押すと決定、Tab で次のセリフ、Esc でやめる）",
   );
 }

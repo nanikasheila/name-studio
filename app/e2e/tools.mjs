@@ -60,6 +60,9 @@ try {
   const page = await browser.newPage({
     viewport: { width: 1600, height: 1000 },
   });
+  // The strip under the pages at a set height: the pages as big as when the record was made
+  // (the steps drag by pixels), whatever the strip's own height becomes.
+  await page.addInitScript(() => localStorage.setItem("namestudio.storyHeight", JSON.stringify({ strip: 354 })));
   await page.addInitScript({
     path: fileURLToPath(new URL("tauri-mock.js", import.meta.url)),
   });

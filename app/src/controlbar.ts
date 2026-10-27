@@ -81,7 +81,7 @@ export class ControlBar {
     if (this.editor.tool === "cut") $("tool-hint").textContent = PANEL_HINTS[mode];
   }
 
-  private setPanelMode(mode: PanelMode): void {
+  setPanelMode(mode: PanelMode): void {
     this.editor.setPanelMode(mode);
     if (this.editor.tool !== "cut") this.setTool("cut");
     this.showPanelModes();

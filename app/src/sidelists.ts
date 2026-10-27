@@ -18,6 +18,12 @@ import { linkLabel, removeSticky, STICKY_COLORS } from "./stickies";
 /** What a held panel is carried as when dragged from the 保留 list. */
 export const HELD_TYPE = "application/x-name-studio-held";
 
+/** The held panel being dragged from the 保留 list (a drag's data cannot be read until the drop). */
+let heldDragged: string | null = null;
+export function draggedHeld(): string | null {
+  return heldDragged;
+}
+
 export interface SideListsHost {
   edit(change: (project: Project) => void): void;
   /** Page numbers (from 1) on screen now. */
@@ -42,6 +48,10 @@ export interface SideListsHost {
 export class SideLists {
   /** Characters whose lines are listed in the 人物 tab. */
   private readonly openCast = new Set<string>();
+  /** ページ: how many pages the button adds. */
+  private addCount = 1;
+  /** 台本: the words searched for (kept while the list is drawn again). */
+  private scriptQuery = "";
 
   constructor(private readonly host: SideListsHost) {}
 
@@ -95,9 +105,17 @@ export class SideLists {
       block: (index) => pageBlock(project, index),
       drop: (first, last, target) => this.host.movePages(first, last, target),
     });
-    const add = element("button", { textContent: "最後にページを足す" });
-    add.addEventListener("click", () => this.host.edit((p) => insertPage(p, p.pages.length)));
-    $("side-pages").replaceChildren(work, ...items, element("div", { className: "side-actions" }, add));
+    // Many at once (one undo step): a name's pages are often added by the spread or more.
+    const count = element("input", { type: "number", id: "add-page-count", min: "1", max: "100", value: String(this.addCount), title: "足すページ数" });
+    count.addEventListener("change", () => (this.addCount = Math.max(1, Math.min(100, Math.round(Number(count.value)) || 1))));
+    const add = element("button", { id: "add-pages", textContent: "ページを最後に足す" });
+    add.addEventListener("click", () => {
+      const n = Math.max(1, Math.min(100, Math.round(Number(count.value)) || 1));
+      this.host.edit((p) => {
+        for (let i = 0; i < n; i++) insertPage(p, p.pages.length);
+      });
+    });
+    $("side-pages").replaceChildren(work, ...items, element("div", { className: "side-actions add-pages" }, count, add));
   }
 
   /** The 別案 in use on a page, for the page list. */
@@ -107,15 +125,38 @@ export class SideLists {
     return option ? [element("span", { className: "option-tag", textContent: option.name, title: `別案 ${set!.options.length} つのうち使用中の案` })] : [];
   }
 
-  /** 台本: every line of dialogue, page by page. */
+  /** 台本: every line of dialogue, page by page; a search keeps the lines with those words or speaker. */
   script(project: Project): void {
+    const take = element("button", { textContent: "台本・プロットを取り込む…", title: "Markdown の台本（コマとセリフ）か、プロット（ページごとの文）を取り込む" });
+    take.addEventListener("click", () => this.host.openScript());
+    const search = element("input", { type: "search", className: "script-search", value: this.scriptQuery, placeholder: "セリフ・話す人で探す" });
+    const rows = element("div", { className: "script-rows" });
+    // Only the rows are drawn again as it is typed in, so the field keeps its caret.
+    search.addEventListener("input", () => {
+      this.scriptQuery = search.value;
+      rows.replaceChildren(...this.scriptRows(project));
+    });
+    rows.replaceChildren(...this.scriptRows(project));
+    $("side-script").replaceChildren(element("div", { className: "side-actions top" }, take), search, rows);
+  }
+
+  private scriptRows(project: Project): HTMLElement[] {
     const names = new Map(project.characters.map((character) => [character.id, character.name]));
+    const words = this.scriptQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const picked = this.host.selection();
     const children: HTMLElement[] = [];
+    let found = 0;
     project.pages.forEach((page, index) => {
+      const lines = page.lines
+        .map((line) => ({ line, who: line.kind === "narration" ? "N" : line.kind === "sfx" ? "音" : (names.get(line.speaker ?? "") ?? "？") }))
+        .filter(({ line, who }) => {
+          const hay = `${who} ${line.text.replace(/\s+/g, "")}`.toLowerCase();
+          return words.every((word) => hay.includes(word));
+        });
+      if (words.length && !lines.length) return;
+      found += lines.length;
       children.push(element("div", { className: "script-page", textContent: `${index + 1} ページ` }));
-      for (const line of page.lines) {
-        const who = line.kind === "narration" ? "N" : line.kind === "sfx" ? "音" : (names.get(line.speaker ?? "") ?? "？");
-        const picked = this.host.selection();
+      for (const { line, who } of lines) {
         const selected = picked?.kind === "line" && picked.id === line.id;
         const row = element(
           "div",
@@ -127,10 +168,9 @@ export class SideLists {
         children.push(row);
       }
     });
-    if (!children.length) children.push(element("p", { className: "hint", textContent: "ページがありません" }));
-    const take = element("button", { textContent: "台本・プロットを取り込む…", title: "Markdown の台本（コマとセリフ）か、プロット（ページごとの文）を取り込む" });
-    take.addEventListener("click", () => this.host.openScript());
-    $("side-script").replaceChildren(element("div", { className: "side-actions top" }, take), ...children);
+    if (words.length) children.unshift(element("p", { className: "hint", textContent: found ? `${found} 件` : "見つかりません" }));
+    else if (!children.length) children.push(element("p", { className: "hint", textContent: "ページがありません" }));
+    return children;
   }
 
   /** 人物: the characters, their voice, and their lines. */
@@ -270,7 +310,9 @@ export class SideLists {
       item.addEventListener("dragstart", (event) => {
         event.dataTransfer?.setData(HELD_TYPE, h.id);
         if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+        heldDragged = h.id;
       });
+      item.addEventListener("dragend", () => (heldDragged = null));
       return item;
     });
     const head = element("p", {

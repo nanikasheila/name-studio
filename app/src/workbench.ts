@@ -35,11 +35,12 @@ import { projectBody } from "./projectjson";
 import { repair } from "./repair";
 import { savedForm } from "./references";
 import { Session } from "./session";
-import { HELD_TYPE, SideLists } from "./sidelists";
+import { HELD_TYPE, SideLists, draggedHeld } from "./sidelists";
+import { DropHint, dropPlan } from "./drophint";
 import { pointOff } from "./aside";
 import { VersionDialog, type VersionInfo } from "./versiondialog";
 import { Board } from "./board";
-import type { Project } from "./model";
+import type { Point, Project } from "./model";
 import { normalize, trailingEmptyPages } from "./project";
 import { stillThere } from "./removal";
 import { localStore } from "./settings";
@@ -49,6 +50,8 @@ import { NameEdits, pickedStrokes } from "./nameedits";
 import { editorDocks } from "./palettes";
 import { ReferenceBar } from "./referencebar";
 import { RoughCache } from "./roughcache";
+import { Reader } from "./reader";
+import { SpringTool } from "./springtool";
 import { ControlBar } from "./controlbar";
 
 export const PROJECT_EXTENSION = "namestudio";
@@ -175,6 +178,10 @@ export class Workbench {
   private readonly brushDialog: BrushDialog;
   private readonly settingsDialog: SettingsDialog;
   private readonly versionDialog: VersionDialog;
+  /** 一時切り替え: a tool's key held lends the tool. */
+  private readonly spring = new SpringTool<Tool>();
+  /** 読む表示: the name read through as the book. */
+  private readonly reader: Reader;
   /** The save or autosave being written, which the next one waits for. */
   private writing: Promise<unknown> = Promise.resolve();
   /** Saves and autosaves being written. */
@@ -225,7 +232,7 @@ export class Workbench {
       renderAll: () => this.renderAll(),
       layersChanged: () => this.renderLayers(),
     });
-    this.board = new Board($("story"), $("story-handle"), {
+    this.board = new Board($("story"), $("story-handle"), $("page-nav"), {
       project: () => this.session.project,
       edit: (change) => this.edit(change),
       openPage: (pageNumber) => {
@@ -282,6 +289,21 @@ export class Workbench {
       setRows: (rows) => this.bars.setRows(rows),
       setTool: (tool) => this.setTool(tool),
       setEraseMode: (mode) => this.setEraseMode(mode),
+      setPanelMode: (mode) => this.bars.setPanelMode(mode),
+      holdSelected: () => {
+        const selection = this.editor.selection;
+        const page = selection && this.session.project?.pages.find((p) => p.id === selection.pageId);
+        const panel = selection?.kind === "panel" ? page?.panels.find((p) => p.id === selection.id) : undefined;
+        if (page && panel) this.edits.holdSelected(page, panel);
+        return !!panel;
+      },
+      readBack: () => void this.exportDialog.readBackAgain(),
+      nextStory: () => {
+        if (!this.seriesPanel.inSeries) return false;
+        this.docks.open("series");
+        void this.seriesPanel.createNext();
+        return true;
+      },
       resizeBrush: (factor) => this.bars.resizeBrush(factor),
       deleteSelection: () => this.deleteSelection(),
       copyItems: () => this.references.copyItems(),
@@ -369,6 +391,18 @@ export class Workbench {
       path: () => this.session.path,
       restore: (version) => this.restoreVersion(version),
       autosaveChanged: () => this.autosaver.notify(),
+    });
+    this.reader = new Reader({
+      project: () => this.session.project,
+      firstAlone: () => this.editor.firstAlone,
+      page: () => {
+        const project = this.session.project;
+        const focused = this.editor.focusPage();
+        const index = focused && project ? project.pages.indexOf(focused) : -1;
+        return index >= 0 ? index + 1 : (this.editor.currentPages()[0] ?? 1);
+      },
+      rough: (rough) => this.roughs.load(rough),
+      closed: (pageNumber) => this.editor.showPage(pageNumber),
     });
     this.bindControls();
     this.bars.showViewMode();
@@ -836,6 +870,13 @@ export class Workbench {
     $("brush-import").addEventListener("click", () => void this.brushDialog.open());
     $("name-export").addEventListener("click", () => this.exportDialog.open());
     $("focus-mode").addEventListener("click", () => this.toggleFocus());
+    $("read-mode").addEventListener("click", () => void this.reader.open());
+    // 一時切り替え: let go of a held tool key (or end the stroke made with it) for the tool from before.
+    const giveBack = (tool: Tool | null) => tool && this.session.project && this.setTool(tool);
+    $("editor-canvas").addEventListener("pointerdown", () => this.spring.pointerDown());
+    window.addEventListener("pointerup", () => giveBack(this.spring.pointerUp()), true);
+    window.addEventListener("keyup", (event) => giveBack(this.spring.release(event.code, performance.now())));
+    window.addEventListener("blur", () => this.spring.reset());
     $("versions").addEventListener("click", () => this.openVersions());
     $("shortcuts").addEventListener("click", () => this.shortcutDialog.open());
     $("pen-settings").addEventListener("click", () => this.penDialog.open());
@@ -847,12 +888,22 @@ export class Workbench {
     this.references.bind();
     // A held panel dropped on a page: into the panel there, else where it is dropped.
     const canvas = $("editor-canvas");
+    // While it is dragged: where it would go.
+    const hint = new DropHint(canvas.parentElement!);
     canvas.addEventListener("dragover", (event) => {
       if (!event.dataTransfer?.types.includes(HELD_TYPE)) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
+      const held = this.session.project?.held?.find((h) => h.id === draggedHeld());
+      const where = held && this.editor.pageAtClient(event.clientX, event.clientY);
+      const plan = where && dropPlan(this.session.project!, held, where);
+      const points = plan?.shape.map((point) => this.editor.clientOf(where!.page.id, point));
+      if (plan && points?.every((p) => p !== null)) hint.show(plan.kind, points as Point[], plan.text);
+      else hint.hide();
     });
+    canvas.addEventListener("dragleave", () => hint.hide());
     canvas.addEventListener("drop", (event) => {
+      hint.hide();
       const id = event.dataTransfer?.getData(HELD_TYPE);
       if (!id) return;
       event.preventDefault();
@@ -899,7 +950,12 @@ export class Workbench {
     if (arrow && this.editor.selection && !event.ctrlKey && !event.metaKey && !event.altKey) {
       return this.editor.nudge(...arrow);
     }
-    return action ? this.run(action) : false;
+    // A tool's key held: its repeats change nothing (the eraser's would cycle how it erases).
+    if (event.repeat && this.spring.holds(event.code)) return true;
+    const from = this.editor.tool;
+    const done = action ? this.run(action) : false;
+    if (done && action?.startsWith("tool.") && this.editor.tool !== from) this.spring.press(event.code, from, performance.now());
+    return done;
   }
 
   /** Run a command (a shortcut's action, an action bar's button); false when it does not apply now. */

@@ -213,6 +213,19 @@ export function script(project: Project): { page: number; line: Line }[] {
   return project.pages.flatMap((page, index) => page.lines.map((line) => ({ page: index + 1, line })));
 }
 
+/**
+ * The line (or panel memo) `step` from one, in reading order across the
+ * pages: a page's lines are kept in reading order, its panels by number.
+ * Null at either end.
+ */
+export function neighbour(project: Project, pageId: string, kind: "line" | "note", id: string, step: 1 | -1): { pageId: string; id: string } | null {
+  const all = project.pages.flatMap((page) =>
+    (kind === "line" ? page.lines : [...page.panels].sort((a, b) => a.order - b.order)).map((item) => ({ pageId: page.id, id: item.id })),
+  );
+  const at = all.findIndex((item) => item.pageId === pageId && item.id === id);
+  return at < 0 ? null : (all[at + step] ?? null);
+}
+
 /** Count of characters spoken per page, a rough measure of how text heavy it is. */
 export function textAmount(page: Page): number {
   return page.lines.reduce((sum, line) => sum + [...line.text.replace(/\s/g, "")].length, 0);
