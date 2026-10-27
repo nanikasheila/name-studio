@@ -230,6 +230,7 @@ try {
   check(exported.withMarks.pages[0].layers.at(-1).length > 0 && exported.withMarks.pages[1].layers.at(-1).length === 0, "with a picture where there are 指示, empty on a page without");
   check(["指示", "指示（青）"].every((name) => exported.withMarks.request.draftLayers.includes(name)), "as 下描き layers");
   check(exported.withMarks.request.layerLooks?.some((look) => look.name === "指示（青）" && look.hidden), "a hidden one goes hidden");
+  check(["指示", "指示（青）"].every((name) => exported.withMarks.request.layerLooks?.some((look) => look.name === name && look.whole && look.opacity === 1)), "in their colour: at full opacity, not the 下描き half");
   check(!exported.without[0].some((name) => name.startsWith("指示")), `--no-marks / unchecked leaves them out (${exported.without[0]})`);
 
   check(errors.length === 0, `no page errors (${errors.join("; ")})`);

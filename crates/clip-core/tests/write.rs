@@ -1310,17 +1310,25 @@ fn writes_rough_layers_hidden_and_fainter_as_set() {
         story_index: None,
         inputs: Vec::new(),
         donor_sources: Vec::new(),
-        draft_layers: vec!["人物".into(), "背景".into()],
+        draft_layers: vec!["人物".into(), "背景".into(), "指示".into()],
         layer_looks: vec![
             LayerLook {
                 name: "人物".into(),
                 opacity: 0.5,
                 hidden: true,
+                whole: false,
             },
             LayerLook {
                 name: "効果".into(),
                 opacity: 0.25,
                 hidden: false,
+                whole: false,
+            },
+            LayerLook {
+                name: "指示".into(),
+                opacity: 0.75,
+                hidden: false,
+                whole: true,
             },
         ],
         frame_folders: false,
@@ -1328,7 +1336,11 @@ fn writes_rough_layers_hidden_and_fainter_as_set() {
     })
     .unwrap();
     let page = writer
-        .write_page(&[raster("人物"), raster("背景"), raster("効果")], None, false)
+        .write_page(
+            &[raster("人物"), raster("背景"), raster("効果"), raster("指示")],
+            None,
+            false,
+        )
         .unwrap();
     writer.finish().unwrap();
     let written = ClipDocument::read(&page).unwrap();
@@ -1341,6 +1353,8 @@ fn writes_rough_layers_hidden_and_fainter_as_set() {
     assert_eq!(look("人物"), (64, 0));
     assert_eq!(look("背景"), (128, 1));
     assert_eq!(look("効果"), (64, 1));
+    // 指示: a 下描き layer at its own opacity, not halved.
+    assert_eq!(look("指示"), (192, 1));
 }
 
 #[test]
@@ -1662,6 +1676,8 @@ fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
         page.render_layer_pixels(layer).unwrap().unwrap().alpha_bbox(),
         Some((10, 300, 60, 310))
     );
+    // In its colour: at full opacity, though a 下描き layer.
+    assert_eq!(page.layer_row(layer.main_id).unwrap().int("LayerOpacity"), 256);
     // The memos stay where they were.
     let memo_layer = layers.iter().find(|layer| layer.name == "メモ（ネーム）").unwrap();
     assert_eq!(

@@ -630,8 +630,8 @@ export async function exportToCsp(
     ...roughSet
       .filter((layer) => layer.hidden || opacityOfLayer(layer) < 1)
       .flatMap((layer) => [roughName(layer, "strokes"), roughName(layer, "overStrokes")].map((name) => ({ name, opacity: opacityOfLayer(layer), hidden: !!layer.hidden }))),
-    // A 下描き layer is at half opacity already; a hidden 指示のレイヤー goes hidden.
-    ...markSet.filter((layer) => layer.hidden).map((layer) => ({ name: markName(layer), opacity: 1, hidden: true })),
+    // 指示 keep their colour: a 下描き layer at its own opacity, not halved; a hidden 指示のレイヤー goes hidden.
+    ...markSet.map((layer) => ({ name: markName(layer), opacity: opacityOfLayer(layer), hidden: !!layer.hidden, whole: true })),
   ];
   if (looks.length) request = { ...request, layerLooks: looks };
   // The name's binding, not the template's: a left-bound name may start from a right-bound work.

@@ -330,8 +330,18 @@ pub(crate) fn make_draft(file: &mut ClipFile, id: i64) -> Result<()> {
     Ok(())
 }
 
+/// A layer's opacity set to `opacity` (0..1) of CSP's full, whatever it had.
+pub(crate) fn set_opacity(file: &mut ClipFile, id: i64, opacity: f64) -> Result<()> {
+    file.database().execute(
+        "UPDATE Layer SET LayerOpacity = MAX(1, CAST(ROUND(256 * ?1) AS INTEGER)) WHERE MainId = ?2",
+        rusqlite::params![opacity.clamp(0.0, 1.0), id],
+    )?;
+    file.reload()?;
+    Ok(())
+}
+
 /// How a layer is written: its opacity (0..1, times what it has, such as a
-/// 下描き layer's half) and whether it is hidden.
+/// 下描き layer's half, or as is with `whole`) and whether it is hidden.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LayerLook {
@@ -339,12 +349,18 @@ pub struct LayerLook {
     pub opacity: f64,
     #[serde(default)]
     pub hidden: bool,
+    /// The opacity as is, not times a 下描き layer's half: 指示 keep their colour.
+    #[serde(default)]
+    pub whole: bool,
 }
 
 /// Give a written layer its look.
 fn apply_look(file: &mut ClipFile, id: i64, look: &LayerLook) -> Result<()> {
+    if look.whole {
+        set_opacity(file, id, look.opacity)?;
+    }
     let db = file.database();
-    if look.opacity < 1.0 {
+    if look.opacity < 1.0 && !look.whole {
         db.execute(
             "UPDATE Layer SET LayerOpacity = MAX(1, CAST(ROUND(LayerOpacity * ?1) AS INTEGER)) WHERE MainId = ?2",
             rusqlite::params![look.opacity.clamp(0.0, 1.0), id],
