@@ -9,10 +9,10 @@ import { MINI_NUMBER_SIZE, MINI_TITLE_SIZE, miniScale, miniSheet, type MiniForma
 import type { Page, Project, RoughImage } from "./model";
 import { LAYER_ORDER, drawPart, encode, mapBox, packBody } from "./nameexport";
 import { trimBox } from "./pagebox";
-import { loadTips, type MmToPx } from "./pagedraw";
+import { drawMarks, loadTips, type MmToPx } from "./pagedraw";
 import { decodePicture } from "./pictures";
 import { imageOf, isNamePicture, writtenOpacity } from "./references";
-import { shownStrokes } from "./roughlayers";
+import { shownStrokes, withoutMarks } from "./roughlayers";
 import { useStyle } from "./style";
 
 export type RoughLoader = (rough: RoughImage) => Promise<CanvasImageSource | null>;
@@ -47,7 +47,7 @@ export function releasePictures(pictures: FlatPictures): void {
 
 /** Page `source` at `m`, flat; the caller clips and lays the paper under it. */
 export function drawFlatPage(ctx: CanvasRenderingContext2D, project: Project, source: Page, m: MmToPx, pictures: FlatPictures): void {
-  const page = { ...onPageOnly(source, project.pageFormat), strokes: shownStrokes(project, source.strokes) };
+  const page = { ...onPageOnly(source, project.pageFormat), strokes: withoutMarks(project, shownStrokes(project, source.strokes)) };
   ctx.globalAlpha = 0.45;
   for (const rough of page.roughs) {
     const image = pictures.roughs.get(rough);
@@ -70,9 +70,11 @@ export interface PdfOptions {
   /** Cut each page at the trim (仕上がり) or keep the whole canvas. */
   area: "trim" | "canvas";
   dpi: number;
+  /** 指示 over the pages in their colours (the 指示のレイヤー shown; on unless false), for an instruction sheet. */
+  marks?: boolean;
 }
 
-/** Render every page as JPEG and write one PDF. */
+/** Render every page as JPEG and write one PDF (with the 指示 unless left out). */
 export async function exportPdf(project: Project, path: string, options: PdfOptions, rough: RoughLoader, progress: (message: string) => void): Promise<void> {
   useFonts(project.fonts);
   useStyle(project.style);
@@ -94,6 +96,7 @@ export async function exportPdf(project: Project, path: string, options: PdfOpti
     ctx.fillRect(0, 0, width, height);
     const pictures = await flatPictures(project, [page], rough);
     drawFlatPage(ctx, project, page, m, pictures);
+    if (options.marks !== false) drawMarks(ctx, project, onPageOnly(page, project.pageFormat), m);
     releasePictures(pictures);
     images.push(await encode(drawing, "image/jpeg", 0.88));
   }

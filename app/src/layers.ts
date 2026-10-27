@@ -153,6 +153,8 @@ export interface LayerViewHost {
   drop(ref: LayerRef, to: { pageId: string; panelId: string }): void;
   /** Words for a line of dialogue. */
   lineLabel(page: Page, id: string): string;
+  /** Whether a line is a 指示 (listed apart from the rough lines). */
+  isMark(page: Page, strokeId: string): boolean;
 }
 
 const TONE_NAMES: Record<string, string> = { black: "黒", gray: "グレー", white: "白" };
@@ -220,7 +222,10 @@ export class LayerView {
   private contents(layers: PageLayers, page: Page, held: { lines: string[]; strokes: string[]; fills: string[] }, depth: number): HTMLElement[] {
     const rows: HTMLElement[] = [];
     for (const id of held.lines) rows.push(this.row(layers, { kind: "line", pageId: page.id, id }, depth, "セリフ", this.host.lineLabel(page, id)));
-    if (held.strokes.length) rows.push(this.row(layers, { kind: "strokes", pageId: page.id, ids: held.strokes }, depth, "ラフ線", `${held.strokes.length} 本`));
+    const marks = held.strokes.filter((id) => this.host.isMark(page, id));
+    const rough = held.strokes.filter((id) => !marks.includes(id));
+    if (rough.length) rows.push(this.row(layers, { kind: "strokes", pageId: page.id, ids: rough }, depth, "ラフ線", `${rough.length} 本`));
+    if (marks.length) rows.push(this.row(layers, { kind: "strokes", pageId: page.id, ids: marks }, depth, "指示", `${marks.length} 本`));
     for (const id of held.fills) {
       const tone = page.fills?.find((f) => f.id === id)?.tone ?? "black";
       rows.push(this.row(layers, { kind: "fill", pageId: page.id, id }, depth, "塗り", TONE_NAMES[tone] ?? tone));

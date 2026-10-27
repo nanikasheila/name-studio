@@ -198,6 +198,8 @@ export function buildCommands(host: CommandHost): Command[] {
     tool("tool.cut", "cut", "コマ割り", ["K"], "コマ 割る 枠"),
     tool("tool.text", "text", "セリフ", ["T"], "文字 フキダシ テキスト"),
     tool("tool.pen", "pen", "ペン", ["P"], "ラフ 描く"),
+    tool("tool.mark", "mark", "指示（赤ペン・注釈）", ["R"], "赤ペン 注釈 コメント 指定 アシスタント"),
+    button("marks-shown", "指示を出す・隠す", "画面", ["Shift+R"], "赤ペン 注釈 表示"),
     tool("tool.eraser", "eraser", "消しゴム（もう一度で消し方を切り替え）", ["E"]),
     tool("tool.fill", "fill", "投げなわ塗り（ベタ・グレー・白）", ["G"], "塗り ベタ トーン"),
     tool("tool.breakout", "breakout", "はみ出し", ["B"]),

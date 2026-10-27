@@ -162,9 +162,24 @@ export const TOOL_TOPICS: Record<string, HelpTopic> = {
       ...VIEW_STEPS,
     ],
   },
+  mark: {
+    name: "指示",
+    what: "ペン入れする人への指示を色付きで描きなぐる（ラフ線とは別のレイヤー）",
+    steps: [
+      { input: "ドラッグ", does: "描く" },
+      { input: "Shift+ドラッグ", does: "まっすぐな線" },
+      { input: "ペンの消しゴム側", does: "指示だけ消す" },
+      { input: "段の「消す」", does: "指示だけ消す（ラフ線は消えない）" },
+      { input: "段の「＋色」", does: "別の色（別の指示のレイヤー）を足す" },
+      { command: "button.marks-shown", does: "指示を出す・隠す" },
+      { command: "brush.bigger", does: "太く" },
+      { command: "brush.smaller", does: "細く" },
+      ...VIEW_STEPS,
+    ],
+  },
   eraser: {
     name: "消しゴム",
-    what: "ラフの線を消す。消し方は 部分・交点まで・線ごと・囲む",
+    what: "ラフの線を消す（指示は消さない）。消し方は 部分・交点まで・線ごと・囲む",
     steps: [
       { input: "ドラッグ", does: "消す" },
       { command: "tool.eraser", does: "消し方を切り替える（消しゴムを持っているとき）" },
@@ -237,7 +252,7 @@ export const HOVER_TOPICS: Record<string, HelpTopic> = {
     ],
   },
   "item.stroke": {
-    name: "ラフ線",
+    name: "ラフ線・指示",
     steps: [
       { input: "ドラッグ", does: "動かす" },
       { input: "Shift+クリック", does: "選択に足す" },
@@ -481,6 +496,7 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
   tool("cut", "コマ割り", "引いて割る・なぐり描き・四角・多角形"),
   tool("text", "セリフ", "クリックで置いてその場で書く"),
   tool("pen", "ペン", "ラフを描く"),
+  tool("mark", "指示", "注釈を色ペンで描きなぐる"),
   tool("eraser", "消しゴム", "もう一度押すと消し方を切り替え"),
   tool("fill", "塗り", "囲んでベタ・グレー・白"),
   tool("breakout", "はみ出し", "コマを突き抜ける所を囲む"),
@@ -492,6 +508,7 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
   { target: "#editor-canvas", name: "紙面", text: "ここに描く。Space+ドラッグで動かす・ホイールで拡大縮小・Shift+Space+ドラッグで回す", command: "view.fit", side: "inside" },
   { target: "#editor-next", name: "ページをめくる", text: "", command: "page.next", side: "above" },
   { target: "#spread-mode", name: "見開き・単独・連続", text: "連続は全ページを一枚に並べる", command: "view.continuous", side: "above" },
+  { target: "#marks-shown", name: "指示", text: "指示を全部出す・隠す", command: "button.marks-shown", side: "above" },
   { target: "#read-mode", name: "読む", text: "見開きで通し読み", command: "button.read-mode", side: "above" },
   { target: "#focus-mode", name: "ページだけ", text: "欄と帯を隠す", command: "view.focus", side: "above" },
   { target: ".lane-toggles", name: "帯に出すもの", text: "型・シーン・時系列・感情・字数", side: "above" },

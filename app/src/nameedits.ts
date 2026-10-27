@@ -17,7 +17,8 @@ import { assignPanels, sortLines } from "./readingorder";
 import { removePicked } from "./removal";
 import { movePagesTo } from "./reorder";
 import type { RoughChange } from "./roughpanel";
-import { addRoughLayer, layerOf, moveRoughLayer, moveStrokesToLayer, removeRoughLayer, renameRoughLayer, roughLayersOf, setRoughLayer } from "./roughlayers";
+import { addMarkLayer, addRoughLayer, layerOf, markLayersOf, moveRoughLayer, moveStrokesToLayer, removeRoughLayer, renameRoughLayer, roughLayersOf, setRoughLayer } from "./roughlayers";
+import { markPen } from "./toolmark";
 
 /** The rough lines in a selection. */
 export function pickedStrokes(s: Selection | null): string[] {
@@ -66,6 +67,16 @@ export class NameEdits {
           message = `レイヤー「${layer.name}」を足しました。ペンはこのレイヤーに描きます（名前はダブルクリックで変えられます）`;
           break;
         }
+        case "addMarks": {
+          const layer = addMarkLayer(p, () => newId(p, "rough"));
+          markPen.layer = layer.id;
+          message = `指示のレイヤー「${layer.name}」を作りました。指示ツール（R）でこの色で描きます`;
+          break;
+        }
+        case "showMarks":
+          for (const layer of markLayersOf(p)) setRoughLayer(p, layer.id, { hidden: !change.shown });
+          message = change.shown ? "指示を出しました" : "指示を隠しました（CSP へは隠したレイヤーで書き出します）";
+          break;
         case "rename":
           renameRoughLayer(p, change.id, change.name);
           break;
@@ -76,9 +87,9 @@ export class NameEdits {
           moveRoughLayer(p, change.id, change.step);
           break;
         case "remove": {
-          const name = layerOf(p, { layer: change.id }).name;
+          const { name, marks } = layerOf(p, { layer: change.id });
           const count = removeRoughLayer(p, change.id, change.mergeDown);
-          message = change.mergeDown ? `「${name}」を下のレイヤーと結合しました（${count} 本）` : `レイヤー「${name}」を消しました（ラフ線 ${count} 本、Ctrl+Z で戻せます）`;
+          message = change.mergeDown ? `「${name}」を下のレイヤーと結合しました（${count} 本）` : `レイヤー「${name}」を消しました（${marks ? "指示" : "ラフ線"} ${count} 本、Ctrl+Z で戻せます）`;
           break;
         }
         case "takeSelected": {

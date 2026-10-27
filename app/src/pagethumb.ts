@@ -1,10 +1,13 @@
 // A small picture of a page (物語の帯, page lists): the same drawing as the
 // editor, without brush tips.
 import type { Project } from "./model";
+import { withoutMarks } from "./roughlayers";
 import { drawBalloons, drawPageFills, drawPageTexts, drawPanelBorders, drawPanelFills, drawStrokes, type MmToPx } from "./pagedraw";
 
 /** `text`: the words themselves (else grey boxes where they go). */
-export function drawThumb(ctx: CanvasRenderingContext2D, project: Project, page: Project["pages"][number], m: MmToPx, text: boolean): void {
+export function drawThumb(ctx: CanvasRenderingContext2D, project: Project, sheet: Project["pages"][number], m: MmToPx, text: boolean): void {
+  // The 指示 would only clutter so small a page.
+  const page = { ...sheet, strokes: withoutMarks(project, sheet.strokes) };
   const [pageW, pageH] = project.pageFormat.canvasMm;
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, pageW * m.scale, pageH * m.scale);

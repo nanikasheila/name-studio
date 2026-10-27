@@ -11,7 +11,7 @@ import type { Point, Project } from "./model";
 import { referenceAt } from "./references";
 
 /** The tools that work in the 欄外. */
-const ASIDE_TOOLS: ReadonlySet<Tool> = new Set<Tool>(["select", "pen", "eraser", "sticky", "reference"]);
+const ASIDE_TOOLS: ReadonlySet<Tool> = new Set<Tool>(["select", "pen", "mark", "eraser", "sticky", "reference"]);
 
 /**
  * The page a press off every page is for: the one whose 欄外 has what is
@@ -20,7 +20,7 @@ const ASIDE_TOOLS: ReadonlySet<Tool> = new Set<Tool>(["select", "pen", "eraser",
  */
 export function asideSlot(editor: EditorCore, tool: Tool, project: Project, sx: number, sy: number): Slot | null {
   if (!ASIDE_TOOLS.has(tool)) {
-    editor.host.status("ページの外（欄外）には、ペン・消しゴム・付箋・資料画像と保留のコマを置けます");
+    editor.host.status("ページの外（欄外）には、ペン・指示・消しゴム・付箋・資料画像と保留のコマを置けます");
     return null;
   }
   const nearest = nearestSlot(editor.slots, project.pageFormat, [sx, sy]);

@@ -88,6 +88,7 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
           inputs: [task.project, project.source?.path].filter((path): path is string => !!path),
           donors: [...(task.donors ?? []), project.source?.path, ...templates.donors].filter((path): path is string => !!path),
           notes: task.notes !== false,
+          marks: task.marks !== false,
         },
         status,
       );
@@ -109,6 +110,7 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
           frameFolders: task.frameFolders === true,
           panelMasks: task.panelMasks === true,
           notes: task.notes !== false,
+          marks: task.marks !== false,
         },
         true,
         status,

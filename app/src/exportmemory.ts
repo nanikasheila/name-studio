@@ -19,6 +19,8 @@ export interface ExportMemory {
   editable: boolean;
   draftRough: boolean;
   notes: boolean;
+  /** 指示 into the CSP pages (下描き layers) and onto the PDF. */
+  marks: boolean;
   pdf: { area: "trim" | "canvas"; dpi: number };
   /** ミニネーム: every page on one sheet, as a picture or a one-page PDF. */
   mini: MiniOptions & { format: MiniFormat };
@@ -59,6 +61,7 @@ export function memoryFrom(value: unknown): ExportMemory | null {
     editable: flag(v.editable, true),
     draftRough: flag(v.draftRough, true),
     notes: flag(v.notes, true),
+    marks: flag(v.marks, true),
     pdf: { area: oneOf(pdf.area, ["trim", "canvas"], "trim"), dpi: Number.isFinite(pdf.dpi) && (pdf.dpi as number) > 0 ? (pdf.dpi as number) : 200 },
     mini: {
       format: oneOf<MiniFormat>(mini.format, ["png", "jpeg", "pdf"], "png"),
@@ -106,6 +109,8 @@ export interface SummaryOf {
   scroll: boolean;
   /** The CSP page made by the tool (ツールで設定する), with its 用紙's short name if it is one. */
   page: { trimMm: [number, number]; resolution: number; preset: string | null } | null;
+  /** The name has 指示 (a 指示のレイヤー with lines on it). */
+  marks?: boolean;
 }
 
 const PANELS_SHORT: Record<PanelExport, string> = { lines: "コマ枠の線", masks: "コマごとのマスク", frames: "コマ枠フォルダー" };
@@ -114,7 +119,7 @@ const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 /** What 「書き出す」 will make, in a line: how many pages, of what, to where. */
 export function exportSummary(settings: Omit<ExportMemory, "timeMs" | "files">, of: SummaryOf): string {
   const pages = `${of.pages} ${of.scroll ? "区切り" : "ページ"}`;
-  if (settings.kind === "pdf") return `${pages}を 1 つの PDF に（${settings.pdf.dpi} dpi・${settings.pdf.area === "trim" ? "仕上がりで切る" : "キャンバス全体"}）`;
+  if (settings.kind === "pdf") return `${pages}を 1 つの PDF に（${settings.pdf.dpi} dpi・${settings.pdf.area === "trim" ? "仕上がりで切る" : "キャンバス全体"}${of.marks ? (settings.marks ? "・指示付き" : "・指示なし") : ""}）`;
   if (settings.kind === "mini") {
     const across = settings.mini.columns > 0 ? `横に ${settings.mini.columns} ${of.scroll ? "列" : "見開き"}` : "並びはおまかせ";
     return `${pages}を 1 枚のミニネームに（${MINI_FORMATS[settings.mini.format]}・${settings.mini.dpi} dpi・${across}）`;
@@ -129,6 +134,7 @@ export function exportSummary(settings: Omit<ExportMemory, "timeMs" | "files">, 
     settings.draftRough ? "ラフは下描き" : null,
     PANELS_SHORT[settings.panels],
     settings.notes ? "メモ付き" : null,
+    of.marks && settings.marks ? "指示付き" : null,
   ].filter((part): part is string => !!part);
   const work = settings.form.makeWork ? `作品「${settings.form.workName || "（名前なし）"}」とページ` : "ページだけ";
   return `${parts.join("・")} → ${work}を ${settings.form.outDir || "（書き出し先が未選択）"} に`;

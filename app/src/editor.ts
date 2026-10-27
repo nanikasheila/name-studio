@@ -60,6 +60,8 @@ import {
   type ToolDrag,
 } from "./editorcore";
 import { LINK_HANDLE } from "./toolsticky";
+import { markPen } from "./toolmark";
+import { editorCursor } from "./cursors";
 import { dragHandler, PRESS } from "./tools";
 import { pickedSummary } from "./toolselect";
 import { snapPointTo, snapTargets, type SnapSettings, type SnapTargets } from "./snapping";
@@ -1135,11 +1137,11 @@ export class PageEditor {
     }
     if (drag?.kind === "pen") {
       const { slot, points } = drag;
-      const brush = this.brush("pen");
+      const brush = drag.mark ? undefined : this.brush("pen");
       // 抜き (the taper at the end) comes when the pen lifts, as in CSP.
       const cut: [boolean, boolean] = [false, true];
-      const stroke = { id: "", points, widthMm: this.penWidthMm, closed: false, brush: brush?.id, cut };
-      drawStroke(ctx, stroke, { scale: slot.scale, x: slot.x, y: slot.y }, "#3a3834", 0.7, brush);
+      const stroke = { id: "", points, widthMm: drag.mark?.widthMm ?? this.penWidthMm, closed: false, brush: brush?.id, cut };
+      drawStroke(ctx, stroke, { scale: slot.scale, x: slot.x, y: slot.y }, drag.mark?.color ?? "#3a3834", 0.7, brush);
     }
     this.drawFrame();
     if (this.tool === "pen" && !this.erasing() && !this.spaceHeld && this.pointer && penPreferences.settings.cursor === "brush") {
@@ -1404,10 +1406,6 @@ export class PageEditor {
     if (!frame) return -1;
     if (Math.hypot(frame.rotate[0] - sx, frame.rotate[1] - sy) <= HANDLE + 3) return FRAME_HANDLES;
     return frame.handles.findIndex(([x, y]) => Math.abs(x - sx) <= HANDLE + 2 && Math.abs(y - sy) <= HANDLE + 2);
-  }
-
-  private static handleCursor(handle: number): string {
-    return handle === FRAME_HANDLES ? "grab" : ["nwse-resize", "nesw-resize", "nwse-resize", "nesw-resize", "ns-resize", "ew-resize", "ns-resize", "ew-resize"][handle];
   }
 
   /** 左右反転 / 上下反転 / 90° turns of what is selected. */
@@ -1725,35 +1723,13 @@ export class PageEditor {
 
   /** Whether the pointer erases now: the eraser tool or the pen's eraser end. */
   private erasing(): boolean {
-    return this.tool === "eraser" || this.tipEraser;
+    return this.tool === "eraser" || this.tipEraser || (this.tool === "mark" && markPen.erase);
   }
 
   private updateCursor(): void {
-    const cursors: Record<Tool, string> = {
-      select: "default",
-      cut: "crosshair",
-      text: "text",
-      pen: "crosshair",
-      eraser: "none",
-      fill: "crosshair",
-      breakout: "crosshair",
-      sticky: "copy",
-      reference: "default",
-    };
-    const eraser = this.eraseMode === "lasso" ? "crosshair" : "none";
-    const hover =
-      this.tool === "select" && this.hover
-        ? this.hover.kind === "seam"
-          ? PageEditor.seamCursor(this.hover.seam)
-          : this.hover.kind === "handle"
-            ? PageEditor.handleCursor(this.hover.handle)
-            : this.hover.kind === "tail" && (this.hover.hit.part === "bend" || this.hover.hit.part === "root")
-              ? "grab"
-              : "move"
-        : null;
-    const look = penPreferences.settings.cursor;
-    cursors.pen = look === "brush" ? "none" : look === "dot" ? DOT_CURSOR : "crosshair";
-    this.canvas.style.cursor = this.spaceHeld ? "grab" : this.tipEraser ? eraser : this.tool === "eraser" ? eraser : hover ?? cursors[this.tool];
+    const hover = this.hover && (this.hover.kind === "tail" ? { kind: "tail" as const, part: this.hover.hit.part } : this.hover);
+    const lasso = this.eraseMode === "lasso";
+    this.canvas.style.cursor = editorCursor({ tool: this.tool, panning: this.spaceHeld, erasing: this.erasing(), lasso, hover, penLook: penPreferences.settings.cursor });
   }
 
   private pointerDown(event: PointerEvent): void {
@@ -1910,7 +1886,8 @@ export class PageEditor {
     // The page settings follow the page worked on (the left page of a spread too).
     if (this.focusedPageId !== slot.page.id) this.focusOn(slot);
     const point = toPage(slot, sx, sy);
-    PRESS[this.tipEraser ? "eraser" : this.tool](this.core, { event, project, slot, point, sx, sy });
+    // The 指示 tool's eraser end erases 指示 only.
+    PRESS[this.tipEraser && this.tool !== "mark" ? "eraser" : this.tool](this.core, { event, project, slot, point, sx, sy });
   }
 
   /** What the tools may see and do (their press, drag and finish are in their own modules). */
@@ -2185,13 +2162,6 @@ export class PageEditor {
   }
 
   /** The cursor for moving a border: across it. */
-  private static seamCursor(seam: Seam): string {
-    const [nx, ny] = seam.normal;
-    if (Math.abs(ny) > 2 * Math.abs(nx)) return "ns-resize";
-    if (Math.abs(nx) > 2 * Math.abs(ny)) return "ew-resize";
-    return nx * ny > 0 ? "nwse-resize" : "nesw-resize";
-  }
-
   private doubleClick(event: MouseEvent): void {
     window.clearTimeout(this.cycleTimer);
     if (this.tool === "cut" && this.finishPolygon()) return;
@@ -2378,5 +2348,4 @@ export class PageEditor {
 }
 
 /** A small dot for drawing (the tablet settings' 点 cursor). */
-const DOT_CURSOR = `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="9" height="9"><circle cx="4.5" cy="4.5" r="2" fill="#222" stroke="#fff" stroke-width="1"/></svg>')}") 4 4, crosshair`;
 

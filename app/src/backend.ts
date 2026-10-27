@@ -69,6 +69,8 @@ export interface CspExportRequest {
   panelMasks?: boolean;
   /** The name's memos as a 下描き image layer on top (on unless false). */
   notes?: boolean;
+  /** 指示: each 指示のレイヤー as a 下描き image layer in its colour, over everything (on unless false; written by the app, not the Rust side). */
+  marks?: boolean;
 }
 
 /** A written file read back (clip-core `verify::FileCheck`). */
@@ -98,6 +100,8 @@ export interface DialogueUpdateReport {
   conflicts: string[];
   /** Whether the memos layer was redrawn. */
   notes: boolean;
+  /** The 指示 layers redrawn (or added). */
+  marks?: string[];
   problems: string[];
 }
 
@@ -132,6 +136,8 @@ export interface BatchExport {
   panelMasks?: boolean;
   /** The name's memos as a 下描き layer (on unless --no-notes). */
   notes?: boolean;
+  /** 指示のレイヤー as 下描き layers (on unless --no-marks). */
+  marks?: boolean;
   /** Bring the dialogue into the pages there instead (--update-dialogue). */
   updateDialogue?: boolean;
   /** Take the dialogue changed in CSP back into the name, and save it (--read-dialogue). */

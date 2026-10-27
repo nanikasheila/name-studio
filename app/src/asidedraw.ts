@@ -7,11 +7,11 @@ import { bounds } from "./geometry";
 import type { HeldPanel, Page, Project } from "./model";
 import type { Slot } from "./layout";
 import { ACCENT, drawSticky } from "./notedraw";
-import { drawBalloons, drawLineText, drawPageFills, drawPanelBorders, drawPanelFills, drawStrokes, INK, tracePath, type MmToPx } from "./pagedraw";
+import { drawBalloons, drawLineText, drawMarks, drawPageFills, drawPanelBorders, drawPanelFills, drawStrokes, INK, tracePath, type MmToPx } from "./pagedraw";
 import { pictureOf } from "./pictures";
 import { drawGoingTo } from "./screendraw";
 import { imageOf, opacityOf } from "./references";
-import { opacityOfLayer, roughLayersOf, strokesOn } from "./roughlayers";
+import { markColor, markLayersOf, opacityOfLayer, roughLayersOf, strokesOn, withoutMarks } from "./roughlayers";
 import { stickyBox } from "./stickies";
 
 /** What the 欄外 shows of the editor's state. */
@@ -72,11 +72,13 @@ function drawUnder(ctx: CanvasRenderingContext2D, project: Project, slot: Slot, 
   const out = page.strokes.filter((stroke) => reachesOff(strokeBox(stroke), format));
   if (!out.length) return;
   const color = (stroke: { id: string }) => (marks.selected(page, "stroke", stroke.id) ? ACCENT : "#3a3834");
-  for (const layer of roughLayersOf(project)) {
+  // The rough's lines, then the 指示 (in their colours) over them.
+  for (const layer of [...roughLayersOf(project), ...markLayersOf(project)]) {
     const strokes = strokesOn(project, out, layer);
     if (!strokes.length) continue;
     ctx.globalAlpha = opacityOfLayer(layer);
-    for (const over of [false, true]) drawStrokes(ctx, { ...page, strokes }, m, over, color, 0.7, project.brushes ?? []);
+    const ink = layer.marks ? (stroke: { id: string }) => (marks.selected(page, "stroke", stroke.id) ? ACCENT : markColor(layer)) : color;
+    for (const over of [false, true]) drawStrokes(ctx, { ...page, strokes }, m, over, ink, 0.7, project.brushes ?? []);
   }
   ctx.globalAlpha = 1;
 }
@@ -100,14 +102,16 @@ function drawHeld(ctx: CanvasRenderingContext2D, project: Project, slot: Slot, h
   ctx.save();
   tracePath(ctx, held.panel.shape, m, true);
   ctx.clip();
-  drawStrokes(ctx, page, m, false, () => "#3a3834", 0.7, brushes);
+  const rough = { ...page, strokes: withoutMarks(project, page.strokes) };
+  drawStrokes(ctx, rough, m, false, () => "#3a3834", 0.7, brushes);
   drawPanelFills(ctx, page, m);
   drawPageFills(ctx, page, m);
   ctx.restore();
   drawPanelBorders(ctx, page, m, () => INK);
-  drawStrokes(ctx, page, m, true, () => "#3a3834", 0.7, brushes);
+  drawStrokes(ctx, rough, m, true, () => "#3a3834", 0.7, brushes);
   drawBalloons(ctx, page, m);
   for (const line of page.lines) drawLineText(ctx, line, m);
+  drawMarks(ctx, project, page, m, 0.7);
   // Marked as not on any page yet.
   const [x0, y0, x1, y1] = box.map((v, i) => (i % 2 ? slot.y : slot.x) + v * slot.scale);
   ctx.save();

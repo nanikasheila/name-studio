@@ -3,7 +3,7 @@
 //! ```text
 //! name-studio-app --export-csp <name.namestudio> (--template <page.clip> | --builtin) --out <folder>
 //!     [--work-template <work.cmc>] [--work-name <name>] [--story-index <n>] [--donor <sample.clip>]...
-//!     [--no-draft-rough] [--no-notes] [--frame-folders] [--update-dialogue | --read-dialogue]
+//!     [--no-draft-rough] [--no-notes] [--no-marks] [--frame-folders] [--update-dialogue | --read-dialogue]
 //!     [--report <file.json>]
 //! ```
 //!
@@ -48,6 +48,8 @@ pub struct BatchExport {
     pub panel_masks: bool,
     /// The name's memos as a 下描き layer (`--no-notes` leaves them out).
     pub notes: bool,
+    /// The 指示のレイヤー as 下描き layers (`--no-marks` leaves them out).
+    pub marks: bool,
     /// Bring the dialogue into the pages there instead of writing them (`--update-dialogue`).
     pub update_dialogue: bool,
     /// Take the dialogue changed in CSP back into the name (`--read-dialogue`).
@@ -70,6 +72,7 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
     let mut frame_folders = false;
     let mut panel_masks = false;
     let mut notes = true;
+    let mut marks = true;
     let mut update_dialogue = false;
     let mut read_dialogue = false;
     let mut builtin = false;
@@ -94,6 +97,7 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
             "--frame-folders" => frame_folders = true,
             "--panel-masks" => panel_masks = true,
             "--no-notes" => notes = false,
+            "--no-marks" => marks = false,
             "--update-dialogue" => update_dialogue = true,
             "--read-dialogue" => read_dialogue = true,
             "--builtin" => builtin = true,
@@ -127,6 +131,7 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
         frame_folders,
         panel_masks,
         notes,
+        marks,
         update_dialogue,
         read_dialogue,
         report,
@@ -177,7 +182,12 @@ mod tests {
         assert_eq!(batch.work_name.as_deref(), Some("第1話"));
         assert_eq!(batch.story_index, Some(1));
         assert!(
-            batch.draft_rough && !batch.frame_folders && !batch.panel_masks && batch.notes && !batch.update_dialogue
+            batch.draft_rough
+                && !batch.frame_folders
+                && !batch.panel_masks
+                && batch.notes
+                && batch.marks
+                && !batch.update_dialogue
         );
         assert_eq!(
             batch.report,
@@ -198,12 +208,18 @@ mod tests {
             "--frame-folders",
             "--panel-masks",
             "--no-notes",
+            "--no-marks",
             "--update-dialogue",
         ]))
         .unwrap()
         .unwrap();
         assert!(
-            !batch.draft_rough && batch.frame_folders && batch.panel_masks && !batch.notes && batch.update_dialogue
+            !batch.draft_rough
+                && batch.frame_folders
+                && batch.panel_masks
+                && !batch.notes
+                && !batch.marks
+                && batch.update_dialogue
         );
         assert!(!batch.read_dialogue);
         let batch = from_args(args(&[

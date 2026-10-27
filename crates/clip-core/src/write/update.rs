@@ -47,6 +47,8 @@ pub struct DialogueUpdate {
     pub balloons: Vec<PageLayer>,
     /// The memos (a 下描き image layer, redrawn in place: nothing is drawn on it in CSP).
     pub notes: Option<RasterLayer>,
+    /// The 指示 (a 下描き image layer each, redrawn in place as the memos are).
+    pub marks: Vec<RasterLayer>,
     /// What this tool wrote into the page last time, when known. Other texts
     /// there were added in CSP and are left alone; without it every plain
     /// text counts as this tool's.
@@ -77,6 +79,8 @@ pub struct DialogueUpdateReport {
     pub conflicts: Vec<String>,
     /// Whether the memos were redrawn.
     pub notes: bool,
+    /// The 指示 layers redrawn (or added).
+    pub marks: Vec<String>,
     /// What the page holds from this tool now, to record.
     #[serde(skip)]
     pub record: PageRecord,
@@ -315,24 +319,30 @@ pub fn update_dialogue(
         .as_ref()
         .map(|record| record.rasters.clone())
         .unwrap_or_default();
-    let notes = update.notes.as_ref().filter(|notes| {
-        let new = image_signature(&notes.image);
-        match rasters.insert(notes.name.clone(), new.clone()) {
-            Some(recorded) => recorded != new,
-            // Unrecorded (written by an older version): compared with the page.
-            None => match named_layer(&document, &notes.name) {
-                Some(layer) => !same_pixels(&document, layer, &notes.image),
-                None => !crate::raster::is_transparent(&notes.image),
-            },
-        }
-    });
+    // The 指示 the same way, each in its layer.
+    let redrawn: Vec<&RasterLayer> = update
+        .notes
+        .iter()
+        .chain(&update.marks)
+        .filter(|layer| {
+            let new = image_signature(&layer.image);
+            match rasters.insert(layer.name.clone(), new.clone()) {
+                Some(recorded) => recorded != new,
+                // Unrecorded (written by an older version): compared with the page.
+                None => match named_layer(&document, &layer.name) {
+                    Some(old) => !same_pixels(&document, old, &layer.image),
+                    None => !crate::raster::is_transparent(&layer.image),
+                },
+            }
+        })
+        .collect();
     report.record = PageRecord {
         texts: Some(update.texts.iter().map(|text| text.text.clone()).collect()),
         adopted_from: None,
         vectors,
         rasters,
     };
-    if !texts_changed && swaps.is_empty() && notes.is_none() {
+    if !texts_changed && swaps.is_empty() && redrawn.is_empty() {
         return Ok(report);
     }
 
@@ -373,7 +383,10 @@ pub fn update_dialogue(
             (layer, found)
         })
         .collect();
-    let named_layer_id = notes.and_then(|notes| named_layer(&document, &notes.name).map(|layer| layer.main_id));
+    let redrawn: Vec<(&RasterLayer, Option<i64>)> = redrawn
+        .into_iter()
+        .map(|layer| (layer, named_layer(&document, &layer.name).map(|old| old.main_id)))
+        .collect();
     // The page's own layers are copied first: what CSP saved there fits it.
     let mut own = PartDonors::find(document)?;
     let text_donor = if own.has_text() {
@@ -451,11 +464,11 @@ pub fn update_dialogue(
         report.replaced.push(name);
     }
 
-    if let Some(notes) = notes {
-        let id = match named_layer_id {
+    for (layer, found) in redrawn {
+        let id = match found {
             Some(id) => id,
             None => {
-                // A page written without memos: a new 下描き layer on top.
+                // A page written without memos (指示): a new 下描き layer on top.
                 let like = first_raster(&own.source)?;
                 let like = like.as_ref().map(|row| {
                     let mut row = row.clone();
@@ -467,7 +480,7 @@ pub fn update_dialogue(
                 let id = raster_like(
                     &mut file,
                     root,
-                    &notes.name,
+                    &layer.name,
                     like.as_ref().map(|row| (own.source.file(), row)),
                 )?;
                 make_draft(&mut file, id)?;
@@ -475,9 +488,13 @@ pub fn update_dialogue(
             }
         };
         // Drawn anew: the old pixels go.
-        let image = fit(&notes.image, width, height);
-        file.set_layer_pixels(id, &csp_image(image.as_ref().unwrap_or(&notes.image)), (0, 0))?;
-        report.notes = true;
+        let image = fit(&layer.image, width, height);
+        file.set_layer_pixels(id, &csp_image(image.as_ref().unwrap_or(&layer.image)), (0, 0))?;
+        if update.notes.as_ref().is_some_and(|notes| std::ptr::eq(notes, layer)) {
+            report.notes = true;
+        } else {
+            report.marks.push(layer.name.clone());
+        }
     }
 
     save(&file, path)?;
