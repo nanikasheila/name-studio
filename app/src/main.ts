@@ -26,6 +26,7 @@ import { StartScreen } from "./startscreen";
 import { SheetViewer } from "./viewer";
 import { PROJECT_EXTENSION, Workbench } from "./workbench";
 import { $, isTyping } from "./dom";
+import { ImageImportDialog } from "./imageimport";
 
 function setStatus(message: string): void {
   $("status").textContent = message;
@@ -157,9 +158,38 @@ function newName(): void {
   })();
 }
 
+/** ネーム画像を取り込む: into the open name, or (from the start screen) as a new name. */
+const imageImport = new ImageImportDialog({
+  project: () => (workspace === "editor" ? workbench.project : null),
+  edit: (change) => workbench.edit(change),
+  newName: (title, pages, binding) => {
+    const project = newProject(title, pages, binding);
+    applyNewNameDefaults(project, newNameDefaults());
+    return project;
+  },
+  opened: (project, message) => {
+    showWorkspace("editor");
+    workbench.show(project, null, message);
+  },
+  done: (first, message) => {
+    workbench.editor.showPage(first);
+    workbench.renderAll();
+    setStatus(message);
+  },
+  status: setStatus,
+});
+
+async function nameFromImage(): Promise<void> {
+  if (workspace === "editor" || !(await workbench.confirmDiscard())) return;
+  imageImport.open();
+}
+
+$("image-import").addEventListener("click", () => imageImport.open());
+
 const startScreen = new StartScreen({
   openFile: () => void openFile(),
   newName,
+  fromImage: () => void nameFromImage(),
   openName: async (path) => (await workbench.confirmDiscard()) ? openName(path, "（最近のネームの一覧から外しました）") : true,
 });
 

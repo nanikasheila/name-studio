@@ -235,6 +235,13 @@ export interface ReferenceImage {
   box: BoxMm;
   /** 0–1; none is 0.5. */
   opacity?: number;
+  /**
+   * "name": the name itself, drawn elsewhere (on paper, in a ミニネーム) and
+   * taken in from a picture of it. It is read and written out with the
+   * name's own lines (読む, PDF, ミニネーム, its own layer in CSP); a 資料
+   * picture is only looked at while drawing.
+   */
+  kind?: "name";
 }
 
 /** A picture kept in the project (resized when it was taken in). */

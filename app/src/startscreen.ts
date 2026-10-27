@@ -8,6 +8,8 @@ import { splitPath, whenLabel, type RecentName } from "./recent";
 export interface StartHost {
   openFile(): void;
   newName(): void;
+  /** A new name from a picture of all its pages (ネーム画像から). */
+  fromImage(): void;
   /** Opens a name from the list; false when it could not (moved or deleted), and it leaves the list. */
   openName(path: string): Promise<boolean>;
 }
@@ -16,6 +18,7 @@ export class StartScreen {
   constructor(private readonly host: StartHost) {
     $("start-open").addEventListener("click", () => host.openFile());
     $("start-new").addEventListener("click", () => host.newName());
+    $("start-image").addEventListener("click", () => host.fromImage());
   }
 
   /** Lists the names opened last (again, after one was opened or saved). */
@@ -31,6 +34,7 @@ export class StartScreen {
     return [
       { id: "start.open", label: "開く", group, keys: ["Ctrl+O"], words: "ファイル ひらく", run: () => (this.host.openFile(), true) },
       { id: "start.new", label: "新しいネーム", group, keys: [], words: "あたらしい 白紙 作る", run: () => (this.host.newName(), true) },
+      { id: "start.image", label: "ネーム画像から新しいネームを作る", group, keys: [], words: "ミニネーム 俯瞰 画像 スキャン 取り込む 分割", run: () => (this.host.fromImage(), true) },
       ...loadRecentNames().map((name) => ({
         id: `start.recent:${name.path}`,
         label: `${name.title || splitPath(name.path).name} を開く`,

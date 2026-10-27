@@ -377,6 +377,7 @@ export class Workbench {
       projectPath: () => this.session.path,
       projectId: () => this.session.id,
       rough: (rough) => this.roughs.load(rough),
+      firstAlone: () => this.editor.firstAlone,
       status: (message) => this.setStatus(message),
       edit: (change) => this.edit(change),
       goTo: (pageId, lineId) => this.goTo(pageId, "line", lineId),

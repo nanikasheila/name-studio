@@ -41,6 +41,14 @@ page.memo = "メモ";
 const layered = structuredClone(project);
 layered.roughLayers = [{ id: "rough", name: "ラフ線" }, { id: "rough9", name: "人物", hidden: true, opacity: 0.5 }];
 layered.pages[0].strokes.push({ id: "rough2", points: [[40, 30, 0.5], [90, 60, 0.5]], widthMm: 0.5, closed: false, layer: "rough9" });
+// The same name with a 資料 picture and a picture of the name (取り込んだネーム画像) on page 1: a 下描き layer each.
+const pictured = structuredClone(project);
+const dot = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
+pictured.images = [{ id: "image1", name: "資料", mime: "image/png", dataBase64: dot, widthPx: 1, heightPx: 1 }, { id: "image2", name: "ネーム 1", mime: "image/png", dataBase64: dot, widthPx: 1, heightPx: 1 }];
+pictured.pages[0].references = [
+  { id: "reference1", image: "image1", box: [30, 30, 80, 80] },
+  { id: "reference2", image: "image2", box: [20, 28, 277, 392], kind: "name" },
+];
 // A 縦スクロール of three pieces, joined: one tall page.
 const scroll = P.newProject("縦スクロール", 3, "scroll");
 for (const piece of scroll.pages) P.setLineText(P.addLine(scroll, piece, [40, 40, 60, 100]), "セリフ");
@@ -52,6 +60,8 @@ const scrollName = join(dir, "scroll.namestudio");
 writeFileSync(scrollName, projectJson(scroll));
 const layeredName = join(dir, "layered.namestudio");
 writeFileSync(layeredName, projectJson(layered));
+const picturedName = join(dir, "pictured.namestudio");
+writeFileSync(picturedName, projectJson(pictured));
 const failures = [];
 const check = (ok, what) => {
   console.log(`${ok ? "ok  " : "FAIL"} ${what}`);
@@ -84,6 +94,8 @@ const masks = exportWith("masks", ["--builtin", "--panel-masks"]);
 check((masks?.checks?.[0]?.layers ?? 0) > (builtin?.checks?.[0]?.layers ?? 0), "masks: the first page has the panel's folder and its layers");
 const layers = exportWith("layered", ["--builtin"], { file: layeredName });
 check((layers?.checks?.[0]?.layers ?? 0) === (builtin?.checks?.[0]?.layers ?? 0) + 1, "layered: the rough layer 人物 is a layer of its own");
+const withPictures = exportWith("pictured", ["--builtin"], { file: picturedName });
+check((withPictures?.checks?.[0]?.layers ?? 0) === (builtin?.checks?.[0]?.layers ?? 0) + 2, "pictured: the 資料 and the picture of the name are a layer each");
 const tall = exportWith("tall", ["--builtin", "--work-name", "縦スクロール"], { file: scrollName, pages: 1 });
 check(tall?.textLayers === true && (tall?.checks?.[0]?.layers ?? 0) > 0, "tall: the joined page has its layers");
 if (failures.length) process.exit(1);

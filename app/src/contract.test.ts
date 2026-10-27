@@ -123,7 +123,7 @@ function fullPage(id: string): Full<Project["pages"][number]> {
         tone: "gray",
       },
     ],
-    references: [{ id: `${id}-reference1`, image: "image1", box: [10, 20, 110, 95], opacity: 0.35 }],
+    references: [{ id: `${id}-reference1`, image: "image1", box: [10, 20, 110, 95], opacity: 0.35, kind: "name" }],
   };
 }
 
