@@ -546,6 +546,37 @@ export function layerForm(kind: LayerKind, vector: boolean, text: boolean): "vec
   return vector && canBeVector(kind) ? "vector" : "raster";
 }
 
+/** The CSP names of the ラフ線のレイヤー and 指示のレイヤー, apart from the page's other layers. */
+function layerNames(project: Project): Map<string, { under: string; over: string }> {
+  return roughExportNames(project, [
+    ...LAYER_ORDER.filter((kind) => kind !== "strokes" && kind !== "overStrokes").map((kind) => LAYER_NAMES[kind]),
+    FRAME_FOLDER_NAME,
+    INK_LAYER_NAME,
+    NOTES_LAYER_NAME,
+    REFERENCE_LAYER_NAME,
+    SHEET_ROUGH_NAME,
+  ]);
+}
+
+/** Each 指示のレイヤー of `placed` in its colour on `ctx` (cleared first), `clip` keeping each page to its side of a spread. */
+function drawMarkLayer(
+  ctx: CanvasRenderingContext2D,
+  project: Project,
+  layer: RoughLayer,
+  placed: readonly PlacedPage[],
+  factor: number,
+  clip: (right: boolean, draw: () => void) => void,
+): boolean {
+  if (!placed.some(({ page }) => strokesOn(project, page.strokes, layer).length)) return false;
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  const only = { roughLayers: [layer], brushes: project.brushes };
+  for (const { page, m, right } of placed) {
+    const own = { ...page, strokes: strokesOn(project, page.strokes, layer) };
+    clip(right, () => drawMarks(ctx, only, own, scaled(m, factor), undefined, true));
+  }
+  return true;
+}
+
 /** Thrown from an export's `progress` to stop it at the next page; `written` pages were written by then. */
 export class ExportStopped extends Error {
   written = 0;
@@ -575,14 +606,7 @@ export async function exportToCsp(
   if (pictures.size) request = { ...request, draftLayers: [...(request.draftLayers ?? []), REFERENCE_LAYER_NAME] };
   // ラフ線のレイヤー: each its own CSP layer (one layer: ラフ線 and はみ出し（ラフ線）, as always).
   const roughSet = roughLayersOf(project);
-  const roughNames = roughExportNames(project, [
-    ...LAYER_ORDER.filter((kind) => kind !== "strokes" && kind !== "overStrokes").map((kind) => LAYER_NAMES[kind]),
-    FRAME_FOLDER_NAME,
-    INK_LAYER_NAME,
-    NOTES_LAYER_NAME,
-    REFERENCE_LAYER_NAME,
-    SHEET_ROUGH_NAME,
-  ]);
+  const roughNames = layerNames(project);
   const roughName = (layer: RoughLayer, kind: LayerKind) => roughNames.get(layer.id)![kind === "overStrokes" ? "over" : "under"];
   // はみ出し layers for the first layer, as always, and the others that have lines over the borders.
   const overLayers = roughSet.filter((layer) => layer.id === layerOf(project, {}).id || project.pages.some((page) => strokesOn(project, page.strokes, layer).some((stroke) => stroke.over)));
@@ -750,16 +774,8 @@ export async function exportToCsp(
       }
       for (const layer of markSet) {
         // Each 指示のレイヤー in its colour, cut at the paper's edge as everything is.
-        const only = { roughLayers: [layer], brushes: project.brushes };
-        let png: Uint8Array = new Uint8Array();
-        if (placed.some(({ page }) => strokesOn(project, page.strokes, layer).length)) {
-          ctx.clearRect(0, 0, width, height);
-          for (const { page, m, right } of placed) {
-            const own = { ...page, strokes: strokesOn(project, page.strokes, layer) };
-            clipped(ctx, factor, right, () => drawMarks(ctx, only, own, scaled(m, factor), undefined, true));
-          }
-          png = await encode(drawing, "image/png");
-        }
+        const drawn = drawMarkLayer(ctx, project, layer, placed, factor, (right, draw) => clipped(ctx, factor, right, draw));
+        const png = drawn ? await encode(drawing, "image/png") : new Uint8Array();
         layers.push({ kind: "raster", name: markName(layer), length: png.length });
         pngs.push(png);
       }
@@ -847,6 +863,9 @@ export async function updateCspDialogue(
   useStyle(project.style);
   await loadTips(project.brushes);
   const notes = request.notes !== false;
+  // 指示 drawn since are redrawn in their layers too (a page without them gets them).
+  const markSet = request.marks === false ? [] : markLayersOf(project);
+  const names = layerNames(project);
   const start = await call("begin_name_export", { request: { ...request, frameFolders: false, notes: false } });
   try {
     if (!start.textLayers) throw new Error("テキストのレイヤーの見本が見つかりません。書き出しと同じひな形・見本のページを選んでください");
@@ -874,21 +893,25 @@ export async function updateCspDialogue(
       const pngs: Uint8Array[] = [];
       const width = Math.round(pageWidth * factor);
       const height = Math.round(start.heightPx * factor);
+      // Each page of a spread kept to its side of the gutter.
+      const onItsSide = (right: boolean, draw: () => void) => {
+        ctx.save();
+        if (spread) {
+          ctx.beginPath();
+          const x = spread.gutterPx * factor;
+          ctx.rect(right ? x : 0, 0, right ? width - x : x, height);
+          ctx.clip();
+        }
+        draw();
+        ctx.restore();
+      };
       const image = async (kind: LayerKind) => {
         let png: Uint8Array = new Uint8Array();
         if (placed.some(({ page }) => partCount(page, kind))) {
           drawing.width = width;
           drawing.height = height;
           for (const { page, m, right } of placed) {
-            ctx.save();
-            if (spread) {
-              ctx.beginPath();
-              const x = spread.gutterPx * factor;
-              ctx.rect(right ? x : 0, 0, right ? width - x : x, height);
-              ctx.clip();
-            }
-            drawPart(ctx, page, kind, scaled(m, factor), project.brushes);
-            ctx.restore();
+            onItsSide(right, () => drawPart(ctx, page, kind, scaled(m, factor), project.brushes));
           }
           png = await encode(drawing, "image/png");
         }
@@ -912,22 +935,24 @@ export async function updateCspDialogue(
           drawing.width = width;
           drawing.height = height;
           for (const { page, m, right } of placed) {
-            ctx.save();
-            if (spread) {
-              ctx.beginPath();
-              const x = spread.gutterPx * factor;
-              ctx.rect(right ? x : 0, 0, right ? width - x : x, height);
-              ctx.clip();
-            }
-            drawNotes(ctx, project, page, scaled(m, factor));
-            ctx.restore();
+            onItsSide(right, () => drawNotes(ctx, project, page, scaled(m, factor)));
           }
           png = await encode(drawing, "image/png");
         }
         memos = { kind: "raster", name: NOTES_LAYER_NAME, length: png.length };
         pngs.push(png);
       }
-      const meta = { texts, balloons, notes: memos, spread: spread !== null, backup };
+      const marks: LayerMeta[] = [];
+      const onPaper = placed.map((place) => ({ ...place, page: onPageOnly(place.page, project.pageFormat) }));
+      for (const layer of markSet) {
+        drawing.width = width;
+        drawing.height = height;
+        const drawn = drawMarkLayer(ctx, project, layer, onPaper, factor, onItsSide);
+        const png = drawn ? await encode(drawing, "image/png") : new Uint8Array();
+        marks.push({ kind: "raster", name: names.get(layer.id)!.under, length: png.length });
+        pngs.push(png);
+      }
+      const meta = { texts, balloons, notes: memos, marks, spread: spread !== null, backup };
       const report = await call("update_name_dialogue", packBody(meta, pngs));
       pages.push({ ...report, pages: unit.map((index) => index + 1) });
     }
@@ -979,8 +1004,8 @@ export function dialogueUpdateSummary(summary: DialogueUpdateSummary): { ok: boo
   const missing = summary.pages.filter((page) => page.notFound.includes("ページのファイル"));
   lines.push(
     summary.changed
-      ? `${summary.changed} ページに反映しました（セリフ: 足した ${sum((page) => page.added.length)}・（旧）にして隠した ${sum((page) => page.retired.length)}・そのまま ${sum((page) => page.kept)}、フキダシを入れ替えたページ ${summary.pages.filter((page) => page.replaced.length).length}、メモを描き直したページ ${summary.pages.filter((page) => page.notes).length}）`
-      : "セリフ・フキダシ・メモの変わったページはありませんでした",
+      ? `${summary.changed} ページに反映しました（セリフ: 足した ${sum((page) => page.added.length)}・（旧）にして隠した ${sum((page) => page.retired.length)}・そのまま ${sum((page) => page.kept)}、フキダシを入れ替えたページ ${summary.pages.filter((page) => page.replaced.length).length}、メモを描き直したページ ${summary.pages.filter((page) => page.notes).length}${sum((page) => page.marks?.length ?? 0) ? `、指示を描き直したページ ${summary.pages.filter((page) => page.marks?.length).length}` : ""}）`
+      : "セリフ・フキダシ・メモ・指示の変わったページはありませんでした",
   );
   const backup = summary.pages.find((page) => page.backup)?.backup;
   if (backup) lines.push(`反映する前のページ: ${backup.replace(/[\\/][^\\/]+$/, "")}`);

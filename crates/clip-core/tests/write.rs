@@ -1478,6 +1478,7 @@ fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
         texts: vec![said("こんにちは", 300), said("またね", 200)],
         balloons: vec![paper(290), balloon(290.0)],
         notes: notes(20),
+        marks: Vec::new(),
         written: Some(written.clone()),
     };
     let report = update_dialogue(&page_path, &same, &fallback.donors, &backups).unwrap();
@@ -1494,6 +1495,7 @@ fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
         texts: vec![said("こんにちは", 300), said("さようなら", 150)],
         balloons: vec![paper(140), balloon(140.0)],
         notes: notes(20),
+        marks: Vec::new(),
         written: Some(written.clone()),
     };
     let report = update_dialogue(&page_path, &update, &fallback.donors, &backups).unwrap();
@@ -1561,6 +1563,7 @@ fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
         texts: vec![said("こんにちは", 300), said("消したセリフ", 100)],
         balloons: vec![paper(140), balloon(140.0)],
         notes: notes(20),
+        marks: Vec::new(),
         written: Some(PageRecord {
             texts: Some(vec!["こんにちは".into(), "消したセリフ".into()]),
             ..report.record.clone()
@@ -1586,6 +1589,7 @@ fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
         texts: vec![said("こんばんは", 300), said("さようなら", 150)],
         balloons: vec![paper(140), balloon(140.0)],
         notes: notes(20),
+        marks: Vec::new(),
         written: Some(recorded.clone()),
     };
     let report = update_dialogue(&page_path, &text_only, &fallback.donors, &backups).unwrap();
@@ -1600,6 +1604,7 @@ fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
         texts: vec![said("こんばんは", 300), said("さようなら", 150)],
         balloons: vec![paper(100), balloon(100.0)],
         notes: notes(20),
+        marks: Vec::new(),
         written: Some(PageRecord {
             texts: Some(vec!["こんばんは".into(), "さようなら".into()]),
             ..edited
@@ -1616,6 +1621,7 @@ fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
         texts: vec![said("こんばんは", 300), said("さようなら", 150)],
         balloons: vec![paper(100), balloon(100.0)],
         notes: notes(500),
+        marks: Vec::new(),
         written: Some(recorded),
     };
     let report = update_dialogue(&page_path, &memos, &fallback.donors, &backups).unwrap();
@@ -1629,6 +1635,54 @@ fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
         .unwrap();
     let pixels = page.render_layer_pixels(layer).unwrap().unwrap();
     assert_eq!(pixels.alpha_bbox(), Some((10, 500, 60, 510)));
+
+    // 指示 drawn since: a new 下描き layer on a page written without them, redrawn when they change.
+    let mark = |y: u32| match memo(y) {
+        PageLayer::Raster(layer) => RasterLayer {
+            name: "指示".into(),
+            ..layer
+        },
+        _ => unreachable!(),
+    };
+    let mut marked = DialogueUpdate {
+        texts: vec![said("こんばんは", 300), said("さようなら", 150)],
+        balloons: vec![paper(100), balloon(100.0)],
+        notes: notes(500),
+        marks: vec![mark(300)],
+        written: Some(report.record.clone()),
+    };
+    let report = update_dialogue(&page_path, &marked, &fallback.donors, &backups).unwrap();
+    assert!(report.problems.is_empty(), "{:?}", report.problems);
+    assert_eq!(report.marks, ["指示"]);
+    assert!(!report.notes && report.replaced.is_empty() && report.added.is_empty());
+    let page = ClipDocument::read(&page_path).unwrap();
+    let layers = page.layers();
+    let layer = layers.iter().find(|layer| layer.name == "指示").unwrap();
+    assert_eq!(
+        page.render_layer_pixels(layer).unwrap().unwrap().alpha_bbox(),
+        Some((10, 300, 60, 310))
+    );
+    // The memos stay where they were.
+    let memo_layer = layers.iter().find(|layer| layer.name == "メモ（ネーム）").unwrap();
+    assert_eq!(
+        page.render_layer_pixels(memo_layer).unwrap().unwrap().alpha_bbox(),
+        Some((10, 500, 60, 510))
+    );
+    // Unchanged: nothing redrawn. Moved: redrawn in the same layer.
+    marked.written = Some(report.record.clone());
+    let again = update_dialogue(&page_path, &marked, &fallback.donors, &backups).unwrap();
+    assert!(again.marks.is_empty() && !again.notes);
+    marked.marks = vec![mark(400)];
+    marked.written = Some(again.record.clone());
+    let moved = update_dialogue(&page_path, &marked, &fallback.donors, &backups).unwrap();
+    assert_eq!(moved.marks, ["指示"]);
+    let page = ClipDocument::read(&page_path).unwrap();
+    let named: Vec<_> = page.layers().into_iter().filter(|layer| layer.name == "指示").collect();
+    assert_eq!(named.len(), 1);
+    assert_eq!(
+        page.render_layer_pixels(named[0]).unwrap().unwrap().alpha_bbox(),
+        Some((10, 400, 60, 410))
+    );
 
     // Read back for the name: the texts as CSP has them, with what was written.
     let out = page_path.parent().unwrap();

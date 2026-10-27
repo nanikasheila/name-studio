@@ -100,6 +100,8 @@ export interface DialogueUpdateReport {
   conflicts: string[];
   /** Whether the memos layer was redrawn. */
   notes: boolean;
+  /** The 指示 layers redrawn (or added). */
+  marks?: string[];
   problems: string[];
 }
 

@@ -398,6 +398,9 @@ pub(crate) struct DialogueMeta {
     /// The memos layer (`LayerMeta::Raster`, its PNG after the balloons'), if written.
     #[serde(default)]
     notes: Option<LayerMeta>,
+    /// The 指示 layers (`LayerMeta::Raster`, their PNGs after the memos').
+    #[serde(default)]
+    marks: Vec<LayerMeta>,
     #[serde(default)]
     spread: bool,
     /// Folder name under `name-studio-backup` for the pages as they were.
@@ -458,10 +461,17 @@ pub(crate) async fn update_name_dialogue(
                 },
                 None => None,
             };
+            let mut marks = Vec::new();
+            for layer in meta.marks {
+                if let PageLayer::Raster(raster) = page_layer(layer, &mut take, width, height)? {
+                    marks.push(raster);
+                }
+            }
             let update = update::DialogueUpdate {
                 texts,
                 balloons,
                 notes,
+                marks,
                 written: manifest::written(&path),
             };
             let backup = writer.out_dir().join("name-studio-backup").join(&meta.backup);

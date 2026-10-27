@@ -4,7 +4,7 @@
 // is checked too, once with a CSP-made template page, once with the one
 // the app makes from its own settings (--builtin, with a work) and once with
 // each panel as a folder with a layer mask (--panel-masks), with two
-// ラフ線のレイヤー, with 指示 (and --no-marks), and a 縦スクロール
+// ラフ線のレイヤー, with 指示 (and --no-marks, then added by セリフだけ反映), and a 縦スクロール
 // whose pieces are joined into one tall page. Needs the
 // release build and a template page:
 //   npx tauri build --no-bundle
@@ -94,6 +94,18 @@ const withMarks = exportWith("marked", ["--builtin"], { file: markedName });
 check((withMarks?.checks?.[0]?.layers ?? 0) === (builtin?.checks?.[0]?.layers ?? 0) + 1, "marked: the 指示 are a layer of their own");
 const noMarks = exportWith("unmarked", ["--builtin", "--no-marks"], { file: markedName });
 check((noMarks?.checks?.[0]?.layers ?? 0) === (builtin?.checks?.[0]?.layers ?? 0), "unmarked: --no-marks leaves them out");
+// 指示 drawn after the export: セリフだけ反映 adds them to those pages as a layer, and leaves them be the next time.
+for (const [round, want] of [["first", ["指示"]], ["again", []]]) {
+  const run = spawnSync(app, ["--export-csp", markedName, "--builtin", "--update-dialogue", "--out", join(dir, "unmarked")], {
+    timeout: 180000,
+    encoding: "utf8",
+  });
+  const reportPath = join(dir, "unmarked", "name-studio-export.json");
+  const report = existsSync(reportPath) ? JSON.parse(readFileSync(reportPath, "utf8").replace(/^\uFEFF/, "")) : null;
+  check(run.status === 0 && report?.ok === true, `update (${round}): セリフだけ反映 succeeds (${report?.summary?.join(" / ") ?? run.stderr})`);
+  const drawn = report?.pages?.[0]?.marks ?? [];
+  check(JSON.stringify(drawn) === JSON.stringify(want), `update (${round}): the 指示 redrawn on the first page are ${JSON.stringify(want)} (${JSON.stringify(drawn)})`);
+}
 const tall = exportWith("tall", ["--builtin", "--work-name", "縦スクロール"], { file: scrollName, pages: 1 });
 check(tall?.textLayers === true && (tall?.checks?.[0]?.layers ?? 0) > 0, "tall: the joined page has its layers");
 if (failures.length) process.exit(1);

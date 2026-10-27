@@ -831,6 +831,7 @@ export class ExportDialog {
           inputs: this.sources(),
           donors: [this.donor, project.source?.path, ...templates.donors].filter((path): path is string => !!path),
           notes: this.notes,
+          marks: this.marks,
         },
         (text) => {
           this.message(text);
