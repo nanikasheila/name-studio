@@ -2,14 +2,17 @@
 // editor, the drags a tool starts, and the editor as a tool sees it
 // (EditorCore). Each tool's press, drag and finish live in its own module
 // (toolselect.ts, toolpen.ts, ...); editor.ts dispatches to them.
+import type { TailHit, TailPart } from "./hittest";
 import type { Seam } from "./komaedit";
 import type { Slot } from "./layout";
 import type { Binding, BoxMm, Brush, EraseMode, FillTone, Page, Panel, Point, Project, RoughImage, Sticky, StrokePoint } from "./model";
 import type { CarriedContents } from "./panels";
 import type { SnapTargets } from "./snapping";
+import type { ToolId } from "./tooldefs";
 import type { ItemRef, TransformBase } from "./transform";
 
-export type Tool = "select" | "cut" | "text" | "pen" | "mark" | "eraser" | "fill" | "breakout" | "sticky" | "reference";
+/** A tool of the page editor (tooldefs.ts has each one's button, keys and help). */
+export type Tool = ToolId;
 
 /** コマ割り: cut panels apart, draw them by hand (仮のコマ), draw a rectangle panel, or place the corners of any shape (台形 and the like). */
 export type PanelMode = "cut" | "sketch" | "rect" | "polygon";
@@ -84,14 +87,7 @@ export interface EditorHost {
   referenceChanged?(): void;
 }
 
-export type TailPart = "tip" | "body" | "bend" | "root";
-
-/** A tail of a line under the pointer. */
-export interface TailHit {
-  lineId: string;
-  index: number;
-  part: TailPart;
-}
+export type { TailHit, TailPart } from "./hittest";
 
 /** Panels being moved: snapped by their box as it was, moved by `total` (snapped) so far. */
 export interface MoveSnap {

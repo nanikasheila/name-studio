@@ -2,7 +2,7 @@
 // ways, the fill's tones, the pen or eraser and its size), and how the pages
 // are shown (見開き, 単独 or 連続 and its rows).
 import { addBrushes } from "./brush";
-import { $ } from "./dom";
+import { $, element } from "./dom";
 import { ERASE_MODE_LABELS, PANEL_MODE_LABELS, type EditorEraseMode, type PageEditor, type PanelMode, type Tool } from "./editor";
 import type { Brush, FillTone, Project } from "./model";
 import { CONTINUOUS_KEY, loadLibrary, ROWS_KEY, SHOW_NOTES_KEY, SINGLE_PAGE_KEY } from "./prefs";
@@ -10,26 +10,11 @@ import { writeCount, writeFlag } from "./settings";
 import { TONE_LABELS } from "./strokes";
 import { MarkBar } from "./markbar";
 import type { RoughChange } from "./roughpanel";
-
-const TOOLS = ["select", "cut", "text", "pen", "mark", "eraser", "fill", "breakout", "sticky", "reference"] as const satisfies readonly Tool[];
-
-/** One line under the tool's name in the options row. */
-const TOOL_HINTS: Record<Tool, string> = {
-  select: "クリックで選ぶ・ドラッグで動かす・ダブルクリックで書き込む。Shift で足す、囲んでまとめて選ぶ",
-  cut: "コマを横切るように引くと割れる（Alt で斜め）。Shift + コマの外のドラッグで新しいコマ",
-  text: "クリックした所にセリフを置く。選んで Alt+ホイールで文字の大きさ",
-  pen: "",
-  mark: "指示を描きなぐる。消しゴム側か「消す」で指示だけ消す。CSP へは下描きレイヤー「指示」",
-  eraser: "",
-  fill: "囲んだ所を塗る",
-  breakout: "コマを突き抜ける所を囲む。中に描いた線はコマ枠の上に",
-  sticky: "クリックで付箋を貼る（書き出しには入りません）",
-  reference: "写真や背景を薄く敷く。Ctrl+V・ドロップでも貼れる。ドラッグで動かし、角で大きさ（CSP には下描きレイヤーで出ます）",
-};
+import { TOOL_IDS, TOOLS, type ToolId } from "./tooldefs";
 
 /** コマ割り: the hint for each way of making panels. */
 const PANEL_HINTS: Record<PanelMode, string> = {
-  cut: TOOL_HINTS.cut,
+  cut: TOOLS.cut.hint,
   sketch: "紙のように描く: 囲むと仮のコマ、横切ると割る、コマの間をぐしゃぐしゃでつなげる。決まったら「整える」で清書",
   rect: "ドラッグで四角いコマを描く。コマの中に描くと、はめ込み（Alt で吸着しない）",
   polygon: "クリックで角を置く。最初の角・ダブルクリック・Enter で閉じてコマに。Backspace で 1 つ戻す、Esc でやめる",
@@ -59,6 +44,7 @@ export class ControlBar {
   private readonly marks: MarkBar;
 
   constructor(private readonly host: ControlBarHost) {
+    $("editor-tools").replaceChildren(...TOOL_IDS.map(toolButton));
     this.marks = new MarkBar({ ...host, setTool: (tool) => this.setTool(tool) });
   }
 
@@ -68,7 +54,7 @@ export class ControlBar {
 
   setTool(tool: Tool): void {
     this.editor.setTool(tool);
-    for (const name of TOOLS) $(`tool-${name}`).classList.toggle("active", name === tool);
+    for (const name of TOOL_IDS) $(`tool-${name}`).classList.toggle("active", name === tool);
     $("fill-tones").hidden = tool !== "fill";
     $("panel-modes").hidden = tool !== "cut";
     $("grid-snap-label").hidden = tool !== "cut";
@@ -80,7 +66,7 @@ export class ControlBar {
     const name = $("tool-name");
     name.replaceChildren(...[...button.childNodes].map((node) => node.cloneNode(true)));
     name.style.setProperty("--tool", getComputedStyle(button).getPropertyValue("--tool"));
-    $("tool-hint").textContent = TOOL_HINTS[tool];
+    $("tool-hint").textContent = TOOLS[tool].hint;
     this.showPanelModes();
     this.renderBrushBar();
   }
@@ -271,7 +257,7 @@ export class ControlBar {
       $(`panel-${mode}`).addEventListener("click", () => this.setPanelMode(mode));
     }
     $<HTMLInputElement>("grid-snap").addEventListener("change", (event) => this.host.snapGrid((event.target as HTMLInputElement).checked));
-    for (const name of TOOLS) $(`tool-${name}`).addEventListener("click", () => this.setTool(name));
+    for (const name of TOOL_IDS) $(`tool-${name}`).addEventListener("click", () => this.setTool(name));
     for (const mode of Object.keys(ERASE_MODE_LABELS) as EditorEraseMode[]) {
       $(`erase-${mode}`).addEventListener("click", () => this.setEraseMode(mode));
     }
@@ -312,4 +298,14 @@ export class ControlBar {
       this.host.renderAll();
     });
   }
+}
+
+/** A tool's button on the rail (the first, 選択, in hand at the start). */
+function toolButton(id: ToolId): HTMLButtonElement {
+  const tool = TOOLS[id];
+  const button = element("button", { id: `tool-${id}`, className: id === TOOL_IDS[0] ? "active" : "", title: tool.title });
+  button.dataset.command = `tool.${id}`;
+  button.innerHTML = `<svg class="icon" viewBox="0 0 20 20" aria-hidden="true">${tool.icon}</svg>`;
+  button.append(element("span", { textContent: tool.name }));
+  return button;
 }

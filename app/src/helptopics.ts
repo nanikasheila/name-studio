@@ -3,6 +3,8 @@
 // the help over the whole screen and the first-time guide. Keys are named
 // by the command they run, so the help says the keys as they are set now.
 
+import { TOOL_IDS, TOOLS, type ToolId } from "./tooldefs";
+
 /** One thing to do: the input ("ドラッグ", or a command's keys) and what it does. */
 export interface HelpStep {
   /** What is done with the mouse or pen ("ドラッグ", "Shift+クリック"). */
@@ -82,8 +84,8 @@ const VIEW_STEPS: HelpStep[] = [
   { command: "view.fit", does: "全体を表示" },
 ];
 
-/** The tools on the page (コマ割り by its way of making panels: "cut.rect"). */
-export const TOOL_TOPICS: Record<string, HelpTopic> = {
+/** The tools on the page (コマ割り by its way of making panels: "cut.rect"); every tool has one. */
+export const TOOL_TOPICS: Record<ToolId, HelpTopic> & Record<string, HelpTopic> = {
   select: {
     name: "選択",
     what: "コマ・セリフ・ラフ線・塗り・付箋を選んで動かす",
@@ -492,16 +494,7 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
   { target: "#name-export", name: "書き出す", text: "CSP のページと作品・PDF・ミニネーム・台本", command: "exportAgain", side: "below" },
   { target: "#help", name: "ヘルプ", text: "この画面。もう一度で閉じる", command: "help.overlay", side: "below" },
   // The tools.
-  tool("select", "選択", "選ぶ・動かす・ダブルクリックで書く"),
-  tool("cut", "コマ割り", "引いて割る・なぐり描き・四角・多角形"),
-  tool("text", "セリフ", "クリックで置いてその場で書く"),
-  tool("pen", "ペン", "ラフを描く"),
-  tool("mark", "指示", "注釈を色ペンで描きなぐる"),
-  tool("eraser", "消しゴム", "もう一度押すと消し方を切り替え"),
-  tool("fill", "塗り", "囲んでベタ・グレー・白"),
-  tool("breakout", "はみ出し", "コマを突き抜ける所を囲む"),
-  tool("sticky", "付箋", "作業用のメモ（書き出さない）"),
-  tool("reference", "資料", "写真や背景を薄く敷く"),
+  ...TOOL_IDS.map((id) => tool(id, TOOLS[id].name, TOOLS[id].overlay)),
   // Around the pages.
   { target: "#tool-options", name: "道具の設定", text: "持っている道具の設定と使い方のひと言", side: "below" },
   { target: "#panel-tidy", name: "整える", text: "仮のコマを清書（線をそろえ、コマ間を設定の幅に）", command: "panel.tidy", side: "below" },

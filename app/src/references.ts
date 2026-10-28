@@ -2,7 +2,6 @@
 // draw the name over. The picture is kept once in the project (made smaller
 // when it is taken in) and each page's reference says where it lies.
 import { offPage } from "./aside";
-import type { Slot } from "./layout";
 import type { BoxMm, Page, Point, Project, ReferenceImage, StoredImage } from "./model";
 import { trimBox } from "./pagebox";
 import { insertPage, newId } from "./project";
@@ -10,8 +9,6 @@ import { insertPage, newId } from "./project";
 /** Pictures are made no larger than this on their long side when taken in. */
 export const MAX_IMAGE_PX = 2400;
 export const DEFAULT_OPACITY = 0.5;
-/** A corner handle's reach, in screen px. */
-export const REFERENCE_HANDLE = 7;
 
 /** A picture of the name itself (取り込んだネーム画像), read and written out with the name; else a 資料 picture. */
 export function isNamePicture(reference: ReferenceImage): boolean {
@@ -140,11 +137,4 @@ export function savedForm(project: Project): Project {
   if (images.length) copy.images = images;
   else delete copy.images;
   return copy;
-}
-
-/** The chosen picture's corner under a screen point of `slot`'s page (0–3), or -1. */
-export function referenceCornerAt(slot: Slot, chosenId: string | null, sx: number, sy: number): number {
-  const chosen = chosenId === null ? undefined : slot.page.references?.find((r) => r.id === chosenId);
-  if (!chosen) return -1;
-  return corners(chosen.box).findIndex(([x, y]) => Math.hypot(slot.x + x * slot.scale - sx, slot.y + y * slot.scale - sy) <= REFERENCE_HANDLE + 2);
 }

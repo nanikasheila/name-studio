@@ -25,12 +25,25 @@ function imports(): Map<string, string[]> {
 const LAYERS = {
   /** The name data's types and plane geometry: the file format. */
   model: ["model", "types", "geometry"],
-  /** Working on a name: pure computation, no browser, no storage, no Rust side. */
-  core: [
-    "alternatives", "arrange", "aside", "autotail", "balloon", "brush", "callouts", "cast", "commands", "csppage", "dialogue", "export", "exportmemory", "fonts",
-    "helptopics", "history", "hold", "koma", "komaedit", "layout", "mask", "mininame", "minisplit", "namecheck", "namedefaults", "pagebox", "pages", "panelfolders", "panels", "pen",
-    "plotimport", "project", "projectjson", "readback", "readingorder", "recent", "references", "removal", "reorder", "repair", "roughlayers", "scriptimport",
-    "savestate", "series", "session", "shapes", "shortcuts", "sketchpanels", "snapping", "snapshot", "springtool", "stickies", "story", "strokes", "structures", "style", "tidy", "transform", "viewport", "wrap",
+  /**
+   * The name and what can be done to it: panels, dialogue, rough lines, the
+   * story, reading and writing its formats. Pure computation, no browser, no
+   * storage, no Rust side, and nothing of the editor's screen.
+   */
+  domain: [
+    "alternatives", "arrange", "aside", "autotail", "balloon", "brush", "carry", "cast", "csppage", "dialogue", "export", "exportmemory", "fonts", "hold", "koma",
+    "komaedit", "mask", "mininame", "minisplit", "namecheck", "namedefaults", "pagebox", "pages", "panelfolders", "panels", "plotimport", "project", "projectjson",
+    "readback", "readingorder", "references", "removal", "reorder", "repair", "roughlayers", "scriptimport", "series", "shapes", "sketchpanels", "snapping", "stickies",
+    "story", "strokes", "structures", "style", "tidy", "transform", "wrap",
+  ],
+  /**
+   * The editor's own computation, still pure: where pages lie on screen and
+   * what is under the pointer, the view, undo, the open name, the commands,
+   * keys, tools and their help (which change with the screens, faster than the
+   * name's vocabulary).
+   */
+  editing: [
+    "callouts", "commands", "helptopics", "history", "hittest", "layout", "pen", "recent", "savestate", "session", "shortcuts", "snapshot", "springtool", "tooldefs", "viewport",
   ],
   /** This computer and the Rust side: storage, settings, commands, the page's elements. */
   platform: ["backend", "dom", "errorlog", "prefs", "settings"],
@@ -84,7 +97,7 @@ describe("module structure", () => {
   it("keeps each tool's press and drags out of the page editor", () => {
     // Tools live in tool*.ts behind tools.ts; editor.ts dispatches, screendraw.ts draws.
     const editor = sources["./editor.ts"];
-    expect(editor.split("\n").length).toBeLessThan(2400);
+    expect(editor.split("\n").length).toBeLessThan(2300);
     expect(editor).not.toMatch(/(?:tool|drag) satisfies never/);
     for (const [path, source] of Object.entries(sources)) {
       if (/^\.\/tool\w*\.ts$/.test(path)) expect(source, path).not.toMatch(/from "\.\/editor"/);
@@ -112,7 +125,7 @@ describe("module structure", () => {
   it("keeps the browser, its storage and the Rust side out of the types and the computation", () => {
     const browser = /\b(?:document|window|localStorage|sessionStorage|createImageBitmap|requestAnimationFrame)\b|\bnew Image\b|"@tauri-apps\//;
     const found = [...layerOf]
-      .filter(([, rank]) => rank <= ORDER.indexOf("core"))
+      .filter(([, rank]) => rank <= ORDER.indexOf("editing"))
       .filter(([file]) => browser.test(sources[`./${file}`].replace(/\/\/.*$|\/\*[\s\S]*?\*\//gm, "")))
       .map(([file]) => file);
     expect(found).toEqual([]);

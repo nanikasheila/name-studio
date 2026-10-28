@@ -364,3 +364,46 @@ fn a_name_that_is_not_there_says_so_in_words() {
     let error = Project::load(dir.path().join("外付け/第4話.namestudio")).unwrap_err();
     assert!(error.to_string().starts_with("ファイルが見つかりません。"), "{error}");
 }
+
+#[test]
+fn a_name_moved_with_its_sheet_finds_the_sheet_beside_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut project = sample();
+    project.source = Some(name_model::SourceSheet {
+        path: r"D:\old place\第4話\ネーム.clip".to_owned(),
+        resolution: 350.0,
+        cells: vec![],
+    });
+    let name = dir.path().join("第4話.namestudio");
+    project.save(&name).unwrap();
+    let source = |text: &str| {
+        serde_json::from_str::<serde_json::Value>(text).unwrap()["source"]["path"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+
+    // The sheet is nowhere: the path stays as it was written.
+    assert_eq!(
+        source(&Project::load_text_finding_source(&name).unwrap()),
+        r"D:\old place\第4話\ネーム.clip"
+    );
+
+    // Moved together into one folder: the sheet beside the name.
+    let sheet = dir.path().join("ネーム.clip");
+    std::fs::write(&sheet, b"clip").unwrap();
+    let found = Project::load_text_finding_source(&name).unwrap();
+    assert_eq!(source(&found), sheet.to_string_lossy());
+    assert_eq!(Project::from_json(&found).unwrap().pages.len(), project.pages.len());
+
+    // Where the project says, it is left alone even with another beside the name.
+    let elsewhere = tempfile::tempdir().unwrap();
+    let there = elsewhere.path().join("ネーム.clip");
+    std::fs::write(&there, b"clip").unwrap();
+    project.source.as_mut().unwrap().path = there.to_string_lossy().into_owned();
+    project.save(&name).unwrap();
+    assert_eq!(
+        source(&Project::load_text_finding_source(&name).unwrap()),
+        there.to_string_lossy()
+    );
+}

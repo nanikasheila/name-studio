@@ -17,6 +17,7 @@ pub type Point = [f64; 2];
 pub type BoxMm = [f64; 4];
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct Project {
     pub format_version: u32,
@@ -85,6 +86,7 @@ pub struct Project {
 /// 保留コマ: a panel taken off its page with what is in it, where they were
 /// on that page (mm).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct HeldPanel {
     pub id: String,
@@ -112,6 +114,7 @@ pub struct HeldPanel {
 /// 別案: versions of the same run of pages (a page, a 見開き, a scene). The
 /// option in use has its pages in [`Project::pages`]; the others keep theirs here.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct Alternatives {
     pub id: String,
@@ -123,6 +126,7 @@ pub struct Alternatives {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct AlternativeOption {
     pub id: String,
@@ -133,6 +137,7 @@ pub struct AlternativeOption {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "lowercase")]
 pub enum Binding {
     /// 右綴じ (manga): pages run right to left.
@@ -142,6 +147,7 @@ pub enum Binding {
 
 /// Size of the manuscript page and its frames, in millimetres.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct PageFormat {
     /// The page canvas (A3 in the user's manuscripts).
@@ -183,6 +189,7 @@ impl PageFormat {
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct Page {
     pub id: String,
@@ -217,6 +224,7 @@ pub struct Page {
 
 /// 資料画像 on a page: which picture ([`Project::images`]) and where it lies.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct ReferenceImage {
     pub id: String,
@@ -234,6 +242,7 @@ pub struct ReferenceImage {
 
 /// A picture kept in the name (made smaller when it was taken in).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct StoredImage {
     pub id: String,
@@ -248,6 +257,7 @@ pub struct StoredImage {
 
 /// 投げなわ塗り: an outline filled with one tone.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct Fill {
     pub id: String,
@@ -259,6 +269,7 @@ pub struct Fill {
 
 /// 付箋: a note on the page, at its top-left corner in millimetres.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct Sticky {
     pub id: String,
@@ -276,6 +287,7 @@ pub struct Sticky {
 /// A panel or a line a 付箋 is about, and the point on it the note points to
 /// (from the top left of the panel's bounds or the line's box, in mm).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct StickyLink {
     /// "panel" or "line".
@@ -286,6 +298,7 @@ pub struct StickyLink {
 
 /// コマ間 in millimetres: between panels side by side and one above the other.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct Gutters {
     pub across: f64,
@@ -295,6 +308,7 @@ pub struct Gutters {
 /// 用途ごとのフォント: a font name (as CLIP STUDIO PAINT shows it) for each
 /// kind of line, and for lines marked 強調. None: the usual one (セリフ's, else the app's).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct LineFonts {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -314,6 +328,7 @@ pub struct LineFonts {
 /// 作品の既定: the sizes and line widths a name draws with. None: the app's
 /// (13 pt dialogue, 12 pt narration, 0.6 mm borders, 1.2 mm 太枠, 0.3 mm balloons).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct NameStyle {
     /// 文字の大きさ (pt) new lines of each kind get.
@@ -335,6 +350,7 @@ pub struct NameStyle {
 
 /// CSP のページ設定 (mm): the CLIP STUDIO PAINT page made without a template.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct CspPage {
     pub canvas_mm: [f64; 2],
@@ -361,6 +377,7 @@ pub struct CspPage {
 
 /// Where a 作品情報 text goes under the 仕上がり: 左下・下・右下.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "lowercase")]
 pub enum StoryPosition {
     Left,
@@ -370,6 +387,7 @@ pub enum StoryPosition {
 
 /// CSP's 作品情報 and ノンブル settings besides 作品名・話数・作者名.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct CspStory {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -387,6 +405,7 @@ pub struct CspStory {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct StoryPageNumber {
     pub start: i64,
@@ -396,6 +415,7 @@ pub struct StoryPageNumber {
 
 /// Where a shown ノンブル goes: above or below the 基本枠, 内側・中央・外側.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "kebab-case")]
 pub enum NombrePlace {
     TopInner,
@@ -407,6 +427,7 @@ pub enum NombrePlace {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct ShownNombre {
     pub place: NombrePlace,
@@ -428,6 +449,7 @@ pub struct ShownNombre {
 
 /// A number for each kind of line.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct KindSizes {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -444,6 +466,7 @@ pub struct KindSizes {
 
 /// 構成補助: what the name is aimed at, to compare the page split with.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct Plan {
     /// 目標ページ数.
@@ -461,6 +484,7 @@ pub struct Plan {
 /// 話の型: parts over the pages by share, and beats (turning points) at
 /// points in them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct StoryShape {
     pub id: String,
@@ -471,6 +495,7 @@ pub struct StoryShape {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct ShapePart {
     pub name: String,
@@ -481,6 +506,7 @@ pub struct ShapePart {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct ShapeBeat {
     pub name: String,
@@ -495,6 +521,7 @@ pub struct ShapeBeat {
 /// (ベタ for flashbacks), a background effect, and its stacking order so
 /// that inset panels (はめ込み) sit on top of the panel they overlap.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct Panel {
     pub id: String,
@@ -538,6 +565,7 @@ fn is_default<T: Default + PartialEq>(value: &T) -> bool {
 
 /// 枠線
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum PanelBorder {
     #[default]
@@ -554,6 +582,7 @@ pub enum PanelBorder {
 
 /// 塗り (inside the border, under everything else in the panel).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum PanelFill {
     /// Transparent: panels under it show through.
@@ -569,6 +598,7 @@ pub enum PanelFill {
 
 /// Background effect drawn inside the panel (a note for the drawing stage).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum PanelEffect {
     #[default]
@@ -585,6 +615,7 @@ pub enum PanelEffect {
 
 /// はみ出し: an area that breaks out of the panels.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct Breakout {
     pub id: String,
@@ -594,6 +625,7 @@ pub struct Breakout {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "lowercase")]
 pub enum LineKind {
     /// セリフ
@@ -611,6 +643,7 @@ pub enum LineKind {
 
 /// The balloon shape new lines of each kind get in a work (such as 多角形 for monologue).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct LineShapes {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -627,6 +660,7 @@ pub struct LineShapes {
 
 /// フキダシの形
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum BalloonShape {
     /// The usual shape for the kind of line (楕円 / モコモコ / 四角 / なし).
@@ -662,6 +696,7 @@ pub enum BalloonShape {
 
 /// しっぽの種類
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum TailStyle {
     /// 三角
@@ -677,6 +712,7 @@ pub enum TailStyle {
 
 /// しっぽ: points from the balloon to the speaker, even off the panel.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct Tail {
     pub tip: Point,
@@ -693,6 +729,7 @@ pub struct Tail {
 
 /// セリフ and other text placed on a page.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct Line {
     pub id: String,
@@ -739,9 +776,11 @@ pub struct Line {
 
 /// A rough line (ラフ).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct Stroke {
     pub id: String,
+    #[cfg_attr(feature = "ts", ts(type = "StrokePoint[]"))]
     pub points: Vec<StrokePoint>,
     pub width_mm: f64,
     #[serde(default)]
@@ -763,6 +802,7 @@ pub struct Stroke {
 /// ラフ線のレイヤー: rough lines kept apart (人物・背景・効果…), shown,
 /// faded and locked together.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct RoughLayer {
     pub id: String,
@@ -842,6 +882,7 @@ impl From<StrokePoint> for Vec<f64> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "lowercase")]
 pub enum BrushKind {
     #[default]
@@ -851,6 +892,7 @@ pub enum BrushKind {
 
 /// How an eraser takes away rough lines.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "lowercase")]
 pub enum EraseMode {
     /// 触れた部分: cut away what the eraser touches.
@@ -865,6 +907,7 @@ pub enum EraseMode {
 /// lightest touch, the full value at the hardest, along `curve` (control
 /// points in 0..1; empty is a straight line).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct PressureCurve {
     pub min: f64,
@@ -874,6 +917,7 @@ pub struct PressureCurve {
 
 /// Picture of the brush tip: white with the coverage in alpha.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct BrushTip {
     pub png_base64: String,
@@ -901,6 +945,7 @@ fn default_one() -> f64 {
 
 /// A pen or eraser (ブラシ). Sizes are millimetres on the page.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct Brush {
     pub id: String,
@@ -964,6 +1009,7 @@ fn default_thickness() -> f64 {
 
 /// Raster rough kept in the source sheet; the pixels are read from there.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct RoughImage {
     pub id: String,
@@ -977,6 +1023,7 @@ pub struct RoughImage {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct Character {
     pub id: String,
@@ -990,6 +1037,7 @@ pub struct Character {
 
 /// A scene: a run of pages, with its place in story time for the timeline.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct Scene {
     pub id: String,
@@ -1008,6 +1056,7 @@ pub struct Scene {
 
 /// How a character feels at a page: -1 (negative) .. 1 (positive).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct EmotionPoint {
     pub character: String,
@@ -1019,6 +1068,7 @@ pub struct EmotionPoint {
 
 /// The name sheet a project was imported from.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct SourceSheet {
     pub path: String,

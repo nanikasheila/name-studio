@@ -18,6 +18,7 @@ pub const SERIES_EXTENSION: &str = "nameseries";
 pub const SERIES_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct Series {
     pub format_version: u32,
@@ -32,6 +33,7 @@ pub struct Series {
 
 /// A name of the series as last saved.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct SeriesEpisode {
     /// The name's file, from the series file's folder (`/` between folders).
@@ -45,6 +47,7 @@ pub struct SeriesEpisode {
 
 /// What every name of the series shares (the same fields as in a project).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct SeriesShared {
     #[serde(default)]

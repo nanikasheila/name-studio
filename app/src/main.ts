@@ -30,6 +30,7 @@ import { PROJECT_EXTENSION } from "./namesaver";
 import { Workbench } from "./workbench";
 import { $, isTyping } from "./dom";
 import { ImageImportDialog } from "./imageimport";
+import { panelAt, panelBadge } from "./hittest";
 
 function setStatus(message: string): void {
   $("status").textContent = message;
@@ -344,6 +345,7 @@ if (import.meta.env.DEV) {
     nameStudio: {
       workbench,
       helpBar,
+      hittest: { panelAt, panelBadge },
       show(project: Project) {
         showWorkspace("editor");
         workbench.show(project, null, "");
