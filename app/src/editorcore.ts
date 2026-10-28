@@ -7,9 +7,11 @@ import type { Slot } from "./layout";
 import type { Binding, BoxMm, Brush, EraseMode, FillTone, Page, Panel, Point, Project, RoughImage, Sticky, StrokePoint } from "./model";
 import type { CarriedContents } from "./panels";
 import type { SnapTargets } from "./snapping";
+import type { ToolId } from "./tooldefs";
 import type { ItemRef, TransformBase } from "./transform";
 
-export type Tool = "select" | "cut" | "text" | "pen" | "mark" | "eraser" | "fill" | "breakout" | "sticky" | "reference";
+/** A tool of the page editor (tooldefs.ts has each one's button, keys and help). */
+export type Tool = ToolId;
 
 /** コマ割り: cut panels apart, draw them by hand (仮のコマ), draw a rectangle panel, or place the corners of any shape (台形 and the like). */
 export type PanelMode = "cut" | "sketch" | "rect" | "polygon";

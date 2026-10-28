@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { TOOL_IDS, TOOLS } from "./tooldefs";
 import { AREA_TOPICS, fillKeys, heldFrom, HOVER_TOPICS, keyLabel, OVERLAY_SPOTS, shownSteps, TOOL_TOPICS, topicFromWords, TOUR_STOPS } from "./helptopics";
 
 const keys: Record<string, string[]> = { transform: ["Ctrl+T"], delete: ["Delete", "Backspace"], "tool.pen": ["P"], "page.next": ["ArrowLeft"] };
@@ -37,10 +38,14 @@ describe("ヘルプの帯の中身", () => {
   });
 
   it("has a topic for every tool and everything the select tool can grab", () => {
-    for (const tool of ["select", "cut", "cut.sketch", "cut.rect", "cut.polygon", "text", "pen", "mark", "eraser", "fill", "breakout", "sticky", "reference"]) expect(TOOL_TOPICS[tool], tool).toBeDefined();
+    for (const tool of [...TOOL_IDS, "cut.sketch", "cut.rect", "cut.polygon"]) expect(TOOL_TOPICS[tool], tool).toBeDefined();
     for (const kind of ["panel", "line", "stroke", "breakout", "group", "sticky", "fill"]) expect(HOVER_TOPICS[`item.${kind}`], kind).toBeDefined();
     for (const part of ["tip", "body", "bend", "root"]) expect(HOVER_TOPICS[`tail.${part}`], part).toBeDefined();
     expect(HOVER_TOPICS.seam && HOVER_TOPICS.handle).toBeDefined();
+  });
+
+  it("points at every tool's button in the help over the screen", () => {
+    for (const id of TOOL_IDS) expect(OVERLAY_SPOTS.find((spot) => spot.target === `#tool-${id}`)?.text, id).toBe(TOOLS[id].overlay);
   });
 
   it("keeps the parts' words short enough for the bar and the overlay", () => {

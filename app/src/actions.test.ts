@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildCommands, type CommandHost } from "./actions";
+import { TOOL_IDS, TOOLS } from "./tooldefs";
 import { AREA_TOPICS, HOVER_TOPICS, OVERLAY_SPOTS, TOOL_TOPICS, TOUR_STOPS } from "./helptopics";
 
 /** The actions of the first key settings: their ids are kept with people's own keys, so they stay. */
@@ -24,6 +25,18 @@ describe("命令の一覧", () => {
   it("keeps the ids people's own keys are kept under", () => {
     const ids = new Set(commands.map((c) => c.id));
     expect(KEPT_IDS.filter((id) => !ids.has(id))).toEqual([]);
+  });
+
+  it("has a command for every tool, with its keys, that picks it", () => {
+    for (const id of TOOL_IDS) {
+      const command = commands.find((c) => c.id === `tool.${id}`);
+      expect(command?.keys, id).toEqual(TOOLS[id].keys);
+      expect(command?.keys.length, id).toBeGreaterThan(0);
+      const picked: string[] = [];
+      const picking = new Proxy({}, { get: (_, name) => (name === "setTool" ? (to: string) => picked.push(to) : () => false) }) as unknown as CommandHost;
+      buildCommands(picking).find((c) => c.id === `tool.${id}`)!.run();
+      expect(picked, id).toEqual([id]);
+    }
   });
 
   it("gives a key to one command only", () => {

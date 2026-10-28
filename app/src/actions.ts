@@ -7,6 +7,7 @@ import type { PaletteId } from "./dock";
 import { ERASE_MODE_LABELS, type EditorEraseMode, type PageEditor, type PanelMode, type Tool } from "./editor";
 import type { HelpKind } from "./helptopics";
 import type { Page } from "./model";
+import { TOOL_IDS, TOOLS } from "./tooldefs";
 
 /** What the commands need from the workbench. */
 export interface CommandHost {
@@ -194,17 +195,8 @@ export function buildCommands(host: CommandHost): Command[] {
         else if (host.board.selected) host.board.select(null);
       }),
     },
-    tool("tool.select", "select", "選択", ["V"]),
-    tool("tool.cut", "cut", "コマ割り", ["K"], "コマ 割る 枠"),
-    tool("tool.text", "text", "セリフ", ["T"], "文字 フキダシ テキスト"),
-    tool("tool.pen", "pen", "ペン", ["P"], "ラフ 描く"),
-    tool("tool.mark", "mark", "指示（赤ペン・注釈）", ["R"], "赤ペン 注釈 コメント 指定 アシスタント"),
+    ...TOOL_IDS.map((id) => tool(`tool.${id}`, id, TOOLS[id].label, TOOLS[id].keys, TOOLS[id].words)),
     button("marks-shown", "指示を出す・隠す", "画面", ["Shift+R"], "赤ペン 注釈 表示"),
-    tool("tool.eraser", "eraser", "消しゴム（もう一度で消し方を切り替え）", ["E"]),
-    tool("tool.fill", "fill", "投げなわ塗り（ベタ・グレー・白）", ["G"], "塗り ベタ トーン"),
-    tool("tool.breakout", "breakout", "はみ出し", ["B"]),
-    tool("tool.sticky", "sticky", "付箋", ["M"], "メモ"),
-    tool("tool.reference", "reference", "資料画像", ["I"], "写真 背景 画像"),
     { id: "panel.modeCut", label: "コマ割り: 割る（横切るように引く）", group: "道具", keys: [], words: "コマ 割る", available: named, run: always(() => host.setPanelMode("cut")) },
     { id: "panel.modeSketch", label: "コマ割り: 描く（なぐり描きで仮のコマ割り）", group: "道具", keys: [], words: "コマ 描く 手描き ラフ 仮 なぐり描き", available: named, run: always(() => host.setPanelMode("sketch")) },
     { id: "panel.modeRect", label: "コマ割り: 四角（ドラッグで四角いコマ）", group: "道具", keys: [], words: "コマ 四角 矩形", available: named, run: always(() => host.setPanelMode("rect")) },
