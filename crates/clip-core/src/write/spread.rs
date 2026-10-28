@@ -22,7 +22,7 @@ use rusqlite::Connection;
 use rusqlite::types::Value;
 use serde::Serialize;
 
-use super::layers::{parent_of, place, renew_layer_uuids, save, set_row_value};
+use super::layers::{save, set_row_value};
 use super::page::has_column;
 use crate::RgbaImage;
 use crate::clip::{ClipDocument, round_half_even};
@@ -103,7 +103,7 @@ pub fn make_spread_template(single: &Path, output: &Path) -> Result<SpreadLayout
     let (old_width, old_height) = (source.canvas.width_px, source.canvas.height_px);
     let mut file = ClipFile::open(single)?;
     file.renew_file_id();
-    renew_layer_uuids(&file)?;
+    file.renew_layer_uuids()?;
     let was_left = matches!(
         canvas_value(file.database(), "ComicIsLeftPage")?,
         Some(Value::Integer(1))
@@ -308,7 +308,7 @@ fn add_right_story_layers(
         );
         // In the same place as the left page's (the source's), with render
         // images the size of the (now spread) canvas.
-        let folder = parent_of(file, layer_id)?;
+        let folder = file.layer_parent(layer_id)?;
         let mut right_page = |row: &mut Row| -> csp_format::Result<()> {
             set_row_value(row, FOR_RIGHT_PAGE, Value::Integer(1));
             Ok(())
@@ -346,7 +346,7 @@ fn add_right_story_layers(
             drop_render_cache(file.database(), id)?;
         }
         file.reload()?;
-        place(file, folder, right, Some(layer_id))?;
+        file.move_layer(right, folder, Some(layer_id))?;
     }
     Ok(())
 }

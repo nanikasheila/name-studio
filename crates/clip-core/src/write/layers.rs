@@ -9,7 +9,6 @@ use csp_format::database::Row;
 use csp_format::edit::NewLayer;
 use csp_format::offscreen::{Attribute, Parameter, PixelKind, encode};
 use csp_format::{ClipFile, GrayImage};
-use rusqlite::OptionalExtension;
 use rusqlite::types::Value;
 
 use crate::RgbaImage;
@@ -56,42 +55,6 @@ pub(crate) fn column_names(db: &rusqlite::Connection, table: &str) -> Result<Vec
         .into_iter()
         .map(|(name, _)| name)
         .collect())
-}
-
-/// A layer uuid in CSP's 10-4-4-4-10 hex form.
-pub fn new_layer_uuid() -> String {
-    let text = uuid::Uuid::new_v4().simple().to_string();
-    format!(
-        "{}-{}-{}-{}-{}",
-        &text[..10],
-        &text[10..14],
-        &text[14..18],
-        &text[18..22],
-        &text[22..32]
-    )
-}
-
-/// Give the layers of a page made from a template new uuids: CSP gives
-/// every page file its own, and pages written from one template would
-/// otherwise share them (with [`ClipFile::renew_file_id`] for the file's id).
-pub(crate) fn renew_layer_uuids(file: &ClipFile) -> Result<()> {
-    let db = file.database();
-    if !csp_format::database::has_column(db, "Layer", "LayerUuid")? {
-        return Ok(());
-    }
-    let ids: Vec<i64> = {
-        let mut statement = db.prepare("SELECT MainId FROM Layer WHERE LayerUuid IS NOT NULL")?;
-        statement
-            .query_map([], |row| row.get(0))?
-            .collect::<std::result::Result<_, _>>()?
-    };
-    for id in ids {
-        db.execute(
-            "UPDATE Layer SET LayerUuid = ?1 WHERE MainId = ?2",
-            (new_layer_uuid(), id),
-        )?;
-    }
-    Ok(())
 }
 
 /// This crate's error as csp-format's (inside csp-format's hooks).
@@ -177,93 +140,23 @@ pub(crate) fn raster_like(
         };
         values.push((column.to_owned(), value));
     }
-    for (column, value) in values {
-        file.database().execute(
-            &format!("UPDATE Layer SET \"{column}\" = ?1 WHERE MainId = ?2"),
-            (value, id),
-        )?;
-    }
-    file.reload()?;
+    file.set_layer_values(
+        id,
+        values.iter().map(|(column, value)| (column.as_str(), value.clone())),
+    )?;
     Ok(id)
-}
-
-/// The children of `folder`, bottom first.
-pub(crate) fn children(file: &ClipFile, folder: i64) -> Result<Vec<i64>> {
-    let link = |sql: &str, id: i64| -> Result<i64> {
-        let value: Option<Option<i64>> = file.database().query_row(sql, [id], |row| row.get(0)).optional()?;
-        Ok(value.flatten().unwrap_or(0))
-    };
-    let mut result = Vec::new();
-    let mut child = link("SELECT LayerFirstChildIndex FROM Layer WHERE MainId = ?1", folder)?;
-    while child != 0 && !result.contains(&child) {
-        result.push(child);
-        child = link("SELECT LayerNextIndex FROM Layer WHERE MainId = ?1", child)?;
-    }
-    Ok(result)
-}
-
-/// The folder `layer_id` is in (the root folder when none has it).
-pub(crate) fn parent_of(file: &ClipFile, layer_id: i64) -> Result<i64> {
-    let folders: Vec<i64> = {
-        let mut statement = file
-            .database()
-            .prepare("SELECT MainId FROM Layer WHERE LayerFirstChildIndex IS NOT NULL AND LayerFirstChildIndex != 0")?;
-        statement
-            .query_map([], |row| row.get(0))?
-            .collect::<std::result::Result<_, _>>()?
-    };
-    for folder in folders {
-        if children(file, folder)?.contains(&layer_id) {
-            return Ok(folder);
-        }
-    }
-    Ok(file.canvas.root_folder)
-}
-
-/// Move `layer_id` into `folder`: on top, or right below `below`.
-pub(crate) fn place(file: &mut ClipFile, folder: i64, layer_id: i64, below: Option<i64>) -> Result<()> {
-    let old = parent_of(file, layer_id)?;
-    let mut old_siblings = children(file, old)?;
-    if old_siblings.contains(&layer_id) {
-        old_siblings.retain(|id| *id != layer_id);
-        relink(file, old, &old_siblings)?;
-    }
-    let mut siblings = children(file, folder)?;
-    let position = below
-        .and_then(|below| siblings.iter().position(|id| *id == below))
-        .unwrap_or(siblings.len());
-    siblings.insert(position, layer_id);
-    relink(file, folder, &siblings)?;
-    file.reload()?;
-    Ok(())
 }
 
 /// Move `layer_id` right above `anchor` (in `anchor`'s folder `folder`).
 pub(crate) fn place_above(file: &mut ClipFile, folder: i64, anchor: i64, layer_id: i64) -> Result<()> {
-    let siblings = children(file, folder)?;
+    let siblings = file.layer_children(folder)?;
     let next = siblings
         .iter()
         .position(|sibling| *sibling == anchor)
         .and_then(|index| siblings.get(index + 1))
         .copied()
         .filter(|next| *next != layer_id);
-    place(file, folder, layer_id, next)
-}
-
-fn relink(file: &ClipFile, folder: i64, siblings: &[i64]) -> Result<()> {
-    let db = file.database();
-    db.execute(
-        "UPDATE Layer SET LayerFirstChildIndex = ?1 WHERE MainId = ?2",
-        (siblings.first().copied().unwrap_or(0), folder),
-    )?;
-    for (index, sibling) in siblings.iter().enumerate() {
-        let following = siblings.get(index + 1).copied().unwrap_or(0);
-        db.execute(
-            "UPDATE Layer SET LayerNextIndex = ?1 WHERE MainId = ?2",
-            (following, sibling),
-        )?;
-    }
-    Ok(())
+    Ok(file.move_layer(layer_id, folder, next)?)
 }
 
 /// A layer mask's offscreen `Attribute` (one 8-bit plane) of `width` × `height`.

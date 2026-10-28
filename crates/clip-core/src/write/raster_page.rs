@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 
 use super::Values;
 use super::cmc::{work_canvas_values, write_cmc};
-use super::layers::{copy_layer, csp_image, raster_like, renew_layer_uuids, save, set_layer_mask, set_row_value};
+use super::layers::{copy_layer, csp_image, raster_like, save, set_layer_mask, set_row_value};
 use super::manifest::{PageRecord, image_signature};
 use super::page::{apply_page_settings, replace_preview};
 use super::split::page_file_name;
@@ -318,26 +318,15 @@ pub(crate) fn layer_name(layer: &PageLayer) -> &str {
 
 /// Make a layer a 下描き layer (CSP: レイヤー > 下描きレイヤーに設定) at half opacity.
 pub(crate) fn make_draft(file: &mut ClipFile, id: i64) -> Result<()> {
-    let db = file.database();
-    if csp_format::database::has_column(db, "Layer", "DraftLayer")? {
-        db.execute("UPDATE Layer SET DraftLayer = 1 WHERE MainId = ?1", [id])?;
-    }
-    db.execute(
-        "UPDATE Layer SET LayerOpacity = ?1 WHERE MainId = ?2",
-        [DRAFT_OPACITY, id],
-    )?;
-    file.reload()?;
-    Ok(())
+    file.set_layer_draft(id, true)?;
+    Ok(file.set_layer_value(id, "LayerOpacity", Value::Integer(DRAFT_OPACITY))?)
 }
 
-/// A layer's opacity set to `opacity` (0..1) of CSP's full, whatever it had.
+/// A layer's opacity set to `opacity` (0..1) of CSP's full, whatever it had
+/// (never quite 0: the layer stays there to be seen in CSP's palette).
 pub(crate) fn set_opacity(file: &mut ClipFile, id: i64, opacity: f64) -> Result<()> {
-    file.database().execute(
-        "UPDATE Layer SET LayerOpacity = MAX(1, CAST(ROUND(256 * ?1) AS INTEGER)) WHERE MainId = ?2",
-        rusqlite::params![opacity.clamp(0.0, 1.0), id],
-    )?;
-    file.reload()?;
-    Ok(())
+    let stored = (256.0 * opacity.clamp(0.0, 1.0)).round().max(1.0) as i64;
+    Ok(file.set_layer_value(id, "LayerOpacity", Value::Integer(stored))?)
 }
 
 /// How a layer is written: its opacity (0..1, times what it has, such as a
@@ -358,22 +347,15 @@ pub struct LayerLook {
 fn apply_look(file: &mut ClipFile, id: i64, look: &LayerLook) -> Result<()> {
     if look.whole {
         set_opacity(file, id, look.opacity)?;
-    }
-    let db = file.database();
-    if look.opacity < 1.0 && !look.whole {
-        db.execute(
-            "UPDATE Layer SET LayerOpacity = MAX(1, CAST(ROUND(LayerOpacity * ?1) AS INTEGER)) WHERE MainId = ?2",
-            rusqlite::params![look.opacity.clamp(0.0, 1.0), id],
-        )?;
+    } else if look.opacity < 1.0 {
+        let had = file.row("Layer", id)?.map_or(256, |row| row.int("LayerOpacity")) as f64;
+        let stored = (had * look.opacity.clamp(0.0, 1.0)).round().max(1.0) as i64;
+        file.set_layer_value(id, "LayerOpacity", Value::Integer(stored))?;
     }
     if look.hidden {
         // Bit 0 shows the layer; the others (its mask in use) stay.
-        db.execute(
-            "UPDATE Layer SET LayerVisibility = LayerVisibility & ~1 WHERE MainId = ?1",
-            [id],
-        )?;
+        file.set_layer_visible(id, false)?;
     }
-    file.reload()?;
     Ok(())
 }
 
@@ -671,9 +653,8 @@ pub fn write_name_page(
     let (width, height) = (source.canvas.width_px as u32, source.canvas.height_px as u32);
     let mut file = ClipFile::open(template)?;
     file.renew_file_id();
-    renew_layer_uuids(&file)?;
-    apply_page_settings(file.database(), page_index, canvas_values, zero_left)?;
-    file.reload()?;
+    file.renew_layer_uuids()?;
+    apply_page_settings(&mut file, page_index, canvas_values, zero_left)?;
     let needs = |kind: u8| layers.iter().any(|layer| holds(layer, kind));
     for (needed, donor) in [
         (needs(0), &donors.vector),
