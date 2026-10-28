@@ -35,7 +35,7 @@ import { PageEditor, type EditorEraseMode, type Tool } from "./editor";
 import { ExportDialog } from "./exportdialog";
 import { clearAlert, showAlert } from "./alerts";
 import { logError } from "./errorlog";
-import { projectBody } from "./projectjson";
+import { projectBody, writeAhead } from "./projectjson";
 import { repair } from "./repair";
 import { savedForm } from "./references";
 import { Session } from "./session";
@@ -57,6 +57,9 @@ import { RoughCache } from "./roughcache";
 import { Reader } from "./reader";
 import { SpringTool } from "./springtool";
 import { ControlBar } from "./controlbar";
+
+/** After a line drawn with the pen, what lies around the pages is drawn again once the pen has rested this long (ms). */
+const PEN_REST_MS = 500;
 
 export class Workbench {
   readonly editor: PageEditor;
@@ -184,6 +187,8 @@ export class Workbench {
   private readonly versionDialog: VersionDialog;
   /** 一時切り替え: a tool's key held lends the tool. */
   private readonly spring = new SpringTool<Tool>();
+  /** The timer of `afterLine`. */
+  private resting = 0;
   /** 読む表示: the name read through as the book. */
   private readonly reader: Reader;
   /** Saving and autosaving the open name. */
@@ -200,7 +205,7 @@ export class Workbench {
     this.editor = new PageEditor($<HTMLCanvasElement>("editor-canvas"), {
       project: () => this.session.project,
       begin: () => this.begin(),
-      commit: () => this.commit(),
+      commit: (line) => this.commit(line),
       cancel: () => this.session.cancel(),
       selectionChanged: () => {
         this.board.deselect();
@@ -481,6 +486,7 @@ export class Workbench {
     this.bars.showViewMode();
     this.renderAll();
     this.setStatus(message);
+    if (this.session.project) writeAhead(this.session.project);
   }
 
   async load(path: string): Promise<void> {
@@ -560,8 +566,28 @@ export class Workbench {
     this.session.begin();
   }
 
-  private commit(): void {
-    if (this.session.commit()) this.renderAll();
+  private commit(line = false): void {
+    if (!this.session.commit()) return;
+    if (line) this.afterLine();
+    else this.renderAll();
+  }
+
+  /**
+   * A line drawn with the pen: the pages show it already. The strip, the
+   * palettes and the inspector (all of them drawn anew, the pages' pictures
+   * with them) follow once the pen rests, so lines drawn one after another
+   * do not stop for them.
+   */
+  private afterLine(): void {
+    this.updateTitle();
+    $<HTMLButtonElement>("undo").disabled = !this.session.canUndo;
+    $<HTMLButtonElement>("redo").disabled = !this.session.canRedo;
+    clearTimeout(this.resting);
+    this.resting = window.setTimeout(() => {
+      this.resting = 0;
+      if (this.editor.dragging) this.afterLine();
+      else this.renderAll();
+    }, PEN_REST_MS);
   }
 
   /** Run `change` as one undoable step; a change that fails is undone. */
@@ -625,6 +651,8 @@ export class Workbench {
   // --- rendering ------------------------------------------------------------------------
 
   renderAll(): void {
+    clearTimeout(this.resting);
+    this.resting = 0;
     useFonts(this.session.project?.fonts);
     useStyle(this.session.project?.style);
     this.bars.renderBrushBar();

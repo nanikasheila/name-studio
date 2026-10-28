@@ -187,6 +187,36 @@ try {
     wb.editor.penBrush = null;
     wb.editor.penWidthMm = 0.4;
   });
+  // Lines let go are added to the picture of the page's lines, not drawn all again: the page looks as drawn anew.
+  const differing = await page.evaluate(() => {
+    const canvas = document.getElementById("editor-canvas");
+    const editor = window.nameStudio.workbench.editor;
+    editor.draw();
+    const added = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+    editor.strokeCache.clear();
+    // (Pictures drawn anew take a frame each when they are slow: as many frames as pages.)
+    for (let i = 0; i < 4; i++) editor.draw();
+    const anew = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+    let count = 0;
+    for (let i = 0; i < added.length; i++) if (Math.abs(added[i] - anew[i]) > 2) count++;
+    return count;
+  });
+  check(differing === 0, `lines added to the picture of the page look as the page drawn anew (${differing} values differ)`);
+  // The strip (物語の帯) follows the lines once the pen rests, not after each of them.
+  const thumbIsOld = (mark) =>
+    page.evaluate((mark) => {
+      const canvas = document.querySelector(`.board-page[data-page="${window.nameStudio.workbench.project.pages[10].id}"] canvas`);
+      if (mark) canvas.dataset.old = "1";
+      return canvas.dataset.old === "1";
+    }, mark);
+  await page.waitForTimeout(800);
+  await thumbIsOld(true);
+  const [tx, ty] = await at(11, [40, 40]);
+  await line(Array.from({ length: 20 }, (_, i) => [tx + i * 4, ty]), Array.from({ length: 20 }, () => 0.5));
+  const right = await thumbIsOld(false);
+  await page.waitForTimeout(800);
+  const later = !(await thumbIsOld(false));
+  check(right && later, "the strip draws the page again once the pen rests, not as each line ends");
   const report = await page.evaluate(() => window.nameStudioPerf.report());
   console.log(`     動作の記録: input to screen ${JSON.stringify(report.penLatency)}, a frame ${JSON.stringify(report.penFrame)}, ${report.penRate} events a second`);
   check(report.penLatency && report.penLatency.count > 0 && report.penLatency.median > 0, "動作の記録 times the pen's input to the screen");

@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import type { Project, StrokePoint } from "./model";
 import { newProject } from "./project";
-import { projectJson } from "./projectjson";
+import { projectBody, projectJson } from "./projectjson";
 import { Snapshotter } from "./snapshot";
 
 function heavyName(): Project {
@@ -50,7 +50,8 @@ describe("a heavy name", () => {
 
   it("saves again in a fraction of writing it all out, and smaller", () => {
     const text = projectJson(project);
-    const save = timed(() => projectJson(project));
+    projectBody({}, project);
+    const save = timed(() => projectBody({}, project));
     expect(save).toBeLessThan(plain * 0.5);
     expect(text.length).toBeLessThan(JSON.stringify(project).length * 0.5);
   });

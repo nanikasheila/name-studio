@@ -55,6 +55,13 @@ export interface LongFrame {
   at: number;
   duration: number;
   blocking: number;
+  /**
+   * Of its time: the scripts together, and styles and layout (ms); the rest
+   * the page waited (on drawing, as a canvas too big for the GPU to keep up).
+   * Null where the browser does not tell (long tasks only).
+   */
+  script: number | null;
+  layout: number | null;
   /** What the time went to: the longest scripts (function, file, ms). */
   scripts: string[];
 }
@@ -156,22 +163,26 @@ export class PerfMeter {
 
   /** A frame of a drag was drawn, beginning at `start` (performance.now()). */
   drawn(start: number, pen: boolean): void {
-    const end = this.now();
-    (pen ? this.penFrame : this.dragFrame).add(end - start);
-    if (this.waiting) {
-      // Input stamped before the page began (a test's events) has no time to tell.
-      if (this.waiting.since > 0) (this.waiting.pen ? this.penLatency : this.dragLatency).add(Math.max(0, end - this.waiting.since));
-      this.waiting = null;
-    }
+    (pen ? this.penFrame : this.dragFrame).add(this.now() - start);
+    this.shown();
     if (pen) {
       if (this.lastPenFrame) this.penInterval.add(start - this.lastPenFrame);
       this.lastPenFrame = start;
     }
   }
 
+  /** The input waiting is on the screen now (drawn at once, or with a frame). */
+  shown(): void {
+    if (!this.waiting) return;
+    // Input stamped before the page began (a test's events) has no time to tell.
+    if (this.waiting.since > 0) (this.waiting.pen ? this.penLatency : this.dragLatency).add(Math.max(0, this.now() - this.waiting.since));
+    this.waiting = null;
+  }
+
   private longFrame(entry: PerformanceEntry): void {
     const loaf = entry as PerformanceEntry & {
       blockingDuration?: number;
+      styleAndLayoutStart?: number;
       scripts?: { duration: number; sourceFunctionName?: string; sourceURL?: string; invoker?: string }[];
     };
     if (entry.duration < LONG_FRAME_MS) return;
@@ -181,7 +192,15 @@ export class PerfMeter {
       .sort((a, b) => b.duration - a.duration)
       .slice(0, 3)
       .map((s) => `${s.sourceFunctionName || s.invoker || "?"} ${(s.sourceURL ?? "").split("/").pop()} ${Math.round(s.duration)}ms`);
-    const long: LongFrame = { at: round(entry.startTime / 1000), duration: round(entry.duration), blocking: round(loaf.blockingDuration ?? entry.duration - LONG_FRAME_MS), scripts };
+    const end = entry.startTime + entry.duration;
+    const long: LongFrame = {
+      at: round(entry.startTime / 1000),
+      duration: round(entry.duration),
+      blocking: round(loaf.blockingDuration ?? entry.duration - LONG_FRAME_MS),
+      script: loaf.scripts ? round(loaf.scripts.reduce((sum, s) => sum + s.duration, 0)) : null,
+      layout: loaf.styleAndLayoutStart ? round(end - loaf.styleAndLayoutStart) : null,
+      scripts,
+    };
     this.worst.push(long);
     this.worst.sort((a, b) => b.duration - a.duration);
     this.worst.length = Math.min(this.worst.length, KEEP_LONG);

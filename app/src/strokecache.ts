@@ -23,8 +23,8 @@ export const SETTLE_MS = 160;
 const NEW_PAGES_MS = 12;
 
 interface Layer {
-  /** What was drawn, except the scale. */
-  content: string;
+  /** What was drawn, except the scale: what all lines share (brush tips, the thinnest width, the brushes), and each line. */
+  content: Content;
   scale: number;
   pixelScale: number;
   canvas: HTMLCanvasElement;
@@ -32,6 +32,20 @@ interface Layer {
   asked: number;
   askedAt: number;
   used: number;
+}
+
+interface Content {
+  shared: string;
+  lines: string[];
+}
+
+function sameContent(a: Content, b: Content): boolean {
+  return a.shared === b.shared && a.lines.length === b.lines.length && a.lines.every((line, i) => line === b.lines[i]);
+}
+
+/** `now` is `before` with lines added after its own. */
+function added(before: Content, now: Content): boolean {
+  return before.shared === now.shared && now.lines.length > before.lines.length && before.lines.every((line, i) => line === now.lines[i]);
 }
 
 export interface StrokeStyle {
@@ -103,8 +117,13 @@ export class StrokeCache {
       layer.asked = m.scale;
       layer.askedAt = now;
     }
-    const fresh = layer?.content === content && layer.pixelScale === pixelScale;
-    if (!layer || !fresh || layer.scale !== m.scale) {
+    const fresh = !!layer && sameContent(layer.content, content) && layer.pixelScale === pixelScale;
+    if (layer && !fresh && layer.scale === m.scale && layer.pixelScale === pixelScale && added(layer.content, content)) {
+      // Lines drawn on top (the pen let go): only they are painted onto the picture.
+      const start = this.now();
+      this.paintAdded(layer, strokes.slice(layer.content.lines.length), content, style);
+      this.spent += this.now() - start;
+    } else if (!layer || !fresh || layer.scale !== m.scale) {
       if (layer && fresh && now - layer.askedAt < SETTLE_MS) {
         // Zooming: the old picture, stretched, until the scale stays put.
         this.scheduleSettle();
@@ -129,16 +148,24 @@ export class StrokeCache {
     ctx.drawImage(layer.canvas, x, y, (layer.canvas.width / layer.pixelScale) * k, (layer.canvas.height / layer.pixelScale) * k);
   }
 
-  private content(strokes: Stroke[], style: StrokeStyle): string {
-    const parts = [String(this.tips), String(style.minWidthPx)];
+  private content(strokes: Stroke[], style: StrokeStyle): Content {
+    const shared = [String(this.tips), String(style.minWidthPx)];
     const brushes = new Set<string>();
-    for (const stroke of strokes) {
-      parts.push(`${listId(stroke.points)},${stroke.widthMm},${stroke.brush ?? ""},${stroke.cut?.join() ?? ""},${style.color(stroke)}`);
+    const lines = strokes.map((stroke) => {
       if (stroke.brush) brushes.add(stroke.brush);
-    }
+      return `${listId(stroke.points)},${stroke.widthMm},${stroke.brush ?? ""},${stroke.cut?.join() ?? ""},${style.color(stroke)}`;
+    });
     // A brush edited (or taken again from CSP) draws its lines anew.
-    for (const brush of style.brushes) if (brushes.has(brush.id)) parts.push(JSON.stringify(brush));
-    return parts.join(";");
+    for (const brush of style.brushes) if (brushes.has(brush.id)) shared.push(JSON.stringify(brush));
+    return { shared: shared.join(";"), lines };
+  }
+
+  /** Paint lines added on top of those in the picture, as drawing all of them would. */
+  private paintAdded(layer: Layer, strokes: Stroke[], content: Content, style: StrokeStyle): void {
+    const ctx = layer.canvas.getContext("2d")!;
+    ctx.setTransform(layer.pixelScale, 0, 0, layer.pixelScale, 0, 0);
+    drawStrokes(ctx, { strokes } as Page, { scale: layer.scale, x: 0, y: 0 }, !!strokes[0]?.over, style.color, style.minWidthPx, style.brushes);
+    layer.content = content;
   }
 
   private paint(
@@ -148,12 +175,13 @@ export class StrokeCache {
     size: [number, number],
     scale: number,
     pixelScale: number,
-    content: string,
+    content: Content,
     style: StrokeStyle,
   ): Layer {
     const canvas = old?.canvas ?? document.createElement("canvas");
-    canvas.width = Math.max(1, Math.ceil(size[0] * scale * pixelScale));
-    canvas.height = Math.max(1, Math.ceil(size[1] * scale * pixelScale));
+    const [width, height] = [Math.max(1, Math.ceil(size[0] * scale * pixelScale)), Math.max(1, Math.ceil(size[1] * scale * pixelScale))];
+    // (Setting the size, even to the same, makes the canvas anew.)
+    if (canvas.width !== width || canvas.height !== height) [canvas.width, canvas.height] = [width, height];
     const ctx = canvas.getContext("2d")!;
     ctx.setTransform(pixelScale, 0, 0, pixelScale, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);

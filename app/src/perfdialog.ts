@@ -31,7 +31,8 @@ export function reportLines(report: PerfReport): string[] {
   else {
     lines.push(`${report.long.count} 回・合わせて ${ms(report.long.total)}。長かった順:`);
     for (const long of report.long.worst.slice(0, 5)) {
-      lines.push(`  ${long.at} 秒目に ${ms(long.duration)}${long.scripts.length ? `（${long.scripts.join("、")}）` : ""}`);
+      const parts = long.script === null ? "" : `うちスクリプト ${ms(long.script)}${long.layout ? `・レイアウト ${ms(long.layout)}` : ""}・`;
+      lines.push(`  ${long.at} 秒目に ${ms(long.duration)}（${parts}${long.scripts.length ? long.scripts.join("、") : "スクリプトは短い"}）`);
     }
   }
   lines.push("■ メモリ");

@@ -4,7 +4,7 @@ import type { Project } from "./model";
 import { newProject } from "./project";
 import { addStroke, moveStroke } from "./strokes";
 import { addLine, moveLine, setLineText } from "./dialogue";
-import { projectBody, projectJson } from "./projectjson";
+import { projectBody, projectJson, writeAhead } from "./projectjson";
 import { sameSnapshot, Snapshotter } from "./snapshot";
 
 function drawn(pages = 3): Project {
@@ -152,11 +152,40 @@ describe("projectJson", () => {
   });
 
   it("packs a request body as length, meta and the project text", () => {
-    const project = drawn(1);
-    const body = projectBody({ path: "a.namestudio" }, project);
-    const length = new DataView(body.buffer).getUint32(0, true);
+    const project = drawn(2);
+    project.title = "第4話「はじまり」";
+    const line = addLine(project, project.pages[1], [50, 70]);
+    setLineText(line, "セリフ\nもう一行");
+    line.balloon = [[1, 2], [3, 4], [5, 6]];
     const decoder = new TextDecoder();
-    expect(JSON.parse(decoder.decode(body.slice(4, 4 + length)))).toEqual({ path: "a.namestudio" });
-    expect(decoder.decode(body.slice(4 + length))).toBe(projectJson(project));
+    // Again with the lists' bytes made already.
+    for (const body of [projectBody({ path: "あ.namestudio" }, project), projectBody({ path: "あ.namestudio" }, project)]) {
+      const length = new DataView(body.buffer).getUint32(0, true);
+      expect(JSON.parse(decoder.decode(body.slice(4, 4 + length)))).toEqual({ path: "あ.namestudio" });
+      expect(decoder.decode(body.slice(4 + length))).toBe(projectJson(project));
+    }
+  });
+});
+
+describe("writeAhead", () => {
+  it("writes a page or more each time the app is idle, even with no time left, and stops for the next name", () => {
+    const waiting: ((idle: { timeRemaining(): number }) => void)[] = [];
+    const idle = (run: (idle: { timeRemaining(): number }) => void) => waiting.push(run);
+    const busy = { timeRemaining: () => 0 };
+    const first = drawn(3);
+    writeAhead(first, idle);
+    let steps = 0;
+    while (waiting.length && steps < 10) {
+      waiting.shift()!(busy);
+      steps++;
+    }
+    expect(steps).toBe(3);
+    writeAhead(first, idle);
+    writeAhead(drawn(1), idle);
+    // The first name's turn comes, and it stops: only the second's is left, and it writes its one page.
+    waiting.shift()!({ timeRemaining: () => 50 });
+    expect(waiting).toHaveLength(1);
+    waiting.shift()!(busy);
+    expect(waiting).toHaveLength(0);
   });
 });

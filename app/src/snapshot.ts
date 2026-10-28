@@ -147,11 +147,12 @@ export function listId(points: object): number {
 
 /** A text that is the same exactly when what `value` holds is (point lists by their number). */
 export function fingerprint(value: unknown): string {
-  // A page: its lists are only in its strokes (as in `pagePart`).
-  const { strokes } = value as { strokes?: unknown };
+  // A page: its lists are only in its strokes and its balloons' outlines (as in `pagePart`).
+  const { strokes, lines } = value as { strokes?: unknown; lines?: unknown };
   if (Array.isArray(strokes) && !("dataBase64" in (value as object))) {
     const numbered = strokes.map((stroke: { points?: unknown }) => (Array.isArray(stroke.points) ? { ...stroke, points: listId(stroke.points) } : stroke));
-    return JSON.stringify({ ...(value as object), strokes: numbered });
+    const outlined = Array.isArray(lines) ? lines.map((line: { balloon?: unknown }) => (Array.isArray(line.balloon) ? { ...line, balloon: listId(line.balloon) } : line)) : lines;
+    return JSON.stringify({ ...(value as object), strokes: numbered, ...(Array.isArray(lines) ? { lines: outlined } : {}) });
   }
   return JSON.stringify(value, (key, v: unknown) => {
     if (key === "points" && Array.isArray(v)) return listId(v);

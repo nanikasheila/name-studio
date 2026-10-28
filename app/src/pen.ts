@@ -30,6 +30,8 @@ export interface PenSettings {
   cursor: PenCursor;
   /** 先読み: show the line a little ahead, where the pen is about to be (the browser's prediction), so it keeps up with the pen. */
   predict: boolean;
+  /** 低遅延: draw the pen's input as soon as it comes, not at the next frame. */
+  lowLatency: boolean;
 }
 
 export const SIDE_BUTTON_LABELS: Record<SideButton, string> = {
@@ -69,6 +71,7 @@ export function defaultPenSettings(): PenSettings {
     palmRejection: true,
     cursor: "brush",
     predict: true,
+    lowLatency: true,
   };
 }
 
@@ -86,7 +89,7 @@ export function parsePenSettings(text: string | null): PenSettings {
   if (Array.isArray(curve) && curve.length >= 2 && curve.every((p) => Array.isArray(p) && p.length === 2 && p.every((v) => typeof v === "number" && v >= 0 && v <= 1))) {
     settings.pressureCurve = normalizeCurve(curve);
   }
-  for (const key of ["tilt", "eraserEnd", "pinch", "pinchRotate", "touchTaps", "palmRejection", "predict"] as const) {
+  for (const key of ["tilt", "eraserEnd", "pinch", "pinchRotate", "touchTaps", "palmRejection", "predict", "lowLatency"] as const) {
     if (typeof stored[key] === "boolean") settings[key] = stored[key];
   }
   if (stored.sideButton && stored.sideButton in SIDE_BUTTON_LABELS) settings.sideButton = stored.sideButton;

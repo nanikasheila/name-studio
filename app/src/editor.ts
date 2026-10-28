@@ -12,7 +12,7 @@ import { spreads } from "./pages";
 import { GRID_GAP_MM, MARGIN, MAX_PAGE_GAP_MM, extent, fitContinuous, fittedTo, layoutPages, nearestSlot, nearestTo, onScreenOf, onStage, rowCount, slotAt, toPage, type Arrangement, type Slot } from "./layout";
 import { holdPanel, placeHeld } from "./hold";
 import { carryItems, carrySticky, type Destination } from "./carry";
-import { addDrawnPanel, moveBreakout, spanGutter } from "./koma";
+import { addDrawnPanel, spanGutter } from "./koma";
 import { joinPanels, seamAt, seamLines, type Seam } from "./komaedit";
 import {
   baseBounds,
@@ -32,18 +32,18 @@ import { drawLineText, drawStroke, LiveLine, onTipLoaded, tracePath } from "./pa
 import { perfMeter } from "./perfmeter";
 import { StrokeCache } from "./strokecache";
 import { ROUGH_BASE, shownStrokes, strokeEditable } from "./roughlayers";
-import { moveLine, neighbour, setLineText } from "./dialogue";
+import { neighbour, setLineText } from "./dialogue";
 import { bounds, insideBox, insidePolygon } from "./geometry";
 import type { Binding, BoxMm, Brush, FillTone, Line, Page, Panel, Point, Project } from "./model";
 import { snapCut, trimBox } from "./pagebox";
-import { type CarriedContents, carryContents, followPanel, movePanel, panelContents } from "./panels";
+import { type CarriedContents, carryContents, followPanel, panelContents } from "./panels";
 import { gutters, pageIndex } from "./project";
 import { assignPanels, orderPanels, sortLines } from "./readingorder";
 import { settleSticky, stickyFolds } from "./stickies";
 import { asideRoom, NO_ROOM, offPage, type Room } from "./aside";
 import { drawAside } from "./asidedraw";
 import { asideSlot, pressHeld } from "./toolaside";
-import { moveStroke, strokeHit } from "./strokes";
+import { strokeHit } from "./strokes";
 import { readCount, readFlag, readNumber } from "./settings";
 import {
   FRAME_HANDLES,
@@ -175,6 +175,8 @@ export class PageEditor {
    * that picture and what lies over it.
    */
   private live: LiveLine | null = null;
+  /** 低遅延: the same line painted straight onto the screen as the input comes (pointerrawupdate), between frames. */
+  private onScreen: LiveLine | null = null;
   /** The cache holds a line no longer being drawn: the pages are drawn again before it is used. */
   private cacheStale = false;
   private frame = 0;
@@ -232,6 +234,8 @@ export class PageEditor {
     canvas.parentElement?.append(this.bar);
     canvas.addEventListener("pointerdown", (event) => this.pointerDown(event));
     canvas.addEventListener("pointermove", (event) => this.pointerMove(event));
+    // 低遅延: the pen's input as soon as it comes, not with the next frame (where the browser has it).
+    if ("onpointerrawupdate" in window) canvas.addEventListener("pointerrawupdate" as "pointermove", (event) => this.rawMove(event));
     canvas.addEventListener("pointerup", (event) => this.pointerUp(event));
     canvas.addEventListener("pointercancel", (event) => this.pointerUp(event));
     canvas.addEventListener("pointerleave", () => {
@@ -1357,6 +1361,11 @@ export class PageEditor {
     return this.transforming;
   }
 
+  /** A drag (a line, a panel moved, …) under way. */
+  get dragging(): boolean {
+    return this.drag !== null;
+  }
+
   /** What the select tool would grab under the pointer, for the help bar: "item.panel", "seam", "tail.tip", "handle". */
   get hovered(): string | null {
     return this.hover && (this.hover.kind === "item" ? `item.${this.hover.target.kind}` : this.hover.kind === "tail" ? `tail.${this.hover.hit.part}` : this.hover.kind);
@@ -1907,9 +1916,35 @@ export class PageEditor {
     if (this.cache) this.live = new LiveLine(this.cache.getContext("2d")!);
   }
 
+  /**
+   * 低遅延: a pen line takes its input as soon as it comes and paints it
+   * straight onto the screen (a desynchronized canvas shows it without
+   * waiting for the next frame); the frame after it only adds what lies over
+   * the pages and the 先読み.
+   */
+  private rawMove(event: PointerEvent): void {
+    const drag = this.drag;
+    if (drag?.kind !== "pen" || !this.live || !this.cache || event.pointerId !== this.dragPointer || !penPreferences.settings.lowLatency) return;
+    const [ex, ey] = this.at(event);
+    this.pointer = [ex, ey];
+    const coalesced = event.getCoalescedEvents?.() ?? [];
+    perfMeter.input(coalesced[0]?.timeStamp ?? event.timeStamp, true, coalesced.length || 1);
+    const project = this.host.project()!;
+    dragHandler(drag).move(this.core, drag, { event, project, point: toPage(drag.slot, ex, ey), ex, ey, phase: "raw" });
+    this.paintLive(drag);
+    if (this.live) {
+      this.onScreen ??= new LiveLine(this.ctx);
+      const [width, color, brush] = this.liveInk(drag);
+      this.onScreen.paint(drag.points, width, { scale: drag.slot.scale, x: drag.slot.x, y: drag.slot.y }, color, brush);
+    }
+    perfMeter.shown();
+    this.requestDraw();
+  }
+
   /** A drag ended. A line drawn is no longer: the picture of the pages holds it, so the pages are drawn again before it shows. */
   private endLive(): void {
     perfMeter.dragEnded();
+    this.onScreen = null;
     if (!this.live) return;
     this.live = null;
     this.cacheStale = true;
@@ -1955,12 +1990,16 @@ export class PageEditor {
       return;
     }
     if (drag.kind === "pinch") return;
-    // For 動作の記録: how long the oldest of the moves takes to show.
-    const coalesced = event.getCoalescedEvents?.() ?? [];
-    perfMeter.input(coalesced[0]?.timeStamp ?? event.timeStamp, drag.kind === "pen", coalesced.length || 1);
+    // A pen line taking its input as it comes (rawMove): this move only looks ahead.
+    const phase = drag.kind === "pen" && this.onScreen ? "frame" : undefined;
+    if (!phase) {
+      // For 動作の記録: how long the oldest of the moves takes to show.
+      const coalesced = event.getCoalescedEvents?.() ?? [];
+      perfMeter.input(coalesced[0]?.timeStamp ?? event.timeStamp, drag.kind === "pen", coalesced.length || 1);
+    }
     const point = toPage(drag.slot, ex, ey);
     const project = this.host.project()!;
-    if (dragHandler(drag).move(this.core, drag, { event, project, point, ex, ey }) === false) return;
+    if (dragHandler(drag).move(this.core, drag, { event, project, point, ex, ey, phase }) === false) return;
     this.requestDraw();
   }
 
@@ -2012,29 +2051,11 @@ export class PageEditor {
   /** Move what is selected; `items`: a 範囲選択 with what its panels hold, as taken when the drag began. */
   private moveSelection(page: Page, dx: number, dy: number, items?: ItemRef[]): void {
     const s = this.selection;
-    if (!s) return;
-    if (s.kind === "line") {
-      const line = page.lines.find((l) => l.id === s.id);
-      if (line) moveLine(line, dx, dy);
-    } else if (s.kind === "panel") {
-      const panel = page.panels.find((p) => p.id === s.id);
-      if (panel) movePanel(panel, dx, dy);
-    } else if (s.kind === "breakout") {
-      const breakout = page.breakouts.find((b) => b.id === s.id);
-      if (breakout) moveBreakout(breakout, dx, dy);
-    } else if (s.kind === "sticky") {
+    if (s?.kind === "sticky") {
       const sticky = page.stickies?.find((n) => n.id === s.id);
       // On its page or in its 欄外 once let go (carryToPageUnder).
       if (sticky) sticky.at = [sticky.at[0] + dx, sticky.at[1] + dy];
-    } else if (s.kind === "fill") {
-      const fill = page.fills?.find((f) => f.id === s.id);
-      if (fill) fill.shape = fill.shape.map(([x, y]) => [x + dx, y + dy]);
-    } else if (s.kind === "group") {
-      moveItems(page, items ?? this.pickedItems(), dx, dy);
-    } else {
-      const stroke = page.strokes.find((p) => p.id === s.id);
-      if (stroke) moveStroke(stroke, dx, dy);
-    }
+    } else if (s) moveItems(page, s.kind === "group" ? (items ?? this.pickedItems()) : [{ kind: s.kind, id: s.id }], dx, dy);
   }
 
   /** Contents carried by the selected panel follow it. */

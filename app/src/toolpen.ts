@@ -51,8 +51,9 @@ export function startLine(editor: EditorCore, { event, slot, point }: Press, mar
 }
 
 const pen: DragHandler<DragOf<"pen">> = {
-  move(editor, drag, { event, point }) {
+  move(editor, drag, { event, point, phase }) {
     if (drag.straight) {
+      if (phase === "frame") return;
       const [x, y] = straightEnd(drag.points[0], point);
       const pressure = pressureOf(drag, event);
       const end: StrokePoint = drag.motion ? [x, y, pressure, tiltOf(event), 0] : [x, y, pressure];
@@ -62,8 +63,8 @@ const pen: DragHandler<DragOf<"pen">> = {
     }
     // 手ブレ補正: each point moves only part of the way towards the pen (a 指示 follows it as it is).
     const brush = drag.mark ? undefined : editor.brush("pen");
-    const events = event.getCoalescedEvents?.() ?? [event];
-    for (const e of events.length ? events : [event]) {
+    const events = phase === "frame" ? [] : (event.getCoalescedEvents?.() ?? [event]);
+    for (const e of events.length || phase === "frame" ? events : [event]) {
       const [x, y] = toPage(drag.slot, ...editor.at(e));
       const seconds = (e.timeStamp - drag.time) / 1000;
       if (seconds > 0) {
@@ -79,7 +80,7 @@ const pen: DragHandler<DragOf<"pen">> = {
       drag.points.push(previous.map((value, i) => value + (raw[i] - value) * follow) as StrokePoint);
       drag.last = raw;
     }
-    drag.ahead = penPreferences.settings.predict ? ahead(editor, drag, event, brush) : undefined;
+    if (phase !== "raw") drag.ahead = penPreferences.settings.predict ? ahead(editor, drag, event, brush) : undefined;
   },
   end(editor, drag, project) {
     editor.host.begin();
@@ -109,7 +110,10 @@ const pen: DragHandler<DragOf<"pen">> = {
       },
     );
     // A 指示 goes on its 指示のレイヤー (made when there is none yet), shown again if it was hidden.
+    const layers = project.roughLayers?.length ?? 0;
     const markLayer = drag.mark && markLayerFor(project, drag.mark.layer, () => newId(project, "rough"));
+    // A layer made or shown again changes more than the pages: all is drawn again at once.
+    const onlyLine = (project.roughLayers?.length ?? 0) === layers && !markLayer?.hidden;
     if (markLayer?.hidden) setRoughLayer(project, markLayer.id, { hidden: false });
     const layer = markLayer ? markLayer.id : layerOf(project, { layer: editor.roughLayer }).id;
     let added = 0;
@@ -125,7 +129,7 @@ const pen: DragHandler<DragOf<"pen">> = {
       const cut: [boolean, boolean] = [index > 0, index < runs.length - 1];
       if (cut[0] || cut[1]) stroke.cut = cut;
     }
-    if (added) editor.host.commit();
+    if (added) editor.host.commit(onlyLine);
     else editor.host.cancel();
   },
 };

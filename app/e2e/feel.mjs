@@ -119,6 +119,6 @@ console.log(`app ${sizes.appMb} MB, its page ${sizes.pageKb} KB`);
 console.log(`start: process to first screen ${out.startup.process} ms (page ${out.startup.page} ms); the heavy name opened in ${out.openMs} ms`);
 console.log(`pen (${r.penLatency?.count} frames, ${r.penRate} events/s): input to screen ${JSON.stringify(r.penLatency)}, a frame ${JSON.stringify(r.penFrame)}, between frames ${JSON.stringify(r.penInterval)}`);
 console.log(`the session: frames that stopped the screen ${s.long.count} (${s.long.total} ms)`);
-for (const long of s.long.worst.slice(0, 8)) console.log(`  ${long.at}s ${long.duration} ms (blocking ${long.blocking}) ${long.scripts.join(" / ")}`);
+for (const long of s.long.worst.slice(0, 8)) console.log(`  ${long.at}s ${long.duration} ms (blocking ${long.blocking}, scripts ${long.script}, layout ${long.layout}) ${long.scripts.join(" / ")}`);
 console.log(`memory: ${JSON.stringify(s.memory && { first: s.memory.first, now: s.memory.now, most: s.memory.most })}; ${JSON.stringify(s.resources)}`);
 if (report) writeFileSync(report, `${JSON.stringify(out, null, 1)}\n`);
