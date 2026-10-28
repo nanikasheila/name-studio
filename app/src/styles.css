@@ -989,3 +989,7 @@ dialog.readback-pick { width: min(640px, calc(100vw - 32px)); }
 .readback-list { max-height: min(50vh, 420px); overflow: auto; border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px 8px; margin: 8px 0; }
 .readback-item { display: flex; gap: 6px; align-items: flex-start; padding: 2px 0; line-height: 1.5; }
 .script-rows > .hint { margin: 6px 12px 2px; }
+
+/* 動作の記録 */
+dialog.perf-dialog { width: min(720px, 92vw); }
+.perf-report { white-space: pre-wrap; font: 13px/1.6 ui-monospace, Consolas, monospace; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; max-height: 60vh; overflow: auto; user-select: text; }

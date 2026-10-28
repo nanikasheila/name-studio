@@ -19,6 +19,8 @@ import { ScriptDialog } from "./scriptdialog";
 import { ShortcutDialog } from "./shortcutdialog";
 import { SettingsDialog } from "./settingsdialog";
 import { PenDialog } from "./pendialog";
+import { PerfDialog } from "./perfdialog";
+import { perfMeter } from "./perfmeter";
 import { LayerView, type LayerRef } from "./layers";
 import { RoughPanel } from "./roughpanel";
 import { SeriesPanel } from "./seriespanel";
@@ -172,6 +174,11 @@ export class Workbench {
   private readonly shortcutDialog: ShortcutDialog;
   private readonly palette: CommandPalette;
   private readonly penDialog = new PenDialog(penPreferences);
+  private readonly perfDialog = new PerfDialog(
+    () => perfMeter.report(),
+    () => perfMeter.reset(),
+    (message) => this.setStatus(message),
+  );
   private readonly brushDialog: BrushDialog;
   private readonly settingsDialog: SettingsDialog;
   private readonly versionDialog: VersionDialog;
@@ -314,6 +321,7 @@ export class Workbench {
       addPageAfter: (page) => this.edits.addPageAfter(page),
       openPalette: (id) => this.docks.open(id),
       openCommandPalette: () => this.palette.open(),
+      openPerfReport: () => this.perfDialog.open(),
       exportAgain: () => void this.exportDialog.exportAgain(),
       click: (id) => {
         const target = pressable(id);
@@ -334,6 +342,7 @@ export class Workbench {
       },
       status: (message) => this.setStatus(message),
     });
+    $("pen-perf").addEventListener("click", () => this.perfDialog.open());
     new ResizeObserver(() => this.editor.resize()).observe($("editor-canvas").parentElement!); // the page takes the room the strip and side panels leave
     this.scriptDialog = new ScriptDialog({
       project: () => this.session.project,
@@ -413,6 +422,23 @@ export class Workbench {
 
   get project(): Project | null {
     return this.session.project;
+  }
+
+  /** What the open name holds and what is kept to draw it, for 動作の記録 (perfmeter.ts). */
+  resources(): Record<string, number> {
+    const project = this.session.project;
+    const { undo, redo } = this.session.historyDepth;
+    const kept = this.editor.kept;
+    const mb = (pixels: number) => Math.round((pixels * 4) / 104857.6) / 10;
+    return {
+      pages: project?.pages.length ?? 0,
+      strokes: project?.pages.reduce((sum, page) => sum + page.strokes.length, 0) ?? 0,
+      undo,
+      redo,
+      linePictures: kept.linePictures,
+      linePicturesMb: mb(kept.linePixels),
+      screenCopyMb: mb(kept.screenPixels),
+    };
   }
 
   get dirty(): boolean {

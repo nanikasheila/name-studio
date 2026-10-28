@@ -1,5 +1,5 @@
 // How quick the app is with a heavy name (32 pages, each with panels,
-// dialogue in balloons and 200 rough lines): each operation a person does is
+// dialogue in balloons and 200 rough lines: heavy.mjs): each operation a person does is
 // timed in the page as the work it costs on the main thread (the input
 // handlers plus the drawing of the frame that shows it), against the budget
 // (50 ms; a change of the whole view and autosave, which waits for a pause,
@@ -10,6 +10,7 @@ import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { createServer } from "vite";
+import { openHeavyName } from "./heavy.mjs";
 
 /** The most one operation (or one frame of a drag) may take (ms). */
 const BUDGET_MS = 50;
@@ -81,47 +82,11 @@ try {
   });
 
   // Opening the heavy name.
-  const opened = await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
-    const { addPanel, cutPanels } = await import("/src/panels.ts");
-    const { addLine, setLineText } = await import("/src/dialogue.ts");
-    const { rectShape } = await import("/src/geometry.ts");
-    const { basicBox } = await import("/src/pagebox.ts");
-    const project = newProject("重いネーム", 32);
-    let seed = 1;
-    const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-    let id = 0;
-    for (const p of project.pages) {
-      addPanel(project, p, rectShape(basicBox(project.pageFormat)));
-      cutPanels(project, p, [40, 160], [260, 162]);
-      cutPanels(project, p, [40, 260], [260, 258]);
-      cutPanels(project, p, [150, 60], [149, 155]);
-      for (let l = 0; l < 8; l++) {
-        const line = addLine(project, p, [80 + (l % 4) * 40, 90 + Math.floor(l / 4) * 120]);
-        setLineText(line, "ここで\nセリフが入る");
-      }
-      for (let s = 0; s < 200; s++) {
-        let [x, y, a] = [20 + random() * 200, 20 + random() * 300, random() * 6.28];
-        const points = [];
-        for (let i = 0; i < 50; i++) {
-          a += (random() - 0.5) * 0.5;
-          x += Math.cos(a) * 0.4;
-          y += Math.sin(a) * 0.4;
-          points.push([x, y, 0.3 + 0.6 * Math.sin((Math.PI * i) / 50)]);
-        }
-        p.strokes.push({ id: `s${id++}`, points, widthMm: 0.5, closed: false });
-      }
-    }
-    project.nextId += id + 1000;
-    const start = performance.now();
-    window.nameStudio.show(project);
+  const opened = await openHeavyName(page, { pages: 32, strokes: 200, show: 10 });
+  await page.evaluate(() => {
     const wb = window.nameStudio.workbench;
-    wb.editor.showPage(10);
-    wb.editor.draw();
-    const time = performance.now() - start;
     window.__meter.wrap(wb.editor, "draw");
     window.__meter.wrap(wb.editor, "drawOverlay");
-    return time;
   });
   results.open = opened;
   await page.waitForTimeout(500);

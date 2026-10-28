@@ -41,6 +41,7 @@ export class PenDialog {
       ["pen-pinch-rotate", "pinchRotate"],
       ["pen-taps", "touchTaps"],
       ["pen-palm", "palmRejection"],
+      ["pen-predict", "predict"],
     ];
     for (const [id, key] of checks) {
       $<HTMLInputElement>(id).addEventListener("change", (event) => this.preferences.update({ [key]: (event.target as HTMLInputElement).checked }));
@@ -77,6 +78,7 @@ export class PenDialog {
     $<HTMLInputElement>("pen-pinch-rotate").disabled = !s.pinch;
     $<HTMLInputElement>("pen-taps").checked = s.touchTaps;
     $<HTMLInputElement>("pen-palm").checked = s.palmRejection;
+    $<HTMLInputElement>("pen-predict").checked = s.predict;
     $<HTMLSelectElement>("pen-side").value = s.sideButton;
     $<HTMLSelectElement>("pen-touch").value = s.touch;
     $<HTMLSelectElement>("pen-cursor").value = s.cursor;

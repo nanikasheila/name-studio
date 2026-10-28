@@ -135,6 +135,12 @@ export type ToolDrag =
       time: number;
       speed: number;
       straight: boolean;
+      /** The pen's last real pressure reading (null: none yet), held over a missed one (0 while touching). */
+      pressure: number | null;
+      /** Points at the start taken before the first reading: they get it when it comes. */
+      unread: number;
+      /** 先読み: where the pen is about to be (the browser's prediction), shown but not kept. */
+      ahead?: StrokePoint[];
       /** 指示: drawn on a 指示のレイヤー in its colour, with the 指示 pen's width and no brush. */
       mark?: { color: string; widthMm: number; layer: string };
     }

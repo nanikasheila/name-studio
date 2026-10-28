@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { adjustPressure, defaultPenSettings, fitPressureCurve, normalizeCurve, parsePenSettings, LINEAR } from "./pen";
+import { adjustPressure, defaultPenSettings, fitPressureCurve, normalizeCurve, parsePenSettings, pressureReading, LINEAR } from "./pen";
 import { PenPreferences } from "./prefs";
 
 class MemoryStorage {
@@ -11,6 +11,16 @@ class MemoryStorage {
     this.items.set(key, value);
   }
 }
+
+describe("the pen's pressure", () => {
+  it("takes a reading of 0 while the pen is on the page as none (the one before holds), and mice as pressing fully", () => {
+    expect(pressureReading("pen", 0.42)).toBe(0.42);
+    expect(pressureReading("pen", 0)).toBeNull();
+    expect(pressureReading("pen", 1.2)).toBe(1);
+    expect(pressureReading("mouse", 0.5)).toBe(1);
+    expect(pressureReading("touch", 0)).toBe(1);
+  });
+});
 
 describe("tablet settings", () => {
   it("falls back to the defaults for what is missing or broken", () => {

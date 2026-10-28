@@ -236,6 +236,8 @@ export interface Commands {
   list_fonts: [void, FontFace[]];
   // The app (lib.rs)
   is_release_build: [void, boolean];
+  /** When the app's process began (ms since 1970), for 動作の記録. */
+  started_at: [void, number];
   // 前の版に戻す (updates.rs)
   check_update: [{ channel: UpdateChannel; timeoutMs: number }, FoundUpdate | null];
   install_release: [{ version: string }, void];

@@ -73,6 +73,13 @@ export class StrokeCache {
     this.layers.clear();
   }
 
+  /** The pictures kept: how many, and their device pixels together. */
+  get kept(): { pictures: number; pixels: number } {
+    let pixels = 0;
+    for (const layer of this.layers.values()) pixels += layer.canvas.width * layer.canvas.height;
+    return { pictures: this.layers.size, pixels };
+  }
+
   /**
    * Draw the page's lines that go under (or over) the panel borders, as
    * `drawStrokes` would, at `m` on `ctx` (whose transform maps to device pixels).

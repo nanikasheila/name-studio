@@ -46,7 +46,7 @@ const LAYERS = {
     "callouts", "commands", "helptopics", "history", "hittest", "layout", "pen", "recent", "savestate", "session", "shortcuts", "snapshot", "springtool", "tooldefs", "viewport",
   ],
   /** This computer and the Rust side: storage, settings, commands, the page's elements. */
-  platform: ["backend", "dom", "errorlog", "prefs", "settings"],
+  platform: ["backend", "dom", "errorlog", "perfmeter", "prefs", "settings"],
   /** Drawing a name on a canvas (the screen and the export share it). */
   render: ["asidedraw", "glyph", "notedraw", "pagedraw", "pagethumb", "pictures", "render", "screendraw", "strokecache"],
   /** Work done for the screens: saving in the background, writing out. */
@@ -54,7 +54,7 @@ const LAYERS = {
   /** The screens. */
   ui: [
     "actions", "alerts", "altdialog", "board", "boarddock", "boardemotion", "boardpages", "boardscene", "boardshape", "boardview", "brushdialog", "controlbar", "cursors", "dock", "dragsort", "drophint", "editor", "editorcore", "exportdialog", "fontpicker", "helpbar", "helpoverlay", "imageimport", "inplace", "inspector",
-    "layers", "livefields", "markbar", "namesaver", "nameedits", "palette", "palettes", "pendialog", "reader", "readbackpick", "recoverydialog", "referencebar", "roughpanel", "scriptdialog", "seriespanel", "settingsdialog", "sheetexport", "shortcutdialog", "sidelists", "startscreen", "toolaside", "tooleraser", "toolfill",
+    "layers", "livefields", "markbar", "namesaver", "nameedits", "palette", "palettes", "pendialog", "perfdialog", "reader", "readbackpick", "recoverydialog", "referencebar", "roughpanel", "scriptdialog", "seriespanel", "settingsdialog", "sheetexport", "shortcutdialog", "sidelists", "startscreen", "toolaside", "tooleraser", "toolfill",
     "toolmark", "toolpanels", "toolpen", "toolreference", "tools", "toolselect", "toolsticky", "tooltext", "tooltransform", "tour", "updater", "versiondialog",
     "viewer", "workbench",
   ],

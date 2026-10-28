@@ -10,7 +10,7 @@ import { drawText } from "./render";
 import { balloonLineMm, linePitch } from "./style";
 import type { MmToPx } from "./geometry";
 import { panelArea, panelsAbove, type PanelFolder } from "./panelfolders";
-import type { Brush, Line, Page, PageFormat, Panel, Point, Project, Stroke } from "./model";
+import type { Brush, Line, Page, PageFormat, Panel, Point, Project, Stroke, StrokePoint } from "./model";
 import { markColor, markLayersOf, opacityOfLayer, strokesOn } from "./roughlayers";
 
 export type { MmToPx };
@@ -42,19 +42,27 @@ export function drawStroke(
   minWidthPx = 0.7,
   brush?: Brush,
 ): void {
+  paintSegments(ctx, stroke, m, color, minWidthPx, brush, 0, 0, false);
+}
+
+/**
+ * The segments of a line from point `from` on (with a tip stamped, from
+ * `carry` px past the last stamp); returns the carry at its end, for the
+ * segments added next. Drawing a line in pieces this way gives the pixels of
+ * drawing it whole.
+ */
+function paintSegments(ctx: CanvasRenderingContext2D, stroke: Stroke, m: MmToPx, color: string, minWidthPx: number, brush: Brush | undefined, from: number, carry: number, growing: boolean): number {
   const points = stroke.points;
-  const factors = widthFactors(stroke, brush);
+  // The points before `from` - 1 are not drawn: their widths are not worked out.
+  const factors = widthFactors(stroke, brush, from - 1, growing);
   const widthPx = (i: number) => Math.max(stroke.widthMm * factors[i] * m.scale, minWidthPx);
-  const opacity = opacityFactors(stroke, brush);
-  if (brush && points.length && stampTip(brush)) {
-    stampStroke(ctx, stroke, brush, m, color, widthPx, opacity);
-    return;
-  }
+  const opacity = opacityFactors(stroke, brush, from - 1);
+  if (brush && points.length && stampTip(brush)) return stampStroke(ctx, stroke, brush, m, color, widthPx, opacity, from, carry);
   ctx.save();
   ctx.strokeStyle = color;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-  for (let i = 1; i < points.length; i++) {
+  for (let i = Math.max(1, from); i < points.length; i++) {
     ctx.lineWidth = (widthPx(i - 1) + widthPx(i)) / 2;
     ctx.globalAlpha = (opacity[i - 1] + opacity[i]) / 2;
     ctx.beginPath();
@@ -63,6 +71,52 @@ export function drawStroke(
     ctx.stroke();
   }
   ctx.restore();
+  return 0;
+}
+
+/**
+ * A line as it is drawn, painted onto `target` a little at a time: each frame
+ * only what the pen added since the last, so a long line costs no more per
+ * frame than a short one. The end is left open (抜き comes when the pen
+ * lifts, as in CSP) and 入り goes by the length drawn, so what is painted
+ * stays as it is.
+ */
+export class LiveLine {
+  private painted = 0;
+  private carry = 0;
+  private view = "";
+
+  constructor(private readonly target: CanvasRenderingContext2D) {}
+
+  /** Paint the points added since the last call; false when the view moved since (the target must be filled again, then `paint` from the start). */
+  paint(points: readonly StrokePoint[], widthMm: number, m: MmToPx, color: string, brush?: Brush): boolean {
+    const t = this.target.getTransform();
+    const view = `${m.scale},${m.x},${m.y},${t.a},${t.b},${t.c},${t.d},${t.e},${t.f}`;
+    const same = !this.view || view === this.view;
+    if (!same) {
+      this.painted = 0;
+      this.carry = 0;
+    }
+    this.view = view;
+    if (points.length > this.painted) {
+      this.carry = paintSegments(this.target, liveStroke(points, widthMm, brush), m, color, LIVE_MIN_WIDTH_PX, brush, this.painted, this.carry, true);
+      this.painted = points.length;
+    }
+    return same;
+  }
+
+  /** On `ctx` (the screen), the line on from its painted end through `ahead` (where the pen is about to be), left as it is. */
+  ahead(ctx: CanvasRenderingContext2D, points: readonly StrokePoint[], ahead: readonly StrokePoint[], widthMm: number, m: MmToPx, color: string, brush?: Brush): void {
+    if (!ahead.length || !points.length) return;
+    paintSegments(ctx, liveStroke([...points, ...ahead], widthMm, brush), m, color, LIVE_MIN_WIDTH_PX, brush, points.length, this.carry, true);
+  }
+}
+
+/** The thinnest a line being drawn shows (px). */
+const LIVE_MIN_WIDTH_PX = 0.7;
+
+function liveStroke(points: readonly StrokePoint[], widthMm: number, brush?: Brush): Stroke {
+  return { id: "", points: points as StrokePoint[], widthMm, closed: false, brush: brush?.id, cut: [false, true] };
 }
 
 /** Whether the brush is drawn by stamping its tip rather than as a round line. */
@@ -137,7 +191,7 @@ function tintedTip(brush: Brush, color: string): HTMLCanvasElement | null {
 
 const MAX_STAMPS = 6000;
 
-/** Stamp the tip along the line every `interval` % of its size. */
+/** Stamp the tip along the line every `interval` % of its size (from point `from` on, `carried` px past the last stamp); returns the carry at the end. */
 function stampStroke(
   ctx: CanvasRenderingContext2D,
   stroke: Stroke,
@@ -146,9 +200,11 @@ function stampStroke(
   color: string,
   widthPx: (i: number) => number,
   opacity: number[],
-): void {
+  from = 0,
+  carried = 0,
+): number {
   const tip = tintedTip(brush, color);
-  if (!tip) return;
+  if (!tip) return carried;
   const points = stroke.points.map(([x, y], i) => [x * m.scale + m.x, y * m.scale + m.y, opacity[i]]);
   let length = 0;
   for (let i = 1; i < points.length; i++) length += Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]);
@@ -172,9 +228,9 @@ function stampStroke(
   };
   // Space stamps by the local width, but never more than MAX_STAMPS per line.
   const minStep = length / MAX_STAMPS;
-  let carry = 0;
-  stamp(points[0][0], points[0][1], widthPx(0), points[0][2]);
-  for (let i = 1; i < points.length; i++) {
+  let carry = carried;
+  if (from === 0) stamp(points[0][0], points[0][1], widthPx(0), points[0][2]);
+  for (let i = Math.max(1, from); i < points.length; i++) {
     const [x0, y0, p0] = points[i - 1];
     const [x1, y1, p1] = points[i];
     const segment = Math.hypot(x1 - x0, y1 - y0);
@@ -194,6 +250,7 @@ function stampStroke(
     }
   }
   ctx.restore();
+  return carry;
 }
 
 /** Ink for background effects: light, so they read as notes under the drawing. */

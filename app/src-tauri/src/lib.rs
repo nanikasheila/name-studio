@@ -80,6 +80,18 @@ fn is_release_build() -> bool {
     option_env!("NAME_STUDIO_RELEASE").is_some()
 }
 
+/// When the process began, for 動作の記録 (how long the start took).
+static STARTED: std::sync::OnceLock<std::time::SystemTime> = std::sync::OnceLock::new();
+
+/// When the process began, in ms since 1970.
+#[tauri::command]
+fn started_at() -> f64 {
+    let started = *STARTED.get_or_init(std::time::SystemTime::now);
+    started
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |since| since.as_secs_f64() * 1000.0)
+}
+
 /// The command-line export to run, if the app was started for one.
 #[tauri::command]
 fn batch_export_task(state: tauri::State<'_, AppState>) -> Result<Option<batch::BatchExport>, String> {
@@ -93,6 +105,7 @@ fn end_batch_export(app: tauri::AppHandle, code: i32) {
 }
 
 pub fn run() {
+    STARTED.get_or_init(std::time::SystemTime::now);
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -142,6 +155,7 @@ pub fn run() {
             files::read_csp_sub_tools,
             fonts::list_fonts,
             is_release_build,
+            started_at,
             updates::check_update,
             updates::install_release,
             batch_export_task,
