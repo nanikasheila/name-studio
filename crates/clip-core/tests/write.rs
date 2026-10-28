@@ -5,8 +5,6 @@
 //! that input files are never changed. `tools/compare_with_python.py`
 //! additionally checks the output against the Python reference.
 
-#![cfg(feature = "fixtures")]
-
 use std::path::{Path, PathBuf};
 
 use clip_core::fixtures::{FixtureCanvas, FixtureLayer, OPEN, build_cmc, build_editable_clip, rectangle};

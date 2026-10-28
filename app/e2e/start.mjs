@@ -11,17 +11,21 @@ const check = (ok, what) => {
   if (!ok) failures.push(what);
 };
 
+// The page's clock is fixed at noon in Tokyo, so 「今日」 and 「昨日」 do not
+// depend on when (or in which time zone) the test runs.
+const NOW = Date.parse("2026-10-15T12:00:00+09:00");
 const recent = [
-  { path: "C:\\ネーム\\第4話.namestudio", title: "第4話", pages: 24, timeMs: Date.now() - 3_600_000 },
-  { path: "C:\\ネーム\\消えた.namestudio", title: "消えたネーム", pages: 16, timeMs: Date.now() - 86_400_000 },
-  { path: "D:\\old\\読み切り.namestudio", title: "読み切り", pages: 32, timeMs: Date.now() - 40 * 86_400_000 },
+  { path: "C:\\ネーム\\第4話.namestudio", title: "第4話", pages: 24, timeMs: NOW - 3_600_000 },
+  { path: "C:\\ネーム\\消えた.namestudio", title: "消えたネーム", pages: 16, timeMs: NOW - 86_400_000 },
+  { path: "D:\\old\\読み切り.namestudio", title: "読み切り", pages: 32, timeMs: NOW - 40 * 86_400_000 },
 ];
 
 const server = await createServer({ root, logLevel: "error", server: { port: 1435, strictPort: false } });
 await server.listen();
 const browser = await chromium.launch();
 try {
-  const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+  const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, timezoneId: "Asia/Tokyo" });
+  await page.clock.setFixedTime(NOW);
   await page.addInitScript({ path: fileURLToPath(new URL("tauri-mock.js", import.meta.url)) });
   await page.addInitScript((names) => {
     if (!localStorage.getItem("namestudio.recentNames")) localStorage.setItem("namestudio.recentNames", JSON.stringify(names));
@@ -46,7 +50,8 @@ try {
   check(await page.locator("#empty").isVisible(), "the start screen shows before anything is open");
   check(!(await page.locator("#viewer .sidebar").isVisible()), "with no sheet, the empty layer list is out of the way");
   check(JSON.stringify(await titles()) === JSON.stringify(["第4話", "消えたネーム", "読み切り"]), "it lists the names opened last, newest first");
-  check((await rows.first().locator(".recent-when").textContent()).startsWith("24 ページ ・ 今日"), "with their pages and when");
+  const whens = await rows.locator(".recent-when").allTextContents();
+  check(whens[0].startsWith("24 ページ ・ 今日 11:00") && whens[1].startsWith("16 ページ ・ 昨日 12:00") && whens[2].startsWith("32 ページ ・ 9月5日"), `with their pages and when (${whens.join(" / ")})`);
 
   await rows.nth(1).locator(".recent-open").click();
   await page.waitForTimeout(200);
@@ -67,7 +72,7 @@ try {
   await page.waitForTimeout(300);
   check(await page.locator("#editor").isVisible(), "Enter opens it in the editor");
   const first = await page.evaluate(() => JSON.parse(localStorage.getItem("namestudio.recentNames"))[0]);
-  check(first.title === "第4話" && Date.now() - first.timeMs < 60_000, "opening it puts it first again, as of now");
+  check(first.title === "第4話" && first.timeMs === NOW, "opening it puts it first again, as of now");
 
   await page.keyboard.press("Control+k");
   check(await page.locator("#command-palette").evaluate((d) => d.open), "in the editor Ctrl+K is the editor's palette");

@@ -30,6 +30,10 @@ jobs:
       VERSION: 0.2.${{ github.run_number }}
       # The commit CI checked (by hand: the branch's head).
       SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      # Only main is released: by hand from another branch the installer is
+      # built and checked but only kept as the run's artifact, so a build
+      # nobody reviewed never reaches the copies that update themselves.
+      PUBLISH: ${{ github.event_name == 'workflow_run' || github.ref == 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -76,6 +80,7 @@ jobs:
         run: node .github/scripts/release-files.mjs "$VERSION" release
 
       - name: Publish release
+        if: env.PUBLISH == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
