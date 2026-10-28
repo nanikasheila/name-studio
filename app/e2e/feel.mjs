@@ -10,7 +10,7 @@
 // The app is built with an identifier of its own, so it keeps its settings,
 // autosaves and WebView data apart from the Name Studio in use:
 //   npx tauri build --no-bundle --config '{"identifier":"com.nanikasheila.namestudio.feel"}'
-//   node e2e/feel.mjs [--report <file.json>] [--lines <n>]
+//   node e2e/feel.mjs [--report <file.json>] [--lines <n>] [--rate <Hz>, 240]
 import { spawn } from "node:child_process";
 import { mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -24,6 +24,8 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const arg = (name, fallback) => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : fallback);
 const report = arg("--report", null);
 const LINES = Number(arg("--lines", 40));
+/** How often the pen reports (Hz): a tablet's pen, as Wacom's, about 200–240 a second. */
+const RATE = Number(arg("--rate", 240));
 const PORT = 9333;
 const app = join(root, "..", "target", "release", process.platform === "win32" ? "name-studio-app.exe" : "name-studio-app");
 const work = mkdtempSync(join(tmpdir(), "name-studio-feel-"));
@@ -87,13 +89,18 @@ try {
   const pen = (type, [x, y], pressure, buttons = 1) =>
     cdp.send("Input.dispatchMouseEvent", { type, x, y, button: type === "mouseMoved" && !buttons ? "none" : "left", buttons, clickCount: type === "mouseMoved" ? 0 : 1, pointerType: "pen", force: pressure, tiltX: 12, tiltY: 4 });
   await page.keyboard.press("p");
-  // Lines over the middle of the spread, each 120 moves (a tablet's second of drawing).
+  // Lines over the middle of the spread, each 120 moves (half a second of drawing).
   for (let l = 0; l < LINES; l++) {
     const [x0, y0] = [box.x + box.width * (0.25 + 0.5 * ((l * 37) % 100) / 100), box.y + box.height * (0.2 + 0.6 * ((l * 53) % 100) / 100)];
     const points = Array.from({ length: 120 }, (_, i) => [x0 + i * 2.2, y0 + Math.sin(i / 9 + l) * 30]);
     await pen("mouseMoved", points[0], 0, 0);
     await pen("mousePressed", points[0], 0.3);
-    for (let i = 1; i < points.length; i++) await pen("mouseMoved", points[i], 0.25 + 0.5 * Math.sin((Math.PI * i) / points.length));
+    const start = performance.now();
+    for (let i = 1; i < points.length; i++) {
+      // Each report when it is due (timers are too coarse on Windows: wait in turns of the event loop).
+      while (performance.now() < start + (i * 1000) / RATE) await new Promise((resolve) => setImmediate(resolve));
+      await pen("mouseMoved", points[i], 0.25 + 0.5 * Math.sin((Math.PI * i) / points.length));
+    }
     await pen("mouseReleased", points[points.length - 1], 0, 0);
   }
   out.pen = await page.evaluate(() => window.nameStudioPerf.report());

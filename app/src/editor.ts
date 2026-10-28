@@ -1931,12 +1931,10 @@ export class PageEditor {
     perfMeter.input(coalesced[0]?.timeStamp ?? event.timeStamp, true, coalesced.length || 1);
     const project = this.host.project()!;
     dragHandler(drag).move(this.core, drag, { event, project, point: toPage(drag.slot, ex, ey), ex, ey, phase: "raw" });
-    this.paintLive(drag);
-    if (this.live) {
-      this.onScreen ??= new LiveLine(this.ctx);
-      const [width, color, brush] = this.liveInk(drag);
-      this.onScreen.paint(drag.points, width, { scale: drag.slot.scale, x: drag.slot.x, y: drag.slot.y }, color, brush);
-    }
+    // Onto the screen only: the picture of the pages takes it once a frame (draw).
+    this.onScreen ??= new LiveLine(this.ctx);
+    const [width, color, brush] = this.liveInk(drag);
+    this.onScreen.paint(drag.points, width, { scale: drag.slot.scale, x: drag.slot.x, y: drag.slot.y }, color, brush);
     perfMeter.shown();
     this.requestDraw();
   }
