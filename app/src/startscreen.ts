@@ -10,11 +10,19 @@ export interface StartHost {
   newName(): void;
   /** A new name from a picture of all its pages (ネーム画像から). */
   fromImage(): void;
-  /** Opens a name from the list; false when it could not (moved or deleted), and it leaves the list. */
-  openName(path: string): Promise<boolean>;
+  /** Opens a name from the list: null when it opened (or the user kept the name open now), else why not. */
+  openName(path: string): Promise<string | null>;
+  /** Asks where a name that is not there now went, and opens it there: the path it opened, or null. */
+  locate(path: string): Promise<string | null>;
 }
 
 export class StartScreen {
+  /**
+   * Names on the list that did not open, with why: they stay on the list (a
+   * drive not plugged in comes back) with what can be done about it.
+   */
+  private readonly failed = new Map<string, string>();
+
   constructor(private readonly host: StartHost) {
     $("start-open").addEventListener("click", () => host.openFile());
     $("start-new").addEventListener("click", () => host.newName());
@@ -47,7 +55,19 @@ export class StartScreen {
   }
 
   private async open(path: string): Promise<void> {
-    if (!(await this.host.openName(path))) forgetName(path);
+    const problem = await this.host.openName(path);
+    if (problem) this.failed.set(path, problem);
+    else this.failed.delete(path);
+    this.render();
+  }
+
+  private async locate(path: string): Promise<void> {
+    const found = await this.host.locate(path);
+    if (found !== null) {
+      this.failed.delete(path);
+      // The name is on the list again at the top, where it was found.
+      if (found !== path) forgetName(path);
+    }
     this.render();
   }
 
@@ -65,8 +85,25 @@ export class StartScreen {
     forget.setAttribute("aria-label", `${name.title || file} を一覧から外す`);
     forget.addEventListener("click", () => {
       forgetName(name.path);
+      this.failed.delete(name.path);
       this.render();
     });
-    return element("li", { className: "recent-name" }, open, forget);
+    const problem = this.failed.get(name.path);
+    if (problem === undefined) return element("li", { className: "recent-name" }, open, forget);
+    const again = element("button", { className: "recent-again", textContent: "もう一度" });
+    again.addEventListener("click", () => void this.open(name.path));
+    const locate = element("button", { className: "recent-locate", textContent: "場所を探す…" });
+    locate.addEventListener("click", () => void this.locate(name.path));
+    const remove = element("button", { className: "recent-remove", textContent: "一覧から外す" });
+    remove.addEventListener("click", () => forget.click());
+    const trouble = element(
+      "div",
+      { className: "recent-trouble", role: "alert" },
+      element("span", { className: "recent-problem", textContent: `開けませんでした: ${problem}` }),
+      again,
+      locate,
+      remove,
+    );
+    return element("li", { className: "recent-name failed" }, open, forget, trouble);
   }
 }

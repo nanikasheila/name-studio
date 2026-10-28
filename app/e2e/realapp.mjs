@@ -74,6 +74,11 @@ const markedName = join(dir, "marked.namestudio");
 writeFileSync(markedName, projectJson(marked));
 const picturedName = join(dir, "pictured.namestudio");
 writeFileSync(picturedName, projectJson(pictured));
+// The same with the 資料's data spoilt: the WebView cannot decode it.
+const spoilt = structuredClone(pictured);
+spoilt.images[0].dataBase64 = Buffer.from("not a picture").toString("base64");
+const spoiltName = join(dir, "spoilt.namestudio");
+writeFileSync(spoiltName, projectJson(spoilt));
 const failures = [];
 const check = (ok, what) => {
   console.log(`${ok ? "ok  " : "FAIL"} ${what}`);
@@ -121,9 +126,24 @@ for (const [round, want] of [["first", ["指示"]], ["again", []]]) {
   check(run.status === 0 && report?.ok === true, `update (${round}): セリフだけ反映 succeeds (${report?.summary?.join(" / ") ?? run.stderr})`);
   const drawn = report?.pages?.[0]?.marks ?? [];
   check(JSON.stringify(drawn) === JSON.stringify(want), `update (${round}): the 指示 redrawn on the first page are ${JSON.stringify(want)} (${JSON.stringify(drawn)})`);
+  // The record kept with the pages: one entry for the run that changed a page, none for the one that did not.
+  const recordPath = join(dir, "unmarked", "name-studio-反映の記録.txt");
+  const record = existsSync(recordPath) ? readFileSync(recordPath, "utf8").replace(/^\uFEFF/, "") : "";
+  const entries = record.split(/\r\n/).filter((line) => line.startsWith("■ "));
+  check(
+    entries.length === 1 && entries[0].endsWith("「通しテスト」セリフだけ反映") && record.includes("・1 ページ: 指示を描き直した"),
+    `update (${round}): the record in the export folder has the one run that changed a page (${entries.length} entries)`,
+  );
 }
 const withPictures = exportWith("pictured", ["--builtin"], { file: picturedName });
 check((withPictures?.checks?.[0]?.layers ?? 0) === (builtin?.checks?.[0]?.layers ?? 0) + 2, "pictured: the 資料 and the picture of the name are a layer each");
+// A picture that cannot be read: the pages go out without it, and the report says which, on which page.
+const withSpoilt = exportWith("spoilt", ["--builtin"], { file: spoiltName });
+check(
+  (withSpoilt?.summary ?? []).includes("注意: 読めない画像 1 枚は書き出していません: 1 ページ「資料」"),
+  `spoilt: the report names the picture left out (${(withSpoilt?.summary ?? []).find((line) => line.includes("画像")) ?? "nothing"})`,
+);
+check(!(withPictures?.summary ?? []).some((line) => line.includes("読めない画像")), "pictured: pictures that read say nothing of the kind");
 // A name saved by a newer version: it still goes out, and the report says first what this one leaves out.
 const fromNewer = exportWith("newer", ["--builtin"], { file: newerName });
 check(/^注意: このネームには、この版が知らない項目があります.*pages\.strokes\.wobble/.test(fromNewer?.summary?.[0] ?? ""), `newer: the report says first what this version does not know (${fromNewer?.summary?.[0]})`);

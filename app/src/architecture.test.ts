@@ -37,11 +37,11 @@ const LAYERS = {
   /** Drawing a name on a canvas (the screen and the export share it). */
   render: ["asidedraw", "glyph", "notedraw", "pagedraw", "pagethumb", "pictures", "render", "screendraw", "strokecache"],
   /** Work done for the screens: saving in the background, writing out. */
-  service: ["autosave", "batch", "flatpage", "nameexport", "roughcache"],
+  service: ["autosave", "batch", "flatpage", "nameexport", "picturecheck", "roughcache", "updatereport"],
   /** The screens. */
   ui: [
     "actions", "alerts", "altdialog", "board", "boarddock", "boardemotion", "boardpages", "boardscene", "boardshape", "boardview", "brushdialog", "controlbar", "cursors", "dock", "dragsort", "drophint", "editor", "editorcore", "exportdialog", "fontpicker", "helpbar", "helpoverlay", "imageimport", "inplace", "inspector",
-    "layers", "livefields", "markbar", "nameedits", "palette", "palettes", "pendialog", "reader", "readbackpick", "referencebar", "roughpanel", "scriptdialog", "seriespanel", "settingsdialog", "sheetexport", "shortcutdialog", "sidelists", "startscreen", "toolaside", "tooleraser", "toolfill",
+    "layers", "livefields", "markbar", "namesaver", "nameedits", "palette", "palettes", "pendialog", "reader", "readbackpick", "recoverydialog", "referencebar", "roughpanel", "scriptdialog", "seriespanel", "settingsdialog", "sheetexport", "shortcutdialog", "sidelists", "startscreen", "toolaside", "tooleraser", "toolfill",
     "toolmark", "toolpanels", "toolpen", "toolreference", "tools", "toolselect", "toolsticky", "tooltext", "tooltransform", "tour", "updater", "versiondialog",
     "viewer", "workbench",
   ],

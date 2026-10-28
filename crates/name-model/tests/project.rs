@@ -357,3 +357,10 @@ fn a_choice_a_newer_version_added_does_not_open() {
         "{broken}"
     );
 }
+
+#[test]
+fn a_name_that_is_not_there_says_so_in_words() {
+    let dir = tempfile::tempdir().unwrap();
+    let error = Project::load(dir.path().join("外付け/第4話.namestudio")).unwrap_err();
+    assert!(error.to_string().starts_with("ファイルが見つかりません。"), "{error}");
+}

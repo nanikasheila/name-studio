@@ -393,21 +393,92 @@ pub fn clear_recovery(root: &Path, path: Option<&Path>) -> Result<(), ProjectErr
     }
 }
 
-/// Projects kept by autosave and not saved since, newest first. Files that
-/// cannot be read (such as from a newer version of the app) are skipped.
-pub fn recoveries(root: &Path) -> Vec<Recovery> {
+/// A file in the recovery folder as the start offers it: a project to bring
+/// back, or one that cannot be read, shown all the same (with why) so that
+/// work is never dropped without a word.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KeptRecovery {
+    /// Its name in the recovery folder: what removing it names.
+    pub file: String,
+    /// When autosave wrote it (the file's own time when it cannot be read).
+    pub time_ms: u64,
+    pub recovery: Option<Recovery>,
+    /// Fields a newer version added that this one does not show (kept on saving).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unknown_fields: Vec<String>,
+    /// Why it cannot be brought back (damaged, or a choice a newer version added).
+    pub unreadable: Option<String>,
+}
+
+/// Every project kept by autosave and not saved since, newest first, the
+/// ones that cannot be read included.
+pub fn kept_recoveries(root: &Path) -> Vec<KeptRecovery> {
     let Ok(entries) = std::fs::read_dir(root.join("recovery")) else {
         return Vec::new();
     };
-    let mut found: Vec<Recovery> = entries
+    let mut found: Vec<KeptRecovery> = entries
         .flatten()
         .filter(|entry| entry.path().extension().is_some_and(|extension| extension == "json"))
-        .filter_map(|entry| std::fs::read_to_string(entry.path()).ok())
-        .filter_map(|text| serde_json::from_str::<Recovery>(&text).ok())
-        .filter(|recovery| recovery.parsed().is_ok())
+        .map(|entry| kept(&entry.path()))
         .collect();
-    found.sort_by_key(|recovery| std::cmp::Reverse(recovery.time_ms));
+    found.sort_by_key(|kept| std::cmp::Reverse(kept.time_ms));
     found
+}
+
+fn kept(file: &Path) -> KeptRecovery {
+    let name = file
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let modified = std::fs::metadata(file)
+        .and_then(|meta| meta.modified())
+        .ok()
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |time| time.as_millis() as u64);
+    let unreadable = |why: String| KeptRecovery {
+        file: name.clone(),
+        time_ms: modified,
+        recovery: None,
+        unknown_fields: Vec::new(),
+        unreadable: Some(why),
+    };
+    let text = match std::fs::read_to_string(file) {
+        Ok(text) => text,
+        Err(error) => return unreadable(ProjectError::Io(error).to_string()),
+    };
+    let recovery = match serde_json::from_str::<Recovery>(&text) {
+        Ok(recovery) => recovery,
+        Err(error) => return unreadable(format!("控えのファイルが壊れています: {error}")),
+    };
+    if let Err(error) = recovery.parsed() {
+        return KeptRecovery {
+            time_ms: recovery.time_ms,
+            ..unreadable(error.to_string())
+        };
+    }
+    KeptRecovery {
+        file: name.clone(),
+        time_ms: recovery.time_ms,
+        unknown_fields: Project::unknown_fields(recovery.project.get()).unwrap_or_default(),
+        recovery: Some(recovery),
+        unreadable: None,
+    }
+}
+
+/// Removes one file of the recovery folder, named as `kept_recoveries` lists
+/// it; nothing outside that folder can be named.
+pub fn remove_recovery(root: &Path, file: &str) -> Result<(), ProjectError> {
+    let plain = !file.is_empty() && !file.contains(['/', '\\']) && file != ".." && file.ends_with(".json");
+    if !plain {
+        return Err(ProjectError::Invalid(vec![format!(
+            "控えのファイル名が正しくありません: {file}"
+        )]));
+    }
+    match std::fs::remove_file(root.join("recovery").join(file)) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(ProjectError::Io(error)),
+        _ => Ok(()),
+    }
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), ProjectError> {
@@ -539,16 +610,76 @@ mod tests {
     #[test]
     fn recovery_round_trip() {
         let root = tempfile::tempdir().unwrap();
-        assert!(recoveries(root.path()).is_empty());
+        assert!(kept_recoveries(root.path()).is_empty());
         write_recovery(root.path(), None, &project("白紙", 4), 10).unwrap();
         let path = Path::new("b.namestudio");
         write_recovery(root.path(), Some(path), &project("保存済み", 1), 20).unwrap();
-        let found = recoveries(root.path());
+        let found = kept_recoveries(root.path());
         assert_eq!(found.len(), 2);
-        assert_eq!(found[0].parsed().unwrap().title, "保存済み");
-        assert_eq!(found[0].path.as_deref(), Some("b.namestudio"));
+        let newest = found[0].recovery.as_ref().unwrap();
+        assert_eq!(newest.parsed().unwrap().title, "保存済み");
+        assert_eq!(newest.path.as_deref(), Some("b.namestudio"));
+        assert_eq!(found[1].time_ms, 10);
         clear_recovery(root.path(), Some(path)).unwrap();
         clear_recovery(root.path(), Some(path)).unwrap();
-        assert_eq!(recoveries(root.path()).len(), 1);
+        assert_eq!(kept_recoveries(root.path()).len(), 1);
+    }
+
+    #[test]
+    fn recoveries_that_cannot_be_read_are_listed_with_why() {
+        let root = tempfile::tempdir().unwrap();
+        write_recovery(root.path(), Some(Path::new("a.namestudio")), &project("読める", 2), 30).unwrap();
+        let folder = root.path().join("recovery");
+        // Cut off half way (a disk that filled up), and one with a choice a newer version added.
+        std::fs::write(
+            folder.join("cut-0000000000000001.json"),
+            r#"{"path":"c.namestudio","timeMs":5,"proj"#,
+        )
+        .unwrap();
+        let mut newer = serde_json::to_value(project("新しい", 1)).unwrap();
+        newer["binding"] = serde_json::json!("top");
+        let newer = format!(r#"{{"path":"n.namestudio","timeMs":40,"project":{newer}}}"#);
+        std::fs::write(folder.join("newer-0000000000000002.json"), newer).unwrap();
+        // A field a newer version added: it can be brought back, and it says so.
+        let mut wobble = serde_json::to_value(project("項目つき", 1)).unwrap();
+        wobble["wobble"] = serde_json::json!(1);
+        std::fs::write(
+            folder.join("wobble-0000000000000003.json"),
+            format!(r#"{{"path":null,"timeMs":20,"project":{wobble}}}"#),
+        )
+        .unwrap();
+
+        let found = kept_recoveries(root.path());
+        let by_file = |name: &str| found.iter().find(|kept| kept.file.starts_with(name)).unwrap();
+        assert_eq!(found.len(), 4);
+        assert!(
+            by_file("cut").recovery.is_none()
+                && by_file("cut")
+                    .unreadable
+                    .as_deref()
+                    .unwrap()
+                    .starts_with("控えのファイルが壊れています")
+        );
+        let newer = by_file("newer");
+        assert!(newer.recovery.is_none() && newer.time_ms == 40, "{newer:?}");
+        assert!(
+            newer
+                .unreadable
+                .as_deref()
+                .unwrap()
+                .starts_with("新しい版のツールで足された選択肢"),
+            "{newer:?}"
+        );
+        assert_eq!(by_file("wobble").unknown_fields, ["wobble"]);
+        assert!(by_file("wobble").recovery.is_some() && by_file("a-").unknown_fields.is_empty());
+        // Newest first: the cut one by its file's time (now), then by when autosave wrote them.
+        let order: Vec<&str> = found.iter().map(|kept| kept.file.split('-').next().unwrap()).collect();
+        assert_eq!(order, ["cut", "newer", "a", "wobble"]);
+
+        remove_recovery(root.path(), &by_file("cut").file).unwrap();
+        assert_eq!(kept_recoveries(root.path()).len(), 3);
+        for outside in ["../x.json", "..\\x.json", "", "a.namestudio", "sub/x.json"] {
+            assert!(remove_recovery(root.path(), outside).is_err(), "{outside}");
+        }
     }
 }

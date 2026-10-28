@@ -3,7 +3,7 @@
 // full) and hands the modules that compute plain values, so that those never
 // touch the browser's storage themselves.
 import { withBrushes } from "./brush";
-import { memoryFrom, memoryKey, withMemory, type ExportMemory } from "./exportmemory";
+import { EXPORT_MEMORIES, memoryFrom, memoryKey, withMemory, type ExportMemory } from "./exportmemory";
 import { defaultsFrom, defaultsOf, type NewNameDefaults } from "./namedefaults";
 import { normalizeCurve, defaultPenSettings, parsePenSettings, type PenSettings } from "./pen";
 import { forgotten, recentFrom, remembered, type RecentName } from "./recent";
@@ -195,4 +195,45 @@ export function loadExportMemory(path: string): ExportMemory | null {
 
 export function keepExportMemory(path: string, memory: ExportMemory): void {
   writeJson(EXPORT_MEMORY_KEY, withMemory(exportMemories(), path, memory));
+}
+
+// --- セリフだけ反映の結果（ネームごと、最後の 1 回） ----------------------------------------
+
+export const LAST_UPDATE_KEY = "namestudio.lastDialogueUpdate";
+
+/** The last セリフだけ反映 of a name: what it did on each page, to go there again. */
+export interface LastDialogueUpdate {
+  timeMs: number;
+  outDir: string;
+  /** The result in a line. */
+  first: string;
+  rows: { pages: number[]; text: string; attention: boolean }[];
+}
+
+function lastUpdateFrom(value: unknown): LastDialogueUpdate | null {
+  const kept = value as Partial<LastDialogueUpdate> | null;
+  if (typeof kept?.timeMs !== "number" || typeof kept.first !== "string" || typeof kept.outDir !== "string" || !Array.isArray(kept.rows)) return null;
+  const rows = kept.rows.filter(
+    (row) => typeof row?.text === "string" && Array.isArray(row.pages) && row.pages.length > 0 && row.pages.every((page) => Number.isInteger(page) && page > 0),
+  );
+  return { timeMs: kept.timeMs, outDir: kept.outDir, first: kept.first, rows: rows.map((row) => ({ pages: row.pages, text: row.text, attention: !!row.attention })) };
+}
+
+function lastUpdates(): Record<string, unknown> {
+  const kept = readJson(LAST_UPDATE_KEY, {});
+  return typeof kept === "object" && kept !== null && !Array.isArray(kept) ? (kept as Record<string, unknown>) : {};
+}
+
+export function loadLastUpdate(path: string): LastDialogueUpdate | null {
+  return lastUpdateFrom(lastUpdates()[memoryKey(path)]);
+}
+
+/** Keeps `update` as the name's last; the names updated longest ago go beyond `EXPORT_MEMORIES`. */
+export function keepLastUpdate(path: string, update: LastDialogueUpdate): void {
+  const all = Object.entries({ ...lastUpdates(), [memoryKey(path)]: update })
+    .map(([key, value]) => [key, lastUpdateFrom(value)] as const)
+    .filter((entry): entry is readonly [string, LastDialogueUpdate] => entry[1] !== null)
+    .sort((a, b) => b[1].timeMs - a[1].timeMs)
+    .slice(0, EXPORT_MEMORIES);
+  writeJson(LAST_UPDATE_KEY, Object.fromEntries(all));
 }

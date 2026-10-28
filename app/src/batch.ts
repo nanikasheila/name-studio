@@ -3,6 +3,7 @@
 
 import { call, type BatchExport } from "./backend";
 export type { BatchExport } from "./backend";
+import { updateRecord, updatedPages } from "./updatereport";
 import { checkSummary, dialogueUpdateSummary, exportToCsp, imagesNote, missingEditable, readCspDialogue, ROUGH_LAYERS, updateCspDialogue } from "./nameexport";
 import { normalize, unknownFieldsNote } from "./project";
 import { projectBody } from "./projectjson";
@@ -97,6 +98,10 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
       );
       const check = dialogueUpdateSummary(summary);
       ok = check.ok;
+      // The record kept with the CSP pages, as from the dialog.
+      if (updatedPages(summary).length) {
+        await call("record_dialogue_update", { outDir: task.outDir, entry: updateRecord(summary, project.title, check.lines[0], new Date()) });
+      }
       result = { ok, seconds: (Date.now() - started) / 1000, summary: [...notes, ...check.lines], ...summary };
     } else {
       const report = await exportToCsp(
@@ -125,7 +130,9 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
       ok = check.ok;
       // Read back as written, but not editable in CSP: said first, so it is not missed.
       const missing = missingEditable(report);
-      const summary = [...notes, ...(missing.length ? [`注意: ${imagesNote(missing)}`] : []), ...check.lines];
+      // What was left out or changed on the way (pictures that could not be read, pages not joined as a spread).
+      const warnings = (report.warnings ?? []).map((warning) => `注意: ${warning}`);
+      const summary = [...notes, ...warnings, ...(missing.length ? [`注意: ${imagesNote(missing)}`] : []), ...check.lines];
       result = { ok, seconds: (Date.now() - started) / 1000, summary, overwrite, ...report };
     }
   } catch (error) {

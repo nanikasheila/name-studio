@@ -2,10 +2,9 @@
 // Name Studio front end: puts the screens together. The start screen
 // (startscreen.ts) and the sheet viewer (viewer.ts, sheetexport.ts) share the
 // first workspace; name data is edited in the second (workbench.ts).
-import { call, type Recovery } from "./backend";
+import { call } from "./backend";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ask, open } from "@tauri-apps/plugin-dialog";
-import { formatTime } from "./autosave";
+import { open } from "@tauri-apps/plugin-dialog";
 import { setInstalledFonts } from "./fonts";
 import { batchExportTask, runBatchExport } from "./batch";
 import { appVersion, checkForUpdate } from "./updater";
@@ -22,9 +21,13 @@ import { comboOf } from "./shortcuts";
 import { Tour } from "./tour";
 import { CommandPalette } from "./palette";
 import { SheetExport } from "./sheetexport";
+import { splitPath } from "./recent";
 import { StartScreen } from "./startscreen";
+import { RecoveryDialog } from "./recoverydialog";
+import { showAlert } from "./alerts";
 import { SheetViewer } from "./viewer";
-import { PROJECT_EXTENSION, Workbench } from "./workbench";
+import { PROJECT_EXTENSION } from "./namesaver";
+import { Workbench } from "./workbench";
 import { $, isTyping } from "./dom";
 import { ImageImportDialog } from "./imageimport";
 
@@ -112,16 +115,28 @@ async function openFile(): Promise<void> {
   await viewer.open(path);
 }
 
-/** Opens name data; false when it could not be read. */
-async function openName(path: string, failedNote = ""): Promise<boolean> {
+/** Opens name data: null when it did, else why it could not. */
+async function openName(path: string): Promise<string | null> {
   try {
     await workbench.load(path);
     showWorkspace("editor");
-    return true;
+    return null;
   } catch (error) {
-    setStatus(`開けませんでした${failedNote}: ${error}`);
-    return false;
+    setStatus(`開けませんでした: ${error}`);
+    return String(error);
   }
+}
+
+/** A name on the start screen's list that is not where it was: picked again from its folder. */
+async function locateName(path: string): Promise<string | null> {
+  if (!(await workbench.confirmDiscard())) return null;
+  const found = await open({
+    multiple: false,
+    defaultPath: splitPath(path).folder || undefined,
+    title: `${splitPath(path).name} を探す`,
+    filters: [{ name: "ネームデータ", extensions: [PROJECT_EXTENSION] }],
+  });
+  return typeof found === "string" && (await openName(found)) === null ? found : null;
 }
 
 function newName(): void {
@@ -190,7 +205,8 @@ const startScreen = new StartScreen({
   openFile: () => void openFile(),
   newName,
   fromImage: () => void nameFromImage(),
-  openName: async (path) => (await workbench.confirmDiscard()) ? openName(path, "（最近のネームの一覧から外しました）") : true,
+  openName: async (path) => ((await workbench.confirmDiscard()) ? openName(path) : null),
+  locate: locateName,
 });
 
 /** Ctrl+K before a name is open: open, new, the names opened last, and the open sheet's two actions. */
@@ -266,26 +282,21 @@ void getCurrentWindow().onCloseRequested(async (event) => {
 });
 
 /** Offer back a project autosave kept when the app stopped before it was saved. */
-async function offerRecovery(): Promise<void> {
-  let recoveries: Recovery[];
-  try {
-    recoveries = await call("pending_recoveries");
-  } catch {
-    return;
-  }
-  const recovery = recoveries?.[0];
-  if (!recovery) return;
-  const where = recovery.path ?? "（まだ保存していないネーム）";
-  const restore = await ask(
-    `前回、保存しないまま終わったネームがあります。\n\n${recovery.project.title}（${recovery.project.pages.length} ページ、${formatTime(recovery.timeMs)} の自動保存）\n${where}${recovery.problems?.length ? `\n（直せる問題が ${recovery.problems.length} か所あります。復元すると直します）` : ""}\n\n復元しますか？「いいえ」で控えを消します。`,
-    { title: "Name Studio", kind: "warning" },
-  );
-  if (restore) {
+const recoveryDialog = new RecoveryDialog({
+  restore: (recovery, note) => {
     showWorkspace("editor");
     workbench.showRecovered(recovery.project, recovery.path, recovery.timeMs);
-  } else {
-    await call("discard_recovery", { path: recovery.path }).catch(() => undefined);
-  }
+    if (note) showAlert("unknown-fields", note, "warning");
+  },
+  remove: async (file) => {
+    await call("remove_recovery", { file }).catch((error) => setStatus(`控えを消せませんでした: ${error}`));
+  },
+});
+
+/** The names autosave kept that were never saved: all offered before anything else is asked. */
+async function offerRecovery(): Promise<void> {
+  const kept = await call("pending_recoveries").catch(() => []);
+  await recoveryDialog.open(kept ?? []);
 }
 
 /** The fonts on this computer, to choose from and to draw and write out dialogue in. */

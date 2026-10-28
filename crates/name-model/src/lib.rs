@@ -32,6 +32,16 @@ pub enum ProjectError {
 impl std::fmt::Display for ProjectError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            // Said in words: the start screen shows it on the name's row.
+            ProjectError::Io(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                write!(
+                    f,
+                    "ファイルが見つかりません。移したか消したか、外付けのドライブがつながっていないようです（{error}）"
+                )
+            }
+            ProjectError::Io(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+                write!(f, "ファイルを読む権限がありません（{error}）")
+            }
             ProjectError::Io(error) => write!(f, "{error}"),
             // A choice a newer version added (a new kind of balloon, say) cannot be read here.
             ProjectError::Json(error) if error.to_string().starts_with("unknown variant") => write!(

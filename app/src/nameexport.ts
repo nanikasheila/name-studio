@@ -652,6 +652,8 @@ export async function exportToCsp(
     const full = projectToTemplate(project, start);
     const { units, warnings } = exportUnits(project, start.firstPageLeft, start.spread ? null : start.spreadProblem, pieces);
     if (vector && !masks && request.frameFolders && !start.frameFolders) warnings.push(NO_FRAME_FOLDER);
+    // Pictures that could not be read (the dialog asked first; the batch export says so here).
+    const unread = new Set<string>();
     const checks: FileCheck[] = [];
     // One drawing canvas for the widest page; each page is drawn at its own size.
     const widest = Math.max(start.widthPx, ...(units.some((unit) => unit.length > 1) && start.spread && pieces === 1 ? [start.spread.widthPx] : []));
@@ -689,7 +691,7 @@ export async function exportToCsp(
         let png: Uint8Array = new Uint8Array();
         const shown = placed.filter(({ page }) => page.references?.some(takes));
         if (shown.length) {
-          const pictures = await decodePictures(project, shown, takes);
+          const pictures = await decodePictures(project, shown, takes, unread);
           ctx.clearRect(0, 0, width, height);
           for (const { page, m, right } of placed) clipped(ctx, factor, right, () => drawReferences(ctx, page, pictures, scaled(m, factor), takes));
           for (const picture of pictures.values()) picture.close();
@@ -812,6 +814,7 @@ export async function exportToCsp(
     }
     drawing.width = 0;
     overlay.width = 0;
+    if (unread.size) warnings.push(unreadWarning(project, unread));
     const report = await call("finish_name_export");
     return { ...report, vectorLayers: vector, textLayers: text, checks, warnings, spreads: pieces > 1 ? 0 : units.filter((unit) => unit.length > 1).length };
   } catch (error) {
@@ -821,15 +824,31 @@ export async function exportToCsp(
   }
 }
 
-/** The pictures `takes` picks on `placed` pages, decoded (by image id); one that cannot be read is left out. */
-async function decodePictures(project: Project, placed: readonly PlacedPage[], takes: (reference: ReferenceImage) => boolean): Promise<Map<string, ImageBitmap>> {
+/** What the report says of the pictures left out because they could not be read. */
+export function unreadWarning(project: Project, unread: ReadonlySet<string>): string {
+  const named = [...unread].map((id) => {
+    const pages = project.pages.flatMap((page, index) => (page.references?.some((reference) => reference.image === id) ? [index + 1] : []));
+    const name = project.images?.find((image) => image.id === id)?.name || id;
+    return `${pages.join("・")} ページ「${name}」`;
+  });
+  return `読めない画像 ${unread.size} 枚は書き出していません: ${named.join("、")}`;
+}
+
+/** The pictures `takes` picks on `placed` pages, decoded (by image id); one that cannot be read is left out, its id put in `unread`. */
+async function decodePictures(
+  project: Project,
+  placed: readonly PlacedPage[],
+  takes: (reference: ReferenceImage) => boolean,
+  unread: Set<string>,
+): Promise<Map<string, ImageBitmap>> {
   const pictures = new Map<string, ImageBitmap>();
   for (const { page } of placed) {
     for (const reference of page.references ?? []) {
-      if (!takes(reference) || pictures.has(reference.image)) continue;
+      if (!takes(reference) || pictures.has(reference.image) || unread.has(reference.image)) continue;
       const image = imageOf(project, reference);
       const picture = image && (await decodePicture(image).catch(() => null));
       if (picture) pictures.set(reference.image, picture);
+      else unread.add(reference.image);
     }
   }
   return pictures;

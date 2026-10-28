@@ -172,6 +172,19 @@ body:has(#viewer.start) .viewer-only { display: none; }
 .recent-where { grid-column: 1 / -1; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .recent-forget { border: 0; border-left: 1px solid var(--line); border-radius: 0; background: transparent; color: var(--muted); padding: 0 12px; }
 .recent-forget:hover { color: var(--text); }
+.recent-name.failed { flex-wrap: wrap; border-color: #e3c873; }
+.ne-updated { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 160px; overflow-y: auto; }
+.ne-updated button { width: 100%; text-align: left; font-size: 12px; padding: 4px 8px; }
+.ne-updated button.attention { border-color: #e3c873; background: #fff6dc; color: #5a4300; }
+.rc-list { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow-y: auto; }
+.rc-item { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; display: grid; gap: 2px; }
+.rc-item.unreadable { border-color: #e3c873; }
+.rc-title { font-weight: 600; }
+.rc-detail, .rc-note { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.rc-item.unreadable .rc-note { color: inherit; }
+.rc-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px; }
+.recent-trouble { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 12px; border-top: 1px solid #e3c873; background: #fff6dc; color: #5a4300; font-size: 12px; }
+.recent-problem { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
 /* Problems that must not go unseen (a failed save, an operation undone after an error). */
 .alerts { position: fixed; top: 48px; left: 50%; transform: translateX(-50%); z-index: 20; display: flex; flex-direction: column; gap: 6px; width: min(640px, calc(100vw - 32px)); pointer-events: none; }
 .alert { pointer-events: auto; display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px 8px 12px; border-radius: 8px; font-size: 13px; line-height: 1.5; box-shadow: 0 4px 14px rgb(0 0 0 / 0.18); border: 1px solid; }
@@ -183,6 +196,9 @@ body:has(#viewer.start) .viewer-only { display: none; }
 @media (prefers-color-scheme: dark) {
   .alert.error { background: #4a1c17; color: #ffd9d3; border-color: #8a3a30; }
   .alert.warning { background: #463a12; color: #ffecb0; border-color: #8a7330; }
+  .recent-trouble { background: #463a12; color: #ffecb0; border-color: #8a7330; }
+  .recent-name.failed { border-color: #8a7330; }
+  .ne-updated button.attention { background: #463a12; color: #ffecb0; border-color: #8a7330; }
 }
 dialog.export {
   width: min(560px, calc(100vw - 32px)); border: 1px solid var(--line); border-radius: 10px;
