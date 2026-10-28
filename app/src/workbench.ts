@@ -372,6 +372,10 @@ export class Workbench {
       status: (message) => this.setStatus(message),
       edit: (change) => this.edit(change),
       goTo: (pageId, lineId) => this.goTo(pageId, "line", lineId),
+      showPage: (pageNumber) => {
+        this.editor.showPage(pageNumber);
+        this.renderAll();
+      },
       addTails: () => this.edits.addTails(),
       fitSpills: () => this.edits.fitSpills(),
       clearFaces: () => this.edits.clearFaces(),

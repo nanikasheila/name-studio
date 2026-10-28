@@ -26,7 +26,9 @@ import type { CspPage, CspStory, NombrePlace, Project, RoughImage, StoryPosition
 import { fontField } from "./fontpicker";
 import { chooseTakeBack } from "./readbackpick";
 import { againSummary, exportSummary, type ExportKind, type ExportMemory, type PanelExport, type TemplateMode } from "./exportmemory";
-import { keepExportMemory, loadExportMemory } from "./prefs";
+import { keepExportMemory, keepLastUpdate, loadExportMemory, loadLastUpdate, type LastDialogueUpdate } from "./prefs";
+import { updateRecord, updatedPages } from "./updatereport";
+import { formatTime } from "./autosave";
 import { installedFont } from "./fonts";
 import { hasMarks } from "./roughlayers";
 import { unreadableNote, unreadablePictures } from "./picturecheck";
@@ -46,6 +48,8 @@ export interface ExportDialogHost {
   edit(change: (project: Project) => void): void;
   /** Show a line of dialogue on its page, selected. */
   goTo(pageId: string, lineId: string): void;
+  /** Show page `pageNumber` (from 1). */
+  showPage(pageNumber: number): void;
   /** Give speech with no tail one; how many were added. */
   addTails(): number;
   /** Lay out again the panels whose dialogue reaches past their border; how many. */
@@ -58,6 +62,8 @@ type Kind = ExportKind;
 
 /** The ミニネーム's fields (its form, resolution, how many across, area, numbers and title). */
 const MINI_FIELDS = ["ne-mini-format", "ne-mini-dpi", "ne-mini-columns", "ne-mini-area", "ne-mini-numbers", "ne-mini-title"];
+/** The record of セリフだけ反映 in the export folder (files.rs `UPDATE_RECORD`). */
+const UPDATE_RECORD = "name-studio-反映の記録.txt";
 const MINI_EXTENSIONS: Record<MiniFormat, string> = { png: "png", jpeg: "jpg", pdf: "pdf" };
 
 function readMini(): MiniOptions & { format: MiniFormat } {
@@ -349,6 +355,9 @@ export class ExportDialog {
     this.showPage();
     this.show();
     this.message("");
+    // The last セリフだけ反映 of this name: its pages to go to again.
+    const last = path ? loadLastUpdate(path) : null;
+    this.showUpdated(last, last ? `前回のセリフだけ反映（${formatTime(last.timeMs)}・${last.outDir}）: ${last.first}` : "");
     this.renderCheck(project);
     $<HTMLDialogElement>("name-export-dialog").showModal();
   }
@@ -579,6 +588,23 @@ export class ExportDialog {
     // A template still to choose: its field in view.
     if (this.kind === "csp" && !builtin && !this.form.template) $<HTMLDetailsElement>("ne-more").open = true;
     this.showSummary();
+  }
+
+  /** The pages a セリフだけ反映 changed or could not, each a button to that page (none: the list goes). */
+  private showUpdated(update: LastDialogueUpdate | null, heading: string): void {
+    const list = $("ne-updated");
+    list.hidden = !update?.rows.length;
+    $("ne-updated-heading").textContent = update?.rows.length ? heading : "";
+    list.replaceChildren(
+      ...(update?.rows ?? []).map((row) => {
+        const go = element("button", { type: "button", className: row.attention ? "attention" : "", textContent: row.text, title: "このページに移る" });
+        go.addEventListener("click", () => {
+          $<HTMLDialogElement>("name-export-dialog").close();
+          this.host.showPage(row.pages[0]);
+        });
+        return element("li", {}, go);
+      }),
+    );
   }
 
   private message(text: string, error = false): void {
@@ -929,7 +955,18 @@ export class ExportDialog {
         },
       );
       const result = dialogueUpdateSummary(summary);
-      this.message(result.lines.join("\n"), !result.ok);
+      const update: LastDialogueUpdate = { timeMs: Date.now(), outDir: request.outDir, first: result.lines[0], rows: updatedPages(summary) };
+      const path = this.host.projectPath();
+      if (path) keepLastUpdate(path, update);
+      // Kept with the CSP pages too, run after run, to look back on.
+      const recorded = update.rows.length
+        ? await call("record_dialogue_update", { outDir: request.outDir, entry: updateRecord(summary, project.title, result.lines[0], new Date(update.timeMs)) }).then(
+            () => `記録: ${request.outDir}\\${UPDATE_RECORD}`,
+            (error) => `記録を書けませんでした: ${error}`,
+          )
+        : null;
+      this.message([...result.lines, ...(recorded ? [recorded] : [])].join("\n"), !result.ok);
+      this.showUpdated(update, "ページを押すと、そのページに移ります");
       this.host.status(result.lines[0]);
     } catch (error) {
       this.message(`反映できませんでした: ${error}`, true);

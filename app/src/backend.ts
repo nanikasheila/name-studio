@@ -229,6 +229,7 @@ export interface Commands {
   write_pdf: [RawBody, void];
   write_binary_file: [RawBody, void];
   write_text_file: [{ path: string; text: string }, void];
+  record_dialogue_update: [{ outDir: string; entry: string }, void];
   csp_tool_locations: [void, CspToolLocations];
   read_csp_sub_tools: [{ path: string; materials: string | null }, CspSubTool[]];
   // The fonts on the computer (fonts.rs)

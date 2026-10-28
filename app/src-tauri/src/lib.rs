@@ -137,6 +137,7 @@ pub fn run() {
             files::write_pdf,
             files::write_binary_file,
             files::write_text_file,
+            files::record_dialogue_update,
             files::csp_tool_locations,
             files::read_csp_sub_tools,
             fonts::list_fonts,

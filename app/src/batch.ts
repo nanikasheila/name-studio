@@ -3,6 +3,7 @@
 
 import { call, type BatchExport } from "./backend";
 export type { BatchExport } from "./backend";
+import { updateRecord, updatedPages } from "./updatereport";
 import { checkSummary, dialogueUpdateSummary, exportToCsp, imagesNote, missingEditable, readCspDialogue, ROUGH_LAYERS, updateCspDialogue } from "./nameexport";
 import { normalize, unknownFieldsNote } from "./project";
 import { projectBody } from "./projectjson";
@@ -97,6 +98,10 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
       );
       const check = dialogueUpdateSummary(summary);
       ok = check.ok;
+      // The record kept with the CSP pages, as from the dialog.
+      if (updatedPages(summary).length) {
+        await call("record_dialogue_update", { outDir: task.outDir, entry: updateRecord(summary, project.title, check.lines[0], new Date()) });
+      }
       result = { ok, seconds: (Date.now() - started) / 1000, summary: [...notes, ...check.lines], ...summary };
     } else {
       const report = await exportToCsp(
