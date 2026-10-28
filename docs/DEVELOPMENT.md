@@ -80,8 +80,12 @@ Rust の版は `rust-toolchain.toml` で固定しています（rustup が自動
 
 ## README の画像
 
-README と使い方の画像（`docs/images`）は、作り物のネーム（`app/e2e/demoname.js`、屋上の短い場面 8 ページ。ラフ線もコードで描いています）を
+README と使い方の画像（`docs/images`）は、作り物のネーム（`app/e2e/demoname.js`、部室の短い場面 8 ページ）を
 ブラウザで開いて撮っています。画面を変えたら撮り直してください（ffmpeg と日本語のフォント（Noto CJK など）が要ります）。
+
+ラフの絵は作者の絵（完成原稿の一部）を線に起こしたもので、リポジトリには入れていません。
+線のデータ（`art.json`: 切り出しごとの大きさと線の座標）の場所を `README_ART` で渡します（ないときはプロジェクトの共有フォルダーの
+`readme-art/art.json`）。どちらもなければ、コードで描いた簡単な人物で撮ります。
 
 ```bash
 (cd app && npm run readme-shots)

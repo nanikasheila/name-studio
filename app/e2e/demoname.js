@@ -1,11 +1,13 @@
 // A made-up name for the pictures in the README (e2e/readme-shots.mjs): eight
-// pages of a short scene on a school roof, with panels, rough figures drawn
-// by code, dialogue with tails, characters, scenes and emotion values. No
-// one's real work goes into the pictures. Imported in the page through Vite.
+// pages of a short scene in a club room, with panels, rough lines, dialogue
+// with tails, characters, scenes and emotion values. The rough lines are the
+// author's own drawings traced into lines (`art`: crops of their finished
+// pages, kept outside the repository; see docs/DEVELOPMENT.md); without them
+// simple figures drawn by code stand in. Imported in the page through Vite.
 import { addAutoTails } from "/src/autotail.ts";
 import { balloonExtent } from "/src/balloon.ts";
 import { addLine, moveLine } from "/src/dialogue.ts";
-import { rectShape } from "/src/geometry.ts";
+import { insidePolygon, rectShape } from "/src/geometry.ts";
 import { basicBox } from "/src/pagebox.ts";
 import { addPanel, cutPanels } from "/src/panels.ts";
 import { newId, newProject } from "/src/project.ts";
@@ -165,61 +167,149 @@ const SCENES = {
   },
 };
 
-/** The pages: cuts in shares of the basic frame, then what each panel shows in reading order, and what is said. */
+/** A traced line as it is: pressure thin at both ends, as a pen leaves it. */
+function ink(project, page, points, widthMm = 0.3) {
+  const last = Math.max(1, points.length - 1);
+  const out = points.map(([x, y], i) => [x, y, Math.min(1, 0.35 + Math.sin((Math.PI * i) / last) * 0.65)]);
+  page.strokes.push({ id: newId(project, "stroke"), points: out, widthMm, closed: false });
+}
+
+/**
+ * A crop of the author's drawing (`art[name]`: its size in px and its lines)
+ * laid into `box` (mm) to cover it (or nearly), `anchor` saying which part stays in view,
+ * and cut off at the panel's edge.
+ */
+function trace(project, page, crop, box, shape, anchor = [0.5, 0.5], flip = false) {
+  const [x0, y0, x1, y1] = box;
+  // Cover the panel, but not by cutting most of the drawing away: at most a little past fitting it in.
+  const [sx, sy] = [(x1 - x0) / crop.w, (y1 - y0) / crop.h];
+  const scale = Math.min(Math.max(sx, sy), Math.min(sx, sy) * 1.35);
+  const ox = x0 + ((x1 - x0) - crop.w * scale) * anchor[0];
+  const oy = y0 + ((y1 - y0) - crop.h * scale) * anchor[1];
+  const mm = ([x, y]) => [ox + (flip ? crop.w - x : x) * scale, oy + y * scale];
+  for (const path of crop.paths) {
+    let run = [];
+    const flush = () => {
+      if (run.length >= 2) ink(project, page, run);
+      run = [];
+    };
+    for (const point of path.map(mm)) {
+      if (insidePolygon(shape, point)) run.push(point);
+      else flush();
+    }
+    flush();
+  }
+}
+
+/** Without the author's drawings: one of the figures above for each crop, by what it shows. */
+const FALLBACK = (name) =>
+  /room|group|reader/.test(name) ? "two" : /eyes/.test(name) ? "sky" : /chibi|kohaku|back/.test(name) ? "bustA" : "bustS";
+
+/**
+ * The pages: cuts in shares of the basic frame; what each panel shows in
+ * reading order (a crop of the drawings, which part of it, mirrored; null
+ * left to draw later); what is said, in which panel, where in it and by whom.
+ */
 const PAGES = [
   {
-    cuts: [[0, 0.62, 1, 0.62], [0.45, 0.62, 0.45, 1]],
-    scenes: ["wide", "door", "bustA"],
+    cuts: [[0, 0.34, 1, 0.34], [0, 0.68, 1, 0.68], [0.5, 0.34, 0.5, 0.68], [0.42, 0.68, 0.42, 1]],
+    panels: [["room_wide", [0.5, 0.6]], ["shelf_girl", [0.6, 0.35]], ["iku_keyboard", [0.3, 0.2]], ["iku_smile", [0.5, 0.3]], ["chibi_hai", [0.5, 0.3]]],
     lines: [
-      [0, 0.85, 0.08, "放課後の屋上。", "narration"],
-      [2, 0.25, 0.05, "やっぱり\nここにいた", "speech", "a"],
+      [0, 0.9, 0.06, "放課後の部室。", "narration"],
+      [1, 0.1, 0.06, "この本\nどこに\n戻すんだろう", "speech", "m"],
+      [3, 0.12, 0.06, "棚の\n上の段よ", "speech", "r"],
+      [4, 0.86, 0.06, "はいっ", "speech", "m"],
     ],
   },
   {
-    cuts: [[0, 0.36, 1, 0.36], [0, 0.7, 1, 0.7], [0.55, 0.36, 0.55, 0.7]],
-    scenes: ["two", "bustS", "bustA", "sky"],
+    cuts: [[0, 0.4, 1, 0.4], [0, 0.72, 1, 0.72], [0.55, 0.4, 0.55, 0.72]],
+    panels: [["group_table", [0.5, 0.4]], ["kohaku_point", [0.5, 0.3]], ["reader_girls", [0.6, 0.4]], ["eyes_close", [0.5, 0.3]]],
     lines: [
-      [0, 0.8, 0.07, "また\n空を\n見てるの？", "speech", "a"],
-      [1, 0.85, 0.05, "雲の形を\n覚えてる", "speech", "s"],
-      [2, 0.2, 0.05, "なにそれ", "speech", "a"],
+      [0, 0.9, 0.06, "片付けたら\n練習\nしましょう", "speech", "r"],
+      [1, 0.9, 0.06, "あの、\nこれ\n何ですか？", "speech", "m"],
+      [2, 0.12, 0.06, "古い\n部誌ね", "speech", "n"],
+      [3, 0.92, 0.08, "……！", "speech", "m"],
     ],
   },
   {
-    cuts: [[0, 0.5, 1, 0.5], [0.4, 0, 0.4, 0.5]],
-    scenes: ["bustS", "bustA", "two"],
+    cuts: [[0, 0.45, 1, 0.45], [0.42, 0, 0.42, 0.45], [0, 0.75, 1, 0.75]],
+    panels: [["iku_think", [0.5, 0.2]], ["kohaku_ask", [0.5, 0.3]], ["iku_pointer", [0.5, 0.4]], ["kohaku_face", [0.7, 0.25]]],
     lines: [
-      [0, 0.78, 0.06, "毎日\nちがう形に\nなるから", "speech", "s"],
-      [1, 0.2, 0.06, "……", "speech", "a"],
-      [2, 0.84, 0.25, "明日も\n来ていい？", "speech", "a"],
+      [0, 0.92, 0.04, "部誌には\n昔の曲が\n残ってるの", "speech", "r"],
+      [1, 0.12, 0.05, "え！", "speech", "m"],
+      [2, 0.08, 0.06, "この部も\n昔は\n人が多くて", "speech", "r"],
+      [3, 0.1, 0.06, "弾いて\nみたい\nです", "speech", "m"],
     ],
   },
   {
-    cuts: [[0, 0.3, 1, 0.3], [0, 0.62, 1, 0.62], [0.5, 0.62, 0.5, 1]],
-    scenes: ["sky", "two", "bustA", "bustS"],
+    cuts: [[0, 0.5, 1, 0.5], [0.5, 0, 0.5, 0.5], [0.38, 0.5, 0.38, 1]],
+    panels: [["glasses_girl", [0.5, 0.3]], ["chibi_q", [0.5, 0.4]], ["iku_keyboard", [0.6, 0.6], true], ["chibi_broom", [0.5, 0.5]]],
     lines: [
-      [1, 0.85, 0.05, "約束だよ", "speech", "s"],
-      [2, 0.3, 0.1, "うん", "speech", "a"],
-      [3, 0.8, 0.05, "雲の名前\n考えてきて", "speech", "s"],
+      [0, 0.9, 0.05, "楽譜なら\nあるよ", "speech", "n"],
+      [1, 0.15, 0.05, "ほんと？", "speech", "m"],
+      [2, 0.9, 0.05, "まずは\n片付け\nからね", "speech", "r"],
+      [3, 0.85, 0.05, "はーい", "speech", "m"],
+    ],
+  },
+  {
+    cuts: [[0, 0.3, 1, 0.3], [0.6, 0.3, 0.6, 1], [0, 0.65, 0.6, 0.65]],
+    panels: [["iku_point_up", [0.5, 0.3]], ["kohaku_ask", [0.5, 0.2]], ["chibi_oo", [0.5, 0.4]], ["iku_smile", [0.5, 0.3], true]],
+    lines: [
+      [0, 0.1, 0.06, "ミオ、\nその箱は？", "speech", "r"],
+      [2, 0.12, 0.06, "奥に\nありました", "speech", "m"],
+      [3, 0.88, 0.06, "開けて\nみて", "speech", "r"],
+    ],
+  },
+  {
+    cuts: [[0, 0.55, 1, 0.55], [0.5, 0.55, 0.5, 1]],
+    panels: [["reader_girls", [0.5, 0.3]], ["kohaku_face", [0.75, 0.3]], ["glasses_girl", [0.5, 0.25]]],
+    lines: [
+      [0, 0.5, 0.05, "鍵盤だ！", "speech", "n"],
+      [1, 0.12, 0.05, "動くかな", "speech", "m"],
+      [2, 0.88, 0.05, "直せそう", "speech", "n"],
+    ],
+  },
+  {
+    cuts: [[0, 0.36, 1, 0.36], [0, 0.68, 1, 0.68], [0.5, 0, 0.5, 0.36]],
+    panels: [["chibi_hai", [0.5, 0.3]], null, ["eyes_close", [0.5, 0.4]], null],
+    lines: [
+      [0, 0.12, 0.05, "やります！", "speech", "m"],
+      [3, 0.9, 0.08, "じゃあ\n明日から", "speech", "r"],
+    ],
+  },
+  {
+    cuts: [[0, 0.5, 1, 0.5], [0.45, 0.5, 0.45, 1]],
+    panels: [["iku_pointer", [0.5, 0.4]], null, null],
+    lines: [
+      [0, 0.1, 0.06, "練習は\n毎日よ", "speech", "r"],
+      [1, 0.85, 0.06, "はいっ！", "speech", "m"],
     ],
   },
 ];
 
-/** The name: eight pages (the four above, then again with other words), two characters, three scenes. */
-export function demoName() {
+const bbox = (shape) => {
+  const xs = shape.map(([x]) => x);
+  const ys = shape.map(([, y]) => y);
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+};
+
+/** The name: eight pages, three characters, three scenes; `art` the author's drawings (or none). */
+export function demoName(art = null) {
   seed = 11;
-  const project = newProject("サンプル 屋上の約束", 8);
+  const project = newProject("サンプル 部室の片付け", 8);
   project.author = "サンプル";
   project.characters = [
-    { id: "a", name: "アオイ", color: "#d9485f", tone: "まっすぐ、短く話す" },
-    { id: "s", name: "ソラ", color: "#2f7fd8", tone: "ゆっくり、言葉を選ぶ" },
+    { id: "m", name: "ミオ", color: "#d9485f", tone: "元気、語尾がはずむ" },
+    { id: "r", name: "レイ", color: "#2f7fd8", tone: "落ち着いて、短く" },
+    { id: "n", name: "ナツ", color: "#3a9d5d", tone: "のんびり" },
   ];
   const ids = project.pages.map((page) => page.id);
   project.scenes = [
-    { id: "scene1", title: "屋上で", summary: "アオイが屋上でソラを見つける", firstPage: ids[0], lastPage: ids[2] },
-    { id: "scene2", title: "雲の話", summary: "ソラが毎日雲を見ている理由", firstPage: ids[3], lastPage: ids[5] },
-    { id: "scene3", title: "約束", summary: "明日も来ると約束する", firstPage: ids[6], lastPage: ids[7] },
+    { id: "scene1", title: "片付け", summary: "ミオとレイが部室を片付ける", firstPage: ids[0], lastPage: ids[2] },
+    { id: "scene2", title: "古い部誌", summary: "昔の曲が残った部誌を見つける", firstPage: ids[3], lastPage: ids[5] },
+    { id: "scene3", title: "明日から", summary: "練習を始めると決める", firstPage: ids[6], lastPage: ids[7] },
   ];
-  const curve = { a: [0.1, -0.2, 0.0, 0.3, 0.2, 0.5, 0.7, 0.9], s: [-0.4, -0.3, -0.1, 0.1, 0.4, 0.3, 0.6, 0.8] };
+  const curve = { m: [0.2, 0.1, 0.5, 0.3, 0.4, 0.6, 0.8, 0.9], r: [0.0, -0.1, -0.3, 0.0, 0.2, 0.3, 0.5, 0.6] };
   project.emotions = Object.entries(curve).flatMap(([character, values]) =>
     values.map((value, i) => ({ character, page: ids[i], value, note: "" })),
   );
@@ -228,22 +318,21 @@ export function demoName() {
   const [bx, by, bx1, by1] = basic;
   const at = ([fx, fy]) => [bx + (bx1 - bx) * fx, by + (by1 - by) * fy];
   project.pages.forEach((page, index) => {
-    const plan = PAGES[index % PAGES.length];
+    const plan = PAGES[index];
     addPanel(project, page, rectShape(basic));
     // Cuts run a little past the frame, as one is drawn; inner ends sit in the gutter already.
     const past = (v) => (v === 0 ? -0.02 : v === 1 ? 1.02 : v);
     for (const [x0, y0, x1, y1] of plan.cuts) cutPanels(project, page, at([past(x0), past(y0)]), at([past(x1), past(y1)]));
     const panels = [...page.panels].sort((p, q) => p.order - q.order);
     panels.forEach((panel, i) => {
-      const xs = panel.shape.map(([x]) => x);
-      const ys = panel.shape.map(([, y]) => y);
-      SCENES[plan.scenes[i % plan.scenes.length]](project, page, [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]);
+      const what = plan.panels[i];
+      if (!what) return;
+      const [name, anchor, flip] = what;
+      if (art?.[name]) trace(project, page, art[name], bbox(panel.shape), panel.shape, anchor, flip);
+      else SCENES[FALLBACK(name)](project, page, bbox(panel.shape));
     });
-    for (const [panelIndex, fx, fy, text, kind, speaker] of index < 4 ? plan.lines : plan.lines.slice(0, 2)) {
-      const panel = panels[panelIndex];
-      const xs = panel.shape.map(([x]) => x);
-      const ys = panel.shape.map(([, y]) => y);
-      const [x0, y0, x1, y1] = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+    for (const [panelIndex, fx, fy, text, kind, speaker] of plan.lines) {
+      const [x0, y0, x1, y1] = bbox(panels[panelIndex].shape);
       const line = addLine(project, page, [x0 + (x1 - x0) * fx, y0 + (y1 - y0) * fy], text, kind);
       if (speaker) line.speaker = speaker;
       // Keep the balloon inside its panel.
@@ -251,9 +340,8 @@ export function demoName() {
       moveLine(line, Math.min(0, x1 - 4 - lx1) + Math.max(0, x0 + 4 - lx0), Math.min(0, y1 - 4 - ly1) + Math.max(0, y0 + 4 - ly0));
     }
     addAutoTails(page, project.binding);
-    page.memo = ["導入。屋上の広さを見せる", "二人の距離", "ソラの理由", "約束", "", "", "", ""][index];
+    page.memo = ["導入。部室の散らかり具合", "部誌を見つける", "昔の部の話", "役割が決まる", "箱の中身", "", "", ""][index];
   });
-  // Pages 2 and 3 face each other (page 1 is alone, right-bound): a note across them.
-  addSticky(project, project.pages[2], [bx + 20, by1 - 40], "ここ 見開きで空を大きく？");
+  addSticky(project, project.pages[2], [bx + 10, by1 - 30], "ここ 見開きで\n部室を広く？");
   return project;
 }
