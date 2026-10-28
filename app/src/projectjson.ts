@@ -1,8 +1,9 @@
 // The project as the text that is saved. Most of a drawn name is stroke
-// points, and a point list is never changed in place (see snapshot.ts), so
-// each list is written once and its text reused by every later save. Points
-// are written to 0.01 mm (pressure, tilt and speed to 0.001): finer than any
-// pen or print, and a third of the size of every digit a double has.
+// points and balloon outlines, and neither list is changed in place (see
+// snapshot.ts), so each is written once and its text reused by every later
+// save. Points are written to 0.01 mm (pressure, tilt and speed to 0.001),
+// outlines to 0.001 mm: finer than any pen or print, and a third of the size
+// of every digit a double has.
 
 const written = new WeakMap<object, string>();
 
@@ -26,6 +27,19 @@ function pointsText(points: readonly unknown[]): string {
   return text;
 }
 
+/** A balloon's outline as saved, written once for the list. */
+function outlineText(outline: readonly unknown[]): string {
+  let text = written.get(outline);
+  if (text !== undefined) return text;
+  const parts: string[] = [];
+  for (const point of outline) {
+    parts.push(Array.isArray(point) ? `[${point.map((value) => (typeof value === "number" ? number(value, 1000) : JSON.stringify(value))).join(",")}]` : (JSON.stringify(point) ?? "null"));
+  }
+  text = `[${parts.join(",")}]`;
+  written.set(outline, text);
+  return text;
+}
+
 /** The JSON text of `project` as saved (compact). */
 export function projectJson(project: unknown): string {
   const { pages } = project as { pages?: unknown };
@@ -43,10 +57,21 @@ export function projectJson(project: unknown): string {
  * value written as `"strokes":0` cannot be inside a text, whose quotes are escaped.)
  */
 function pageJson(page: unknown): string {
-  const { strokes } = page as { strokes?: unknown };
+  const { strokes, lines } = page as { strokes?: unknown; lines?: unknown };
   if (!Array.isArray(strokes)) return withLists(page);
   const texts = strokes.map(strokeJson);
-  return JSON.stringify({ ...(page as object), strokes: 0 }).replace('"strokes":0', () => `"strokes":[${texts.join(",")}]`);
+  if (!Array.isArray(lines)) return JSON.stringify({ ...(page as object), strokes: 0 }).replace('"strokes":0', () => `"strokes":[${texts.join(",")}]`);
+  // Its lines of dialogue the same way, with each balloon's outline put in.
+  const said = lines.map(lineJson);
+  return JSON.stringify({ ...(page as object), strokes: 0, lines: 0 })
+    .replace('"strokes":0', () => `"strokes":[${texts.join(",")}]`)
+    .replace('"lines":0', () => `"lines":[${said.join(",")}]`);
+}
+
+function lineJson(line: { balloon?: unknown }): string {
+  if (!Array.isArray(line.balloon)) return JSON.stringify(line);
+  const outline = outlineText(line.balloon);
+  return JSON.stringify({ ...line, balloon: 0 }).replace('"balloon":0', () => `"balloon":${outline}`);
 }
 
 function strokeJson(stroke: { points?: unknown }): string {

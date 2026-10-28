@@ -1,9 +1,10 @@
 // Snapshots of a project for undo that share what did not change.
 //
 // A stroke's point list is never changed in place: every change makes a new
-// list (moveStroke, transforms, the eraser). So a snapshot keeps the list
-// itself, not a copy, and the points (most of a drawn name) cost nothing to
-// remember. Pages are written one by one, and a page that is the same as in
+// list (moveStroke, transforms, the eraser), and so is a balloon's outline
+// (moveLine, transforms, the shape made anew). So a snapshot keeps the list
+// itself, not a copy, and the points and outlines (most of a drawn name)
+// cost nothing to remember. Pages are written one by one, and a page that is the same as in
 // the snapshot before is that snapshot's page, so the text of unchanged pages
 // is kept once too.
 
@@ -48,11 +49,11 @@ function part(value: unknown): Part {
 
 /**
  * A page as `part` writes it, much quicker: a page's point lists are only in
- * its strokes, so the strokes are copied with their lists numbered and the
- * rest is written without a replacer looking at every value.
+ * its strokes and its balloons' outlines, so those are copied with their
+ * lists numbered and the rest is written without a replacer looking at every value.
  */
 function pagePart(page: Paged["pages"][number]): Part {
-  const { strokes } = page as { strokes?: unknown };
+  const { strokes, lines } = page as { strokes?: unknown; lines?: unknown };
   if (!Array.isArray(strokes)) return part(page);
   const lists: unknown[][] = [];
   const numbered = strokes.map((stroke: { points?: unknown }) => {
@@ -61,14 +62,23 @@ function pagePart(page: Paged["pages"][number]): Part {
     lists.push(stroke.points);
     return { ...stroke, points: lists.length - 1 };
   });
-  return { json: JSON.stringify({ ...(page as object), strokes: numbered }), lists };
+  const outlined = Array.isArray(lines)
+    ? lines.map((line: { balloon?: unknown }) => {
+        if (!Array.isArray(line.balloon)) return line;
+        keep(line.balloon);
+        lists.push(line.balloon);
+        return { ...line, balloon: lists.length - 1 };
+      })
+    : lines;
+  return { json: JSON.stringify({ ...(page as object), strokes: numbered, ...(Array.isArray(lines) ? { lines: outlined } : {}) }), lists };
 }
 
-/** A page back from `pagePart` (or `part`): its strokes get their lists again. */
+/** A page back from `pagePart` (or `part`): its strokes and balloons get their lists again. */
 function revivePage<T>(piece: Part): T {
-  const page = JSON.parse(piece.json) as { strokes?: { points?: unknown }[] };
+  const page = JSON.parse(piece.json) as { strokes?: { points?: unknown }[]; lines?: { balloon?: unknown }[] };
   if (!Array.isArray(page.strokes)) return revive<T>(piece);
   for (const stroke of page.strokes) if (typeof stroke.points === "number") stroke.points = piece.lists[stroke.points];
+  for (const line of page.lines ?? []) if (typeof line.balloon === "number") line.balloon = piece.lists[line.balloon];
   return page as T;
 }
 
