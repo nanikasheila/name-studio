@@ -8,6 +8,7 @@ import type { DragHandler, DragOf, EditorCore, Tool } from "./editorcore";
 import { placeHeld } from "./hold";
 import { nearestSlot, toPage, type Slot } from "./layout";
 import type { Point, Project } from "./model";
+import { swapFit } from "./prefs";
 import { referenceAt } from "./references";
 
 /** The tools that work in the 欄外. */
@@ -86,7 +87,7 @@ const held: DragHandler<DragOf<"held">> = {
       const box = heldBox(held)!;
       const centre = toPage(on, drag.slot.x + ((box[0] + box[2]) / 2) * drag.slot.scale, drag.slot.y + ((box[1] + box[3]) / 2) * drag.slot.scale);
       delete held.at;
-      const panel = placeHeld(project, on.page, held, centre, into);
+      const panel = placeHeld(project, on.page, held, centre, into, swapFit());
       editor.host.commit();
       editor.select({ kind: "panel", pageId: on.page.id, id: panel.id });
       editor.host.status(into ? `保留のコマの中身を ${on.index + 1} ページのコマ ${panel.order} に入れました` : `保留のコマを ${on.index + 1} ページに置きました（コマ ${panel.order}）`);

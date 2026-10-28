@@ -5,6 +5,7 @@ import { element as html, svg } from "./dom";
 import type { Panel, Project } from "./model";
 import { drawThumb } from "./pagethumb";
 import { swapPanelContents } from "./panels";
+import { swapFit } from "./prefs";
 import { pageIndex } from "./project";
 import { pageBlock } from "./reorder";
 import { fingerprint } from "./snapshot";
@@ -130,7 +131,7 @@ function panelShape(view: LaneView, project: Project, index: number, panel: Pane
           const pa = a?.panels.find((pn) => pn.id === panel.id);
           const pb = b?.panels.find((pn) => pn.id === toPanel);
           if (!a || !b || !pa || !pb) return;
-          swapPanelContents(a, pa, b, pb, p.binding);
+          swapPanelContents(a, pa, b, pb, p.binding, swapFit());
           message = `${pageIndex(p, a.id) + 1} ページのコマ ${pa.order} と ${pageIndex(p, b.id) + 1} ページのコマ ${pb.order} の中身を入れ替えました（元に戻すは Ctrl+Z）`;
         });
         if (message) view.host.status?.(message);

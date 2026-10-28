@@ -636,6 +636,16 @@
               <div class="setting-item" data-keys="コマ 動かす 中身 一緒 セリフ ラフ線">
                 <label class="check"><input type="checkbox" id="st-panel-carries" /> コマを動かす・形を変えるとき、中のセリフとラフ線も一緒に</label>
               </div>
+              <div class="setting-item" data-keys="コマ 入れ替え 入れかえ 交換 保留 縦横比 アスペクト比 アス比 比率 拡大縮小 合わせる 伸ばす 中身">
+                <div class="setting-row wide">
+                  <span>コマを入れ替えるとき、中身を</span>
+                  <select id="st-swap-fit">
+                    <option value="stretch">入れ替え先のコマに合わせる（縦横の比率が変わる）</option>
+                    <option value="keep">縦横比を保ったまま拡大縮小する</option>
+                  </select>
+                </div>
+                <p class="hint">保留のコマをコマの上に入れるときも同じです。「縦横比を保つ」は、ラフ線・塗り・セリフの位置をそろって拡大縮小し、コマに収まる大きさでコマの真ん中に置きます（はみ出さないので、細長いコマでは小さめになります）。セリフの文字の大きさはどちらでも変わりません。</p>
+              </div>
               <div class="setting-item" data-keys="フキダシ 変形 文字の大きさ 追従 フォントサイズ">
                 <label class="check"><input type="checkbox" id="st-balloon-text" /> フキダシを変形すると文字の大きさも変える</label>
                 <p class="hint">切ると、変形の枠でフキダシだけ広げたり細くしたりでき、文字の大きさはそのままです。</p>

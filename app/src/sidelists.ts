@@ -295,7 +295,7 @@ export class SideLists {
       drop.className = "danger small";
       const item = element(
         "div",
-        { className: `held-item${h.near && shown.has(h.near) ? " near" : ""}`, draggable: true, title: "ページへドラッグして置く。コマの上で離すと、そのコマに中身を入れる" },
+        { className: `held-item${h.near && shown.has(h.near) ? " near" : ""}`, draggable: true, title: "ページへドラッグして置く。コマの上で離すと、そのコマに中身を入れる（縦横比を保つかは 設定 › 操作）" },
         heldThumbnail(project, h),
         element(
           "div",

@@ -232,7 +232,7 @@ export const HOVER_TOPICS: Record<string, HelpTopic> = {
     steps: [
       { input: "ドラッグ", does: "動かす" },
       { input: "ダブルクリック", does: "コマのメモを書く" },
-      { input: "番号をドラッグ", does: "ほかのコマと入れ替え" },
+      { input: "番号をドラッグ", does: "ほかのコマと中身を入れ替え（縦横比を保つかは 設定 › 操作）" },
       { input: "Alt+ドラッグ", does: "吸い付かずに動かす" },
       { input: "Shift+クリック", does: "選択に足す" },
       { command: "transform", does: "変形" },

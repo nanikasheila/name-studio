@@ -5,7 +5,7 @@
 
 import { bounds } from "./geometry";
 import type { HeldPanel, Page, Panel, Point, Project, Sticky } from "./model";
-import { type CarriedContents, carryContents, followPanel } from "./panels";
+import { type CarriedContents, carryContents, followPanel, type PanelFit } from "./panels";
 import { newId } from "./project";
 import { assignPanels, orderPanels, sortLines } from "./readingorder";
 
@@ -47,10 +47,11 @@ export function holdPanel(project: Project, page: Page, panel: Panel, near: stri
 
 /**
  * Put a held panel on a page and out of the 保留 list. Into `into`: what it
- * holds is fitted into that panel (the panel stays as it is). Otherwise the
- * panel comes back with its shape, centred on `at` (where it was when none).
+ * holds is fitted into that panel as `fit` says (the panel stays as it is).
+ * Otherwise the panel comes back with its shape, centred on `at` (where it
+ * was when none).
  */
-export function placeHeld(project: Project, page: Page, held: HeldPanel, at?: Point, into?: Panel): Panel {
+export function placeHeld(project: Project, page: Page, held: HeldPanel, at?: Point, into?: Panel, fit: PanelFit = "stretch"): Panel {
   project.held = (project.held ?? []).filter((h) => h.id !== held.id);
   if (!project.held.length) delete project.held;
   page.lines.push(...held.lines);
@@ -84,7 +85,7 @@ export function placeHeld(project: Project, page: Page, held: HeldPanel, at?: Po
   const [ox0, oy0] = carried.box;
   const [nx0, ny0] = bounds(target.shape);
   for (const sticky of held.stickies ?? []) sticky.at = [sticky.at[0] + nx0 - ox0, sticky.at[1] + ny0 - oy0];
-  followPanel(page, target, carried);
+  followPanel(page, target, carried, fit);
   orderPanels(page, project.binding);
   assignPanels(page);
   sortLines(page, project.binding);

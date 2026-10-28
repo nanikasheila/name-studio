@@ -375,6 +375,43 @@ describe("入れ替え", () => {
     expect(panelContents(next, there).strokes).toEqual([drawing.id]);
   });
 
+  it("keeps the picture's 縦横比 when asked, centred in the new panel", () => {
+    // A wide panel (200×100) with two rough lines far apart and a balloon,
+    // swapped with a tall one (50×200).
+    const set = () => {
+      const project = newProject("t", 1);
+      const [page] = project.pages;
+      const wide = addPanel(project, page, rectShape([10, 10, 210, 110]));
+      const tall = addPanel(project, page, rectShape([10, 120, 60, 320]));
+      const left = addStroke(project, page, [[30, 30, 0.5], [70, 30, 0.5]], 0.5)!;
+      const right = addStroke(project, page, [[170, 90, 0.5], [190, 90, 0.5]], 0.5)!;
+      const said = addLine(project, page, [110, 60], "あ");
+      return { page, wide, tall, left, right, said, size: [said.box[2] - said.box[0], said.box[3] - said.box[1]] };
+    };
+    const centre = (points: number[][]) => [(points[0][0] + points.at(-1)![0]) / 2, (points[0][1] + points.at(-1)![1]) / 2];
+    const gap = (a: number[][], b: number[][]) => [centre(b)[0] - centre(a)[0], centre(b)[1] - centre(a)[1]];
+
+    const kept = set();
+    swapPanelContents(kept.page, kept.wide, kept.page, kept.tall, "right", "keep");
+    // Everything scales alike by 50/200: the gap between the lines too.
+    expect(gap(kept.left.points, kept.right.points)).toEqual([130 * 0.25, 60 * 0.25]);
+    expect(kept.left.points[1][0] - kept.left.points[0][0]).toBeCloseTo(10);
+    // Fitted to the panel's width, in the middle of its height (220 ± 12.5).
+    const ys = [...kept.left.points, ...kept.right.points].map(([, y]) => y);
+    for (const [x, y] of [...kept.left.points, ...kept.right.points]) expect(x >= 10 && x <= 60 && y >= 120 && y <= 320).toBe(true);
+    expect(Math.min(...ys)).toBeCloseTo(207.5 + 20 * 0.25);
+    expect(Math.max(...ys)).toBeCloseTo(207.5 + 80 * 0.25);
+    // Dialogue keeps its size, its centre where the picture puts it.
+    expect([kept.said.box[2] - kept.said.box[0], kept.said.box[3] - kept.said.box[1]]).toEqual(kept.size);
+    expect((kept.said.box[0] + kept.said.box[2]) / 2).toBeCloseTo(10 + 100 * 0.25);
+    expect((kept.said.box[1] + kept.said.box[3]) / 2).toBeCloseTo(207.5 + 50 * 0.25);
+
+    // Out of the box the contents spread over the new panel instead.
+    const stretched = set();
+    swapPanelContents(stretched.page, stretched.wide, stretched.page, stretched.tall);
+    expect(gap(stretched.left.points, stretched.right.points)).toEqual([130 * 0.25, 60 * 2]);
+  });
+
   it("takes fills and the panel memo along to another page", () => {
     const project = newProject("t", 3);
     const [first, , third] = project.pages;
