@@ -32,6 +32,11 @@ import { $, isTyping } from "./dom";
 import { ImageImportDialog } from "./imageimport";
 import { panelAt, panelBadge } from "./hittest";
 import { perfMeter } from "./perfmeter";
+import { applyLook, readLook } from "./look";
+
+// 画面の見た目 before anything is shown (設定 › 画面の見た目). The user's CSS waits for the
+// Rust side to say the app was not started with Shift held (lookpane.ts).
+applyLook({ ...readLook(), cssOn: false });
 
 function setStatus(message: string): void {
   $("status").textContent = message;

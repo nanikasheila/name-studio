@@ -238,6 +238,8 @@ export interface Commands {
   is_release_build: [void, boolean];
   /** When the app's process began (ms since 1970), for 動作の記録. */
   started_at: [void, number];
+  /** Start with the screen's look as it comes, this time only (`--safe-look`, or Shift held as the app starts). */
+  safe_look: [void, boolean];
   // 前の版に戻す (updates.rs)
   check_update: [{ channel: UpdateChannel; timeoutMs: number }, FoundUpdate | null];
   install_release: [{ version: string }, void];

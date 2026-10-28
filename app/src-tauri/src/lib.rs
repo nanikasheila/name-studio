@@ -92,6 +92,31 @@ fn started_at() -> f64 {
         .map_or(0.0, |since| since.as_secs_f64() * 1000.0)
 }
 
+/// Whether to start with the screen's look as it comes (設定 › 見た目 not
+/// applied, nor the user's CSS): asked for with `--safe-look`, or by holding
+/// Shift while the app starts (Windows), for when the user's CSS has broken
+/// the screen. Only this start; what is kept is not changed.
+static SAFE_LOOK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+#[tauri::command]
+fn safe_look() -> bool {
+    *SAFE_LOOK.get_or_init(|| false)
+}
+
+/// Whether Shift is down now (on Windows; elsewhere never).
+fn shift_held() -> bool {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_SHIFT};
+        // The high bit: down at this moment.
+        (unsafe { GetAsyncKeyState(i32::from(VK_SHIFT)) } as u16) & 0x8000 != 0
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
 /// The command-line export to run, if the app was started for one.
 #[tauri::command]
 fn batch_export_task(state: tauri::State<'_, AppState>) -> Result<Option<batch::BatchExport>, String> {
@@ -106,6 +131,7 @@ fn end_batch_export(app: tauri::AppHandle, code: i32) {
 
 pub fn run() {
     STARTED.get_or_init(std::time::SystemTime::now);
+    SAFE_LOOK.get_or_init(|| std::env::args().any(|arg| arg == "--safe-look") || shift_held());
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -156,6 +182,7 @@ pub fn run() {
             fonts::list_fonts,
             is_release_build,
             started_at,
+            safe_look,
             updates::check_update,
             updates::install_release,
             batch_export_task,

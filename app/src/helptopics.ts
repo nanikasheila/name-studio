@@ -485,7 +485,7 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
   { target: "#new-project", name: "新しいネーム", text: "白紙から作る", command: "button.new-project", side: "below" },
   { target: "#save", name: "保存", text: "編集中は自動でも保存", command: "save", side: "below" },
   { target: "#versions", name: "履歴", text: "前の版に戻す", side: "below" },
-  { target: "#settings", name: "設定", text: "コマ間・フォント・吸着・表示など", side: "below" },
+  { target: "#settings", name: "設定", text: "コマ間・フォント・吸着・画面の配色など", side: "below" },
   { target: "#shortcuts", name: "キー設定", text: "キーの割り当てを変える", side: "below" },
   { target: "#pen-settings", name: "ペン設定", text: "筆圧・タブレット", side: "below" },
   { target: "#save-state", name: "保存の状態", text: "保存済み・未保存・自動保存の写し", side: "below" },

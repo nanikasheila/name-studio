@@ -64,6 +64,8 @@ cargo audit
 (cd app && npx tauri build --no-bundle)
 cargo run -p clip-core --features fixtures --example fixture_page -- /tmp/app-check/page.clip
 (cd app && node e2e/realapp.mjs /tmp/app-check)
+# 実アプリの画面の見た目（Windows の WebView2：配色・カスタム CSS が残るか、Shift を押しての起動、Ctrl+Shift+Alt+R。撮った画面を指定のフォルダーに）
+(cd app && npx tauri build --no-bundle --config '{"identifier":"com.nanikasheila.namestudio.look"}' && node e2e/lookapp.mjs ../look-shots)
 # Python 版との突き合わせ（実ファイルを引数に足せる）
 CSP_NAME_SPLITTER=../csp-name-splitter python tools/compare_with_python.py [作品のファイル...]
 ```
@@ -75,6 +77,8 @@ Rust の版は `rust-toolchain.toml` で固定しています（rustup が自動
 ## ネームデータの型と画面の層
 
 ネームデータの型は Rust（`crates/name-model/src/model.rs`）と画面（`app/src/model.ts`）の 2 か所にあります。項目や選択肢を足すときは両方に足し、`app/src/contract.test.ts` の全項目の見本にも足して `(cd app && npx vitest run -u src/contract.test.ts)` で `crates/name-model/tests/fixtures` を書き直してください。Rust の型を変えたら `UPDATE_TS=1 cargo test -p name-model --features ts --test typescript` で `app/src/generated/name-model.ts`（Rust の型を TypeScript にしたもの）を書き直してください。`app/src/modelcheck.test.ts` が型ごとに model.ts と突き合わせ、Rust にあって model.ts にない項目や、Rust が送る値が model.ts の型に合わないところを型チェックで落とします。片方に足し忘れると、型チェックか `cargo test`（`tests/contract.rs`・`tests/typescript.rs`）が落ちます。Rust 側にコマンドを足したら `app/src/backend.ts` の `Commands` にも書いてください（`backend.test.ts` が `lib.rs` と突き合わせます）。
+
+画面の色はすべて `app/src/styles.css` の先頭の CSS 変数（明るい・暗いを `light-dark()` で 1 行に）で書き、配色（`look.ts` の `THEMES`）はそれを上書きします。新しい色は変数を使うか足してください（紙面とその代わりの色は `--paper`・`--paper-ink` で、配色では変えません）。文字の大きさは 14 px のときの値を `calc(12 * var(--px))` のように書きます（設定の「画面の文字の大きさ」に合わせて変わります。`look.test.ts` が px のままの文字の大きさと `prefers-color-scheme` を落とします）。
 
 画面側（`app/src`）のモジュールは、変わる速さで層に分けています（遅い順に 型・計算・仕組み・描画・書き出し・画面・起動）。どの層かは `app/src/architecture.test.ts` の `LAYERS` に書き、上の層から import すると落ちます。計算の層（ネームの操作）はブラウザ・保存場所・Rust 側に触らず、この PC に残す設定は `prefs.ts`（中身は `settings.ts`）、画像の読み込みは `pictures.ts`、キャンバスへの描画は `pagedraw.ts` を通します。ファイルを足したら `LAYERS` にも書いてください。
 
