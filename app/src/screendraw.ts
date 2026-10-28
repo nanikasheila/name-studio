@@ -4,10 +4,11 @@
 // something is done (cuts, outlines, lassos, guides, the transform frame, the
 // pen and eraser cursors). Plain drawing from what it is given: the editor
 // decides what is selected, dragged or hovered.
-import type { BoxMm, Line, Page, PageFormat, Panel, Point, Project, RoughImage, Stroke } from "./model";
-import { bounds } from "./geometry";
+import type { BoxMm, Line, Page, Panel, Point, Project, RoughImage, Stroke } from "./model";
 import { basicBox, trimBox } from "./pagebox";
 import type { Slot } from "./layout";
+import { HANDLE } from "./hittest";
+import { tailGeometry } from "./balloon";
 import { maskShape } from "./mask";
 import { stickyBox } from "./stickies";
 import { wantsSpread } from "./panels";
@@ -19,8 +20,6 @@ import { imageOf, opacityOf } from "./references";
 import { markColor, markLayersOf, opacityOfLayer, roughLayersOf, strokesOn } from "./roughlayers";
 import type { StrokeCache } from "./strokecache";
 
-/** Half the size of a corner to drag, px. */
-export const HANDLE = 5;
 
 /** What a page shows of the editor's state: what is selected, dragged onto, and how close it is seen. */
 export interface PageMarks {
@@ -589,18 +588,6 @@ export function drawReferenceFrames(ctx: CanvasRenderingContext2D, slot: Slot, c
   }
 }
 
-/** Where a panel's number sits (screen px): inside the paper even for panels that run off it (a 裁ち切り panel's at the trim, not out in the bleed). */
-export function panelBadge(slot: Slot, panel: Panel, format: PageFormat | undefined, pageW: number): { x: number; y: number; radius: number } {
-  const [, y0, x1] = bounds(panel.shape);
-  const radius = Math.max(4 * slot.scale, 7);
-  const [, ty0, tx1] = format ? trimBox(format) : [0, 0, pageW];
-  return {
-    x: Math.min(slot.x + x1 * slot.scale, slot.x + Math.min(pageW, tx1) * slot.scale) - radius - 3,
-    y: Math.max(slot.y + y0 * slot.scale, slot.y + Math.max(0, ty0) * slot.scale) + radius + 3,
-    radius,
-  };
-}
-
 /**
  * 見開きページ: a mark under the gutter when the two pages go to CSP as one.
  * 連続 (`current`: the spread worked on): that spread is framed.
@@ -645,5 +632,42 @@ export function drawSpreadMarks(
   ctx.beginPath();
   ctx.roundRect(box[0] - 5, box[1] - 5, box[2] - box[0] + 10, box[3] - box[1] + 10, 6);
   ctx.stroke();
+  ctx.restore();
+}
+
+/** The tails of a line with their handles: tips (round, the `chosen` one filled), middles (to bend) and roots (to slide). */
+export function drawTailHandles(ctx: CanvasRenderingContext2D, slot: Slot, line: Line, strong: boolean, chosen: number | undefined): void {
+  const at = ([x, y]: Point): Point => [slot.x + x * slot.scale, slot.y + y * slot.scale];
+  ctx.save();
+  ctx.strokeStyle = strong ? ACCENT : "rgba(47, 111, 219, 0.7)";
+  ctx.lineWidth = 1.5;
+  for (const [index, tail] of (line.tails ?? []).entries()) {
+    const geometry = tailGeometry(line, tail);
+    if (geometry) {
+      const [mx, my] = at(geometry.middle);
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.moveTo(mx, my - HANDLE + 1);
+      ctx.lineTo(mx + HANDLE - 1, my);
+      ctx.lineTo(mx, my + HANDLE - 1);
+      ctx.lineTo(mx - HANDLE + 1, my);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      // 根本: a small square on the outline, to slide the tail along the balloon.
+      const [rx, ry] = at(geometry.root);
+      const r = HANDLE - 1.5;
+      ctx.fillStyle = tail.root === undefined ? "#ffffff" : "rgba(47, 111, 219, 0.35)";
+      ctx.fillRect(rx - r, ry - r, r * 2, r * 2);
+      ctx.strokeRect(rx - r, ry - r, r * 2, r * 2);
+    }
+    // The chosen tail's tip is filled (Delete removes that tail).
+    const [tx, ty] = at(tail.tip);
+    ctx.fillStyle = index === chosen ? ACCENT : "#ffffff";
+    ctx.beginPath();
+    ctx.arc(tx, ty, index === chosen ? HANDLE + 1 : HANDLE, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
   ctx.restore();
 }

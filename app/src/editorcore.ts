@@ -2,6 +2,7 @@
 // editor, the drags a tool starts, and the editor as a tool sees it
 // (EditorCore). Each tool's press, drag and finish live in its own module
 // (toolselect.ts, toolpen.ts, ...); editor.ts dispatches to them.
+import type { TailHit, TailPart } from "./hittest";
 import type { Seam } from "./komaedit";
 import type { Slot } from "./layout";
 import type { Binding, BoxMm, Brush, EraseMode, FillTone, Page, Panel, Point, Project, RoughImage, Sticky, StrokePoint } from "./model";
@@ -86,14 +87,7 @@ export interface EditorHost {
   referenceChanged?(): void;
 }
 
-export type TailPart = "tip" | "body" | "bend" | "root";
-
-/** A tail of a line under the pointer. */
-export interface TailHit {
-  lineId: string;
-  index: number;
-  part: TailPart;
-}
+export type { TailHit, TailPart } from "./hittest";
 
 /** Panels being moved: snapped by their box as it was, moved by `total` (snapped) so far. */
 export interface MoveSnap {

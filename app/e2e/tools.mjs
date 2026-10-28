@@ -390,8 +390,9 @@ try {
     const editor = window.nameStudio.workbench.editor;
     const project = window.nameStudio.workbench.project;
     const slot = editor.slots.find((s) => s.page.id === project.pages[1].id);
-    const panel = editor.panelAt(slot.page, [100, 300]);
-    const { x, y } = editor.badge(slot, panel, project.pageFormat.canvasMm[0]);
+    const { panelAt, panelBadge } = window.nameStudio.hittest;
+    const panel = panelAt(slot.page, [100, 300]);
+    const { x, y } = panelBadge(slot, panel, project.pageFormat, project.pageFormat.canvasMm[0]);
     return editor.clientOf(slot.page.id, [(x - slot.x) / slot.scale, (y - slot.y) / slot.scale]);
   });
   await drag([number, await at(2, [200, 120])]);

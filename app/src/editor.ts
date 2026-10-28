@@ -8,11 +8,11 @@
 // mm → screen mapping.
 import { isTyping } from "./dom";
 import { BALLOON_TEXT_KEY, CONTINUOUS_KEY, loadSnap, PAGE_GAP_KEY, PANEL_CARRIES_KEY, penPreferences, ROWS_KEY, SHOW_NOTES_KEY, SINGLE_PAGE_KEY } from "./prefs";
-import { insideBalloon, tailGeometry } from "./balloon";
 import { spreads } from "./pages";
 import { GRID_GAP_MM, MARGIN, MAX_PAGE_GAP_MM, extent, fitContinuous, fittedTo, layoutPages, nearestSlot, nearestTo, onScreenOf, onStage, rowCount, slotAt, toPage, type Arrangement, type Slot } from "./layout";
 import { holdPanel, placeHeld } from "./hold";
-import { addDrawnPanel, moveBreakout, spanGutter, stacked } from "./koma";
+import { carryItems, carrySticky, type Destination } from "./carry";
+import { addDrawnPanel, moveBreakout, spanGutter } from "./koma";
 import { joinPanels, seamAt, seamLines, type Seam } from "./komaedit";
 import {
   baseBounds,
@@ -29,17 +29,16 @@ import {
   type ItemRef,
 } from "./transform";
 import { drawLineText, drawStroke, onTipLoaded, tracePath } from "./pagedraw";
-import { referenceCornerAt } from "./references";
 import { StrokeCache } from "./strokecache";
 import { ROUGH_BASE, shownStrokes, strokeEditable } from "./roughlayers";
 import { moveLine, neighbour, setLineText } from "./dialogue";
-import { bounds, insideBox, insidePolygon, segmentDistance } from "./geometry";
+import { bounds, insideBox, insidePolygon } from "./geometry";
 import type { Binding, BoxMm, Brush, FillTone, Line, Page, Panel, Point, Project } from "./model";
 import { snapCut, trimBox } from "./pagebox";
 import { type CarriedContents, carryContents, followPanel, movePanel, panelContents } from "./panels";
 import { gutters, pageIndex } from "./project";
 import { assignPanels, orderPanels, sortLines } from "./readingorder";
-import { settleSticky, stickyBox, stickyFolds } from "./stickies";
+import { settleSticky, stickyFolds } from "./stickies";
 import { asideRoom, NO_ROOM, offPage, type Room } from "./aside";
 import { drawAside } from "./asidedraw";
 import { asideSlot, pressHeld } from "./toolaside";
@@ -68,7 +67,8 @@ import { snapPointTo, snapTargets, type SnapSettings, type SnapTargets } from ".
 import { Viewport } from "./viewport";
 import { ACCENT, drawSticky, NOTE_FONT, NOTE_ROW, noteBox, stickyHandle, type NoteBox } from "./notedraw";
 import { writeInPlace, type InPlaceEdit, type InPlaceHost } from "./inplace";
-import { drawCorners, drawCutOrFrame, drawDashedLine, drawFillArea, drawGoingTo, drawGuideLines, drawLasso, drawLifted, drawOverflowPanels, drawPenCursor, drawPointerNote, drawReferenceFrames, drawSpreadMarks, drawRing, drawScreenPage, drawSeam, drawSketch, drawSnapGrid, drawStickyLink, drawTransformFrame, drawWarpCorners, HANDLE, panelBadge } from "./screendraw";
+import { drawCorners, drawCutOrFrame, drawDashedLine, drawFillArea, drawGoingTo, drawGuideLines, drawLasso, drawLifted, drawOverflowPanels, drawPenCursor, drawPointerNote, drawReferenceFrames, drawSpreadMarks, drawRing, drawScreenPage, drawSeam, drawSketch, drawSnapGrid, drawStickyLink, drawTransformFrame, drawTailHandles, drawWarpCorners } from "./screendraw";
+import { badgeAt, cornerAt, HANDLE, linesAt, panelAt, panelBadge, pickAt, referenceCornerAt, tailAt } from "./hittest";
 
 export type { EditorEraseMode, EditorHost, PanelMode, Selection, Tool } from "./editorcore";
 export { pickedSummary };
@@ -623,7 +623,7 @@ export class PageEditor {
     const slot = this.slotAt(sx, sy, project) ?? nearestSlot(this.slots, project.pageFormat, [sx, sy]);
     if (!slot) return null;
     const point = toPage(slot, sx, sy);
-    return { page: slot.page, point, panel: this.panelAt(slot.page, point) };
+    return { page: slot.page, point, panel: panelAt(slot.page, point) };
   }
 
   /** The other page of the spread, if `slot` faces one. */
@@ -738,31 +738,32 @@ export class PageEditor {
   private carryToPageUnder(project: Project, slot: Slot): void {
     const s = this.selection;
     if (!s || s.pageId !== slot.page.id) return;
-    // Off every page: the page whose 欄外 it now lies in.
+    // Over another page, or off every page: the page whose 欄外 it now lies in.
     const nearest = ([x, y]: Point) => nearestSlot(this.slots, project.pageFormat, [slot.x + x * slot.scale, slot.y + y * slot.scale]);
-    const under = (point: Point) => this.otherPageUnder(project, slot, point) ?? (offPage([...point, ...point], project.pageFormat) && nearest(point) !== slot ? nearest(point) : null);
-    const centre = (box: BoxMm): Point => [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2];
+    const slotUnder = (point: Point) => this.otherPageUnder(project, slot, point) ?? (offPage([...point, ...point], project.pageFormat) && nearest(point) !== slot ? nearest(point) : null);
+    const under = (point: Point): Destination | null => {
+      const to = slotUnder(point);
+      return to && { page: to.page, offset: [(slot.x - to.x) / slot.scale, (slot.y - to.y) / slot.scale] };
+    };
+    const slotOf = (page: Page) => this.slots.find((x) => x.page === page)!;
     if (s.kind === "sticky") {
       const sticky = slot.page.stickies?.find((n) => n.id === s.id);
-      // One tied to a panel or a line stays on that page.
-      const to = sticky && !sticky.link ? under(centre(stickyBox(sticky))) : null;
-      if (sticky && to) {
-        slot.page.stickies = slot.page.stickies!.filter((n) => n !== sticky);
-        sticky.at = toPage(to, slot.x + sticky.at[0] * slot.scale, slot.y + sticky.at[1] * slot.scale);
-        (to.page.stickies ??= []).push(sticky);
-        this.selection = { ...s, pageId: to.page.id };
-        this.focusOn(to);
+      const to = sticky && carrySticky(project, slot.page, sticky, under);
+      if (to) {
+        this.selection = { ...s, pageId: to.id };
+        this.focusOn(slotOf(to));
       }
-      if (sticky) settleSticky(project, sticky);
       return;
     }
     if (s.kind === "panel") {
       const panel = slot.page.panels.find((p) => p.id === s.id);
       // Half of a 見開き panel stays: it is one panel with the facing page's half.
-      const to = panel && !panel.spread ? under(centre(bounds(panel.shape))) : null;
-      if (!panel || !to) return;
-      const [cx, cy] = centre(bounds(panel.shape));
-      const at = toPage(to, slot.x + cx * slot.scale, slot.y + cy * slot.scale);
+      if (!panel || panel.spread) return;
+      const box = bounds(panel.shape);
+      const centre: Point = [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2];
+      const to = slotUnder(centre);
+      if (!to) return;
+      const at = toPage(to, slot.x + centre[0] * slot.scale, slot.y + centre[1] * slot.scale);
       const moved = placeHeld(project, to.page, holdPanel(project, slot.page, panel, to.page.id), at);
       this.selection = { kind: "panel", pageId: to.page.id, id: moved.id };
       this.focusOn(to);
@@ -770,42 +771,16 @@ export class PageEditor {
       return;
     }
     const all: ItemRef[] = s.kind === "group" ? (s.items ?? []) : s.kind === "line" || s.kind === "stroke" ? [{ kind: s.kind, id: s.id }] : [];
-    // Panels, fills and はみ出し stay on their page.
-    const items = all.filter((item) => item.kind === "line" || item.kind === "stroke");
-    const moved: typeof items = [];
-    const targets = new Set<Slot>();
-    for (const item of items) {
-      if (item.kind === "line") {
-        const line = slot.page.lines.find((l) => l.id === item.id);
-        const to = line && under(centre(line.box));
-        if (!line || !to) continue;
-        slot.page.lines = slot.page.lines.filter((l) => l !== line);
-        moveLine(line, (slot.x - to.x) / slot.scale, (slot.y - to.y) / slot.scale);
-        delete line.linkTo;
-        to.page.lines.push(line);
-        sortLines(to.page, this.binding());
-        targets.add(to);
-        moved.push(item);
-      } else {
-        const stroke = slot.page.strokes.find((x) => x.id === item.id);
-        const to = stroke && under(centre(bounds(stroke.points.map(([x, y]) => [x, y] as Point))));
-        if (!stroke || !to) continue;
-        slot.page.strokes = slot.page.strokes.filter((x) => x !== stroke);
-        moveStroke(stroke, (slot.x - to.x) / slot.scale, (slot.y - to.y) / slot.scale);
-        to.page.strokes.push(stroke);
-        targets.add(to);
-        moved.push(item);
-      }
-    }
+    const { moved, to } = carryItems(project, slot.page, all, under);
     if (!moved.length) return;
-    const [first] = targets;
+    const targets = [...to].map(slotOf);
     // The selection follows when everything went to one page.
-    if (moved.length === all.length && targets.size === 1) this.selection = { ...s, pageId: first.page.id };
+    if (moved.length === all.length && targets.length === 1) this.selection = { ...s, pageId: targets[0].page.id };
     else if (s.kind === "group") this.selection = { ...s, items: all.filter((item) => !moved.includes(item)) };
     else this.selection = null;
-    if (this.selection?.pageId === first.page.id) this.focusOn(first);
+    if (this.selection?.pageId === targets[0].page.id) this.focusOn(targets[0]);
     else this.host.selectionChanged(this.selection);
-    const pages = [...targets].map((t) => t.index + 1).sort((a, b) => a - b).join("・");
+    const pages = targets.map((t) => t.index + 1).sort((a, b) => a - b).join("・");
     this.host.status(`${moved.length} 個を ${pages} ページへ移しました`);
   }
 
@@ -986,7 +961,7 @@ export class PageEditor {
       rough: (rough) => this.host.rough(rough),
       redraw: () => this.requestDraw(),
       strokes: this.strokeCache,
-      badge: (panel) => this.badge(slot, panel, pageW),
+      badge: (panel) => panelBadge(slot, panel, project.pageFormat, pageW),
       referenceFrames: this.tool === "reference" ? () => this.drawReferenceFrames(slot) : undefined,
       line: (line) => this.drawLine(project, slot, line),
     });
@@ -1029,9 +1004,9 @@ export class PageEditor {
   /** The line or panel at a point, to tie a 付箋 to. */
   private linkTarget(slot: Slot, point: Point): Selection | null {
     const page = this.visiblePage(slot.page);
-    const line = this.linesAt(slot, point)[0];
+    const line = linesAt(this.visiblePage(slot.page), point)[0];
     if (line) return { kind: "line", pageId: page.id, id: line };
-    const panel = this.panelAt(page, point);
+    const panel = panelAt(page, point);
     return panel ? { kind: "panel", pageId: page.id, id: panel.id } : null;
   }
 
@@ -1569,154 +1544,45 @@ export class PageEditor {
 
   // --- hit testing ---------------------------------------------------------------
 
+  /** What a click at `point` picks on the page as shown (what is hidden cannot be picked). */
   private hit(slot: Slot, point: Point): Selection | null {
-    // What is hidden cannot be picked on the page.
     const page = this.visiblePage(slot.page);
-    const tolerance = 6 / slot.scale;
-    // 付箋 lie on top of everything.
-    for (const sticky of [...(page.stickies ?? [])].reverse()) {
-      // Open (selected or under the pointer), all of its text can be pointed at.
-      const open = this.isSelected(page, "sticky", sticky.id) || (this.hover?.kind === "item" && this.hover.target.id === sticky.id);
-      if (insideBox(stickyBox(sticky, open), point)) return { kind: "sticky", pageId: page.id, id: sticky.id };
-    }
-    // Overlapping balloons: the selected one stays the one picked (a double-click writes in it).
-    const under = this.linesAt(slot, point);
-    const selected = this.selection?.kind === "line" && this.selection.pageId === page.id ? this.selection.id : null;
-    const line = under.find((id) => id === selected) ?? under[0];
-    if (line) return { kind: "line", pageId: page.id, id: line };
     const project = this.host.project();
-    for (const stroke of [...page.strokes].reverse()) {
-      // Lines on a locked layer are not picked.
-      if (project && !strokeEditable(project, stroke)) continue;
-      if (strokeHit(stroke, point, tolerance)) return { kind: "stroke", pageId: page.id, id: stroke.id };
-    }
-    for (const fill of [...(page.fills ?? [])].reverse()) {
-      if (insidePolygon(fill.shape, point)) return { kind: "fill", pageId: page.id, id: fill.id };
-    }
-    for (const breakout of [...page.breakouts].reverse()) {
-      if (insidePolygon(breakout.shape, point)) return { kind: "breakout", pageId: page.id, id: breakout.id };
-    }
-    // Panels on top (はめ込み) first.
-    const panels = [...page.panels].sort((a, b) => (b.z ?? 0) - (a.z ?? 0) || bounds(a.shape)[2] - bounds(b.shape)[2]);
-    for (const panel of panels) {
-      if (insidePolygon(panel.shape, point)) return { kind: "panel", pageId: page.id, id: panel.id };
-    }
-    return null;
-  }
-
-  /** Lines whose balloon or text is under `point`, top first. */
-  private linesAt(slot: Slot, point: Point): string[] {
-    const page = this.visiblePage(slot.page);
-    return [...page.lines]
-      .reverse()
-      .filter((line) => {
-        const [x0, y0, x1, y1] = line.box;
-        return (line.balloon && insidePolygon(line.balloon, point)) || insideBox([x0 - 1.5, y0 - 1.5, x1 + 1.5, y1 + 1.5], point);
-      })
-      .map((line) => line.id);
+    const found = pickAt(page, point, slot.scale, {
+      open: (sticky) => this.isSelected(page, "sticky", sticky.id) || (this.hover?.kind === "item" && this.hover.target.id === sticky.id),
+      selectedLine: this.selection?.kind === "line" && this.selection.pageId === page.id ? this.selection.id : null,
+      editable: (stroke) => !project || strokeEditable(project, stroke),
+    });
+    return found && { ...found, pageId: page.id };
   }
 
   private vertexAt(slot: Slot, sx: number, sy: number): number {
     const s = this.selection;
     if (s?.kind !== "panel" || s.pageId !== slot.page.id || this.transforming) return -1;
     const panel = slot.page.panels.find((p) => p.id === s.id);
-    if (!panel) return -1;
-    return panel.shape.findIndex(
-      ([x, y]) => Math.abs(slot.x + x * slot.scale - sx) <= HANDLE + 2 && Math.abs(slot.y + y * slot.scale - sy) <= HANDLE + 2,
-    );
+    return panel ? cornerAt(slot, panel, sx, sy) : -1;
   }
 
-  /** Where a panel's number sits (screen px). Numbers stay inside the page even for panels that run off it. */
-  private badge(slot: Slot, panel: Panel, pageW: number): { x: number; y: number; radius: number } {
-    return panelBadge(slot, panel, this.host.project()?.pageFormat, pageW);
-  }
-
-  /** The panel whose number is under the pointer. */
+  /** The panel whose number is under the pointer (none on a page shown small). */
   private badgeAt(slot: Slot, sx: number, sy: number, pageW: number): Panel | undefined {
     const project = this.host.project();
     if (project && this.small(project, slot)) return undefined;
-    return [...stacked(slot.page.panels)].reverse().find((panel) => {
-      const { x, y, radius } = this.badge(slot, panel, pageW);
-      return Math.hypot(x - sx, y - sy) <= radius + 2;
-    });
+    return badgeAt(slot, project?.pageFormat, pageW, sx, sy);
   }
 
-  /** The topmost panel at a point of a page (insets over their panel). */
-  private panelAt(page: Page, point: Point): Panel | undefined {
-    return [...stacked(page.panels)].reverse().find((panel) => insidePolygon(panel.shape, point));
-  }
-
-  /**
-   * The tail under the pointer: its tip, its middle (to bend it, on the
-   * selected or hovered line) or anywhere along it. Any line's tails can be
-   * taken, without picking the line first.
-   */
+  /** The tail under the pointer; the selected or hovered line's handles too. Any line's tails can be taken without picking the line first. */
   private tailAt(slot: Slot, sx: number, sy: number): TailHit | null {
     const s = this.selection;
-    const near = (p: Point, extra = 3) => Math.hypot(slot.x + p[0] * slot.scale - sx, slot.y + p[1] * slot.scale - sy) <= HANDLE + extra;
-    const point = toPage(slot, sx, sy);
     const shown = new Set<string>();
     if (s?.kind === "line" && s.pageId === slot.page.id) shown.add(s.id);
     if (this.hover?.kind === "item" && this.hover.target.kind === "line") shown.add(this.hover.target.id);
     if (this.hover?.kind === "tail") shown.add(this.hover.hit.lineId);
-    // The selected line's tails first, then the others from the top.
-    const lines = [...slot.page.lines].reverse().sort((a, b) => Number(shown.has(b.id)) - Number(shown.has(a.id)));
-    for (const line of lines) {
-      for (const [index, tail] of (line.tails ?? []).entries()) {
-        if (near(tail.tip)) return { lineId: line.id, index, part: "tip" };
-        const geometry = tailGeometry(line, tail);
-        if (!geometry) continue;
-        if (shown.has(line.id) && near(geometry.middle, 2)) return { lineId: line.id, index, part: "bend" };
-        if (shown.has(line.id) && near(geometry.root, 2)) return { lineId: line.id, index, part: "root" };
-        // Along the tail (outside the balloon): root to middle to tip.
-        const reach = Math.max(6 / slot.scale, 1.2);
-        const close = (a: Point, b: Point) => segmentDistance(point, a, b) <= reach;
-        if ((close(geometry.root, geometry.middle) || close(geometry.middle, tail.tip)) && !insideBalloon(line, point)) {
-          return { lineId: line.id, index, part: "body" };
-        }
-      }
-    }
-    return null;
+    return tailAt(slot, sx, sy, shown);
   }
 
-  /** The tails of a line with their handles: tips (round) and middles (to bend). */
   private drawTailHandles(slot: Slot, line: Line, strong: boolean): void {
-    const ctx = this.ctx;
-    const at = ([x, y]: Point): Point => [slot.x + x * slot.scale, slot.y + y * slot.scale];
-    ctx.save();
-    ctx.strokeStyle = strong ? ACCENT : "rgba(47, 111, 219, 0.7)";
-    ctx.lineWidth = 1.5;
     const s = this.selection;
-    const chosen = s?.kind === "line" && s.id === line.id && s.pageId === slot.page.id ? s.tail : undefined;
-    for (const [index, tail] of (line.tails ?? []).entries()) {
-      const geometry = tailGeometry(line, tail);
-      if (geometry) {
-        const [mx, my] = at(geometry.middle);
-        ctx.fillStyle = "#ffffff";
-        ctx.beginPath();
-        ctx.moveTo(mx, my - HANDLE + 1);
-        ctx.lineTo(mx + HANDLE - 1, my);
-        ctx.lineTo(mx, my + HANDLE - 1);
-        ctx.lineTo(mx - HANDLE + 1, my);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        // 根本: a small square on the outline, to slide the tail along the balloon.
-        const [rx, ry] = at(geometry.root);
-        const r = HANDLE - 1.5;
-        ctx.fillStyle = tail.root === undefined ? "#ffffff" : "rgba(47, 111, 219, 0.35)";
-        ctx.fillRect(rx - r, ry - r, r * 2, r * 2);
-        ctx.strokeRect(rx - r, ry - r, r * 2, r * 2);
-      }
-      // The chosen tail's tip is filled (Delete removes that tail).
-      const [tx, ty] = at(tail.tip);
-      ctx.fillStyle = index === chosen ? ACCENT : "#ffffff";
-      ctx.beginPath();
-      ctx.arc(tx, ty, index === chosen ? HANDLE + 1 : HANDLE, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    }
-    ctx.restore();
+    drawTailHandles(this.ctx, slot, line, strong, s?.kind === "line" && s.id === line.id && s.pageId === slot.page.id ? s.tail : undefined);
   }
 
   // --- input ------------------------------------------------------------------------
@@ -1955,8 +1821,8 @@ export class PageEditor {
       brush: (kind) => this.brush(kind),
       eraserRadiusPx: (scale) => this.eraserRadiusPx(scale),
       hit: (slot, point) => this.hit(slot, point),
-      linesAt: (slot, point) => this.linesAt(slot, point),
-      panelAt: (page, point) => this.panelAt(page, point),
+      linesAt: (slot, point) => linesAt(this.visiblePage(slot.page), point),
+      panelAt: (page, point) => panelAt(page, point),
       vertexAt: (slot, sx, sy) => this.vertexAt(slot, sx, sy),
       tailAt: (slot, sx, sy) => this.tailAt(slot, sx, sy),
       badgeAt: (slot, sx, sy, pageW) => this.badgeAt(slot, sx, sy, pageW),
@@ -2181,7 +2047,7 @@ export class PageEditor {
     if (target?.kind === "sticky") return void (this.select(target), document.querySelector<HTMLTextAreaElement>("#inspector textarea")?.focus());
     if (target && target.kind !== "panel") return;
     // Inside a panel: its memo.
-    const panel = this.panelAt(slot.page, point);
+    const panel = panelAt(slot.page, point);
     if (panel) {
       this.select({ kind: "panel", pageId: slot.page.id, id: panel.id });
       this.editInPlace(slot.page.id, "note", panel.id);
