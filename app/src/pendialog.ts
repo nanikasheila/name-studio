@@ -2,7 +2,7 @@
 // set it by drawing, and the pen's and fingers' other settings.
 import { curveAt } from "./brush";
 import { CURSOR_LABELS, LINEAR, SIDE_BUTTON_LABELS, TOUCH_LABELS, adjustPressure, fitPressureCurve, type PenSettings } from "./pen";
-import { type PenPreferences } from "./prefs";
+import type { PenPreferences } from "./prefs";
 import { $ } from "./dom";
 
 const PRESETS: Record<string, [number, number][]> = {

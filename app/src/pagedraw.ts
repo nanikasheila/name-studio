@@ -82,7 +82,7 @@ export function onTipLoaded(callback: () => void): void {
 /** The decoded tip picture, or null while it loads (it then draws as a round line). */
 function tipImage(pngBase64: string): HTMLImageElement | null {
   const cached = tipImages.get(pngBase64);
-  if (cached !== undefined) return cached && cached.complete && cached.naturalWidth ? cached : null;
+  if (cached !== undefined) return cached?.complete && cached.naturalWidth ? cached : null;
   if (typeof Image === "undefined") return null;
   const image = new Image();
   tipImages.set(pngBase64, image);

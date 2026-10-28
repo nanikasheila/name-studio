@@ -198,7 +198,7 @@ export class Reader {
   /** Read the open name from the spread with the editor's page on it. */
   async open(): Promise<boolean> {
     const project = this.host.project();
-    if (!project || !project.pages.length) return false;
+    if (!project?.pages.length) return false;
     this.list = readingSpreads(project, this.host.firstAlone());
     const page = this.host.page();
     this.index = Math.max(0, this.list.findIndex((pair) => pair.includes(page)));

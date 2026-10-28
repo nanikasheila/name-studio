@@ -1618,7 +1618,7 @@ export class PageEditor {
 
   private vertexAt(slot: Slot, sx: number, sy: number): number {
     const s = this.selection;
-    if (!s || s.kind !== "panel" || s.pageId !== slot.page.id || this.transforming) return -1;
+    if (s?.kind !== "panel" || s.pageId !== slot.page.id || this.transforming) return -1;
     const panel = slot.page.panels.find((p) => p.id === s.id);
     if (!panel) return -1;
     return panel.shape.findIndex(

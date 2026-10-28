@@ -1,0 +1,26 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "formatter": { "enabled": false },
+  "assist": { "enabled": false },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "style": {
+        "noNonNullAssertion": "off"
+      },
+      "suspicious": {
+        "useIterableCallbackReturn": "off",
+        "noAssignInExpressions": "off",
+        "noConfusingVoidType": "off",
+        "noFocusedTests": "off"
+      },
+      "correctness": {
+        "noVoidTypeReturn": "off"
+      },
+      "complexity": {
+        "noCommaOperator": "off"
+      }
+    }
+  },
+  "files": { "includes": ["src/**/*.ts", "e2e/**/*.mjs", "e2e/**/*.js", "vite.config.ts"] }
+}

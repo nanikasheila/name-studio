@@ -9,7 +9,7 @@ import { SHAPE_LABELS } from "./balloon";
 import { $, choice, element } from "./dom";
 import { fontField } from "./fontpicker";
 import { APP_FONT_LABEL, FONT_ROLES, FONT_ROLE_LABELS, roleFont, setRoleFont } from "./fonts";
-import { type PageEditor } from "./editor";
+import type { PageEditor } from "./editor";
 import { helpBarShown, showHelpBar } from "./helpbar";
 import { BALLOON_TEXT_KEY, PAGE_GAP_KEY, PANEL_CARRIES_KEY, saveNewNameDefaults, saveSnap } from "./prefs";
 import { GRID_GAP_MM } from "./layout";

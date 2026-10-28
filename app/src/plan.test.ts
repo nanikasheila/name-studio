@@ -46,7 +46,7 @@ describe("付箋", () => {
     expect(stickyRows("")).toEqual(["メモ"]);
     const short = stickyBox(sticky);
     expect(short[2] - short[0]).toBe(STICKY_WIDTH_MM);
-    sticky.text = "あ".repeat(20) + "\n次の行";
+    sticky.text = `${"あ".repeat(20)}\n次の行`;
     expect(stickyRows(sticky.text)).toEqual(["あ".repeat(10), "あ".repeat(10), "次の行"]);
     expect(stickyBox(sticky)[3]).toBeGreaterThan(short[3]);
     removeSticky(page, sticky.id);
