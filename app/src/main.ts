@@ -2,10 +2,9 @@
 // Name Studio front end: puts the screens together. The start screen
 // (startscreen.ts) and the sheet viewer (viewer.ts, sheetexport.ts) share the
 // first workspace; name data is edited in the second (workbench.ts).
-import { call, type Recovery } from "./backend";
+import { call } from "./backend";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ask, open } from "@tauri-apps/plugin-dialog";
-import { formatTime } from "./autosave";
+import { open } from "@tauri-apps/plugin-dialog";
 import { setInstalledFonts } from "./fonts";
 import { batchExportTask, runBatchExport } from "./batch";
 import { appVersion, checkForUpdate } from "./updater";
@@ -24,6 +23,8 @@ import { CommandPalette } from "./palette";
 import { SheetExport } from "./sheetexport";
 import { splitPath } from "./recent";
 import { StartScreen } from "./startscreen";
+import { RecoveryDialog } from "./recoverydialog";
+import { showAlert } from "./alerts";
 import { SheetViewer } from "./viewer";
 import { PROJECT_EXTENSION, Workbench } from "./workbench";
 import { $, isTyping } from "./dom";
@@ -280,26 +281,21 @@ void getCurrentWindow().onCloseRequested(async (event) => {
 });
 
 /** Offer back a project autosave kept when the app stopped before it was saved. */
-async function offerRecovery(): Promise<void> {
-  let recoveries: Recovery[];
-  try {
-    recoveries = await call("pending_recoveries");
-  } catch {
-    return;
-  }
-  const recovery = recoveries?.[0];
-  if (!recovery) return;
-  const where = recovery.path ?? "（まだ保存していないネーム）";
-  const restore = await ask(
-    `前回、保存しないまま終わったネームがあります。\n\n${recovery.project.title}（${recovery.project.pages.length} ページ、${formatTime(recovery.timeMs)} の自動保存）\n${where}${recovery.problems?.length ? `\n（直せる問題が ${recovery.problems.length} か所あります。復元すると直します）` : ""}\n\n復元しますか？「いいえ」で控えを消します。`,
-    { title: "Name Studio", kind: "warning" },
-  );
-  if (restore) {
+const recoveryDialog = new RecoveryDialog({
+  restore: (recovery, note) => {
     showWorkspace("editor");
     workbench.showRecovered(recovery.project, recovery.path, recovery.timeMs);
-  } else {
-    await call("discard_recovery", { path: recovery.path }).catch(() => undefined);
-  }
+    if (note) showAlert("unknown-fields", note, "warning");
+  },
+  remove: async (file) => {
+    await call("remove_recovery", { file }).catch((error) => setStatus(`控えを消せませんでした: ${error}`));
+  },
+});
+
+/** The names autosave kept that were never saved: all offered before anything else is asked. */
+async function offerRecovery(): Promise<void> {
+  const kept = await call("pending_recoveries").catch(() => []);
+  await recoveryDialog.open(kept ?? []);
 }
 
 /** The fonts on this computer, to choose from and to draw and write out dialogue in. */

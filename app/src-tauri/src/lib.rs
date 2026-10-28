@@ -124,6 +124,7 @@ pub fn run() {
             project_io::record_version,
             project_io::pending_recoveries,
             project_io::discard_recovery,
+            project_io::remove_recovery,
             name_export::begin_name_export,
             name_export::export_name_page,
             name_export::update_name_dialogue,

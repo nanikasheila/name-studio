@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use name_model::Project;
-use name_model::versions::{self, Recovery, VersionInfo, VersionKind, VersionStore};
+use name_model::versions::{self, VersionInfo, VersionKind, VersionStore};
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use tauri::Manager;
@@ -222,11 +222,19 @@ pub(crate) async fn record_version(
     .await
 }
 
-/// Projects autosave kept that were never saved, newest first.
+/// Projects autosave kept that were never saved, newest first (those that
+/// cannot be read too, with why).
 #[tauri::command]
-pub(crate) async fn pending_recoveries(app: tauri::AppHandle) -> Result<Vec<Recovery>, String> {
+pub(crate) async fn pending_recoveries(app: tauri::AppHandle) -> Result<Vec<versions::KeptRecovery>, String> {
     let root = data_root(&app)?;
-    Ok(versions::recoveries(&root))
+    Ok(versions::kept_recoveries(&root))
+}
+
+/// Removes one kept project, by its file name in the recovery folder.
+#[tauri::command]
+pub(crate) async fn remove_recovery(app: tauri::AppHandle, file: String) -> Result<(), String> {
+    let root = data_root(&app)?;
+    versions::remove_recovery(&root, &file).map_err(|error| error.to_string())
 }
 
 #[tauri::command]

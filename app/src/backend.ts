@@ -156,6 +156,18 @@ export interface Recovery {
   problems?: string[];
 }
 
+/** A project kept by autosave, as the start offers it (`pending_recoveries`). */
+export interface KeptRecovery {
+  /** Its file name in the recovery folder (what `remove_recovery` names). */
+  file: string;
+  timeMs: number;
+  recovery: Recovery | null;
+  /** Fields a newer version added that this one does not show. */
+  unknownFields?: string[];
+  /** Why it cannot be brought back. */
+  unreadable: string | null;
+}
+
 export interface CspToolLocations {
   tools: string | null;
   materials: string | null;
@@ -200,8 +212,9 @@ export interface Commands {
   list_versions: [{ path: string | null }, VersionInfo[]];
   load_version: [{ path: string | null; id: string }, Project];
   record_version: [RawBody, VersionInfo | null];
-  pending_recoveries: [void, Recovery[]];
+  pending_recoveries: [void, KeptRecovery[]];
   discard_recovery: [{ path: string | null }, void];
+  remove_recovery: [{ file: string }, void];
   // CSP pages and works (name_export.rs)
   begin_name_export: [{ request: CspExportRequest }, NameExportStart];
   export_name_page: [RawBody, FileCheck];
