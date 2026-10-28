@@ -4,6 +4,10 @@ main にマージして CI（`.github/workflows/ci.yml`）が通るたび、GitH
 （`.github/workflows/build-app.yml`）が CI の確かめたそのコミットから Windows のインストーラーを作り、
 `v0.2.<実行番号>` のリリースとして公開します。CI が失敗したコミットは配られません。
 
+Actions の「Release Windows app」→ Run workflow で手で流すこともできます。main で流すと公開しますが、
+ほかのブランチで流したときはインストーラーを作って確かめ、実行結果の Artifacts（`name-studio-windows-installer`）に
+置くだけで公開しません（レビュー前のビルドが自動更新で配られないように）。
+
 インストールしたアプリは、起動するとリリースの `latest.json` を見て、新しい版があれば取り込んで再起動します。
 ネームを開いているときは自動では入れ替えず、ツールバーの「更新」ボタンを押したときに、
 自動保存で書いてから入れ替えます。PC で自分でビルドしたもの（`NAME_STUDIO_RELEASE` なし）は更新しません。

@@ -1,2 +1,4 @@
 target/
 __pycache__/
+# Screenshots taken by hand while checking a change
+/*.png

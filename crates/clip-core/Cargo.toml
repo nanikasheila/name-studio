@@ -20,6 +20,8 @@ uuid = { version = "1", features = ["v4"] }
 fixtures = []
 
 [dev-dependencies]
+# The tests build synthetic CSP files: plain `cargo test` turns the builders on.
+clip-core = { path = ".", features = ["fixtures"] }
 tempfile = "3.27.0"
 
 [[example]]
