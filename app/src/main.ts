@@ -22,6 +22,7 @@ import { comboOf } from "./shortcuts";
 import { Tour } from "./tour";
 import { CommandPalette } from "./palette";
 import { SheetExport } from "./sheetexport";
+import { splitPath } from "./recent";
 import { StartScreen } from "./startscreen";
 import { SheetViewer } from "./viewer";
 import { PROJECT_EXTENSION, Workbench } from "./workbench";
@@ -112,16 +113,28 @@ async function openFile(): Promise<void> {
   await viewer.open(path);
 }
 
-/** Opens name data; false when it could not be read. */
-async function openName(path: string, failedNote = ""): Promise<boolean> {
+/** Opens name data: null when it did, else why it could not. */
+async function openName(path: string): Promise<string | null> {
   try {
     await workbench.load(path);
     showWorkspace("editor");
-    return true;
+    return null;
   } catch (error) {
-    setStatus(`開けませんでした${failedNote}: ${error}`);
-    return false;
+    setStatus(`開けませんでした: ${error}`);
+    return String(error);
   }
+}
+
+/** A name on the start screen's list that is not where it was: picked again from its folder. */
+async function locateName(path: string): Promise<string | null> {
+  if (!(await workbench.confirmDiscard())) return null;
+  const found = await open({
+    multiple: false,
+    defaultPath: splitPath(path).folder || undefined,
+    title: `${splitPath(path).name} を探す`,
+    filters: [{ name: "ネームデータ", extensions: [PROJECT_EXTENSION] }],
+  });
+  return typeof found === "string" && (await openName(found)) === null ? found : null;
 }
 
 function newName(): void {
@@ -190,7 +203,8 @@ const startScreen = new StartScreen({
   openFile: () => void openFile(),
   newName,
   fromImage: () => void nameFromImage(),
-  openName: async (path) => (await workbench.confirmDiscard()) ? openName(path, "（最近のネームの一覧から外しました）") : true,
+  openName: async (path) => ((await workbench.confirmDiscard()) ? openName(path) : null),
+  locate: locateName,
 });
 
 /** Ctrl+K before a name is open: open, new, the names opened last, and the open sheet's two actions. */

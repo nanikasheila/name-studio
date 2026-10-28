@@ -1,5 +1,6 @@
 // The start screen: the names opened last, one click (or Ctrl+K and a few
-// letters) to pick one up again. Run: npm run e2e:start
+// letters) to pick one up again; one that is not there stays on the list
+// with why, to try again, look for it, or take it off. Run: npm run e2e:start
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { createServer } from "vite";
@@ -42,7 +43,17 @@ try {
       if (command === "unknown_project_fields") return args.path.includes("第4話") ? ["pages.strokes.wobble"] : [];
       if (command !== "load_project") return undefined;
       if (args.path.includes("第4話")) return newProject("第4話", 24);
-      throw new Error("ファイルが見つかりません");
+      throw new Error("ファイルが見つかりません。移したか消したか、外付けのドライブがつながっていないようです");
+    };
+  });
+  // 場所を探す: the folder the name was in is offered; the test cancels.
+  await page.evaluate(() => {
+    window.__opened = [];
+    const answer = window.__answer;
+    window.__answer = (command, args) => {
+      if (command !== "plugin:dialog|open") return answer(command, args);
+      window.__opened.push(args.options);
+      return null;
     };
   });
   const rows = page.locator("#recent-names .recent-name");
@@ -57,9 +68,22 @@ try {
 
   await rows.nth(1).locator(".recent-open").click();
   await page.waitForTimeout(200);
-  check(JSON.stringify(await titles()) === JSON.stringify(["第4話", "読み切り"]), "a name that cannot be opened leaves the list");
-  check((await page.locator("#status").textContent()).includes("開けませんでした"), "and the status says why");
+  check(JSON.stringify(await titles()) === JSON.stringify(["第4話", "消えたネーム", "読み切り"]), "a name that cannot be opened stays on the list (a drive may come back)");
+  check(JSON.stringify(await kept()) === JSON.stringify(["第4話", "消えたネーム", "読み切り"]), "and on this computer's list");
+  const trouble = rows.nth(1).locator(".recent-trouble");
+  check((await trouble.locator(".recent-problem").textContent()).startsWith("開けませんでした: Error: ファイルが見つかりません。"), "its row says why");
+  check((await rows.locator(".recent-trouble").count()) === 1, "only on its own row");
   check(await page.locator("#empty").isVisible(), "the start screen stays");
+  await trouble.getByText("もう一度").click();
+  await page.waitForTimeout(200);
+  check((await rows.locator(".recent-trouble").count()) === 1 && (await page.evaluate(() => window.__calls.filter((c) => c.command === "load_project").length)) === 2, "もう一度 tries it again (still not there)");
+  await trouble.getByText("場所を探す…").click();
+  await page.waitForTimeout(200);
+  const looked = await page.evaluate(() => window.__opened.at(-1));
+  check(looked?.defaultPath === "C:\\ネーム" && looked?.filters?.[0]?.extensions?.[0] === "namestudio", `場所を探す… opens where it was (${looked?.defaultPath})`);
+  check(JSON.stringify(await kept()) === JSON.stringify(["第4話", "消えたネーム", "読み切り"]), "nothing found: the list is as it was");
+  await rows.nth(1).getByText("一覧から外す").click();
+  check(JSON.stringify(await titles()) === JSON.stringify(["第4話", "読み切り"]), "一覧から外す takes it off");
 
   await rows.nth(1).locator(".recent-forget").click();
   check(JSON.stringify(await kept()) === JSON.stringify(["第4話"]), "× takes a name off the list (and off this computer's list)");
@@ -96,6 +120,30 @@ try {
   const after = await stage();
   check((await page.locator("#story").isVisible()) === storyBefore && Math.abs(after - before) < 6, `Tab again brings them back (${before} → ${after})`);
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(" / ")}` : ""}`);
+
+  // Found where it was moved: it opens from there, and the list keeps it at its new place only.
+  const second = await browser.newPage({ viewport: { width: 1400, height: 900 }, timezoneId: "Asia/Tokyo" });
+  await second.clock.setFixedTime(NOW);
+  await second.addInitScript({ path: fileURLToPath(new URL("tauri-mock.js", import.meta.url)) });
+  await second.addInitScript((names) => localStorage.setItem("namestudio.recentNames", JSON.stringify(names)), recent);
+  await second.goto(server.resolvedUrls.local[0]);
+  await second.waitForFunction(() => window.nameStudio);
+  await second.evaluate(async () => {
+    const { newProject } = await import("/src/project.ts");
+    window.__answer = (command, args) => {
+      if (command === "unknown_project_fields") return [];
+      if (command === "plugin:dialog|open") return "E:\\移した\\消えた.namestudio";
+      if (command !== "load_project") return undefined;
+      if (args.path.startsWith("E:")) return newProject("消えたネーム", 16);
+      throw new Error("ファイルが見つかりません");
+    };
+  });
+  const moved = second.locator("#recent-names .recent-name").nth(1);
+  await moved.locator(".recent-open").click();
+  await moved.getByText("場所を探す…").click();
+  await second.waitForFunction(() => document.getElementById("editor").checkVisibility());
+  const paths = await second.evaluate(() => JSON.parse(localStorage.getItem("namestudio.recentNames")).map((n) => n.path));
+  check(paths[0] === "E:\\移した\\消えた.namestudio" && !paths.includes("C:\\ネーム\\消えた.namestudio") && paths.length === 3, `found elsewhere: it opens, and the list has it at its new place (${paths.join(", ")})`);
 } finally {
   await browser.close();
   await server.close();
