@@ -1,5 +1,5 @@
 // 設定: the ネーム's own settings (コマ割り, セリフ・フキダシ, フォント, 読む向き,
-// kept in its file) and this computer's (表示, 操作, 吸着, 保存, ペン・キー),
+// kept in its file) and this computer's (画面の見た目, 表示, 操作, 吸着, 保存, ペン・キー),
 // one kind at a time from the list on the left, or all that match what is
 // typed in the search box. Changes apply at once.
 import { ask } from "@tauri-apps/plugin-dialog";
@@ -11,6 +11,7 @@ import { fontField } from "./fontpicker";
 import { APP_FONT_LABEL, FONT_ROLES, FONT_ROLE_LABELS, roleFont, setRoleFont } from "./fonts";
 import type { PageEditor } from "./editor";
 import { helpBarShown, showHelpBar } from "./helpbar";
+import { LookPane } from "./lookpane";
 import { BALLOON_TEXT_KEY, PAGE_GAP_KEY, PANEL_CARRIES_KEY, saveNewNameDefaults, saveSnap, setSwapFit, swapFit } from "./prefs";
 import { GRID_GAP_MM } from "./layout";
 import type { BalloonShape, LineKind, Project } from "./model";
@@ -88,8 +89,11 @@ export function matchesQuery(text: string, query: string): boolean {
 
 export class SettingsDialog {
   private pane = readText(PANE_KEY) ?? "koma";
+  /** 画面の見た目 (theme, the screen's font and size, the user's CSS). */
+  readonly look: LookPane;
 
   constructor(private readonly host: SettingsHost) {
+    this.look = new LookPane((message) => this.host.status(message));
     const number = (id: string) => $<HTMLInputElement>(id);
     for (const id of ["st-gutter-across", "st-gutter-down"]) {
       number(id).addEventListener("change", () => {
@@ -241,9 +245,10 @@ export class SettingsDialog {
       setSwapFit("stretch");
       setAutosaveTiming({ delay: AUTOSAVE_DELAY_MS / 1000, maxWait: AUTOSAVE_MAX_WAIT_MS / 1000 });
       showHelpBar(true);
+      this.look.resetToDefault();
       this.host.autosaveTimingChanged();
       this.render();
-      this.host.status("この PC の設定（ページの間隔・吸着・コマと中身・コマの入れ替え・フキダシの変形・自動保存の間隔・ヘルプの帯）を初期に戻しました");
+      this.host.status("この PC の設定（画面の見た目・ページの間隔・吸着・コマと中身・コマの入れ替え・フキダシの変形・自動保存の間隔・ヘルプの帯）を初期に戻しました（カスタム CSS は切るだけで、中身は残します）");
     });
     $<HTMLInputElement>("st-search").addEventListener("input", () => this.filter());
     // Esc empties the search box first; the dialog closes on the next one.
@@ -453,6 +458,7 @@ export class SettingsDialog {
     if (document.activeElement !== grid) grid.value = String(snap.gridMm);
     grid.disabled = !snap.grid;
     $<HTMLButtonElement>("st-save-defaults").disabled = !project;
+    this.look.render();
     this.filter();
   }
 

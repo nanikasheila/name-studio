@@ -107,6 +107,29 @@ try {
   await page.keyboard.press("Escape");
   await settle(300);
 
+  // 画面の見た目: the same screen in four of the themes, two by two in one picture (the pages stay as they are).
+  const themes = ["light", "dark", "sepia", "contrast-dark"];
+  const themeDir = mkdtempSync(join(tmpdir(), "looks-"));
+  for (const theme of themes) {
+    await page.evaluate(async (theme) => {
+      const { applyLook, DEFAULT_LOOK } = await import("/src/look.ts");
+      applyLook({ ...DEFAULT_LOOK, theme });
+    }, theme);
+    await settle(300);
+    await page.screenshot({ path: join(themeDir, `${theme}.png`) });
+  }
+  await page.evaluate(async () => {
+    const { applyLook, DEFAULT_LOOK } = await import("/src/look.ts");
+    applyLook(DEFAULT_LOOK);
+  });
+  execFileSync("ffmpeg", [
+    "-y", "-loglevel", "error",
+    ...themes.flatMap((theme) => ["-i", join(themeDir, `${theme}.png`)]),
+    "-filter_complex", "[0][1][2][3]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0:fill=white,scale=1600:-1",
+    join(out, "looks.png"),
+  ]);
+  rmSync(themeDir, { recursive: true, force: true });
+
   let clip = null;
   /**
    * Zoom and pan so that the box from `a` (mm on page `pa`) to `b` (mm on page `pb`) fills

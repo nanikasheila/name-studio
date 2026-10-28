@@ -17,6 +17,8 @@ window.__TAURI_INTERNALS__ = {
         return "0.0.0";
       case "pending_recoveries":
         return [];
+      case "safe_look":
+        return false;
       case "batch_export_task":
       case "is_release_build":
         return command === "is_release_build" ? false : null;

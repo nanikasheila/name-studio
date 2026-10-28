@@ -12,7 +12,7 @@
       <button id="new-project" class="with-icon labelled" title="白紙のネームを作る"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.5h6.5L15 6v11.5H5z"/><path d="M11.5 2.5V6H15M10 9v6M7 12h6"/></svg><span>新しいネーム</span></button>
       <button id="save" class="editor-only with-icon labelled" data-command="save" title="保存。編集中は自動でも保存します" hidden><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 3.5h10l3 3v10h-13z"/><path d="M6.5 3.5v4h6v-4M6 16.5v-5h8v5"/></svg><span>保存</span></button>
       <button id="versions" class="editor-only with-icon labelled" title="版の履歴: 前の状態に戻す、自動保存の設定" hidden><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 10a6.5 6.5 0 1 0 2-4.7"/><path d="M3 3.5v3h3M10 6.5V10l2.5 2"/></svg><span>履歴</span></button>
-      <button id="settings" class="editor-only with-icon labelled" title="設定: コマ割り・セリフとフキダシ・フォント・読む向き（このネーム）、表示・操作・吸着・保存（この PC）" hidden><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M8.6 2.5h2.8l.4 2.1 1.5.9 2-.8 1.4 2.4-1.6 1.4v1.8l1.6 1.4-1.4 2.4-2-.8-1.5.9-.4 2.1H8.6l-.4-2.1-1.5-.9-2 .8-1.4-2.4 1.6-1.4V9.1L3.3 7.7l1.4-2.4 2 .8 1.5-.9z"/><circle cx="10" cy="10" r="2.4"/></svg><span>設定</span></button>
+      <button id="settings" class="editor-only with-icon labelled" title="設定: コマ割り・セリフとフキダシ・フォント・読む向き（このネーム）、画面の見た目（配色・フォント）・表示・操作・吸着・保存（この PC）" hidden><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M8.6 2.5h2.8l.4 2.1 1.5.9 2-.8 1.4 2.4-1.6 1.4v1.8l1.6 1.4-1.4 2.4-2-.8-1.5.9-.4 2.1H8.6l-.4-2.1-1.5-.9-2 .8-1.4-2.4 1.6-1.4V9.1L3.3 7.7l1.4-2.4 2 .8 1.5-.9z"/><circle cx="10" cy="10" r="2.4"/></svg><span>設定</span></button>
       <button id="shortcuts" class="editor-only with-icon labelled" title="ショートカットキーの割り当て" hidden><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="5" width="16" height="10" rx="1.5"/><path d="M5 8h1M8 8h1M11 8h1M14 8h1M5 11h1M14 11h1M8 11h4"/></svg><span>キー設定</span></button>
       <button id="pen-settings" class="editor-only with-icon labelled" title="ペンタブレットの設定: 筆圧、傾き、消しゴム側、サイドボタン、タッチ操作、カーソル" hidden><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="4" width="15" height="12" rx="1.5"/><path d="M7 13l1-3 5-5 2 2-5 5z"/></svg><span>ペン設定</span></button>
       <span id="file-name" class="file-name">ファイルが開かれていません</span>
@@ -610,6 +610,41 @@
                 </div>
                 <label class="check"><input type="checkbox" id="st-binding-text" checked /> セリフの縦書き・横書きも合わせる</label>
                 <p class="hint">見開きの左右、コマとセリフを読む順、しっぽの向き、台本から並べる向きが変わります。CSP の作品の綴じ方は書き出しに使うテンプレートの作品に従います。縦スクロール（Webtoon）は新しいネームを作るときに選びます。</p>
+              </div>
+            </section>
+            <section class="settings-pane" data-pane="look" data-scope="pc" data-title="画面の見た目">
+              <h3>画面の見た目 <small>この PC</small></h3>
+              <div class="setting-item" data-keys="配色 テーマ 色 カラー 明るい 暗い ダーク ライト ダークモード 目にやさしい セピア 高コントラスト 見やすい 見た目 外観">
+                <span class="setting-label">配色</span>
+                <div id="st-themes" class="theme-cards" role="radiogroup" aria-label="配色"></div>
+                <p class="hint">アプリの画面の色です。ページ（紙面）の白と、描いたものの色は変わりません。</p>
+              </div>
+              <div class="setting-item" data-keys="画面 フォント 書体 UI 文字 メニュー ボタン 見た目">
+                <div class="setting-row wide">
+                  <span>画面のフォント</span>
+                  <span id="st-ui-font" class="ui-font-field"></span>
+                </div>
+                <p class="hint">メニュー・ボタン・欄の文字です。ネームのセリフのフォントは「フォント」（このネーム）で決めます。</p>
+              </div>
+              <div class="setting-item" data-keys="画面 文字の大きさ 文字サイズ フォントサイズ 大きく 小さく 見やすい UI 見た目">
+                <div class="setting-row wide">
+                  <span>画面の文字の大きさ</span>
+                  <label><input type="number" id="st-ui-size" min="11" max="20" step="1" /> px</label>
+                  <button type="button" id="st-ui-size-reset">初期（14）</button>
+                </div>
+                <p class="hint">11〜20。ページ（紙面）とセリフの大きさは変わりません。</p>
+              </div>
+              <div class="setting-item" data-keys="カスタム CSS スタイル スタイルシート 色 自分で 見た目 外観">
+                <label class="check"><input type="checkbox" id="st-css-on" /> カスタム CSS を使う</label>
+                <textarea id="st-css" class="css-editor" rows="9" spellcheck="false" autocomplete="off" placeholder=":root, [data-theme] { --accent: #d0457a; }" aria-label="カスタム CSS"></textarea>
+                <div class="setting-row">
+                  <button type="button" id="st-css-apply" class="primary">当てて試す</button>
+                  <button type="button" id="st-css-load">ファイルから読み込む…</button>
+                  <input type="file" id="st-css-file" accept=".css,text/css,text/plain" hidden />
+                  <button type="button" id="st-css-template">今の色をひな形に入れる</button>
+                </div>
+                <p class="hint css-note" id="st-css-note" role="status"></p>
+                <p class="hint">画面の色は <code>--bg</code>・<code>--panel</code>・<code>--text</code>・<code>--accent</code> などの CSS 変数にまとまっています（「今の色をひな形に入れる」で一覧）。当てると 15 秒のあいだ試し、「このままにする」を押すまでは保存しません。画面が崩れて戻せなくなったら、<kbd>Ctrl+Shift+Alt+R</kbd> で見た目を初期に戻せます（カスタム CSS は切るだけで、中身は残ります）。キーも効かないときは、Shift を押しながら起動すると、その回はカスタム CSS を当てずに起動します。</p>
               </div>
             </section>
             <section class="settings-pane" data-pane="view" data-scope="pc" data-title="表示">

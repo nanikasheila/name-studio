@@ -8,5 +8,6 @@ export default defineConfig({
   build: { target: "es2022", outDir: "dist", emptyOutDir: true },
   // The structure test reads every module through import.meta.glob: a module
   // cache kept between runs would miss a module added or removed since.
-  test: { fsModuleCache: false },
+  // styles.css is read as text by look.test.ts (Vitest gives a stylesheet no text otherwise).
+  test: { fsModuleCache: false, css: { include: [/styles\.css/] } },
 });
