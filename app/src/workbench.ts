@@ -1,5 +1,5 @@
-// The name editor around the canvas: opening and saving the name (the
-// session keeps it and its undo steps), the palettes beside the pages (the
+// The name editor around the canvas: opening the name (the session keeps it
+// and its undo steps; saving it is namesaver.ts), the palettes beside the pages (the
 // lists are in sidelists.ts) and the inspector for the selection. The bars
 // above the pages are controlbar.ts and referencebar.ts; the changes the
 // palettes and commands ask for are nameedits.ts.
@@ -8,10 +8,11 @@ import { useFonts } from "./fonts";
 import { useStyle } from "./style";
 import { $, isTyping } from "./dom";
 import { Inspector } from "./inspector";
-import { ask, message, save } from "@tauri-apps/plugin-dialog";
+import { ask } from "@tauri-apps/plugin-dialog";
 import { heldNear } from "./hold";
-import { Autosaver, Written, autosaveToFile, formatTime } from "./autosave";
+import { formatTime } from "./autosave";
 import { penPreferences, rememberName } from "./prefs";
+import { NameSaver } from "./namesaver";
 import { BrushDialog } from "./brushdialog";
 import { AltDialog } from "./altdialog";
 import { ScriptDialog } from "./scriptdialog";
@@ -46,7 +47,7 @@ import { normalize, trailingEmptyPages, unknownFieldsNote } from "./project";
 import { stillThere } from "./removal";
 import { localStore } from "./settings";
 import { LiveFields } from "./livefields";
-import { saveState, type SaveFacts } from "./savestate";
+import { saveState } from "./savestate";
 import { NameEdits, pickedStrokes } from "./nameedits";
 import { editorDocks } from "./palettes";
 import { ReferenceBar } from "./referencebar";
@@ -55,12 +56,10 @@ import { Reader } from "./reader";
 import { SpringTool } from "./springtool";
 import { ControlBar } from "./controlbar";
 
-export const PROJECT_EXTENSION = "namestudio";
-
 export class Workbench {
   readonly editor: PageEditor;
   /** The open name, unsaved or not, and its undo steps. */
-  private readonly session = new Session(() => this.autosaver.notify());
+  private readonly session = new Session(() => this.saver.notify());
   /** Rough images read from the source sheet. */
   private readonly roughs = new RoughCache({
     sheet: () => this.session.project?.source?.path,
@@ -180,15 +179,15 @@ export class Workbench {
   private readonly spring = new SpringTool<Tool>();
   /** 読む表示: the name read through as the book. */
   private readonly reader: Reader;
-  /** The save or autosave being written, which the next one waits for. */
-  private writing: Promise<unknown> = Promise.resolve();
-  /** Saves and autosaves being written. */
-  private writes = 0;
-  /** Where the open name's changes are kept, for the save state beside its name. */
-  private kept: Omit<SaveFacts, "hasPath" | "dirty" | "writing"> = { savedAt: null, copyAt: null, failed: null, seriesBehind: false };
-  private readonly autosaver = new Autosaver(() => this.autosave(), () => this.session.inStep).followSettings();
-  /** What the file and the recovery copy hold, so autosave writes only what is new. */
-  private readonly written = new Written();
+  /** Saving and autosaving the open name. */
+  private readonly saver = new NameSaver({
+    session: this.session,
+    series: this.seriesPanel,
+    setStatus: (message) => this.setStatus(message),
+    begin: () => this.begin(),
+    commit: () => this.commit(),
+    changed: () => this.updateTitle(),
+  });
 
   constructor(private readonly setStatus: (message: string) => void, private readonly onTitle: (title: string) => void, help: (kind: HelpKind) => void = () => {}) {
     this.editor = new PageEditor($<HTMLCanvasElement>("editor-canvas"), {
@@ -273,8 +272,8 @@ export class Workbench {
       status: (message) => this.setStatus(message),
       snapChanged: () => this.bars.showPanelModes(),
       // What is unsaved goes where autosave says now.
-      autosaveChanged: () => void (this.session.dirty && this.autosaver.notify()),
-      autosaveTimingChanged: () => this.autosaver.followSettings(),
+      autosaveChanged: () => this.saver.settingsChanged(),
+      autosaveTimingChanged: () => this.saver.timingChanged(),
       busy: () => this.session.project !== null,
       openPenSettings: () => this.penDialog.open(),
       openShortcuts: () => this.shortcutDialog.open(),
@@ -389,7 +388,7 @@ export class Workbench {
     this.versionDialog = new VersionDialog({
       path: () => this.session.path,
       restore: (version) => this.restoreVersion(version),
-      autosaveChanged: () => void (this.session.dirty && this.autosaver.notify()),
+      autosaveChanged: () => this.saver.settingsChanged(),
     });
     this.reader = new Reader({
       project: () => this.session.project,
@@ -433,27 +432,17 @@ export class Workbench {
    * ask whether to save what is still unsaved, throw it away (and its
    * autosave copy) or go back to it.
    */
-  async confirmDiscard(): Promise<boolean> {
-    if (!this.session.project) return true;
-    if (this.session.dirty && this.session.path && autosaveToFile()) await this.autosaver.flush();
-    if (!this.session.dirty) return true;
-    const [keep, discard] = ["保存して続ける", "保存しないで続ける"];
-    const choice = await message("保存していない変更があります。", { title: "Name Studio", kind: "warning", buttons: { yes: keep, no: discard, cancel: "戻る" } });
-    if (choice === keep || choice === "Yes") return this.save();
-    if (choice !== discard && choice !== "No") return false;
-    this.autosaver.reset();
-    await call("discard_recovery", { path: this.session.path }).catch(() => undefined);
-    return true;
+  /** Before the open name goes: saved, or let go when the person says so. False: keep it open. */
+  confirmDiscard(): Promise<boolean> {
+    return this.saver.confirmDiscard();
   }
 
   show(project: Project, path: string | null, message: string): void {
     this.seriesPanel.follow(this.session.open(project, path), path);
     clearAlert("series");
     clearAlert("unknown-fields");
-    this.kept = { savedAt: null, copyAt: null, failed: null, seriesBehind: false };
+    this.saver.opened();
     this.roughs.clear();
-    this.autosaver.reset();
-    this.written.forget();
     this.editor.selection = null;
     this.editor.roughLayer = ROUGH_BASE;
     this.editor.spreadIndex = 0;
@@ -468,7 +457,7 @@ export class Workbench {
     const project = await call("load_project", { path });
     const series = await this.seriesPanel.attach(project, path);
     this.show(project, path, `${project.pages.length} ページのネームを開きました${series}`);
-    this.written.toFile(this.session.id, path, this.session.snapshot());
+    this.saver.loaded(path);
     rememberName(path, project);
     const unknown = unknownFieldsNote((await call("unknown_project_fields", { path }).catch(() => null)) ?? []);
     if (unknown && this.session.path === path) showAlert("unknown-fields", unknown, "warning");
@@ -502,167 +491,13 @@ export class Workbench {
     const mended = repair(normalize(project));
     const note = mended.length ? `（${mended.length} か所の問題を直しました）` : "";
     this.show(project, path, `${name} を ${formatTime(timeMs)} の自動保存から復元しました${note}。保存すると確定します`);
-    this.kept.copyAt = timeMs;
-    this.written.toCopy(this.session.id, path, this.session.snapshot());
+    this.saver.recovered(path, timeMs);
     this.markDirty();
     this.updateTitle();
   }
 
-  async save(saveAs = false): Promise<boolean> {
-    const project = this.session.project;
-    if (!project) return false;
-    let path = this.session.path;
-    if (!path || saveAs) {
-      const suggested = project.source?.path.replace(/\.clip$/i, `.${PROJECT_EXTENSION}`) ?? `${project.title || "ネーム"}.${PROJECT_EXTENSION}`;
-      const picked = await save({
-        defaultPath: path ?? suggested,
-        filters: [{ name: "ネームデータ", extensions: [PROJECT_EXTENSION] }],
-      });
-      if (!picked) return false;
-      path = picked.toLowerCase().endsWith(`.${PROJECT_EXTENSION}`) ? picked : `${picked}.${PROJECT_EXTENSION}`;
-    }
-    // Loose ends the save check would refuse are mended first, as a step that can be undone.
-    this.begin();
-    const mended = repair(project);
-    if (mended.length) this.commit();
-    else this.session.cancel();
-    this.seriesPanel.beforeSave(project, path);
-    const id = this.session.id;
-    const previousPath = this.session.path;
-    try {
-      const [revision, snapshot] = await this.queued(async () => {
-        const revision = this.session.revision;
-        const snapshot = this.session.id === id ? this.session.snapshot() : null;
-        await call("save_project", projectBody({ path, previousPath }, savedForm(project)));
-        return [revision, snapshot] as const;
-      });
-      rememberName(path, project);
-      if (!this.session.saved(path, revision, id)) {
-        // Another name was opened while this one was written: it keeps its own file and state.
-        this.setStatus(`前に開いていたネームを保存しました: ${path}`);
-        return true;
-      }
-      this.written.toFile(id, path, snapshot);
-      this.kept = { ...this.kept, savedAt: Date.now(), copyAt: null, failed: null };
-      const series = await this.saveSeries(project, path);
-      if (!this.session.dirty) this.autosaver.reset();
-      this.updateTitle();
-      clearAlert("save");
-      if (mended.length) clearAlert("autosave");
-      const note = mended.length ? `（保存の前に ${mended.length} か所直しました: ${mended.slice(0, 2).join("／")}${mended.length > 2 ? " ほか" : ""}。元に戻すは Ctrl+Z）` : "";
-      this.setStatus(series ? `ネームは保存しました（シリーズには未反映）: ${path}` : `保存しました: ${path}${note}`);
-      return true;
-    } catch (error) {
-      if (this.session.id !== id) {
-        this.setStatus(`前に開いていたネームを保存できませんでした: ${error}`);
-      } else {
-        this.setStatus(`保存できませんでした: ${error}`);
-      }
-      if (this.session.id === id) this.kept.failed = String(error);
-      this.updateTitle();
-      showAlert("save", `保存できませんでした。\n${path}\n${error}`, "error");
-      void logError(`save: ${error}`);
-      return false;
-    }
-  }
-
-  /**
-   * Saves and autosaves one after another, so an older version never lands
-   * after a newer one.
-   */
-  private queued<T>(write: () => Promise<T>): Promise<T> {
-    this.writes++;
-    this.updateTitle();
-    const run = this.writing.then(write, write).finally(() => {
-      this.writes--;
-      this.updateTitle();
-    });
-    this.writing = run.catch(() => undefined);
-    return run;
-  }
-
-  /**
-   * The series after the open name was saved: an alert stays while the series
-   * file lags behind, with a way to try again. Null when it has it.
-   */
-  private async saveSeries(project: Project, path: string): Promise<string | null> {
-    const problem = await this.seriesPanel.saved(project, path);
-    this.kept.seriesBehind = !!problem;
-    this.updateTitle();
-    if (problem) {
-      showAlert("series", `ネームは保存しました。シリーズのファイルには反映できていません（次の保存でもう一度試します）。\n${problem}`, "warning", undefined, {
-        label: "もう一度",
-        run: () => void this.retrySeries(),
-      });
-    } else {
-      clearAlert("series");
-    }
-    return problem;
-  }
-
-  private async retrySeries(): Promise<void> {
-    const project = this.session.project;
-    const path = this.session.path;
-    if (project && path && !(await this.saveSeries(project, path))) this.setStatus("シリーズに反映しました");
-  }
-
-  /**
-   * Autosave: the file itself when it has one (and that is on), else a copy;
-   * nothing when that already holds the name as it is now.
-   */
-  private async autosave(): Promise<void> {
-    const project = this.session.project;
-    if (!project) return;
-    const path = this.session.path;
-    const id = this.session.id;
-    try {
-      const [result, revision, snapshot] = await this.queued(async () => {
-        const revision = this.session.revision;
-        const toFile = autosaveToFile();
-        const snapshot = this.session.id === id ? this.session.snapshot() : null;
-        const need = this.written.need(id, path, toFile, snapshot);
-        if (need === "clean" || need === "none") return [need, revision, snapshot] as const;
-        const result = await call("autosave_project", projectBody({ path, toFile }, savedForm(project)));
-        return [result, revision, snapshot] as const;
-      });
-      // A name opened meanwhile is not this one: its state and alerts stay as they are.
-      if (this.session.id !== id) return;
-      if (result === "none") return;
-      if (result === "clean") {
-        // Changed and changed back: the file has it all, and a copy kept on the way is stale.
-        this.session.autosaved(revision, id);
-        if (this.kept.copyAt !== null) await call("discard_recovery", { path }).catch(() => undefined);
-        this.kept = { ...this.kept, copyAt: null, failed: null };
-        this.updateTitle();
-        return;
-      }
-      if (result.savedToFile && path) this.written.toFile(id, path, snapshot);
-      else this.written.toCopy(id, path, snapshot);
-      if (result.savedToFile && this.session.path === path) {
-        this.session.autosaved(revision, id);
-        this.kept = { ...this.kept, savedAt: Date.now(), copyAt: null, failed: null };
-      } else this.kept = { ...this.kept, copyAt: Date.now(), failed: null };
-      this.updateTitle();
-      if (result.savedToFile && path) await this.saveSeries(project, path);
-      if (result.problems?.length) {
-        const list = result.problems.slice(0, 3).join("\n");
-        showAlert(
-          "autosave",
-          `自動保存: ${path && autosaveToFile() ? "ファイルに書けない" : ""}問題があるので、控えだけに残しています。保存（Ctrl+S）すると直してから保存します。\n${list}`,
-          "warning",
-        );
-      } else {
-        clearAlert("autosave");
-      }
-    } catch (error) {
-      if (this.session.id !== id) return;
-      this.kept.failed = String(error);
-      this.updateTitle();
-      this.setStatus(`自動保存できませんでした: ${error}`);
-      showAlert("autosave", `自動保存できませんでした（次の変更でもう一度試します）。\n${error}`, "error");
-      void logError(`autosave: ${error}`);
-      throw error;
-    }
+  save(saveAs = false): Promise<boolean> {
+    return this.saver.save(saveAs);
   }
 
   /** Show the versions of this project. */
@@ -794,7 +629,7 @@ export class Workbench {
     const name = this.session.path?.split(/[\\/]/).pop() ?? "（未保存）";
     this.onTitle(`${this.session.dirty ? "● " : ""}${name} — ${project.title}`);
     const clock = (ms: number) => new Date(ms).toTimeString().slice(0, 5);
-    const state = saveState({ ...this.kept, hasPath: !!this.session.path, dirty: this.session.dirty, writing: this.writes > 0 }, clock);
+    const state = saveState({ ...this.saver.facts(), hasPath: !!this.session.path, dirty: this.session.dirty }, clock);
     const node = $("save-state");
     node.textContent = state.text;
     node.title = state.detail;

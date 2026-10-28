@@ -26,7 +26,8 @@ import { StartScreen } from "./startscreen";
 import { RecoveryDialog } from "./recoverydialog";
 import { showAlert } from "./alerts";
 import { SheetViewer } from "./viewer";
-import { PROJECT_EXTENSION, Workbench } from "./workbench";
+import { PROJECT_EXTENSION } from "./namesaver";
+import { Workbench } from "./workbench";
 import { $, isTyping } from "./dom";
 import { ImageImportDialog } from "./imageimport";
 
