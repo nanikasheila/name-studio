@@ -40,7 +40,8 @@ jobs:
         with:
           ref: ${{ env.SHA }}
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust (the version in rust-toolchain.toml)
+        run: rustup toolchain install
 
       - uses: actions/setup-node@v4
         with:

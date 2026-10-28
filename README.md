@@ -184,6 +184,9 @@ CSP のセリフを読み戻す（ペン入れ中に CSP でセリフを直し�
 ```bash
 cargo test
 (cd app && npm test)
+# 画面のコードの lint（Biome。CI でも流す）と、既知の脆弱性（cargo install cargo-audit）
+(cd app && npm run lint)
+cargo audit
 # 画面の通しテスト（ブラウザで開く・描く・元に戻す・失敗の取り消し・自動保存・連続表示と速さ）
 (cd app && npx playwright install chromium && npm run e2e)
 # 実アプリで書き出す（WebView・CSP・Rust 側との通信まで。Linux は xvfb-run を前に付ける）
@@ -193,6 +196,8 @@ cargo run -p clip-core --features fixtures --example fixture_page -- /tmp/app-ch
 # Python 版との突き合わせ（実ファイルを引数に足せる）
 CSP_NAME_SPLITTER=../csp-name-splitter python tools/compare_with_python.py [作品のファイル...]
 ```
+
+Rust の版は `rust-toolchain.toml` で固定しています（rustup が自動で入れます）。上げるのは Dependabot の PR で、CI が通ってから。
 
 作品のファイルはリポジトリに入れません。テストは合成したファイルだけを使います。
 
