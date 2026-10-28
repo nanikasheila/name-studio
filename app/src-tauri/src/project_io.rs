@@ -14,7 +14,7 @@ use crate::ipc::project_body;
 /// The project file's text, checked; fields only the app knows stay as they are.
 #[tauri::command]
 pub(crate) async fn load_project(path: String) -> Result<Box<RawValue>, String> {
-    blocking(move || Project::load_text(&path).and_then(raw_project)).await
+    blocking(move || Project::load_text_finding_source(&path).and_then(raw_project)).await
 }
 
 /// Fields of the project file this version does not know (added by a newer

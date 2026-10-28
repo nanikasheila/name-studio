@@ -87,6 +87,25 @@ impl Project {
         Ok(text)
     }
 
+    /// [`Project::load_text`], with the name sheet the project was taken from
+    /// ([`SourceSheet`]) found again when the two were moved together: when
+    /// the sheet is not where the project says but a file of its name lies
+    /// beside the project file, the text points there (and is saved so).
+    pub fn load_text_finding_source(path: impl AsRef<Path>) -> Result<String, ProjectError> {
+        let path = path.as_ref();
+        let text = Self::load_text(path)?;
+        let mut value: serde_json::Value = serde_json::from_str(&text).map_err(ProjectError::Json)?;
+        let Some(found) = value
+            .pointer("/source/path")
+            .and_then(|source| source.as_str())
+            .and_then(|source| moved_source(path, source))
+        else {
+            return Ok(text);
+        };
+        value["source"]["path"] = found.to_string_lossy().into_owned().into();
+        serde_json::to_string(&value).map_err(ProjectError::Json)
+    }
+
     /// The fields of a project's text this version does not know, each once
     /// and without list positions (`pages.strokes.mark`): parts a newer
     /// version added. The app saves the text as it holds it, so they are
@@ -118,6 +137,18 @@ impl Project {
 }
 
 /// `pages.?.strokes.?.mark` as `pages.strokes.mark`: the field, wherever in a list.
+/// Where a name sheet now is, when it is not at `source` (written on this or
+/// another computer) but a file of the same name lies beside the project
+/// file `project`; None when it is where it was, or nowhere to be found.
+pub fn moved_source(project: &Path, source: &str) -> Option<std::path::PathBuf> {
+    if Path::new(source).is_file() {
+        return None;
+    }
+    let name = source.rsplit(['/', '\\']).next().filter(|name| !name.is_empty())?;
+    let beside = project.parent()?.join(name);
+    beside.is_file().then_some(beside)
+}
+
 fn field_path(path: &serde_ignored::Path) -> String {
     let mut parts = Vec::new();
     let mut at = Some(path);
