@@ -11,6 +11,7 @@ import { holdPanel, movePanelToPage, placeHeld } from "./hold";
 import { moveIntoPanel, type LayerRef } from "./layers";
 import type { Alternatives, Page, Panel, Point, Project } from "./model";
 import { swapPanelContents } from "./panels";
+import { swapFit } from "./prefs";
 import { panelsToTidy, tidyPanels } from "./tidy";
 import { insertPage, newId, pageIndex } from "./project";
 import { assignPanels, sortLines } from "./readingorder";
@@ -123,7 +124,7 @@ export class NameEdits {
     if (ref.kind === "panel") {
       const source = from.panels.find((p) => p.id === ref.id);
       if (!source || source === panel) return;
-      this.edit((project) => swapPanelContents(from, source, page, panel, project.binding));
+      this.edit((project) => swapPanelContents(from, source, page, panel, project.binding, swapFit()));
       this.status(`コマ ${source.order} とコマ ${panel.order} の中身を入れ替えました`);
       return;
     }
@@ -175,7 +176,7 @@ export class NameEdits {
     this.edit((p) => {
       const at = p.pages.find((x) => x.id === page.id);
       const into = panel && at?.panels.find((x) => x.id === panel.id);
-      if (at) placed = placeHeld(p, at, held, point, into);
+      if (at) placed = placeHeld(p, at, held, point, into, swapFit());
     });
     if (!placed) return;
     const index = this.host.project()!.pages.findIndex((x) => x.id === page.id);

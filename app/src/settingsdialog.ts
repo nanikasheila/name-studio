@@ -11,7 +11,7 @@ import { fontField } from "./fontpicker";
 import { APP_FONT_LABEL, FONT_ROLES, FONT_ROLE_LABELS, roleFont, setRoleFont } from "./fonts";
 import type { PageEditor } from "./editor";
 import { helpBarShown, showHelpBar } from "./helpbar";
-import { BALLOON_TEXT_KEY, PAGE_GAP_KEY, PANEL_CARRIES_KEY, saveNewNameDefaults, saveSnap } from "./prefs";
+import { BALLOON_TEXT_KEY, PAGE_GAP_KEY, PANEL_CARRIES_KEY, saveNewNameDefaults, saveSnap, setSwapFit, swapFit } from "./prefs";
 import { GRID_GAP_MM } from "./layout";
 import type { BalloonShape, LineKind, Project } from "./model";
 import { KIND_LABELS, setBinding, setDefaultLineSize, setDefaultShape, setLineSpacing } from "./dialogue";
@@ -144,6 +144,11 @@ export class SettingsDialog {
       this.host.editor.panelCarries = (event.target as HTMLInputElement).checked;
       writeFlag(PANEL_CARRIES_KEY, this.host.editor.panelCarries);
     });
+    $<HTMLSelectElement>("st-swap-fit").addEventListener("change", (event) => {
+      const fit = (event.target as HTMLSelectElement).value === "keep" ? "keep" : "stretch";
+      setSwapFit(fit);
+      this.host.status(fit === "keep" ? "コマの入れ替えで、中身の縦横比を保つようにしました" : "コマの入れ替えで、中身を入れ替え先のコマに合わせるようにしました");
+    });
     $<HTMLInputElement>("st-balloon-text").addEventListener("change", (event) => {
       this.host.editor.balloonTextFollows = (event.target as HTMLInputElement).checked;
       writeFlag(BALLOON_TEXT_KEY, this.host.editor.balloonTextFollows);
@@ -233,11 +238,12 @@ export class SettingsDialog {
       writeFlag(PANEL_CARRIES_KEY, true);
       this.host.editor.balloonTextFollows = true;
       writeFlag(BALLOON_TEXT_KEY, true);
+      setSwapFit("stretch");
       setAutosaveTiming({ delay: AUTOSAVE_DELAY_MS / 1000, maxWait: AUTOSAVE_MAX_WAIT_MS / 1000 });
       showHelpBar(true);
       this.host.autosaveTimingChanged();
       this.render();
-      this.host.status("この PC の設定（ページの間隔・吸着・コマと中身・フキダシの変形・自動保存の間隔・ヘルプの帯）を初期に戻しました");
+      this.host.status("この PC の設定（ページの間隔・吸着・コマと中身・コマの入れ替え・フキダシの変形・自動保存の間隔・ヘルプの帯）を初期に戻しました");
     });
     $<HTMLInputElement>("st-search").addEventListener("input", () => this.filter());
     // Esc empties the search box first; the dialog closes on the next one.
@@ -432,6 +438,7 @@ export class SettingsDialog {
     $<HTMLInputElement>("st-help-bar").checked = helpBarShown();
     $<HTMLInputElement>("st-panel-carries").checked = this.host.editor.panelCarries;
     $<HTMLInputElement>("st-balloon-text").checked = this.host.editor.balloonTextFollows;
+    $<HTMLSelectElement>("st-swap-fit").value = swapFit();
     $<HTMLInputElement>("st-autosave").checked = autosaveToFile();
     const timing = autosaveTiming();
     for (const [id, value] of [["st-autosave-delay", timing.delay], ["st-autosave-max-wait", timing.maxWait]] as const) {

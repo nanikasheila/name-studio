@@ -126,18 +126,34 @@ export function carryContents(page: Page, panel: Panel): CarriedContents {
 }
 
 /**
+ * How contents are fitted into a panel of another shape (コマの入れ替え, a
+ * 保留コマ put into a panel): "stretch" spreads them over the new panel, wider
+ * or taller as it is; "keep" scales them all alike, as large as fits, in the
+ * middle of the panel, so the picture keeps its 縦横比.
+ */
+export type PanelFit = "stretch" | "keep";
+
+/**
  * Put the carried contents where the panel now is: positions follow the
  * panel's box (moved, and stretched when a corner is dragged). Rough lines
  * keep their proportions, scaled by the smaller stretch; dialogue keeps its
- * size and moves with its centre.
+ * size and moves with its centre. With `fit` "keep" the positions are not
+ * stretched either: everything scales alike and sits in the middle.
  */
-export function followPanel(page: Page, panel: Panel, carried: CarriedContents): void {
+export function followPanel(page: Page, panel: Panel, carried: CarriedContents, fit: PanelFit = "stretch"): void {
   const [ox0, oy0, ox1, oy1] = carried.box;
   const [nx0, ny0, nx1, ny1] = bounds(panel.shape);
-  const sx = ox1 > ox0 ? (nx1 - nx0) / (ox1 - ox0) : 1;
-  const sy = oy1 > oy0 ? (ny1 - ny0) / (oy1 - oy0) : 1;
-  const map = ([x, y]: readonly number[]): Point => [nx0 + (x - ox0) * sx, ny0 + (y - oy0) * sy];
+  let sx = ox1 > ox0 ? (nx1 - nx0) / (ox1 - ox0) : 1;
+  let sy = oy1 > oy0 ? (ny1 - ny0) / (oy1 - oy0) : 1;
   const uniform = Math.min(sx, sy);
+  // 縦横比を保つ: the old box, scaled to fit, centred in the new one.
+  let [ax, ay] = [nx0, ny0];
+  if (fit === "keep") {
+    [sx, sy] = [uniform, uniform];
+    ax = (nx0 + nx1) / 2 - ((ox1 - ox0) * uniform) / 2;
+    ay = (ny0 + ny1) / 2 - ((oy1 - oy0) * uniform) / 2;
+  }
+  const map = ([x, y]: readonly number[]): Point => [ax + (x - ox0) * sx, ay + (y - oy0) * sy];
   for (const { id, shape } of carried.fills ?? []) {
     const fill = page.fills?.find((f) => f.id === id);
     if (!fill) continue;
@@ -168,11 +184,11 @@ export function followPanel(page: Page, panel: Panel, carried: CarriedContents):
 
 /**
  * コマの入れ替え: the dialogue, rough lines, fills and 演出メモ of two panels
- * change places (the panels stay), fitted to their new panel as when a panel
- * is reshaped.
+ * change places (the panels stay), fitted to their new panel as `fit` says
+ * (stretched as when a panel is reshaped, or keeping their 縦横比).
  * The panels may be on different pages.
  */
-export function swapPanelContents(pageA: Page, panelA: Panel, pageB: Page, panelB: Panel, binding: Binding = "right"): void {
+export function swapPanelContents(pageA: Page, panelA: Panel, pageB: Page, panelB: Panel, binding: Binding = "right", fit: PanelFit = "stretch"): void {
   if (panelA === panelB) return;
   const carriedA = carryContents(pageA, panelA);
   const carriedB = carryContents(pageB, panelB);
@@ -194,8 +210,8 @@ export function swapPanelContents(pageA: Page, panelA: Panel, pageB: Page, panel
     take(pageA, pageB, carriedA);
     take(pageB, pageA, carriedB);
   }
-  followPanel(pageB, panelB, carriedA);
-  followPanel(pageA, panelA, carriedB);
+  followPanel(pageB, panelB, carriedA, fit);
+  followPanel(pageA, panelA, carriedB, fit);
   // The 演出メモ is about what is in the panel, so it goes along.
   const [noteA, noteB] = [panelA.note, panelB.note];
   if (noteB) panelA.note = noteB;

@@ -7,10 +7,11 @@ import { EXPORT_MEMORIES, memoryFrom, memoryKey, withMemory, type ExportMemory }
 import { defaultsFrom, defaultsOf, type NewNameDefaults } from "./namedefaults";
 import { normalizeCurve, defaultPenSettings, parsePenSettings, type PenSettings } from "./pen";
 import { forgotten, recentFrom, remembered, type RecentName } from "./recent";
-import { localStore, readJson, writeJson, writeText } from "./settings";
+import { localStore, readJson, readText, writeJson, writeText } from "./settings";
 import { shapesFrom } from "./shapes";
 import { snapFrom, type SnapSettings } from "./snapping";
 import type { Brush, Project, StoryShape } from "./model";
+import type { PanelFit } from "./panels";
 
 // --- the page editor's choices ------------------------------------------------------
 
@@ -25,6 +26,18 @@ export const PAGE_GAP_KEY = "namestudio.pageGap";
 export const HELP_BAR_KEY = "namestudio.helpBar";
 /** The first-time guide seen (or closed): "editor" and "start" each once. */
 export const TOUR_SEEN_KEY = "namestudio.tourSeen";
+
+/** コマの入れ替え・保留コマを入れるとき: "stretch" (入れ替え先のコマに合わせる) or "keep" (縦横比を保つ). */
+export const SWAP_FIT_KEY = "namestudio.swapFit";
+
+/** How the contents go into another panel when panels swap (out of the box: fitted to the panel, as before). */
+export function swapFit(): PanelFit {
+  return readText(SWAP_FIT_KEY) === "keep" ? "keep" : "stretch";
+}
+
+export function setSwapFit(fit: PanelFit): void {
+  writeText(SWAP_FIT_KEY, fit);
+}
 
 // --- 吸着 ------------------------------------------------------------------------------
 

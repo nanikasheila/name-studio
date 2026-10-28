@@ -8,6 +8,7 @@ import { toPage } from "./layout";
 import { bounds } from "./geometry";
 import type { Page, Point, Project } from "./model";
 import { type CarriedContents, carryContents, followPanel, swapPanelContents } from "./panels";
+import { swapFit } from "./prefs";
 import { assignPanels, orderPanels, sortLines } from "./readingorder";
 import { pickInside } from "./strokes";
 import { strokeEditable } from "./roughlayers";
@@ -411,7 +412,7 @@ const swap: DragHandler<DragOf<"swap">> = {
     const target = to?.slot.page.panels.find((panel) => panel.id === to.panelId);
     if (!from || !to || !target) return;
     editor.host.begin();
-    swapPanelContents(drag.slot.page, from, to.slot.page, target, project.binding);
+    swapPanelContents(drag.slot.page, from, to.slot.page, target, project.binding, swapFit());
     editor.host.commit();
     editor.select({ kind: "panel", pageId: to.slot.page.id, id: target.id });
     editor.host.status(`コマ ${from.order} とコマ ${target.order} の中身を入れ替えました（元に戻すは Ctrl+Z）`);

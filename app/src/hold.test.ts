@@ -67,6 +67,24 @@ describe("保留コマ", () => {
     expect(third.stickies![0].link?.id).toBe(target.id);
   });
 
+  it("keeps the 縦横比 of what it holds when asked", () => {
+    const { project, first, third, top } = setUp();
+    // 160×80 into 80×120: half the size, in the middle of the panel's height.
+    const target = addPanel(project, third, rectShape([20, 220, 100, 340]));
+    const placed = placeHeld(project, third, holdPanel(project, first, top), undefined, target, "keep");
+    expect(placed).toBe(target);
+    const [line] = third.lines;
+    const [stroke] = third.strokes;
+    const centre = [(line.box[0] + line.box[2]) / 2, (line.box[1] + line.box[3]) / 2];
+    // Was at (150, 50) in the panel from (20, 20); now from (20, 260) at half.
+    expect(centre[0]).toBeCloseTo(20 + 130 * 0.5);
+    expect(centre[1]).toBeCloseTo(260 + 30 * 0.5);
+    expect(stroke.points.map(([x, y]) => [x, y])).toEqual([
+      [20 + 20 * 0.5, 260 + 20 * 0.5],
+      [20 + 60 * 0.5, 260 + 60 * 0.5],
+    ]);
+  });
+
   it("moves a panel to another page where it was", () => {
     const { project, first, third, top } = setUp();
     const box = bounds(top.shape);
