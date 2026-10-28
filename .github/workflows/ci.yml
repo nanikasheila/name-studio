@@ -21,7 +21,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install WebView build dependencies
         if: runner.os == 'Linux'
@@ -32,7 +32,7 @@ jobs:
       - name: Rust (the version in rust-toolchain.toml)
         run: rustup toolchain install
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -87,13 +87,13 @@ jobs:
       - name: Build CLI
         run: cargo build --release -p name-cli
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: nanikasheila/csp-name-splitter
           ref: ${{ env.REFERENCE_REF }}
           path: reference
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -113,7 +113,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install WebView dependencies
         if: runner.os == 'Linux'
@@ -124,7 +124,7 @@ jobs:
       - name: Rust (the version in rust-toolchain.toml)
         run: rustup toolchain install
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -154,7 +154,7 @@ jobs:
     name: Known vulnerabilities in the Rust libraries
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Rust (the version in rust-toolchain.toml)
         run: rustup toolchain install
       - uses: taiki-e/install-action@v2

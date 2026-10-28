@@ -36,14 +36,14 @@ jobs:
       # nobody reviewed never reaches the copies that update themselves.
       PUBLISH: ${{ github.event_name == 'workflow_run' || github.ref == 'refs/heads/main' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.SHA }}
 
       - name: Rust (the version in rust-toolchain.toml)
         run: rustup toolchain install
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -111,7 +111,7 @@ jobs:
             gh release upload channel-beta release/latest.json --clobber
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: name-studio-windows-installer
           path: release/*.exe
