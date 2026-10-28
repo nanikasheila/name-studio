@@ -2,7 +2,7 @@
   "name": "name-studio",
   "private": true,
   "version": "0.1.0",
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -31,7 +31,8 @@
     "e2e:mininame": "node e2e/mininame.mjs",
     "e2e:sketch": "node e2e/sketch.mjs",
     "e2e:marks": "node e2e/marks.mjs",
-    "e2e:recovery": "node e2e/recovery.mjs"
+    "e2e:recovery": "node e2e/recovery.mjs",
+    "readme-shots": "node e2e/readme-shots.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",

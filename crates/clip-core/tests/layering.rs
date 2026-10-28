@@ -1,4 +1,4 @@
-//! The Rust crates in layers, slowest first (README 「構成」):
+//! The Rust crates in layers, slowest first (docs/DEVELOPMENT.md 「構成」):
 //! name-model (the name data itself) ← clip-core (CSP files, through
 //! csp-format) ← name-cli and the app. A crate leans only on slower ones, so
 //! the name data never changes because CSP's format or the window did.
