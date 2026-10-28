@@ -114,6 +114,7 @@ pub fn run() {
             viewer::rough_image,
             project_io::log_error,
             project_io::load_project,
+            project_io::unknown_project_fields,
             project_io::save_project,
             project_io::load_series,
             project_io::save_series,
@@ -139,6 +140,7 @@ pub fn run() {
             files::read_csp_sub_tools,
             fonts::list_fonts,
             is_release_build,
+            updates::check_update,
             updates::install_release,
             batch_export_task,
             end_batch_export

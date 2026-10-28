@@ -7,9 +7,9 @@ description = "ネームデータ（正本）: ページ、コマ、セリフ、
 
 [dependencies]
 flate2 = "1.1.10"
+serde_ignored = "0.1.14"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
 
 [dev-dependencies]
-serde_ignored = "0.1.14"
 tempfile = "3"

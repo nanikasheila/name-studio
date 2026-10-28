@@ -21,7 +21,7 @@ describe("話の型", () => {
     expect(range(shapeSpans(shape, 32))).toEqual(["1-3", "4-7", "8-16", "17-22", "23-25", "26-32"]);
     const beats = Object.fromEntries((shape.beats ?? []).map((beat) => [beat.name, beatPage(beat.at, 32) + 1]));
     expect(beats["オープニング・イメージ"]).toBe(1);
-    expect(beats["ミッドポイント"]).toBe(17);
+    expect(beats.ミッドポイント).toBe(17);
     expect(beats["ファイナル・イメージ"]).toBe(32);
   });
 

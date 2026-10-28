@@ -3,6 +3,7 @@
 // misspelt command or a wrong argument is a type error, and the shapes the
 // Rust side sends are written down once, here.
 import { invoke } from "@tauri-apps/api/core";
+import type { Update } from "@tauri-apps/plugin-updater";
 import type { CspSubTool } from "./brush";
 import type { ExportReport, ExportRequest, OverwriteCheck } from "./export";
 import type { BuiltTemplate, PageSetup } from "./csppage";
@@ -172,6 +173,12 @@ export interface CspPageDialogue {
  */
 export type RawBody = Uint8Array;
 
+/** Where new versions come from: 正式版 only, or 試験版 (every version CI let through) too. */
+export type UpdateChannel = "stable" | "beta";
+
+/** A newer version found by `check_update`, as `new Update(…)` takes it. */
+export type FoundUpdate = ConstructorParameters<typeof Update>[0];
+
 /** Each command: its arguments (`void`: none) and its result. */
 export interface Commands {
   // The open name sheet (viewer.rs)
@@ -185,6 +192,7 @@ export interface Commands {
   // The name data (project_io.rs)
   log_error: [{ message: string }, void];
   load_project: [{ path: string }, Project];
+  unknown_project_fields: [{ path: string }, string[]];
   save_project: [RawBody, VersionInfo | null];
   load_series: [{ path: string }, Series];
   save_series: [{ path: string; text: string }, void];
@@ -215,6 +223,7 @@ export interface Commands {
   // The app (lib.rs)
   is_release_build: [void, boolean];
   // 前の版に戻す (updates.rs)
+  check_update: [{ channel: UpdateChannel; timeoutMs: number }, FoundUpdate | null];
   install_release: [{ version: string }, void];
   batch_export_task: [void, BatchExport | null];
   end_batch_export: [{ code: number }, void];

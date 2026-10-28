@@ -803,7 +803,7 @@ export class ExportDialog {
         const base = (this.host.projectPath() ?? project.title ?? "ネーム").replace(/\.[^.\\/]+$/, "");
         const kept = this.host.projectPath() ? loadExportMemory(this.host.projectPath()!)?.files[this.kind] : undefined;
         // The ミニネーム written last as another form: the same name with this form's extension.
-        const last = kept && kept.replace(/\.[^.\\/]+$/, `.${extension}`);
+        const last = kept?.replace(/\.[^.\\/]+$/, `.${extension}`);
         const suffix = this.kind === "text" ? "_台本" : this.kind === "mini" ? "_ミニネーム" : "";
         const filter = this.kind === "pdf" || extension === "pdf" ? "PDF" : this.kind === "mini" ? "画像" : "テキスト";
         const path =

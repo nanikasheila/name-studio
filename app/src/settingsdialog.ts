@@ -9,7 +9,7 @@ import { SHAPE_LABELS } from "./balloon";
 import { $, choice, element } from "./dom";
 import { fontField } from "./fontpicker";
 import { APP_FONT_LABEL, FONT_ROLES, FONT_ROLE_LABELS, roleFont, setRoleFont } from "./fonts";
-import { type PageEditor } from "./editor";
+import type { PageEditor } from "./editor";
 import { helpBarShown, showHelpBar } from "./helpbar";
 import { BALLOON_TEXT_KEY, PAGE_GAP_KEY, PANEL_CARRIES_KEY, saveNewNameDefaults, saveSnap } from "./prefs";
 import { GRID_GAP_MM } from "./layout";
@@ -17,7 +17,7 @@ import type { BalloonShape, LineKind, Project } from "./model";
 import { KIND_LABELS, setBinding, setDefaultLineSize, setDefaultShape, setLineSpacing } from "./dialogue";
 import { gutters, nameKind, setGutters } from "./project";
 import { readText, writeFlag, writeNumber, writeText } from "./settings";
-import { appVersion, checkNow, installRelease, releases, setUpdateMode, updateMode, type UpdateMode } from "./updater";
+import { appVersion, checkNow, installRelease, releases, setUpdateChannel, setUpdateMode, updateChannel, updateMode, type UpdateMode } from "./updater";
 import { DEFAULT_SNAP, MAX_GRID_MM, MIN_GRID_MM, type SnapSettings } from "./snapping";
 import {
   APP_BALLOON_LINE_MM,
@@ -172,6 +172,11 @@ export class SettingsDialog {
       const mode = (event.target as HTMLSelectElement).value as UpdateMode;
       setUpdateMode(mode);
       this.host.status(UPDATE_MODE_NOTES[mode]);
+    });
+    $<HTMLInputElement>("st-update-beta").addEventListener("change", (event) => {
+      const beta = (event.target as HTMLInputElement).checked;
+      setUpdateChannel(beta ? "beta" : "stable");
+      this.host.status(beta ? "試験版も受け取ります（CSP での確認前の新しい版。困ったら「前の版に戻す」で）" : "正式版だけを受け取ります（確認の済んだ版）");
     });
     $<HTMLButtonElement>("st-check-update").addEventListener("click", async (event) => {
       const button = event.currentTarget as HTMLButtonElement;
@@ -434,6 +439,7 @@ export class SettingsDialog {
       if (document.activeElement !== field) field.value = String(value);
     }
     $<HTMLSelectElement>("st-update-mode").value = updateMode();
+    $<HTMLInputElement>("st-update-beta").checked = updateChannel() === "beta";
     const snap = this.host.editor.snapping;
     for (const [key, id] of SNAP_BOXES) $<HTMLInputElement>(id).checked = snap[key] as boolean;
     const grid = $<HTMLInputElement>("st-grid-mm");
@@ -465,7 +471,7 @@ export class SettingsDialog {
         ...list.map((release) =>
           element("option", {
             value: release.version,
-            textContent: `v${release.version}（${release.date}）${release.version === this.version ? " ← 今の版" : ""} ${release.title}`.trim(),
+            textContent: `v${release.version}（${release.date}${release.beta ? "・試験版" : ""}）${release.version === this.version ? " ← 今の版" : ""} ${release.title}`.trim(),
           }),
         ),
       );

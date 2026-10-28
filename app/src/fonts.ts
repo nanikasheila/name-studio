@@ -103,7 +103,7 @@ export function canvasFont(name: string | null, sizePx: number, bold = false): s
   const face = name ? byName.get(name) : undefined;
   const weight = bold ? "bold" : face ? String(face.weight) : "normal";
   const style = face?.italic ? "italic " : "";
-  const families = name ? [...new Set([...(face?.families ?? []), name])].map(quoted).join(", ") + ", " : "";
+  const families = name ? `${[...new Set([...(face?.families ?? []), name])].map(quoted).join(", ")}, ` : "";
   return `${style}${weight} ${sizePx}px ${families}${APP_FONT}`;
 }
 

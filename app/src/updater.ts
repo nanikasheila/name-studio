@@ -5,16 +5,20 @@
 // 「今すぐ確かめる」 in the settings looks when asked).
 // 前の版に戻す: a release that went wrong can be swapped for an earlier one
 // (signed like any update); updates then stay paused until turned on again.
-import { call } from "./backend";
+// Every version CI lets through is first a 試験版; it becomes a 正式版 once
+// checked in CSP (docs/release.md). Copies get 正式版 only unless set to take
+// 試験版 too.
+import { call, type UpdateChannel } from "./backend";
 import { getVersion } from "@tauri-apps/api/app";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { check, type Update } from "@tauri-apps/plugin-updater";
+import { Update } from "@tauri-apps/plugin-updater";
 import { $ } from "./dom";
 import { readFlag, readText, writeText } from "./settings";
 
 /** Before the three ways, a flag: on meant 「notify」. */
 const PAUSED_KEY = "namestudio.updatesPaused";
 const MODE_KEY = "namestudio.updateMode";
+const CHANNEL_KEY = "namestudio.updateChannel";
 const RELEASES = "https://api.github.com/repos/nanikasheila/name-studio/releases?per_page=60";
 
 /** On start: put a new version in by itself, only tell of it, or not look. */
@@ -30,6 +34,15 @@ export function updateMode(): UpdateMode {
 
 export function setUpdateMode(mode: UpdateMode): void {
   writeText(MODE_KEY, mode);
+}
+
+/** 正式版 only (the default), or 試験版 too. */
+export function updateChannel(): UpdateChannel {
+  return readText(CHANNEL_KEY) === "beta" ? "beta" : "stable";
+}
+
+export function setUpdateChannel(channel: UpdateChannel): void {
+  writeText(CHANNEL_KEY, channel);
 }
 
 export interface UpdateHost {
@@ -64,8 +77,8 @@ export async function lookForUpdate(): Promise<UpdateCheck> {
     return { kind: "notRelease" };
   }
   try {
-    const update = await check({ timeout: 15000 });
-    return update ? { kind: "found", update } : { kind: "latest" };
+    const found = await call("check_update", { channel: updateChannel(), timeoutMs: 15000 });
+    return found ? { kind: "found", update: new Update(found) } : { kind: "latest" };
   } catch (error) {
     // Offline, or no release with an update key yet: try again next start.
     console.warn("update check failed", error);
@@ -143,6 +156,8 @@ export interface Release {
   version: string;
   date: string;
   title: string;
+  /** A 試験版: not yet checked in CSP and promoted. */
+  beta: boolean;
 }
 
 interface GitHubRelease {
@@ -150,6 +165,7 @@ interface GitHubRelease {
   published_at: string | null;
   body: string | null;
   draft: boolean;
+  prerelease?: boolean;
   assets: { name: string }[];
 }
 
@@ -161,6 +177,7 @@ export function installableReleases(list: GitHubRelease[]): Release[] {
       version: release.tag_name.slice(1),
       date: (release.published_at ?? "").slice(0, 10),
       title: (release.body ?? "").split("\n")[0].trim(),
+      beta: release.prerelease === true,
     }));
 }
 

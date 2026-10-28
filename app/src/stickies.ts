@@ -29,7 +29,7 @@ export function stickyRows(text: string, open = false): string[] {
   }
   if (open || rows.length <= STICKY_FOLDED_ROWS) return rows;
   const shown = rows.slice(0, STICKY_FOLDED_ROWS);
-  shown[shown.length - 1] = [...shown[shown.length - 1]].slice(0, perRow - 1).join("") + "…";
+  shown[shown.length - 1] = `${[...shown[shown.length - 1]].slice(0, perRow - 1).join("")}…`;
   return shown;
 }
 
@@ -74,7 +74,7 @@ export function settleSticky(project: Project, sticky: Sticky): void {
     [0, -y1],
     [0, height - y0],
   ];
-  const [dx, dy] = ways.reduce((best, way) => (Math.hypot(...way) < Math.hypot(...best) ? way : best));
+  const [dx, dy] = ways.reduce((best, way) => (Math.hypot(way[0], way[1]) < Math.hypot(best[0], best[1]) ? way : best));
   sticky.at = [x0 + dx, y0 + dy];
 }
 

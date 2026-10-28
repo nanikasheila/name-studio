@@ -606,7 +606,7 @@ export function storedOutline(line: Line): Point[] | undefined {
 /** The box a line takes on the page with its balloon (without tails). */
 export function balloonExtent(line: Line): BoxMm {
   const s = star(line);
-  if (!s || !s.samples.length) return line.box;
+  if (!s?.samples.length) return line.box;
   const xs = s.samples.map((sample) => sample.point[0]);
   const ys = s.samples.map((sample) => sample.point[1]);
   return [Math.min(...xs, line.box[0]), Math.min(...ys, line.box[1]), Math.max(...xs, line.box[2]), Math.max(...ys, line.box[3])];

@@ -411,11 +411,7 @@ pub fn recoveries(root: &Path) -> Vec<Recovery> {
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), ProjectError> {
-    let mut temporary = path.as_os_str().to_owned();
-    temporary.push(".tmp");
-    let temporary = PathBuf::from(temporary);
-    std::fs::write(&temporary, bytes).map_err(ProjectError::Io)?;
-    std::fs::rename(&temporary, path).map_err(ProjectError::Io)
+    crate::atomic::write(path, bytes).map_err(ProjectError::Io)
 }
 
 #[cfg(test)]

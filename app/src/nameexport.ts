@@ -336,7 +336,7 @@ function noteRows(ctx: CanvasRenderingContext2D, text: string, width: number, ma
     }
     rows.push(row);
   }
-  if (rows.length > max) rows.splice(max - 1, rows.length, rows[max - 1] + "…");
+  if (rows.length > max) rows.splice(max - 1, rows.length, `${rows[max - 1]}…`);
   return rows;
 }
 

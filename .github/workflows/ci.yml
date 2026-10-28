@@ -29,9 +29,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
+      - name: Rust (the version in rust-toolchain.toml)
+        run: rustup toolchain install
 
       - uses: actions/setup-node@v4
         with:
@@ -39,11 +38,12 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
 
-      - name: Front end (type check, tests, build)
+      - name: Front end (type check, lint, tests, build)
         working-directory: app
         run: |
           npm ci
           npm run build
+          npm run lint
           npm test
 
       - name: Browser walk-through (open, draw, undo, errors undone, autosave, 連続, every tool against its record)
@@ -59,6 +59,10 @@ jobs:
         run: |
           npm run e2e:perf -- --report "$RUNNER_TEMP/perf.json"
           { echo "### 重いネームでの速さ（ms、いちばん遅いフレーム）"; echo; node -e 'const r=require(process.argv[1]);for(const[k,v]of Object.entries(r))console.log(`- ${k}: ${typeof v==="number"?v.toFixed(1):`${v.worst} / ${v.budget}`}`)' "$RUNNER_TEMP/perf.json"; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Release scripts (notes, promotion)
+        shell: bash
+        run: node --test .github/scripts/*.test.mjs
 
       - name: Check formatting
         run: cargo fmt --check
@@ -109,7 +113,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev xvfb
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust (the version in rust-toolchain.toml)
+        run: rustup toolchain install
 
       - uses: actions/setup-node@v4
         with:
@@ -136,3 +141,17 @@ jobs:
           else
             node e2e/realapp.mjs "$RUNNER_TEMP/app-check"
           fi
+
+  audit:
+    name: Known vulnerabilities in the Rust libraries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust (the version in rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      # RustSec advisories against Cargo.lock: a vulnerability fails; unmaintained/unsound
+      # warnings (glib, proc-macro-error under Tauri's Linux WebView) are listed only.
+      - run: cargo audit

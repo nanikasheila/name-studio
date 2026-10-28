@@ -175,7 +175,7 @@ export function parseScript(source: string): ScriptDoc {
   for (const row of rows) {
     const line = row.trim();
     if (!line) continue;
-    let heading = /^(#{1,6})\s+(.*)$/.exec(line);
+    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
     if (heading) {
       const level = heading[1].length;
       const text = plain(heading[2]);

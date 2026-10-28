@@ -1,0 +1,6 @@
+# The Rust used to build, test and release (CI and the PC). Raise it on purpose:
+# Dependabot proposes the next one, and CI (clippy -D warnings) checks it.
+[toolchain]
+channel = "1.97.0"
+components = ["clippy", "rustfmt"]
+profile = "minimal"

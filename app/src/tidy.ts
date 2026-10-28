@@ -67,7 +67,7 @@ function setFacing(line: EdgeLine, facing: Facing, value: number): void {
   line.c = dot(line.n, point);
 }
 
-function valueOf(line: EdgeLine): number {
+function lineValue(line: EdgeLine): number {
   return line.facing === "left" || line.facing === "top" ? -line.c : line.c;
 }
 
@@ -99,7 +99,7 @@ function edgeLines(panel: Panel, straighten: boolean): EdgeLine[] {
       const [line, next] = [lines[i], lines[(i + 1) % lines.length]];
       if (dot(line.n, next.n) < Math.cos((2 * Math.PI) / 180)) continue;
       const [la, lb] = [length(line), length(next)];
-      if (line.facing && line.facing === next.facing) setFacing(line, line.facing, (valueOf(line) * la + valueOf(next) * lb) / (la + lb));
+      if (line.facing && line.facing === next.facing) setFacing(line, line.facing, (lineValue(line) * la + lineValue(next) * lb) / (la + lb));
       else line.c = (line.c * la + dot(line.n, [(next.a[0] + next.b[0]) / 2, (next.a[1] + next.b[1]) / 2]) * lb) / (la + lb);
       line.b = next.b;
       line.open = line.open && next.open;
@@ -156,11 +156,11 @@ interface Group {
 }
 
 function groupsOf(edges: { panel: number; line: EdgeLine; fixed: boolean }[], facing: Facing): Group[] {
-  const sorted = edges.filter((edge) => edge.line.facing === facing).sort((p, q) => valueOf(p.line) - valueOf(q.line));
+  const sorted = edges.filter((edge) => edge.line.facing === facing).sort((p, q) => lineValue(p.line) - lineValue(q.line));
   const groups: Group[] = [];
   let first = -Infinity;
   for (const edge of sorted) {
-    const value = valueOf(edge.line);
+    const value = lineValue(edge.line);
     let group = groups[groups.length - 1];
     if (!group || value - first > ALIGN_MM) {
       group = { facing, value: 0, members: [], fixed: false };
@@ -180,9 +180,9 @@ function groupsOf(edges: { panel: number; line: EdgeLine; fixed: boolean }[], fa
     for (const { line } of group.members) {
       const length = Math.hypot(line.b[0] - line.a[0], line.b[1] - line.a[1]);
       weight += length;
-      sum += valueOf(line) * length;
+      sum += lineValue(line) * length;
     }
-    group.value = weight ? sum / weight : valueOf(group.members[0].line);
+    group.value = weight ? sum / weight : lineValue(group.members[0].line);
   }
   return groups;
 }

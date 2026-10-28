@@ -7,7 +7,7 @@
 import type { BoxMm, Line, Page, PageFormat, Panel, Point, Project, RoughImage, Stroke } from "./model";
 import { bounds } from "./geometry";
 import { basicBox, trimBox } from "./pagebox";
-import { type Slot } from "./layout";
+import type { Slot } from "./layout";
 import { maskShape } from "./mask";
 import { stickyBox } from "./stickies";
 import { wantsSpread } from "./panels";

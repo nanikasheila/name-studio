@@ -103,7 +103,7 @@ const pen: DragHandler<DragOf<"pen">> = {
     );
     // A 指示 goes on its 指示のレイヤー (made when there is none yet), shown again if it was hidden.
     const markLayer = drag.mark && markLayerFor(project, drag.mark.layer, () => newId(project, "rough"));
-    if (markLayer && markLayer.hidden) setRoughLayer(project, markLayer.id, { hidden: false });
+    if (markLayer?.hidden) setRoughLayer(project, markLayer.id, { hidden: false });
     const layer = markLayer ? markLayer.id : layerOf(project, { layer: editor.roughLayer }).id;
     let added = 0;
     for (const [index, run] of runs.entries()) {

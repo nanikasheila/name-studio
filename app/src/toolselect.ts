@@ -408,7 +408,7 @@ const swap: DragHandler<DragOf<"swap">> = {
   end(editor, drag, project) {
     const from = drag.slot.page.panels.find((panel) => panel.id === drag.panelId);
     const to = drag.to;
-    const target = to && to.slot.page.panels.find((panel) => panel.id === to.panelId);
+    const target = to?.slot.page.panels.find((panel) => panel.id === to.panelId);
     if (!from || !to || !target) return;
     editor.host.begin();
     swapPanelContents(drag.slot.page, from, to.slot.page, target, project.binding);

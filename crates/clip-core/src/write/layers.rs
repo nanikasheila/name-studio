@@ -362,12 +362,10 @@ pub(crate) fn csp_image(image: &RgbaImage) -> csp_format::RgbaImage {
     }
 }
 
-/// Save `file` through a temporary file, so a failed write never leaves
+/// Save `file` whole or not at all (`name_model::atomic`), so a failed write never leaves
 /// half a page (pages are written over the person's own files when updated).
 pub(crate) fn save(file: &ClipFile, path: &Path) -> Result<()> {
     let data = file.to_bytes()?;
-    let temporary = path.with_extension("clip.tmp");
-    std::fs::write(&temporary, data)?;
-    std::fs::rename(&temporary, path)?;
+    name_model::atomic::write(path, &data)?;
     Ok(())
 }
