@@ -140,6 +140,7 @@ pub fn run() {
             files::read_csp_sub_tools,
             fonts::list_fonts,
             is_release_build,
+            updates::check_update,
             updates::install_release,
             batch_export_task,
             end_batch_export

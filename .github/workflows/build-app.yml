@@ -2,7 +2,8 @@ name: Release Windows app
 
 # Every merge to main whose CI passed becomes a GitHub release with the
 # Windows installer, built from the very commit CI checked (a commit whose
-# tests failed is never shipped to the copies that update themselves).
+# tests failed is never shipped to the copies that update themselves). It is
+# a 試験版 first; promote.yml makes it the 正式版 that every copy takes.
 # With the updater key set up (docs/release.md), the release also carries
 # latest.json and the installer's signature, and installed copies update
 # themselves when they start. The installer itself is not code-signed, so
@@ -73,13 +74,23 @@ jobs:
         shell: bash
         run: node e2e/realapp.mjs "$RUNNER_TEMP/app-check"
 
-      - name: Collect release files
+      # What changed for the people who use the app: the pull request's
+      # 「使う人への変更」 (.github/scripts/release-notes.mjs).
+      - name: Release notes
         shell: bash
         env:
-          NOTES: ${{ github.event.workflow_run.head_commit.message || github.event.head_commit.message }}
-        run: node .github/scripts/release-files.mjs "$VERSION" release
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/scripts/release-notes.mjs "$SHA" > "$RUNNER_TEMP/notes.md"
 
-      - name: Publish release
+      - name: Collect release files
+        shell: bash
+        run: |
+          NOTES="$(cat "$RUNNER_TEMP/notes.md")" node .github/scripts/release-files.mjs "$VERSION" release
+
+      # Every release starts as a 試験版 (a prerelease): copies set to take
+      # 試験版 get it from the channel-beta release's latest.json; everyone
+      # else once it is promoted to 正式版 (promote.yml) after the CSP check.
+      - name: Publish release (試験版)
         if: env.PUBLISH == 'true'
         shell: bash
         env:
@@ -88,7 +99,16 @@ jobs:
           gh release create "v$VERSION" release/* \
             --title "Name Studio v$VERSION" \
             --notes-file release-notes.md \
-            --target "$SHA"
+            --target "$SHA" \
+            --prerelease
+          if [ -f release/latest.json ]; then
+            gh release view channel-beta > /dev/null 2>&1 || gh release create channel-beta \
+              --title "試験版の更新先" \
+              --notes "試験版を受け取る設定のアプリが読む latest.json です（いちばん新しい試験版を指します）。版はここではなく v0.2.* の各リリースから入れてください。" \
+              --target "$SHA" \
+              --prerelease
+            gh release upload channel-beta release/latest.json --clobber
+          fi
 
       - uses: actions/upload-artifact@v4
         with:

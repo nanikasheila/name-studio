@@ -470,7 +470,7 @@ export class Workbench {
     this.show(project, path, `${project.pages.length} ページのネームを開きました${series}`);
     this.written.toFile(this.session.id, path, this.session.snapshot());
     rememberName(path, project);
-    const unknown = unknownFieldsNote(await call("unknown_project_fields", { path }).catch(() => []));
+    const unknown = unknownFieldsNote((await call("unknown_project_fields", { path }).catch(() => null)) ?? []);
     if (unknown && this.session.path === path) showAlert("unknown-fields", unknown, "warning");
   }
 

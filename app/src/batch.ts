@@ -52,7 +52,7 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
     // As when the window opens a file: empty lists are left out of the saved JSON.
     const project = normalize(await call("load_project", { path: task.project }));
     // Parts a newer version added are not written out: said first in the report.
-    const unknown = unknownFieldsNote(await call("unknown_project_fields", { path: task.project }).catch(() => []));
+    const unknown = unknownFieldsNote((await call("unknown_project_fields", { path: task.project }).catch(() => null)) ?? []);
     const notes = unknown ? [`注意: ${unknown}`] : [];
     const templates = await templatesFor(task, project);
     if (task.readDialogue) {
@@ -129,6 +129,8 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
       result = { ok, seconds: (Date.now() - started) / 1000, summary, overwrite, ...report };
     }
   } catch (error) {
+    // Whatever went well before, the export did not finish: not ok, and the exit code says so.
+    ok = false;
     result = { ok, error: String(error) };
   }
   await call("write_text_file", { path: task.report, text: JSON.stringify(result, null, 2) }).catch(() => undefined);

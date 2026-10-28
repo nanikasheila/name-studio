@@ -1,0 +1,36 @@
+name: Promote to 正式版
+
+# A 試験版 (every release build.yml publishes) becomes the 正式版 that every
+# installed copy takes, once it was checked in CLIP STUDIO PAINT. By hand:
+# Actions → Promote to 正式版 → Run workflow (empty: the newest 試験版).
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "正式版にする版（例 0.2.90）。空ならいちばん新しい試験版"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Promote
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh release list --limit 100 --json tagName,isPrerelease,isDraft,isLatest > "$RUNNER_TEMP/releases.json"
+          tag="$(node .github/scripts/promote-version.mjs "$RUNNER_TEMP/releases.json" "$VERSION")"
+          gh release edit "$tag" --prerelease=false --latest
+          echo "### $tag を正式版にしました" >> "$GITHUB_STEP_SUMMARY"

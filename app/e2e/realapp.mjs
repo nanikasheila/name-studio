@@ -4,7 +4,8 @@
 // is checked too, once with a CSP-made template page, once with the one
 // the app makes from its own settings (--builtin, with a work) and once with
 // each panel as a folder with a layer mask (--panel-masks), with two
-// ラフ線のレイヤー, with 指示 (and --no-marks, then added by セリフだけ反映), and a 縦スクロール
+// ラフ線のレイヤー, with 指示 (and --no-marks, then added by セリフだけ反映), a name saved by
+// a newer version (its report says what this one leaves out), and a 縦スクロール
 // whose pieces are joined into one tall page. Needs the
 // release build and a template page:
 //   npx tauri build --no-bundle
@@ -58,6 +59,11 @@ const scroll = P.newProject("縦スクロール", 3, "scroll");
 for (const piece of scroll.pages) P.setLineText(P.addLine(scroll, piece, [40, 40, 60, 100]), "セリフ");
 scroll.cspPage = { ...cspPageOf(scroll), joinPieces: true };
 await server.close();
+// As a newer version would save it: a field this version does not know, on a stroke.
+const newer = JSON.parse(projectJson(project));
+newer.pages[0].strokes[0].wobble = 0.3;
+const newerName = join(dir, "newer.namestudio");
+writeFileSync(newerName, JSON.stringify(newer));
 const name = join(dir, "test.namestudio");
 writeFileSync(name, projectJson(project));
 const scrollName = join(dir, "scroll.namestudio");
@@ -118,6 +124,10 @@ for (const [round, want] of [["first", ["指示"]], ["again", []]]) {
 }
 const withPictures = exportWith("pictured", ["--builtin"], { file: picturedName });
 check((withPictures?.checks?.[0]?.layers ?? 0) === (builtin?.checks?.[0]?.layers ?? 0) + 2, "pictured: the 資料 and the picture of the name are a layer each");
+// A name saved by a newer version: it still goes out, and the report says first what this one leaves out.
+const fromNewer = exportWith("newer", ["--builtin"], { file: newerName });
+check(/^注意: このネームには、この版が知らない項目があります.*pages\.strokes\.wobble/.test(fromNewer?.summary?.[0] ?? ""), `newer: the report says first what this version does not know (${fromNewer?.summary?.[0]})`);
+check(!(builtin?.summary ?? []).some((line) => line.includes("知らない項目")), "builtin: a name of this version says nothing of the kind");
 const tall = exportWith("tall", ["--builtin", "--work-name", "縦スクロール"], { file: scrollName, pages: 1 });
 check(tall?.textLayers === true && (tall?.checks?.[0]?.layers ?? 0) > 0, "tall: the joined page has its layers");
 if (failures.length) process.exit(1);
