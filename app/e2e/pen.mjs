@@ -182,6 +182,8 @@ try {
     wb.editor.penWidthMm = 1.2;
   });
   await longLine("a stamped brush");
+  // (Kept for 先読み below: more lines are drawn before it.)
+  const spiralLine = (await lastStroke()).points;
   await page.evaluate(() => {
     const wb = window.nameStudio.workbench;
     wb.editor.penBrush = null;
@@ -225,8 +227,7 @@ try {
   const predicts = await page.evaluate(() => typeof PointerEvent.prototype.getPredictedEvents === "function");
   if (predicts && aheadSeen) {
     check(aheadFar === 0, "先読み goes only a little ahead (30 px at most)");
-    const stored = (await lastStroke()).points;
-    const end = stored[stored.length - 1];
+    const end = spiralLine[spiralLine.length - 1];
     const lastSent = await page.evaluate(([x, y]) => {
       const wb = window.nameStudio.workbench;
       const slot = wb.editor.slots.find((s) => s.page.id === wb.project.pages[10].id);
