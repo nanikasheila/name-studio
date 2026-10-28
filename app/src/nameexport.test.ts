@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LAYER_ORDER, canBeVector, layerForm, placeStacked, placeUnit, checkSummary, clipLines, dialogueUpdateSummary, imagesNote, missingEditable, exportUnits, frameMetas, hasNotes, mapBox, packBody, partCount, projectToTemplate, scriptText, textLayers, vectorLines, type DialogueUpdateReport, type LayerMeta } from "./nameexport";
+import { LAYER_ORDER, canBeVector, layerForm, placeStacked, placeUnit, checkSummary, clipLines, dialogueUpdateSummary, imagesNote, missingEditable, exportUnits, frameMetas, hasNotes, mapBox, packBody, partCount, projectToTemplate, scriptText, textLayers, unreadWarning, vectorLines, type DialogueUpdateReport, type LayerMeta } from "./nameexport";
 import { addCharacter, addScene } from "./cast";
 import { addLine } from "./dialogue";
 import { rectShape } from "./geometry";
@@ -348,5 +348,18 @@ describe("the layer plan of a page", () => {
     expect(forms(true, true)).toEqual(["vector", "raster", "vector", "vector", "raster", "vector", "text"]);
     expect(forms(false, false)).toEqual(["raster", "raster", "raster", "raster", "none", "raster", "raster"]);
     expect(forms(true, false)).toEqual(["vector", "raster", "vector", "vector", "raster", "vector", "raster"]);
+  });
+});
+
+describe("unreadWarning", () => {
+  it("names each picture left out with the pages it lies on, by its file name or else its id", () => {
+    const project = newProject("a", 3);
+    project.images = [{ id: "image1", name: "背景.jpg", mime: "image/jpeg", dataBase64: "", widthPx: 1, heightPx: 1 }];
+    project.pages[0].references = [{ id: "r1", image: "image1", box: [0, 0, 10, 10] }];
+    project.pages[2].references = [
+      { id: "r2", image: "image1", box: [0, 0, 10, 10] },
+      { id: "r3", image: "gone", box: [0, 0, 10, 10] },
+    ];
+    expect(unreadWarning(project, new Set(["image1", "gone"]))).toBe("読めない画像 2 枚は書き出していません: 1・3 ページ「背景.jpg」、3 ページ「gone」");
   });
 });

@@ -74,6 +74,11 @@ const markedName = join(dir, "marked.namestudio");
 writeFileSync(markedName, projectJson(marked));
 const picturedName = join(dir, "pictured.namestudio");
 writeFileSync(picturedName, projectJson(pictured));
+// The same with the 資料's data spoilt: the WebView cannot decode it.
+const spoilt = structuredClone(pictured);
+spoilt.images[0].dataBase64 = Buffer.from("not a picture").toString("base64");
+const spoiltName = join(dir, "spoilt.namestudio");
+writeFileSync(spoiltName, projectJson(spoilt));
 const failures = [];
 const check = (ok, what) => {
   console.log(`${ok ? "ok  " : "FAIL"} ${what}`);
@@ -124,6 +129,13 @@ for (const [round, want] of [["first", ["指示"]], ["again", []]]) {
 }
 const withPictures = exportWith("pictured", ["--builtin"], { file: picturedName });
 check((withPictures?.checks?.[0]?.layers ?? 0) === (builtin?.checks?.[0]?.layers ?? 0) + 2, "pictured: the 資料 and the picture of the name are a layer each");
+// A picture that cannot be read: the pages go out without it, and the report says which, on which page.
+const withSpoilt = exportWith("spoilt", ["--builtin"], { file: spoiltName });
+check(
+  (withSpoilt?.summary ?? []).includes("注意: 読めない画像 1 枚は書き出していません: 1 ページ「資料」"),
+  `spoilt: the report names the picture left out (${(withSpoilt?.summary ?? []).find((line) => line.includes("画像")) ?? "nothing"})`,
+);
+check(!(withPictures?.summary ?? []).some((line) => line.includes("読めない画像")), "pictured: pictures that read say nothing of the kind");
 // A name saved by a newer version: it still goes out, and the report says first what this one leaves out.
 const fromNewer = exportWith("newer", ["--builtin"], { file: newerName });
 check(/^注意: このネームには、この版が知らない項目があります.*pages\.strokes\.wobble/.test(fromNewer?.summary?.[0] ?? ""), `newer: the report says first what this version does not know (${fromNewer?.summary?.[0]})`);

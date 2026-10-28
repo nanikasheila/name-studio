@@ -2,7 +2,8 @@
 // a new name from the start screen (its 32 touching pages found, read half by
 // half, laid by their inner frame on the 基本枠); a name written out as a
 // ミニネーム (PNG and a one-page PDF) and taken back in, page for page, onto
-// the trim; undo. Each page carries a bar at its own height, so that a page
+// the trim; undo; a picture of the name that no longer reads is named before
+// anything is written (stop, or write without it). Each page carries a bar at its own height, so that a page
 // out of order or out of place is seen.
 // Run: npm run e2e:mininame (-- --shots <dir> keeps the pictures).
 import { writeFileSync } from "node:fs";
@@ -26,8 +27,15 @@ try {
   await page.addInitScript({ path: fileURLToPath(new URL("tauri-mock.js", import.meta.url)) });
   await page.addInitScript(() => {
     window.__dialogs = [];
-    window.__answer = (command) => {
+    window.__asked = [];
+    window.__answer = (command, args) => {
       switch (command) {
+        case "plugin:dialog|message": {
+          // Asked before writing: the button the test picks (the first, or the second when it declines).
+          window.__asked.push(args.message);
+          const custom = args.buttons?.OkCancelCustom;
+          return custom ? custom[window.__decline ? 1 : 0] : "Ok";
+        }
         case "write_binary_file":
         case "write_pdf":
           return null;
@@ -316,6 +324,34 @@ try {
     check(worst < 0.01, `page for page, the bars level (bars ${got.map((p) => p.bar.toFixed(3)).join(" ")})`);
   }
   if (shots) await page.locator("#editor-canvas").screenshot({ path: `${shots}/scan-imported.png` });
+
+  // A picture of the name that no longer reads (its data spoilt): said, with its page, before anything is written.
+  await page.evaluate(() => {
+    const project = window.nameStudio.workbench.project;
+    const third = project.images.find((image) => image.id === project.pages[2].references[0].image);
+    third.name = "スキャン3.jpg";
+    third.dataBase64 = btoa("not a picture");
+  });
+  const pdfs = () => page.evaluate(() => window.__calls.filter((c) => c.command === "write_pdf").length);
+  const before = await pdfs();
+  await page.locator("#name-export").click();
+  await page.locator("#ne-kind-mini").click();
+  await page.evaluate(() => {
+    window.__decline = true;
+    window.__dialogs.push("C:\\out\\壊れた画像.pdf");
+  });
+  await page.locator("#ne-run").click();
+  await page.waitForFunction(() => document.getElementById("ne-message").textContent.includes("書き出しをやめました"));
+  const asked = await page.evaluate(() => window.__asked.at(-1) ?? "");
+  check(asked.startsWith("読めない画像が 1 枚あります") && asked.includes("3 ページ「スキャン3.jpg」（画像として読めません）"), `the export names the picture and its page first (${asked.split("\n")[1]})`);
+  check((await pdfs()) === before && (await page.evaluate(() => window.__dialogs.length)) === 1, "やめる: nothing is written, not even a file asked for");
+  await page.evaluate(() => {
+    window.__decline = false;
+  });
+  await page.locator("#ne-run").click();
+  await page.waitForFunction((n) => window.__calls.filter((c) => c.command === "write_pdf").length > n, before);
+  check((await page.locator("#ne-message").textContent()).includes("ミニネームを書き出しました"), "除いて書き出す: the ミニネーム is written without it");
+  await page.keyboard.press("Escape");
 
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(" / ")}` : ""}`);
 } finally {

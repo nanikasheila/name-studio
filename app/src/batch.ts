@@ -125,7 +125,9 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
       ok = check.ok;
       // Read back as written, but not editable in CSP: said first, so it is not missed.
       const missing = missingEditable(report);
-      const summary = [...notes, ...(missing.length ? [`注意: ${imagesNote(missing)}`] : []), ...check.lines];
+      // What was left out or changed on the way (pictures that could not be read, pages not joined as a spread).
+      const warnings = (report.warnings ?? []).map((warning) => `注意: ${warning}`);
+      const summary = [...notes, ...warnings, ...(missing.length ? [`注意: ${imagesNote(missing)}`] : []), ...check.lines];
       result = { ok, seconds: (Date.now() - started) / 1000, summary, overwrite, ...report };
     }
   } catch (error) {

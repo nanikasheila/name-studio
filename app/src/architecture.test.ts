@@ -37,7 +37,7 @@ const LAYERS = {
   /** Drawing a name on a canvas (the screen and the export share it). */
   render: ["asidedraw", "glyph", "notedraw", "pagedraw", "pagethumb", "pictures", "render", "screendraw", "strokecache"],
   /** Work done for the screens: saving in the background, writing out. */
-  service: ["autosave", "batch", "flatpage", "nameexport", "roughcache"],
+  service: ["autosave", "batch", "flatpage", "nameexport", "picturecheck", "roughcache"],
   /** The screens. */
   ui: [
     "actions", "alerts", "altdialog", "board", "boarddock", "boardemotion", "boardpages", "boardscene", "boardshape", "boardview", "brushdialog", "controlbar", "cursors", "dock", "dragsort", "drophint", "editor", "editorcore", "exportdialog", "fontpicker", "helpbar", "helpoverlay", "imageimport", "inplace", "inspector",

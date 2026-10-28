@@ -7,6 +7,8 @@ const options: { template: string; workTemplate: string | null; donors: string[]
 let unknownFields: string[] | null = null;
 /** Something going wrong after the pages were checked (putting the report together). */
 let failLate = false;
+/** What the export says it left out or changed on the way. */
+let exportWarnings: string[] = [];
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: async (command: string, args: Record<string, unknown> = {}) => {
@@ -25,7 +27,7 @@ vi.mock("./nameexport", () => ({
   exportToCsp: async (project: unknown, given: (typeof options)[number]) => {
     exported.push(project);
     options.push(given);
-    return {};
+    return { warnings: exportWarnings };
   },
   checkSummary: () => ({ ok: true, lines: [] }),
   missingEditable: () => {
@@ -45,6 +47,7 @@ describe("runBatchExport", () => {
     options.length = 0;
     unknownFields = null;
     failLate = false;
+    exportWarnings = [];
   });
 
   it("reports a failure after the check as a failure, with the exit code", async () => {
@@ -63,6 +66,16 @@ describe("runBatchExport", () => {
     expect(report).not.toHaveProperty("error");
     expect(report.ok).toBe(true);
     expect(report.summary[0]).toMatch(/^注意: このネームには、この版が知らない項目があります.*pages\.strokes\.wobble/);
+  });
+
+  it("puts what the export left out in the report, after what the name itself is told", async () => {
+    unknownFields = ["pages.strokes.wobble"];
+    exportWarnings = ["読めない画像 1 枚は書き出していません: 1 ページ「資料」"];
+    await runBatchExport({ project: "a.namestudio", template: "t.clip", outDir: "out", workTemplate: null, workName: null, storyIndex: null, report: "out/r.json" }, () => undefined);
+    const written = calls.find((c) => c.command === "write_text_file");
+    const report = JSON.parse(written?.args.text as string) as { ok: boolean; summary: string[] };
+    expect(report.ok).toBe(true);
+    expect(report.summary.slice(0, 2)).toEqual([expect.stringMatching(/^注意: このネームには/), "注意: 読めない画像 1 枚は書き出していません: 1 ページ「資料」"]);
   });
 
   it("fills in the lists a saved name leaves out before exporting", async () => {

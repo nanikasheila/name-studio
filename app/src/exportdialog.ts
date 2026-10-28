@@ -29,6 +29,8 @@ import { againSummary, exportSummary, type ExportKind, type ExportMemory, type P
 import { keepExportMemory, loadExportMemory } from "./prefs";
 import { installedFont } from "./fonts";
 import { hasMarks } from "./roughlayers";
+import { unreadableNote, unreadablePictures } from "./picturecheck";
+import { isNamePicture } from "./references";
 
 export interface ExportDialogHost {
   project(): Project | null;
@@ -713,6 +715,20 @@ export class ExportDialog {
     return { template: built.page, workTemplate: built.work, donors: [built.parts], pieces: piecesPerPage(project, page) };
   }
 
+  /** Asks first when pictures the export would show cannot be read; false: the user stopped. */
+  private async picturesReadable(project: Project, takes: Parameters<typeof unreadablePictures>[1]): Promise<boolean> {
+    const note = unreadableNote(await unreadablePictures(project, takes));
+    if (!note) return true;
+    const go = await ask(`${note}\n\n画像を入れ直すか消すと、この知らせは出ません。`, {
+      title: "Name Studio",
+      kind: "warning",
+      okLabel: "除いて書き出す",
+      cancelLabel: "やめる",
+    });
+    if (!go) this.message(`書き出しをやめました。\n${note}`);
+    return go;
+  }
+
   /** Writes the name out; `again`: to the PDF or script file written last, without asking where. */
   private async run(again = false): Promise<void> {
     const project = this.host.project();
@@ -749,6 +765,8 @@ export class ExportDialog {
           this.message("書き出しをやめました。CSP の作業を残すには、別のフォルダーを選んでください。");
           return;
         }
+        // 資料画像 and the pictures of the name each go to a layer.
+        if (!(await this.picturesReadable(project, () => true))) return;
         const report = await exportToCsp(
           project,
           {
@@ -798,6 +816,8 @@ export class ExportDialog {
             : `書き出したページに問題があります: ${check.lines[1]}`,
         );
       } else {
+        // The PDF and the ミニネーム show the pictures of the name (資料 stay out).
+        if (this.kind !== "text" && !(await this.picturesReadable(project, isNamePicture))) return;
         const mini = readMini();
         const extension = this.kind === "pdf" ? "pdf" : this.kind === "mini" ? MINI_EXTENSIONS[mini.format] : "txt";
         const base = (this.host.projectPath() ?? project.title ?? "ネーム").replace(/\.[^.\\/]+$/, "");
