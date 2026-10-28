@@ -770,6 +770,8 @@
           <label class="check"><input type="checkbox" id="pen-eraser-end" /> ペンの後ろ（消しゴム側）で消す</label>
           <label>サイドボタン <select id="pen-side"></select></label>
           <label>カーソル <select id="pen-cursor"></select></label>
+          <label class="check" title="ペンの入力が届いたらすぐ画面に線を描きます（次の画面の書き換えを待たない）。画面がちらつくときは切ってください"><input type="checkbox" id="pen-low-latency" /> 入力をすぐ画面に描く（低遅延）</label>
+          <label class="check" title="ペンの少し先（ブラウザーが予測した位置）まで線を出して、ペンに遅れずについてくるようにします。離すと消え、残る線には入りません"><input type="checkbox" id="pen-predict" /> 線の先を先読みして早く出す</label>
           <h3>タッチ（指）</h3>
           <label>1 本指 <select id="pen-touch"></select></label>
           <label class="check"><input type="checkbox" id="pen-pinch" /> 2 本指で拡大縮小・移動</label>
@@ -778,6 +780,7 @@
           <label class="check"><input type="checkbox" id="pen-palm" /> ペンを近づけている間は指を無視（手のひら）</label>
         </div>
         <div class="actions">
+          <button type="button" id="pen-perf" title="ペンが画面に出るまでの時間・止まった時間・メモリ">動作の記録…</button>
           <button type="button" id="pen-reset">初期設定に戻す</button>
           <button value="cancel" formnovalidate>閉じる</button>
         </div>

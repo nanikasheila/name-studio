@@ -60,6 +60,14 @@ jobs:
           npm run e2e:perf -- --report "$RUNNER_TEMP/perf.json"
           { echo "### 重いネームでの速さ（ms、いちばん遅いフレーム）"; echo; node -e 'const r=require(process.argv[1]);for(const[k,v]of Object.entries(r))console.log(`- ${k}: ${typeof v==="number"?v.toFixed(1):`${v.worst} / ${v.budget}`}`)' "$RUNNER_TEMP/perf.json"; } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: The pen and a long session (pressure, a long line's frames, memory and undo over a day of work)
+        if: runner.os == 'Linux'
+        working-directory: app
+        run: |
+          npm run e2e:pen
+          npm run e2e:endurance -- --report "$RUNNER_TEMP/endurance.json"
+          { echo "### 長い作業でのメモリ（MB、ゴミを集めたあと）"; echo; node -e 'const r=require(process.argv[1]);for(const s of r)console.log(`- ${s.label}: ${s.heapMb} MB・canvas ${s.canvases}（${s.canvasMb} MB）・元に戻す ${s.undo}`)' "$RUNNER_TEMP/endurance.json"; } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Release scripts (notes, promotion)
         shell: bash
         run: node --test .github/scripts/*.test.mjs

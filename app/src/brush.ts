@@ -217,10 +217,14 @@ function inputFactor(
   return factor;
 }
 
-/** Width share of each point of a stroke: pen pressure, tilt, speed, then 入り抜き at the ends. */
-export function widthFactors(stroke: Stroke, brush: Brush | undefined): number[] {
+/**
+ * Width share of each point of a stroke: pen pressure, tilt, speed, then 入り抜き at the ends.
+ * From point `from` on only (those before it are 0): a line being drawn needs the new points'.
+ * A line still `growing` (being drawn) has no length yet to share between its 入り and 抜き.
+ */
+export function widthFactors(stroke: Stroke, brush: Brush | undefined, from = 0, growing = false): number[] {
   const points = stroke.points;
-  if (!brush) return points.map(([, , p]) => 0.35 + 0.65 * p);
+  if (!brush) return points.map(([, , p], i) => (i < from ? 0 : 0.35 + 0.65 * p));
   const along = [0];
   for (let i = 1; i < points.length; i++) {
     along.push(along[i - 1] + Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]));
@@ -230,13 +234,14 @@ export function widthFactors(stroke: Stroke, brush: Brush | undefined): number[]
   let taperIn = stroke.cut?.[0] ? 0 : brush.taperInMm;
   let taperOut = stroke.cut?.[1] ? 0 : brush.taperOutMm;
   // A short stroke shares its length between the two tapers.
-  if (taperIn + taperOut > total && taperIn + taperOut > 0) {
+  if (!growing && taperIn + taperOut > total && taperIn + taperOut > 0) {
     const share = total / (taperIn + taperOut);
     taperIn *= share;
     taperOut *= share;
   }
   const curves = { pressure: brush.sizePressure, tilt: brush.sizeTilt, speed: brush.sizeSpeed, random: brush.sizeRandom };
   return points.map((point, i) => {
+    if (i < from) return 0;
     let factor = inputFactor(curves, point, stroke.id, i);
     if (taperIn > 0) factor *= Math.min(1, along[i] / taperIn);
     if (taperOut > 0) factor *= Math.min(1, (total - along[i]) / taperOut);
@@ -244,13 +249,13 @@ export function widthFactors(stroke: Stroke, brush: Brush | undefined): number[]
   });
 }
 
-/** Opacity of each point of a stroke. */
-export function opacityFactors(stroke: Stroke, brush: Brush | undefined): number[] {
+/** Opacity of each point of a stroke (from point `from` on, as `widthFactors`). */
+export function opacityFactors(stroke: Stroke, brush: Brush | undefined, from = 0): number[] {
   if (!brush) return stroke.points.map(() => 1);
   const curves = { pressure: brush.opacityPressure, tilt: brush.opacityTilt, speed: brush.opacitySpeed, random: brush.opacityRandom };
   // Offset so the random change differs from the size's.
   const seed = `${stroke.id}/opacity`;
-  return stroke.points.map((point, i) => Math.max(0, Math.min(1, brush.opacity * inputFactor(curves, point, seed, i))));
+  return stroke.points.map((point, i) => (i < from ? 0 : Math.max(0, Math.min(1, brush.opacity * inputFactor(curves, point, seed, i)))));
 }
 
 /** Tilt input of a pointer event: 0 upright, 1 lying flat (0 for a mouse). */

@@ -56,6 +56,11 @@ export class Session {
     return this.history.canRedo;
   }
 
+  /** How many steps can be undone and redone. */
+  get historyDepth(): { undo: number; redo: number } {
+    return this.history.depth;
+  }
+
   /** Start on `project` (saved at `path`, if anywhere) with nothing to undo. */
   open(project: Project, path: string | null): Project {
     this.current = normalize(project);

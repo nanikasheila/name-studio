@@ -67,8 +67,8 @@ export interface EditorHost {
   project(): Project | null;
   /** Remember the project before a change (for undo). */
   begin(): void;
-  /** The change since `begin` is done. */
-  commit(): void;
+  /** The change since `begin` is done; `line`: a line drawn with the pen (the pages are drawn already, the rest may follow when the pen rests). */
+  commit(line?: boolean): void;
   /** The change since `begin` changed nothing. */
   cancel(): void;
   selectionChanged(selection: Selection | null): void;
@@ -135,6 +135,12 @@ export type ToolDrag =
       time: number;
       speed: number;
       straight: boolean;
+      /** The pen's last real pressure reading (null: none yet), held over a missed one (0 while touching). */
+      pressure: number | null;
+      /** Points at the start taken before the first reading: they get it when it comes. */
+      unread: number;
+      /** 先読み: where the pen is about to be (the browser's prediction), shown but not kept. */
+      ahead?: StrokePoint[];
       /** 指示: drawn on a 指示のレイヤー in its colour, with the 指示 pen's width and no brush. */
       mark?: { color: string; widthMm: number; layer: string };
     }
@@ -260,6 +266,12 @@ export interface Press {
 /** The pointer moved during a drag. */
 export interface Move {
   event: PointerEvent;
+  /**
+   * A pen line drawn as its input comes (pointerrawupdate): "raw" takes the
+   * moves as soon as they come, "frame" (the move of the frame after them)
+   * only looks ahead. Unset: the move does both.
+   */
+  phase?: "raw" | "frame";
   project: Project;
   /** On the page the drag began on (mm). */
   point: Point;

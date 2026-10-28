@@ -3,7 +3,8 @@ import { History } from "./history";
 import type { Project } from "./model";
 import { newProject } from "./project";
 import { addStroke, moveStroke } from "./strokes";
-import { projectBody, projectJson } from "./projectjson";
+import { addLine, moveLine, setLineText } from "./dialogue";
+import { projectBody, projectJson, writeAhead } from "./projectjson";
 import { sameSnapshot, Snapshotter } from "./snapshot";
 
 function drawn(pages = 3): Project {
@@ -55,6 +56,23 @@ describe("Snapshotter", () => {
     const second = snapshots.take(project);
     expect(second.pages[1]).toBe(first.pages[0]);
     expect(snapshots.restore(second).pages[0].id).toBe("new");
+  });
+
+  it("shares balloon outlines too, and brings them back as they were", () => {
+    const project = drawn(2);
+    const line = addLine(project, project.pages[1], [50, 70]);
+    setLineText(line, "セリフ");
+    expect(line.balloon?.length).toBeGreaterThan(4);
+    const snapshots = new Snapshotter<Project>();
+    const taken = snapshots.take(project);
+    const back = snapshots.restore(taken);
+    expect(back).toEqual(project);
+    expect(back.pages[1].lines[0].balloon).toBe(line.balloon);
+    // The page's text holds only a number for the outline.
+    expect(taken.pages[1].json).not.toContain(String(line.balloon![1][0]));
+    // A balloon moved has a new outline: the page is taken anew.
+    moveLine(line, 3, 0);
+    expect(snapshots.take(project).pages[1]).not.toBe(taken.pages[1]);
   });
 
   it("freezes the shared lists in development, so a change in place fails", () => {
@@ -114,6 +132,19 @@ describe("projectJson", () => {
     expect(projectJson(project)).toBe(plain);
   });
 
+  it("writes balloon outlines to 0.001 mm, once for each outline", () => {
+    const project = drawn(1);
+    const line = addLine(project, project.pages[0], [50, 70]);
+    setLineText(line, "セリフ");
+    line.balloon = [[1.23456789, 2.000049], [3.1, 4.9999999], [5, 6]];
+    const back = JSON.parse(projectJson(project)) as Project;
+    expect(back.pages[0].lines[0].balloon).toEqual([[1.235, 2], [3.1, 5], [5, 6]]);
+    const { balloon: _, ...rest } = back.pages[0].lines[0];
+    const { balloon: __, ...expected } = line;
+    expect(rest).toEqual(JSON.parse(JSON.stringify(expected)));
+    expect(projectJson(project)).toBe(projectJson(project));
+  });
+
   it("writes numbers JSON cannot hold as 0", () => {
     const project = newProject("x", 1);
     project.pages[0].strokes.push({ id: "s", points: [[NaN, 1, Infinity]], widthMm: 1, closed: false });
@@ -121,11 +152,40 @@ describe("projectJson", () => {
   });
 
   it("packs a request body as length, meta and the project text", () => {
-    const project = drawn(1);
-    const body = projectBody({ path: "a.namestudio" }, project);
-    const length = new DataView(body.buffer).getUint32(0, true);
+    const project = drawn(2);
+    project.title = "第4話「はじまり」";
+    const line = addLine(project, project.pages[1], [50, 70]);
+    setLineText(line, "セリフ\nもう一行");
+    line.balloon = [[1, 2], [3, 4], [5, 6]];
     const decoder = new TextDecoder();
-    expect(JSON.parse(decoder.decode(body.slice(4, 4 + length)))).toEqual({ path: "a.namestudio" });
-    expect(decoder.decode(body.slice(4 + length))).toBe(projectJson(project));
+    // Again with the lists' bytes made already.
+    for (const body of [projectBody({ path: "あ.namestudio" }, project), projectBody({ path: "あ.namestudio" }, project)]) {
+      const length = new DataView(body.buffer).getUint32(0, true);
+      expect(JSON.parse(decoder.decode(body.slice(4, 4 + length)))).toEqual({ path: "あ.namestudio" });
+      expect(decoder.decode(body.slice(4 + length))).toBe(projectJson(project));
+    }
+  });
+});
+
+describe("writeAhead", () => {
+  it("writes a page or more each time the app is idle, even with no time left, and stops for the next name", () => {
+    const waiting: ((idle: { timeRemaining(): number }) => void)[] = [];
+    const idle = (run: (idle: { timeRemaining(): number }) => void) => waiting.push(run);
+    const busy = { timeRemaining: () => 0 };
+    const first = drawn(3);
+    writeAhead(first, idle);
+    let steps = 0;
+    while (waiting.length && steps < 10) {
+      waiting.shift()!(busy);
+      steps++;
+    }
+    expect(steps).toBe(3);
+    writeAhead(first, idle);
+    writeAhead(drawn(1), idle);
+    // The first name's turn comes, and it stops: only the second's is left, and it writes its one page.
+    waiting.shift()!({ timeRemaining: () => 50 });
+    expect(waiting).toHaveLength(1);
+    waiting.shift()!(busy);
+    expect(waiting).toHaveLength(0);
   });
 });

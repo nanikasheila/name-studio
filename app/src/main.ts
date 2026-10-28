@@ -31,6 +31,7 @@ import { Workbench } from "./workbench";
 import { $, isTyping } from "./dom";
 import { ImageImportDialog } from "./imageimport";
 import { panelAt, panelBadge } from "./hittest";
+import { perfMeter } from "./perfmeter";
 
 function setStatus(message: string): void {
   $("status").textContent = message;
@@ -312,6 +313,13 @@ async function loadFonts(): Promise<void> {
 
 async function start(): Promise<void> {
   startScreen.render();
+  // 動作の記録: from here on; the start took until this first screen.
+  const shown = performance.now();
+  perfMeter.start();
+  perfMeter.watchResources(() => workbench.resources());
+  void call("started_at")
+    .catch(() => null)
+    .then((processStart) => perfMeter.ready(typeof processStart === "number" ? processStart : null, shown));
   const version = await appVersion();
   if (version) $("app-version").textContent = `v${version}`;
   // Before a command-line export too: the dialogue goes to CSP in its fonts.
@@ -338,6 +346,9 @@ window.addEventListener("error", (event) => workbench.failed(event.error ?? even
 window.addEventListener("unhandledrejection", (event) => workbench.failed(event.reason));
 
 void start();
+
+// 動作の記録 for the measuring on a PC (e2e/feel.mjs through the WebView's debugging port): read only.
+Object.assign(window, { nameStudioPerf: { report: () => perfMeter.report(), reset: () => perfMeter.reset() } });
 
 // Development only: open name data from a test script (no file dialog without Tauri).
 if (import.meta.env.DEV) {

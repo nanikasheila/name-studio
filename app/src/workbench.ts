@@ -19,6 +19,8 @@ import { ScriptDialog } from "./scriptdialog";
 import { ShortcutDialog } from "./shortcutdialog";
 import { SettingsDialog } from "./settingsdialog";
 import { PenDialog } from "./pendialog";
+import { PerfDialog } from "./perfdialog";
+import { perfMeter } from "./perfmeter";
 import { LayerView, type LayerRef } from "./layers";
 import { RoughPanel } from "./roughpanel";
 import { SeriesPanel } from "./seriespanel";
@@ -33,7 +35,7 @@ import { PageEditor, type EditorEraseMode, type Tool } from "./editor";
 import { ExportDialog } from "./exportdialog";
 import { clearAlert, showAlert } from "./alerts";
 import { logError } from "./errorlog";
-import { projectBody } from "./projectjson";
+import { projectBody, writeAhead } from "./projectjson";
 import { repair } from "./repair";
 import { savedForm } from "./references";
 import { Session } from "./session";
@@ -55,6 +57,9 @@ import { RoughCache } from "./roughcache";
 import { Reader } from "./reader";
 import { SpringTool } from "./springtool";
 import { ControlBar } from "./controlbar";
+
+/** After a line drawn with the pen, what lies around the pages is drawn again once the pen has rested this long (ms). */
+const PEN_REST_MS = 500;
 
 export class Workbench {
   readonly editor: PageEditor;
@@ -172,11 +177,18 @@ export class Workbench {
   private readonly shortcutDialog: ShortcutDialog;
   private readonly palette: CommandPalette;
   private readonly penDialog = new PenDialog(penPreferences);
+  private readonly perfDialog = new PerfDialog(
+    () => perfMeter.report(),
+    () => perfMeter.reset(),
+    (message) => this.setStatus(message),
+  );
   private readonly brushDialog: BrushDialog;
   private readonly settingsDialog: SettingsDialog;
   private readonly versionDialog: VersionDialog;
   /** 一時切り替え: a tool's key held lends the tool. */
   private readonly spring = new SpringTool<Tool>();
+  /** The timer of `afterLine`. */
+  private resting = 0;
   /** 読む表示: the name read through as the book. */
   private readonly reader: Reader;
   /** Saving and autosaving the open name. */
@@ -193,7 +205,7 @@ export class Workbench {
     this.editor = new PageEditor($<HTMLCanvasElement>("editor-canvas"), {
       project: () => this.session.project,
       begin: () => this.begin(),
-      commit: () => this.commit(),
+      commit: (line) => this.commit(line),
       cancel: () => this.session.cancel(),
       selectionChanged: () => {
         this.board.deselect();
@@ -314,6 +326,7 @@ export class Workbench {
       addPageAfter: (page) => this.edits.addPageAfter(page),
       openPalette: (id) => this.docks.open(id),
       openCommandPalette: () => this.palette.open(),
+      openPerfReport: () => this.perfDialog.open(),
       exportAgain: () => void this.exportDialog.exportAgain(),
       click: (id) => {
         const target = pressable(id);
@@ -334,6 +347,7 @@ export class Workbench {
       },
       status: (message) => this.setStatus(message),
     });
+    $("pen-perf").addEventListener("click", () => this.perfDialog.open());
     new ResizeObserver(() => this.editor.resize()).observe($("editor-canvas").parentElement!); // the page takes the room the strip and side panels leave
     this.scriptDialog = new ScriptDialog({
       project: () => this.session.project,
@@ -415,6 +429,23 @@ export class Workbench {
     return this.session.project;
   }
 
+  /** What the open name holds and what is kept to draw it, for 動作の記録 (perfmeter.ts). */
+  resources(): Record<string, number> {
+    const project = this.session.project;
+    const { undo, redo } = this.session.historyDepth;
+    const kept = this.editor.kept;
+    const mb = (pixels: number) => Math.round((pixels * 4) / 104857.6) / 10;
+    return {
+      pages: project?.pages.length ?? 0,
+      strokes: project?.pages.reduce((sum, page) => sum + page.strokes.length, 0) ?? 0,
+      undo,
+      redo,
+      linePictures: kept.linePictures,
+      linePicturesMb: mb(kept.linePixels),
+      screenCopyMb: mb(kept.screenPixels),
+    };
+  }
+
   get dirty(): boolean {
     return this.session.dirty;
   }
@@ -455,6 +486,7 @@ export class Workbench {
     this.bars.showViewMode();
     this.renderAll();
     this.setStatus(message);
+    if (this.session.project) writeAhead(this.session.project);
   }
 
   async load(path: string): Promise<void> {
@@ -534,8 +566,28 @@ export class Workbench {
     this.session.begin();
   }
 
-  private commit(): void {
-    if (this.session.commit()) this.renderAll();
+  private commit(line = false): void {
+    if (!this.session.commit()) return;
+    if (line) this.afterLine();
+    else this.renderAll();
+  }
+
+  /**
+   * A line drawn with the pen: the pages show it already. The strip, the
+   * palettes and the inspector (all of them drawn anew, the pages' pictures
+   * with them) follow once the pen rests, so lines drawn one after another
+   * do not stop for them.
+   */
+  private afterLine(): void {
+    this.updateTitle();
+    $<HTMLButtonElement>("undo").disabled = !this.session.canUndo;
+    $<HTMLButtonElement>("redo").disabled = !this.session.canRedo;
+    clearTimeout(this.resting);
+    this.resting = window.setTimeout(() => {
+      this.resting = 0;
+      if (this.editor.dragging) this.afterLine();
+      else this.renderAll();
+    }, PEN_REST_MS);
   }
 
   /** Run `change` as one undoable step; a change that fails is undone. */
@@ -599,6 +651,8 @@ export class Workbench {
   // --- rendering ------------------------------------------------------------------------
 
   renderAll(): void {
+    clearTimeout(this.resting);
+    this.resting = 0;
     useFonts(this.session.project?.fonts);
     useStyle(this.session.project?.style);
     this.bars.renderBrushBar();

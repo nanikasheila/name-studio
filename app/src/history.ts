@@ -76,4 +76,9 @@ export class History<T, S = string> {
   get canRedo(): boolean {
     return this.redoStack.length > 0;
   }
+
+  /** How many steps can be undone and redone. */
+  get depth(): { undo: number; redo: number } {
+    return { undo: this.undoStack.length, redo: this.redoStack.length };
+  }
 }

@@ -28,6 +28,10 @@ export interface PenSettings {
   palmRejection: boolean;
   /** Cursor while drawing: the brush's size, a cross, or a dot. */
   cursor: PenCursor;
+  /** 先読み: show the line a little ahead, where the pen is about to be (the browser's prediction), so it keeps up with the pen. */
+  predict: boolean;
+  /** 低遅延: draw the pen's input as soon as it comes, not at the next frame. */
+  lowLatency: boolean;
 }
 
 export const SIDE_BUTTON_LABELS: Record<SideButton, string> = {
@@ -66,6 +70,8 @@ export function defaultPenSettings(): PenSettings {
     touchTaps: true,
     palmRejection: true,
     cursor: "brush",
+    predict: true,
+    lowLatency: true,
   };
 }
 
@@ -83,7 +89,7 @@ export function parsePenSettings(text: string | null): PenSettings {
   if (Array.isArray(curve) && curve.length >= 2 && curve.every((p) => Array.isArray(p) && p.length === 2 && p.every((v) => typeof v === "number" && v >= 0 && v <= 1))) {
     settings.pressureCurve = normalizeCurve(curve);
   }
-  for (const key of ["tilt", "eraserEnd", "pinch", "pinchRotate", "touchTaps", "palmRejection"] as const) {
+  for (const key of ["tilt", "eraserEnd", "pinch", "pinchRotate", "touchTaps", "palmRejection", "predict", "lowLatency"] as const) {
     if (typeof stored[key] === "boolean") settings[key] = stored[key];
   }
   if (stored.sideButton && stored.sideButton in SIDE_BUTTON_LABELS) settings.sideButton = stored.sideButton;
@@ -107,6 +113,17 @@ export function normalizeCurve(points: [number, number][]): [number, number][] {
 }
 
 const clamp = (value: number) => Math.min(1, Math.max(0, value));
+
+/**
+ * The pen's own pressure reading (0..1), or null for a missed one: a pen on
+ * the page that reads 0 (some tablets do at the start of a line, and now and
+ * then on the way) has not let go, so the reading before it holds. Mice and
+ * fingers press fully (a mouse reports 0.5 while its button is down).
+ */
+export function pressureReading(pointerType: string, pressure: number): number | null {
+  if (pointerType !== "pen") return 1;
+  return pressure > 0 ? Math.min(1, pressure) : null;
+}
 
 /** The pressure a line gets from the pen's own reading. */
 export function adjustPressure(curve: [number, number][], raw: number): number {

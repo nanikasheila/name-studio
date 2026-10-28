@@ -48,6 +48,8 @@ export interface CommandHost {
   addPageAfter(page: Page): void;
   openPalette(id: PaletteId): void;
   openCommandPalette(): void;
+  /** 動作の記録: how quickly the pen and the screen keep up on this computer. */
+  openPerfReport(): void;
   /** This name's last export again, with the same settings (the first time: the export dialog). */
   exportAgain(): void;
   /** Click a button of the screen when it is there and can be pressed; false otherwise. */
@@ -341,5 +343,6 @@ export function buildCommands(host: CommandHost): Command[] {
     { id: "help.overlay", label: "画面のヘルプ（各部の名前と使い方を重ねて出す）", group: "ヘルプ", keys: ["?"], words: "ヘルプ 使い方 説明 操作 わからない", run: always(() => host.help("overlay")) },
     { id: "help.tour", label: "使い方の案内を始める", group: "ヘルプ", keys: [], words: "ヘルプ はじめて 初めて チュートリアル ツアー 使い方", run: always(() => host.help("tour")) },
     { id: "help.bar", label: "下のヘルプの帯を出す・隠す", group: "ヘルプ", keys: [], words: "ヘルプ 説明 ステータス 帯", run: always(() => host.help("bar")) },
+    { id: "help.perf", label: "動作の記録（ペンが画面に出るまでの時間・止まった時間・メモリ）", group: "ヘルプ", keys: [], words: "速さ 遅い 重い 遅延 カクつく 止まる 描き心地 ペンタブ メモリ 計測", run: always(() => host.openPerfReport()) },
   ];
 }
