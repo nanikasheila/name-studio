@@ -12,16 +12,11 @@ use std::path::{Path, PathBuf};
 
 use csp_format::ClipFile;
 use csp_format::database::Row;
-use csp_format::story::{
-    LEFT_PAGE_FLAG, RIGHT_PAGE_FLAG, canvas_value, drop_render_cache, is_spread, mirror_nombre, move_run_length,
-    update_nombre, update_page_number,
-};
+use csp_format::story::{drop_render_cache, move_run_length};
 use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension};
 
-use super::layers::{
-    column_names, copy_layer, csp_image, format_error, raster_like, renew_layer_uuids, save, set_row_value,
-};
+use super::layers::{copy_layer, csp_image, format_error, raster_like, save, set_row_value};
 use super::{Values, value_of};
 use crate::clip::{ClipDocument, LayerKind, round_half_even};
 use crate::error::Result;
@@ -56,14 +51,8 @@ pub fn write_page(
 ) -> Result<PageResult> {
     let mut file = ClipFile::open(template)?;
     file.renew_file_id();
-    renew_layer_uuids(&file)?;
-    apply_page_settings(
-        file.database(),
-        page_index.unwrap_or(page.number - 1),
-        canvas_values,
-        None,
-    )?;
-    file.reload()?;
+    file.renew_layer_uuids()?;
+    apply_page_settings(&mut file, page_index.unwrap_or(page.number - 1), canvas_values, None)?;
     file.prepare_copy_from(sheet.file())?;
     let mut result = PageResult {
         path: output.to_path_buf(),
@@ -99,7 +88,7 @@ pub fn write_page(
 /// template's own parity. On a spread it tells which half has the page that
 /// comes first in the book (the right one in a right-bound manga).
 pub(crate) fn apply_page_settings(
-    db: &Connection,
+    file: &mut ClipFile,
     page_index: i64,
     canvas_values: &Values,
     zero_left: Option<bool>,
@@ -109,26 +98,21 @@ pub(crate) fn apply_page_settings(
     let first_right = zero_left
         .map(|left| left != (page_index.rem_euclid(2) == 0))
         .unwrap_or(true);
-    if is_spread(db)? {
-        // A spread keeps its sides: the right half is the right page.
-        if has_column(db, "Canvas", "ComicPageIndex")? {
-            db.execute("UPDATE Canvas SET ComicPageIndex = ?1", [page_index])?;
-        }
-    } else {
-        set_page_index(db, page_index, zero_left)?;
-    }
+    // A spread keeps its sides: the right half is the right page.
+    file.set_comic_page(page_index, zero_left)?;
     if !canvas_values.is_empty() {
-        let old_index = canvas_value(db, "ComicStoryStoryIndex")?;
-        set_canvas_values(db, canvas_values)?;
+        let old_index = file.canvas_value("ComicStoryStoryIndex")?;
+        for (column, value) in canvas_values {
+            file.set_canvas_value(column, value.clone())?;
+        }
         if let (Some(Value::Integer(old)), Some(Value::Integer(new))) =
             (old_index, value_of(canvas_values, "ComicStoryStoryIndex"))
             && old != *new
         {
-            replace_story_index(db, old, *new)?;
+            replace_story_index(file.database(), old, *new)?;
         }
     }
-    update_page_number(db, first_right)?;
-    Ok(update_nombre(db, first_right)?)
+    Ok(file.update_story_numbers(first_right)?)
 }
 
 fn add_content(
@@ -247,48 +231,6 @@ pub(crate) fn has_column(db: &Connection, table: &str, column: &str) -> Result<b
 
 /// Set the page position and side (left / right) on the copied canvas.
 ///
-/// CSP numbers pages and places the ノンブル from these columns. The side
-/// alternates with the index; `zero_left` (page 0 is a left page) gives the
-/// parity, else the template's own pair does.
-fn set_page_index(db: &Connection, index: i64, zero_left: Option<bool>) -> Result<()> {
-    if !has_column(db, "Canvas", "ComicPageIndex")? || !has_column(db, "Canvas", "ComicIsLeftPage")? {
-        return Ok(());
-    }
-    let (template_index, template_left): (Option<i64>, Option<i64>) =
-        db.query_row("SELECT ComicPageIndex, ComicIsLeftPage FROM Canvas", [], |row| {
-            Ok((row.get(0)?, row.get(1)?))
-        })?;
-    let left = match zero_left {
-        Some(zero_left) => zero_left == index.rem_euclid(2).eq(&0),
-        None => (template_left.unwrap_or(0) != 0) == (index - template_index.unwrap_or(0)).rem_euclid(2).eq(&0),
-    };
-    db.execute(
-        "UPDATE Canvas SET ComicPageIndex = ?1, ComicIsLeftPage = ?2",
-        (index, left as i64),
-    )?;
-    if let Some(Value::Integer(flag)) = canvas_value(db, "CropFrameOptionFlag")?
-        && flag & (LEFT_PAGE_FLAG | RIGHT_PAGE_FLAG) != 0
-    {
-        let side = if left { LEFT_PAGE_FLAG } else { RIGHT_PAGE_FLAG };
-        let flag = (flag & !(LEFT_PAGE_FLAG | RIGHT_PAGE_FLAG)) | side;
-        db.execute("UPDATE Canvas SET CropFrameOptionFlag = ?1", [flag])?;
-    }
-    if (template_left.unwrap_or(0) != 0) != left {
-        mirror_nombre(db)?;
-    }
-    Ok(())
-}
-
-fn set_canvas_values(db: &Connection, values: &Values) -> Result<()> {
-    let known = column_names(db, "Canvas")?;
-    for (column, value) in values {
-        if known.contains(column) {
-            db.execute(&format!("UPDATE Canvas SET \"{column}\" = ?1"), [value])?;
-        }
-    }
-    Ok(())
-}
-
 fn is_digit(character: char) -> bool {
     character.is_ascii_digit() || ('０'..='９').contains(&character)
 }
