@@ -65,8 +65,15 @@ async function start({ holdShift = false } = {}) {
 
 async function stop({ child, browser }) {
   await browser.close().catch(() => undefined);
+  const exited = child.exitCode !== null ? Promise.resolve() : new Promise((resolve) => child.once("exit", resolve));
   child.kill();
-  await new Promise((resolve) => setTimeout(resolve, 1000));
+  await exited;
+  // The next start must not reach this one's debugging port: wait until it is closed.
+  for (let i = 0; i < 50; i++) {
+    const open = await fetch(`http://127.0.0.1:${PORT}/json/version`).then(() => true, () => false);
+    if (!open) break;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
 }
 
 const bar = (page) => page.evaluate(() => getComputedStyle(document.querySelector(".toolbar")).backgroundColor);
@@ -120,7 +127,12 @@ try {
   await stop(run);
 } finally {
   if (process.platform === "win32") shift(false);
-  rmSync(work, { recursive: true, force: true });
+  // WebView2's own processes can hold the folder a while after the app is gone.
+  try {
+    rmSync(work, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
+  } catch (error) {
+    console.warn(`(the WebView's folder ${work} is left: ${error.code})`);
+  }
 }
 if (failures.length) {
   console.error(`${failures.length} failed`);
