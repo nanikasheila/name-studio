@@ -4,7 +4,7 @@
 import { call, type BatchExport } from "./backend";
 export type { BatchExport } from "./backend";
 import { checkSummary, dialogueUpdateSummary, exportToCsp, imagesNote, missingEditable, readCspDialogue, ROUGH_LAYERS, updateCspDialogue } from "./nameexport";
-import { normalize } from "./project";
+import { normalize, unknownFieldsNote } from "./project";
 import { projectBody } from "./projectjson";
 import { applyTakeBack, planTakeBack, takeBackSummary } from "./readback";
 import { cspPageOf, pageSetup, piecesPerPage, setupProblem } from "./csppage";
@@ -51,6 +51,9 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
     const overwrite = await call("check_export_target", { outDir: task.outDir }).catch(() => null);
     // As when the window opens a file: empty lists are left out of the saved JSON.
     const project = normalize(await call("load_project", { path: task.project }));
+    // Parts a newer version added are not written out: said first in the report.
+    const unknown = unknownFieldsNote(await call("unknown_project_fields", { path: task.project }).catch(() => []));
+    const notes = unknown ? [`注意: ${unknown}`] : [];
     const templates = await templatesFor(task, project);
     if (task.readDialogue) {
       const units = await readCspDialogue(
@@ -94,7 +97,7 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
       );
       const check = dialogueUpdateSummary(summary);
       ok = check.ok;
-      result = { ok, seconds: (Date.now() - started) / 1000, summary: check.lines, ...summary };
+      result = { ok, seconds: (Date.now() - started) / 1000, summary: [...notes, ...check.lines], ...summary };
     } else {
       const report = await exportToCsp(
         project,
@@ -122,7 +125,7 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
       ok = check.ok;
       // Read back as written, but not editable in CSP: said first, so it is not missed.
       const missing = missingEditable(report);
-      const summary = missing.length ? [`注意: ${imagesNote(missing)}`, ...check.lines] : check.lines;
+      const summary = [...notes, ...(missing.length ? [`注意: ${imagesNote(missing)}`] : []), ...check.lines];
       result = { ok, seconds: (Date.now() - started) / 1000, summary, overwrite, ...report };
     }
   } catch (error) {

@@ -114,6 +114,7 @@ pub fn run() {
             viewer::rough_image,
             project_io::log_error,
             project_io::load_project,
+            project_io::unknown_project_fields,
             project_io::save_project,
             project_io::load_series,
             project_io::save_series,

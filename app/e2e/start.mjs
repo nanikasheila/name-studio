@@ -38,6 +38,8 @@ try {
   await page.evaluate(async () => {
     const { newProject } = await import("/src/project.ts");
     window.__answer = (command, args) => {
+      // 第4話 was saved by a newer version: one field this version does not know.
+      if (command === "unknown_project_fields") return args.path.includes("第4話") ? ["pages.strokes.wobble"] : [];
       if (command !== "load_project") return undefined;
       if (args.path.includes("第4話")) return newProject("第4話", 24);
       throw new Error("ファイルが見つかりません");
@@ -71,6 +73,8 @@ try {
   await page.keyboard.press("Enter");
   await page.waitForTimeout(300);
   check(await page.locator("#editor").isVisible(), "Enter opens it in the editor");
+  const warning = await page.locator("#alerts .alert.warning").allTextContents();
+  check(warning.length === 1 && warning[0].includes("この版が知らない項目") && warning[0].includes("pages.strokes.wobble"), "a name saved by a newer version says what this one does not show");
   const first = await page.evaluate(() => JSON.parse(localStorage.getItem("namestudio.recentNames"))[0]);
   check(first.title === "第4話" && first.timeMs === NOW, "opening it puts it first again, as of now");
 

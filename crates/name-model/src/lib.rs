@@ -33,6 +33,11 @@ impl std::fmt::Display for ProjectError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ProjectError::Io(error) => write!(f, "{error}"),
+            // A choice a newer version added (a new kind of balloon, say) cannot be read here.
+            ProjectError::Json(error) if error.to_string().starts_with("unknown variant") => write!(
+                f,
+                "新しい版のツールで足された選択肢があるため開けません。設定の「更新」から新しい版にしてください（{error}）"
+            ),
             ProjectError::Json(error) => write!(f, "ファイルの形式が正しくありません: {error}"),
             ProjectError::Invalid(problems) => write!(f, "{}", problems.join(" / ")),
         }
@@ -72,6 +77,20 @@ impl Project {
         Ok(text)
     }
 
+    /// The fields of a project's text this version does not know, each once
+    /// and without list positions (`pages.strokes.mark`): parts a newer
+    /// version added. The app saves the text as it holds it, so they are
+    /// kept, but this version neither shows nor writes them out.
+    pub fn unknown_fields(text: &str) -> Result<Vec<String>, ProjectError> {
+        let mut found = std::collections::BTreeSet::new();
+        let mut deserializer = serde_json::Deserializer::from_str(text);
+        serde_ignored::deserialize::<_, _, Project>(&mut deserializer, |path| {
+            found.insert(field_path(&path));
+        })
+        .map_err(ProjectError::Json)?;
+        Ok(found.into_iter().collect())
+    }
+
     /// Save `text` (the project as the app wrote it) after checking it like a
     /// loaded file; nothing is written when it has problems. The parsed project
     /// is returned for its title and pages.
@@ -86,6 +105,27 @@ impl Project {
         let path = path.as_ref();
         write_through_temporary(path, &self.to_json()?)
     }
+}
+
+/// `pages.?.strokes.?.mark` as `pages.strokes.mark`: the field, wherever in a list.
+fn field_path(path: &serde_ignored::Path) -> String {
+    let mut parts = Vec::new();
+    let mut at = Some(path);
+    while let Some(part) = at {
+        at = match part {
+            serde_ignored::Path::Root => None,
+            serde_ignored::Path::Seq { parent, .. }
+            | serde_ignored::Path::Some { parent }
+            | serde_ignored::Path::NewtypeStruct { parent }
+            | serde_ignored::Path::NewtypeVariant { parent } => Some(*parent),
+            serde_ignored::Path::Map { parent, key } => {
+                parts.push(key.as_str());
+                Some(*parent)
+            }
+        };
+    }
+    parts.reverse();
+    parts.join(".")
 }
 
 pub(crate) fn write_through_temporary(path: &Path, text: &str) -> Result<(), ProjectError> {

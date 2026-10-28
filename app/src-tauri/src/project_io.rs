@@ -17,6 +17,17 @@ pub(crate) async fn load_project(path: String) -> Result<Box<RawValue>, String> 
     blocking(move || Project::load_text(&path).and_then(raw_project)).await
 }
 
+/// Fields of the project file this version does not know (added by a newer
+/// one): kept when saving, but neither shown nor written out here.
+#[tauri::command]
+pub(crate) async fn unknown_project_fields(path: String) -> Result<Vec<String>, String> {
+    blocking(move || {
+        let text = std::fs::read_to_string(&path).map_err(name_model::ProjectError::Io)?;
+        Project::unknown_fields(&text)
+    })
+    .await
+}
+
 fn raw_project(text: String) -> Result<Box<RawValue>, name_model::ProjectError> {
     RawValue::from_string(text).map_err(name_model::ProjectError::Json)
 }

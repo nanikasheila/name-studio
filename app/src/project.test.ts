@@ -6,7 +6,7 @@ import { area, boxCenter, rectShape } from "./geometry";
 import type { Point } from "./model";
 import { basicBox, snapCut, snapLines, snapPoint, splitShape } from "./pagebox";
 import { addPanel, carryContents, cutPanels, followPanel, movePanel, panelContents, swapPanelContents } from "./panels";
-import { insertPage, movePage, newProject, pageIsEmpty, removePage, trailingEmptyPages } from "./project";
+import { insertPage, movePage, newProject, pageIsEmpty, removePage, trailingEmptyPages, unknownFieldsNote } from "./project";
 import { orderPanels } from "./readingorder";
 import { moveBlock, movePagesTo, moveScene, pageBlock } from "./reorder";
 import { addFill, addStroke, eraseInside, eraseStrokes, pickInside, splitAtX, splitOverPages } from "./strokes";
@@ -452,5 +452,17 @@ describe("the next line to write (Tab)", () => {
     p2.order = 1;
     expect(neighbour(project, one.id, "note", p2.id, 1)).toEqual({ pageId: one.id, id: p1.id });
     expect(neighbour(project, one.id, "note", p1.id, 1)).toEqual({ pageId: two.id, id: q1.id });
+  });
+});
+
+describe("a name saved by a newer version", () => {
+  it("says nothing when every field is known", () => {
+    expect(unknownFieldsNote([])).toBeNull();
+  });
+
+  it("names the first fields and counts the rest", () => {
+    const note = unknownFieldsNote(["a", "pages.b", "pages.strokes.c", "d", "e"]);
+    expect(note).toContain("a、pages.b、pages.strokes.c ほか 2 件");
+    expect(note).toContain("保存しても消えませんが、画面と書き出しには出ません");
   });
 });

@@ -42,7 +42,7 @@ import { pointOff } from "./aside";
 import { VersionDialog, type VersionInfo } from "./versiondialog";
 import { Board } from "./board";
 import type { Point, Project } from "./model";
-import { normalize, trailingEmptyPages } from "./project";
+import { normalize, trailingEmptyPages, unknownFieldsNote } from "./project";
 import { stillThere } from "./removal";
 import { localStore } from "./settings";
 import { LiveFields } from "./livefields";
@@ -449,6 +449,7 @@ export class Workbench {
   show(project: Project, path: string | null, message: string): void {
     this.seriesPanel.follow(this.session.open(project, path), path);
     clearAlert("series");
+    clearAlert("unknown-fields");
     this.kept = { savedAt: null, copyAt: null, failed: null, seriesBehind: false };
     this.roughs.clear();
     this.autosaver.reset();
@@ -469,6 +470,8 @@ export class Workbench {
     this.show(project, path, `${project.pages.length} ページのネームを開きました${series}`);
     this.written.toFile(this.session.id, path, this.session.snapshot());
     rememberName(path, project);
+    const unknown = unknownFieldsNote(await call("unknown_project_fields", { path }).catch(() => []));
+    if (unknown && this.session.path === path) showAlert("unknown-fields", unknown, "warning");
   }
 
   async importSheet(sheetPath: string): Promise<void> {

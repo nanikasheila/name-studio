@@ -183,3 +183,16 @@ export function trailingEmptyPages(project: Project): number {
   for (let i = project.pages.length - 1; i >= 0 && pageIsEmpty(project.pages[i]); i--) count++;
   return count;
 }
+
+/**
+ * What to tell when a name holds fields this version does not know
+ * (`pages.strokes.mark`): a newer version saved it. Saving keeps them (the
+ * text is saved as it is held), but this version neither shows nor writes
+ * them out, so the person should know before working on it. Null when none.
+ */
+export function unknownFieldsNote(fields: readonly string[]): string | null {
+  if (!fields.length) return null;
+  const shown = fields.slice(0, 3).join("、");
+  const more = fields.length > 3 ? ` ほか ${fields.length - 3} 件` : "";
+  return `このネームには、この版が知らない項目があります（新しい版で保存されたようです: ${shown}${more}）。保存しても消えませんが、画面と書き出しには出ません。設定の「更新」から新しい版にしてください。`;
+}

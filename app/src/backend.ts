@@ -185,6 +185,7 @@ export interface Commands {
   // The name data (project_io.rs)
   log_error: [{ message: string }, void];
   load_project: [{ path: string }, Project];
+  unknown_project_fields: [{ path: string }, string[]];
   save_project: [RawBody, VersionInfo | null];
   load_series: [{ path: string }, Series];
   save_series: [{ path: string; text: string }, void];

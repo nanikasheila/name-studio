@@ -306,3 +306,54 @@ fn keeps_reference_images() {
     assert_eq!(problems.len(), 1, "{problems:?}");
     assert!(problems[0].contains("資料画像"), "{problems:?}");
 }
+
+#[test]
+fn tells_the_fields_a_newer_version_added() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/editor-project.namestudio");
+    let text = std::fs::read_to_string(path).unwrap();
+    assert_eq!(Project::unknown_fields(&text).unwrap(), Vec::<String>::new());
+
+    // As a newer version would write it: a field on the project, one on every
+    // page and one on a stroke inside a page.
+    let mut value: serde_json::Value = serde_json::from_str(&text).unwrap();
+    value["timeline"] = serde_json::json!({ "beats": [] });
+    for page in value["pages"].as_array_mut().unwrap() {
+        page["layout"] = serde_json::json!("grid");
+    }
+    let page = value["pages"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|page| page["strokes"].as_array().is_some_and(|s| !s.is_empty()));
+    let stroke = &mut page.expect("a page with strokes")["strokes"][0];
+    stroke["wobble"] = serde_json::json!(0.3);
+    let newer = value.to_string();
+    assert_eq!(
+        Project::unknown_fields(&newer).unwrap(),
+        ["pages.layout", "pages.strokes.wobble", "timeline"]
+    );
+    // The rest of it still opens and passes the check.
+    assert!(Project::from_json(&newer).is_ok());
+}
+
+#[test]
+fn a_choice_a_newer_version_added_does_not_open() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/editor-project.namestudio");
+    let mut value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    value["binding"] = serde_json::json!("top");
+    let error = Project::from_json(&value.to_string()).unwrap_err();
+    assert!(matches!(error, ProjectError::Json(_)));
+    assert!(
+        error
+            .to_string()
+            .starts_with("新しい版のツールで足された選択肢があるため開けません"),
+        "{error}"
+    );
+    assert!(Project::unknown_fields(&value.to_string()).is_err());
+    // A file that is simply broken says so.
+    let broken = Project::from_json("{\"title\": 3}").unwrap_err();
+    assert!(
+        broken.to_string().starts_with("ファイルの形式が正しくありません"),
+        "{broken}"
+    );
+}
