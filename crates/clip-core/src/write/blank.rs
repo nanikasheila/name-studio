@@ -99,9 +99,8 @@ pub fn write_builtin_template(setup: &PageSetup, folder: &Path) -> Result<BuiltT
     };
     super::layers::save(&blank_page(setup)?, &built.page)?;
     super::layers::save(&csp_format::blank::blank_parts()?, &built.parts)?;
-    let temporary = built.work.with_extension("cmc.tmp");
-    csp_format::blank::blank_work(setup)?.save(&temporary)?;
-    std::fs::rename(&temporary, &built.work)?;
+    let work = csp_format::blank::blank_work(setup)?;
+    name_model::atomic::replace_with(&built.work, |temporary| work.save(temporary))?;
     Ok(built)
 }
 

@@ -128,7 +128,7 @@ pub fn merge_manifest(dir: &Path, files: &[(PathBuf, PageRecord)]) -> std::io::R
 
 fn save(dir: &Path, manifest: &Manifest) -> std::io::Result<()> {
     let text = serde_json::to_string_pretty(manifest).map_err(std::io::Error::other)?;
-    std::fs::write(dir.join(MANIFEST_NAME), text)
+    name_model::atomic::write(&dir.join(MANIFEST_NAME), text.as_bytes())
 }
 
 fn load(dir: &Path) -> Option<Manifest> {

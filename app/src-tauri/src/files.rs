@@ -1,6 +1,6 @@
 //! Files outside the name data: CSP's tools, the PDF, the ミニネーム picture and the script.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
@@ -123,9 +123,5 @@ pub(crate) async fn write_text_file(path: String, text: String) -> Result<(), St
 }
 
 fn write_through_temporary(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    let mut temporary = path.as_os_str().to_owned();
-    temporary.push(".tmp");
-    let temporary = PathBuf::from(temporary);
-    std::fs::write(&temporary, bytes).map_err(|error| error.to_string())?;
-    std::fs::rename(&temporary, path).map_err(|error| error.to_string())
+    name_model::atomic::write(path, bytes).map_err(|error| error.to_string())
 }

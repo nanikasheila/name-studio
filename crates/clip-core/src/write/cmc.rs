@@ -63,8 +63,6 @@ pub fn write_cmc(template: &Path, pages: &[PathBuf], output: &Path, project_valu
     for (column, value) in project_values {
         work.set_project_value(column, value.clone())?;
     }
-    let temporary = output.with_extension("cmc.tmp");
-    work.save(&temporary)?;
-    std::fs::rename(&temporary, output)?;
+    name_model::atomic::replace_with(output, |temporary| work.save(temporary))?;
     Ok(output.to_path_buf())
 }

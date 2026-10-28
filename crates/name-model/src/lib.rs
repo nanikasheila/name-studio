@@ -5,6 +5,7 @@
 //! views. CSP files are imported from and exported to; this is the source of
 //! truth.
 
+pub mod atomic;
 pub mod model;
 pub mod pdf;
 pub mod series;
@@ -80,7 +81,7 @@ impl Project {
         Ok(project)
     }
 
-    /// Save through a temporary file so a crash never leaves half a project.
+    /// Save whole or not at all ([`atomic`]): a crash never leaves half a project.
     pub fn save(&self, path: impl AsRef<Path>) -> Result<(), ProjectError> {
         let path = path.as_ref();
         write_through_temporary(path, &self.to_json()?)
@@ -88,7 +89,5 @@ impl Project {
 }
 
 pub(crate) fn write_through_temporary(path: &Path, text: &str) -> Result<(), ProjectError> {
-    let temporary = path.with_extension(format!("{EXTENSION}.tmp"));
-    std::fs::write(&temporary, text).map_err(ProjectError::Io)?;
-    std::fs::rename(&temporary, path).map_err(ProjectError::Io)
+    atomic::write(path, text.as_bytes()).map_err(ProjectError::Io)
 }
