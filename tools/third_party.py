@@ -1,6 +1,6 @@
 """Write THIRD_PARTY_NOTICES.md: the libraries the app is built from.
 
-Why: name-studio is distributed (MIT, see LICENSE) with libraries whose
+Why: name-studio is distributed (GPL-3.0-or-later, see LICENSE) with libraries whose
      licenses ask for their notice to come along. The list goes into the
      installer next to LICENSE.
 How: The Rust crates the Windows app links (normal and build dependencies of
@@ -75,10 +75,10 @@ def render() -> str:
         "# 使っているライブラリ（Third-party notices）",
         "",
         "Name Studio は以下のライブラリを組み込んで配布しています。各ライブラリの著作権はそれぞれの作者にあり、",
-        "それぞれのライセンス（入手先に全文があります）に従います。Name Studio 自体のライセンスは [LICENSE](LICENSE)（MIT）です。",
+        "それぞれのライセンス（入手先に全文があります）に従います。Name Studio 自体のライセンスは [LICENSE](LICENSE)（GPL-3.0-or-later）です。",
         "",
         "Name Studio bundles the libraries below. Each is the copyright of its authors and is used under its own",
-        "license, whose full text is at the linked source. Name Studio itself is under the MIT license (LICENSE).",
+        "license, whose full text is at the linked source. Name Studio itself is under the GNU GPL v3.0 or later (LICENSE).",
         "",
         "SQLite（rusqlite に同梱）はパブリックドメインです。SQLite (bundled by rusqlite) is in the public domain.",
         "",
