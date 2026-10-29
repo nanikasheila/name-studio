@@ -492,7 +492,7 @@ dependencies = [
 [[package]]
 name = "csp-assets"
 version = "0.1.0"
-source = "git+https://github.com/nanikasheila/csp-format?rev=92c5dadf95476bd935b25a9bcfb2cae443080b12#92c5dadf95476bd935b25a9bcfb2cae443080b12"
+source = "git+https://github.com/nanikasheila/csp-format?rev=3bf718cdbd59b3edaadbccf85504d0ec78d19908#3bf718cdbd59b3edaadbccf85504d0ec78d19908"
 dependencies = [
  "csp-format",
  "encoding_rs",
@@ -505,7 +505,7 @@ dependencies = [
 [[package]]
 name = "csp-format"
 version = "0.1.0"
-source = "git+https://github.com/nanikasheila/csp-format?rev=92c5dadf95476bd935b25a9bcfb2cae443080b12#92c5dadf95476bd935b25a9bcfb2cae443080b12"
+source = "git+https://github.com/nanikasheila/csp-format?rev=3bf718cdbd59b3edaadbccf85504d0ec78d19908#3bf718cdbd59b3edaadbccf85504d0ec78d19908"
 dependencies = [
  "flate2",
  "libc",
