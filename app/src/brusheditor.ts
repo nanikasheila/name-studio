@@ -4,6 +4,7 @@
 // サブツールの読み込み takes in.
 import { save } from "@tauri-apps/plugin-dialog";
 import { call, type CspToolLocations } from "./backend";
+import { DEFAULT_BRUSH_DPI } from "./brush";
 import { BrushPad, GraphBox } from "./brushpad";
 import {
   applyCspSettings,
@@ -408,7 +409,15 @@ export class BrushEditor {
     // An 影響元設定 of its own is edited under the row.
     if (column.edit.kind !== "effector") field.append(this.input(column, value));
     const unit = COLUMNS.get(`${column.column}Unit`);
-    if (unit?.edit.kind === "choice") field.append(this.input(unit, tool.settings[unit.column]));
+    if (unit?.edit.kind === "choice") {
+      field.append(this.input(unit, tool.settings[unit.column]));
+      // CSP keeps lengths in pixels: the mm they are on the page.
+      if (typeof value === "number") {
+        const dpi = tool.dpi || DEFAULT_BRUSH_DPI;
+        const mm = (value * (tool.settings[unit.column] === 2 ? 10 : 1) * 25.4) / dpi;
+        field.append(element("small", { className: "be-mm", textContent: `= ${mm >= 10 ? mm.toFixed(1) : mm.toFixed(2)} mm`, title: `${dpi} dpi の原稿で` }));
+      }
+    }
     if (value !== undefined && column.edit.kind !== "fixed" && column.edit.kind !== "materials") {
       field.append(button("×", () => this.set(column.column, undefined), "CSP の初期値に戻す（この項目を書かない）"));
     }

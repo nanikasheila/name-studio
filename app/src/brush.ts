@@ -7,7 +7,8 @@ import { newId } from "./project";
 /** What the Rust side reads from a .sut or CSP's tool database. */
 export interface CspLength {
   value: number;
-  unit: "px" | "mm";
+  /** px10: CSP's unit 2, tens of pixels (CSP draws 1.2 as wide as 12 px, at any resolution). */
+  unit: "px" | "px10";
 }
 
 export interface CspDynamics {
@@ -56,7 +57,7 @@ export const DEFAULT_BRUSH_DPI = 600;
 
 export function lengthMm(length: CspLength | null, dpi: number): number {
   if (!length) return 0;
-  return length.unit === "mm" ? length.value : (length.value * 25.4) / dpi;
+  return ((length.unit === "px10" ? length.value * 10 : length.value) * 25.4) / dpi;
 }
 
 type Input = "pressure" | "tilt" | "velocity" | "random";

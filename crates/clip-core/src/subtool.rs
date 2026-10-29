@@ -59,7 +59,11 @@ pub enum SubToolKind {
 pub enum LengthUnit {
     /// Pixels of the canvas the tool draws on.
     Px,
-    Mm,
+    /// Unit 2: tens of pixels, whatever the canvas's resolution (CSP shows
+    /// 1.2 as 12.0 px and draws it as wide as 12 px, on 600 and 1200 dpi
+    /// canvases alike). Taken for mm before; only a few tools use it.
+    #[serde(rename = "px10")]
+    TenPx,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -74,7 +78,7 @@ impl Length {
             return None;
         }
         let unit = match row.int(unit) {
-            2 => LengthUnit::Mm,
+            2 => LengthUnit::TenPx,
             _ => LengthUnit::Px,
         };
         Some(Length {
@@ -85,7 +89,7 @@ impl Length {
 
     pub fn to_mm(self, dpi: f64) -> f64 {
         match self.unit {
-            LengthUnit::Mm => self.value,
+            LengthUnit::TenPx => self.value * 10.0 * 25.4 / dpi,
             LengthUnit::Px => self.value * 25.4 / dpi,
         }
     }
@@ -988,7 +992,7 @@ mod tests {
             pen.taper_out,
             Some(Length {
                 value: 1.5,
-                unit: LengthUnit::Mm
+                unit: LengthUnit::TenPx
             })
         );
         assert_eq!(pen.tip_material.as_deref(), Some(".:91:20:abc:data:material_0.layer"));

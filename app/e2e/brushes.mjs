@@ -61,10 +61,12 @@ try {
 
   const row = (label) => page.locator(".be-row", { has: page.locator(".be-label", { hasText: new RegExp(`^${label}$`) }) }).first();
   const size = row("ブラシサイズ");
-  await size.locator('.be-field input[type="number"]').fill("1.5");
+  // CSP keeps the size in pixels: 60 px on a 600 dpi page is 2.54 mm.
+  await size.locator('.be-field input[type="number"]').fill("60");
   await size.locator('.be-field input[type="number"]').press("Enter");
   pen = await brush();
-  check(pen.sizeMm === 1.5 && pen.csp.settings.BrushSize === 1.5 && pen.width === 1.5, "a size typed in is the pen's size (and the size in hand)");
+  check(Math.abs(pen.sizeMm - 2.54) < 1e-9 && pen.csp.settings.BrushSize === 60 && pen.width === pen.sizeMm, "a size typed in is the pen's size (and the size in hand)");
+  check((await size.locator(".be-mm").textContent()) === "= 2.54 mm", "the size shows its mm too");
 
   const pressure = size.locator(".be-inputs button", { hasText: "筆圧" });
   await pressure.click();
@@ -95,7 +97,7 @@ try {
       return count;
     });
   const thick = await inked();
-  await size.locator('.be-field input[type="number"]').fill("0.3");
+  await size.locator('.be-field input[type="number"]').fill("8");
   await size.locator('.be-field input[type="number"]').press("Enter");
   const thin = await inked();
   check(thick > 0 && thin > 0 && thin < thick * 0.5, `the pad's sample lines get thinner with the size (${thick} → ${thin} px)`);
@@ -108,18 +110,19 @@ try {
 
   await page.evaluate(() => window.nameStudio.workbench.undo());
   pen = await brush();
-  check(pen.sizeMm === 1.5, "undo brings the size before back");
-  check((await size.locator('.be-field input[type="number"]').inputValue()) === "1.5", "and the settings show it");
+  check(pen.csp.settings.BrushSize === 60, "undo brings the size before back");
+  check((await size.locator('.be-field input[type="number"]').inputValue()) === "60", "and the settings show it");
 
   await page.fill("#be-filter", "入り");
   const groups = await page.locator(".be-group > summary").allTextContents();
   check(groups.length >= 1 && groups.every((text) => text.startsWith("入り抜き")), `searching narrows the items (${groups.join(", ")})`);
   await row("入り").locator('input[type="checkbox"]').check();
-  await row("入り（長さ指定）").locator('input[type="number"]').fill("2");
+  // CSP's unit 2 is tens of pixels: 4.8 of them are 2.03 mm.
+  await row("入り（長さ指定）").locator('input[type="number"]').fill("4.8");
   await row("入り（長さ指定）").locator('input[type="number"]').press("Enter");
   await row("入り（長さ指定）").locator("select").selectOption("2");
   pen = await brush();
-  check(pen.taperInMm === 2, `入り 2 mm (${pen.taperInMm})`);
+  check(Math.abs(pen.taperInMm - (48 * 25.4) / 600) < 1e-9, `入り 4.8 × 10 px (${pen.taperInMm} mm)`);
   await page.fill("#be-filter", "");
   if (shots) await page.locator("#brush-editor").screenshot({ path: `${shots}/brush-editor.png` });
 
@@ -127,7 +130,7 @@ try {
   await page.click("#be-export");
   await page.waitForFunction(() => document.getElementById("be-message").textContent.includes("書き出しました"));
   const written = await page.evaluate(() => window.__calls.find((call) => call.command === "write_csp_sub_tool")?.args);
-  check(written?.path === "/tmp/ペン.sut" && written.name === "新しいペン" && written.tool.settings.BrushSize === 1.5 && written.tool.settings.BrushInLength === 2, ".sut に書き出す sends the CSP rows");
+  check(written?.path === "/tmp/ペン.sut" && written.name === "新しいペン" && written.tool.settings.BrushSize === 60 && written.tool.settings.BrushInLength === 4.8, ".sut に書き出す sends the CSP rows");
 
   await page.click("#be-duplicate");
   let names = await page.evaluate(() => window.nameStudio.workbench.project.brushes.map((b) => b.name));

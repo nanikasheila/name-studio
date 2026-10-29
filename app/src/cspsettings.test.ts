@@ -122,14 +122,15 @@ describe("drawing values from the CSP settings", () => {
     const tool = maruPen();
     const brush = brushFromSubTool({ ...subTool(), csp: tool }, 600, "b");
     expect(brush.csp?.dpi).toBe(600);
-    brush.csp!.settings.BrushSize = 1;
+    // Unit 2 is tens of pixels.
+    brush.csp!.settings.BrushSize = 2.4;
     brush.csp!.settings.BrushSizeUnit = 2;
     brush.csp!.settings.BrushUseOut = 0;
     const size = effectorOf(brush.csp!, "BrushSizeEffector")!;
     size.inputs = 0;
     setSetting(brush.csp!, "BrushSizeEffector", effectorBytes(size));
     applyCspSettings(brush);
-    expect(brush.sizeMm).toBe(1);
+    expect(brush.sizeMm).toBeCloseTo((24 * 25.4) / 600);
     expect(brush.taperOutMm).toBe(0);
     expect(brush.sizePressure).toBeUndefined();
   });
@@ -137,8 +138,8 @@ describe("drawing values from the CSP settings", () => {
   it("gives a brush without settings ones that draw it the same", () => {
     const brush = newBrush("pen", "b", "ペン");
     const values = drawnValues(cspSettingsFor({ ...brush, sizeMm: 0.7, taperInMm: 1.5, postCorrection: 30 }), "pen");
-    expect(values.sizeMm).toBe(0.7);
-    expect(values.taperInMm).toBe(1.5);
+    expect(values.sizeMm).toBeCloseTo(0.7, 3);
+    expect(values.taperInMm).toBeCloseTo(1.5, 3);
     expect(values.postCorrection).toBe(30);
     expect(values.sizePressure).toEqual({ min: 0.1 });
     const eraser = newBrush("eraser", "e", "消しゴム");

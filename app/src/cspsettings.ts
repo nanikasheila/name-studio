@@ -189,10 +189,15 @@ function inputCurve(effector: Effector | null, input: Input): PressureCurve | un
   return curve;
 }
 
-/** A length setting in mm: `unit` 2 is mm, else pixels at `dpi`. */
+/** A length setting in mm: pixels at `dpi`, or (unit 2) tens of pixels. */
 function lengthMm(tool: CspToolData, column: string, unitColumn: string): number {
-  const value = numberOf(tool, column);
-  return numberOf(tool, unitColumn) === 2 ? value : (value * 25.4) / (tool.dpi || DEFAULT_BRUSH_DPI);
+  const px = numberOf(tool, column) * (numberOf(tool, unitColumn) === 2 ? 10 : 1);
+  return (px * 25.4) / (tool.dpi || DEFAULT_BRUSH_DPI);
+}
+
+/** Pixels at `dpi` for `mm`, as CSP keeps them (two decimals). */
+function pxOf(mm: number, dpi: number): number {
+  return Math.round(((mm * dpi) / 25.4) * 100) / 100;
 }
 
 /** Whether CSP draws the tool as an eraser. */
@@ -289,10 +294,12 @@ function effectorFrom(curves: { pressure?: PressureCurve; tilt?: PressureCurve; 
 /**
  * CSP settings for a brush that has none (made in name-studio, or taken from
  * CSP before the settings were kept): a pen or eraser of CSP's own kind with
- * the brush's size, opacity, curves and corrections. Sizes are in mm.
+ * the brush's size, opacity, curves and corrections. Sizes are in pixels
+ * at {@link DEFAULT_BRUSH_DPI}, as CSP's own pens keep them.
  */
 export function cspSettingsFor(brush: Brush): CspToolData {
   const eraser = brush.kind === "eraser";
+  const dpi = DEFAULT_BRUSH_DPI;
   const tool: CspToolData = {
     settings: {
       Opacity: Math.round(brush.opacity * 100),
@@ -300,8 +307,8 @@ export function cspSettingsFor(brush: Brush): CspToolData {
       AntiAlias: 2,
       FlickerReduction: Math.round(brush.stabilization),
       FlickerReductionBySpeed: brush.stabilizationBySpeed ? 1 : 0,
-      BrushSize: Math.round(brush.sizeMm * 100) / 100,
-      BrushSizeUnit: 2,
+      BrushSize: pxOf(brush.sizeMm, dpi),
+      BrushSizeUnit: 0,
       BrushFlow: 100,
       BrushHardness: Math.max(1, Math.round(brush.hardness * 100)),
       BrushInterval: brush.tip?.interval ?? 10,
@@ -312,18 +319,18 @@ export function cspSettingsFor(brush: Brush): CspToolData {
       BrushUsePatternImage: 0,
       BrushInOutType: 0,
       BrushUseIn: brush.taperInMm > 0 ? 1 : 0,
-      BrushInLength: brush.taperInMm,
-      BrushInLengthUnit: 2,
+      BrushInLength: pxOf(brush.taperInMm, dpi),
+      BrushInLengthUnit: 0,
       BrushUseOut: brush.taperOutMm > 0 ? 1 : 0,
-      BrushOutLength: brush.taperOutMm,
-      BrushOutLengthUnit: 2,
+      BrushOutLength: pxOf(brush.taperOutMm, dpi),
+      BrushOutLengthUnit: 0,
       BrushUseRevision: brush.postCorrection ? 1 : 0,
       BrushRevision: brush.postCorrection ?? 0,
       BrushSharpenCorner: 0,
     },
     node: eraser ? { NodeInputOp: 12, NodeOutputOp: 12, NodeRangeOp: 0, NodeIcon: 106 } : { NodeInputOp: 11, NodeOutputOp: 11, NodeRangeOp: 0, NodeIcon: 101 },
     manager: { ToolType: 0, Version: 145 },
-    dpi: DEFAULT_BRUSH_DPI,
+    dpi,
   };
   setSetting(tool, "BrushSizeEffector", effectorBytes(effectorFrom({ pressure: brush.sizePressure, tilt: brush.sizeTilt, speed: brush.sizeSpeed, random: brush.sizeRandom })));
   setSetting(

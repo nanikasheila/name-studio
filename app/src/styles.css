@@ -500,6 +500,7 @@ dialog.brush-editor { width: min(980px, calc(100vw - 32px)); height: min(760px, 
 .be-number { display: inline-flex; align-items: center; gap: 3px; }
 .be-number input { width: 6em; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; }
 .be-number small { color: var(--muted); }
+.be-mm { color: var(--muted); font-variant-numeric: tabular-nums; }
 .be-fixed { color: var(--muted); font-size: calc(12 * var(--px)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .be-effector { grid-column: 2; display: flex; flex-direction: column; gap: 4px; padding: 2px 0 6px; }
 .be-inputs { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
