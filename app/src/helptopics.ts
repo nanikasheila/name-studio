@@ -497,6 +497,7 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
   ...TOOL_IDS.map((id) => tool(id, TOOLS[id].name, TOOLS[id].overlay)),
   // Around the pages.
   { target: "#tool-options", name: "道具の設定", text: "持っている道具の設定と使い方のひと言", side: "below" },
+  { target: "#brush-edit", name: "ペン・消しゴムの設定", text: "CSP の項目すべてを変えて試し描き・.sut で CSP へ", command: "button.brush-edit", side: "below" },
   { target: "#panel-tidy", name: "整える", text: "仮のコマを清書（線をそろえ、コマ間を設定の幅に）", command: "panel.tidy", side: "below" },
   { target: "#editor-canvas", name: "紙面", text: "ここに描く。Space+ドラッグで動かす・ホイールで拡大縮小・Shift+Space+ドラッグで回す", command: "view.fit", side: "inside" },
   { target: "#editor-next", name: "ページをめくる", text: "", command: "page.next", side: "above" },

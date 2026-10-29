@@ -189,6 +189,13 @@ export const FULL_PROJECT: Full<Project> = {
       tip: { pngBase64: "iVBORw0KGgo=", width: 16, height: 8, interval: 25, enabled: true },
       erase: "intersection",
       source: "鉛筆.sut",
+      csp: {
+        settings: { BrushSize: 12.5, BrushSizeUnit: 0, BrushSizeEffector: { blob: "AAAAMA==" }, TextFontName: "游明朝" },
+        node: { NodeName: "鉛筆", NodeInputOp: 12 },
+        manager: { Version: 145 },
+        dpi: 600,
+        materials: [{ originalPath: ".:56:16:abc:data:material_0.layer", catalogPath: ".:56:16:abc", installFolder: 0, data: "dGFy" }],
+      },
     },
   ],
   alternatives: [

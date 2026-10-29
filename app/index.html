@@ -93,6 +93,7 @@
             <select id="brush-select" title="ペン・消しゴムの種類"></select>
             <label class="size" title="太さ（mm）。ホイールでも変えられます"><input id="brush-size" type="number" min="0.05" max="30" step="0.05" /> mm</label>
             <label class="check" id="brush-tip-label" title="CSP の素材のサムネイルから作った先端の形で描く"><input type="checkbox" id="brush-tip" /> 先端</label>
+            <button id="brush-edit" title="ペン・消しゴムの設定: CSP のサブツール詳細の項目すべてを変えて試し描きし、.sut に書き出して CSP へ戻せます">設定…</button>
             <button id="brush-import" title="CLIP STUDIO PAINT のペン・消しゴムを取り込む">取り込み…</button>
             <div class="segmented erase-modes" id="erase-modes" title="消し方（消しゴムで E を押すたびに切り替え）。ペンの消しゴム側でも同じ消し方になります">
               <button id="erase-touched" title="触れた部分だけ消す">部分</button>
@@ -440,6 +441,47 @@
         <div class="actions">
           <button value="cancel" formnovalidate>閉じる</button>
           <button type="button" id="bd-import" class="primary" disabled>取り込む</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="brush-editor" class="export brush-editor">
+      <form method="dialog">
+        <h2>ペン・消しゴムの設定</h2>
+        <p class="hint">CSP のサブツール詳細と同じ項目を変えられます。変えるとすぐ下の試し描きに出ます。「.sut に書き出す」で CSP へ戻せます（CSP のサブツールパレットのメニュー「サブツールの読み込み」）。</p>
+        <div class="be-layout">
+          <aside class="be-side">
+            <div class="segmented" role="group" aria-label="道具の種類">
+              <button type="button" id="be-kind-pen" class="active">ペン</button>
+              <button type="button" id="be-kind-eraser">消しゴム</button>
+            </div>
+            <div id="be-list" class="be-list"></div>
+            <div class="be-side-actions">
+              <button type="button" id="be-new" title="標準の設定から新しく作る">新規</button>
+              <button type="button" id="be-duplicate" title="選んだものを写して、別の名前で作る">複製</button>
+              <button type="button" id="be-delete" title="このネームから消す（元に戻すで戻せます）">削除</button>
+              <button type="button" id="be-import" title="CSP のペン・消しゴムを取り込む">CSP から取り込む…</button>
+            </div>
+          </aside>
+          <section id="be-main" class="be-main">
+            <div class="be-head">
+              <input id="be-name" type="text" aria-label="名前" placeholder="名前" />
+              <small id="be-source" class="be-source"></small>
+            </div>
+            <div class="be-try">
+              <canvas id="be-pad" class="be-pad" title="ここで試し描き。何も描いていないときは、弱い→強い→弱い筆圧の見本の線（上はゆっくり、下は速く）"></canvas>
+              <button type="button" id="be-pad-clear" title="試し描きの線を消して見本の線に戻す">消す</button>
+            </div>
+            <div class="be-search">
+              <input id="be-filter" type="search" placeholder="項目を探す（例: 入り抜き、筆圧、補正）" />
+              <label class="check" title="図形・塗りつぶし・フキダシなど、ペン以外のサブツールの項目も出す"><input type="checkbox" id="be-everything" /> ペン以外の項目も</label>
+            </div>
+            <div id="be-settings" class="be-settings"></div>
+          </section>
+        </div>
+        <p id="be-message" class="message" role="status"></p>
+        <div class="actions">
+          <button value="cancel" formnovalidate>閉じる</button>
+          <button type="button" id="be-export" class="primary" title="この設定を CSP のサブツール（.sut）として書き出す">.sut に書き出す…</button>
         </div>
       </form>
     </dialog>

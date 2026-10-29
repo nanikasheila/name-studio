@@ -454,7 +454,35 @@ thickness: number, rotation: number, tip?: BrushTip, erase?: EraseMode,
 /**
  * Where it came from, e.g. "CSP: ペン / 丸ペン".
  */
-source?: string, };
+source?: string, 
+/**
+ * The CSP sub tool behind it, every setting as CSP keeps it: what the
+ * brush settings edit and what goes back to CSP as a .sut. The values
+ * above are worked out from it.
+ */
+csp?: CspToolData, };
+
+export type CspValue = number | string | { 
+/**
+ * Base64.
+ */
+blob: string, };
+
+export type CspMaterial = { 
+/**
+ * The path the settings name it by.
+ */
+originalPath: string, catalogPath: string, installFolder: number, 
+/**
+ * The material folder as a tar, base64.
+ */
+data: string, };
+
+export type CspToolData = { settings: { [key in string]: CspValue }, node: { [key in string]: CspValue }, manager: { [key in string]: CspValue }, 
+/**
+ * Resolution sizes in pixels were turned into mm at.
+ */
+dpi: number, materials: Array<CspMaterial>, };
 
 export type RoughImage = { id: string, layerId: number, layerName: string, 
 /**

@@ -208,6 +208,30 @@ export interface Brush {
   tip?: BrushTip;
   erase?: EraseMode;
   source?: string;
+  /** The CSP sub tool behind it, every setting as CSP keeps it (see cspsettings.ts). */
+  csp?: CspToolData;
+}
+
+/** One value of a CSP sub tool setting: a number, text, or bytes in base64. */
+export type CspValue = number | string | { blob: string };
+
+/** A material a .sut carried (CSP's `MaterialFile` row), kept to go back with the sub tool. */
+export interface CspMaterial {
+  originalPath: string;
+  catalogPath?: string;
+  installFolder?: number;
+  /** The material folder as a tar, base64. */
+  data: string;
+}
+
+/** A CSP sub tool as rows of its tables: the settings (`Variant`), the node and the manager. */
+export interface CspToolData {
+  settings: Record<string, CspValue>;
+  node?: Record<string, CspValue>;
+  manager?: Record<string, CspValue>;
+  /** Resolution sizes in pixels were turned into mm at. */
+  dpi: number;
+  materials?: CspMaterial[];
 }
 
 export interface RoughImage {

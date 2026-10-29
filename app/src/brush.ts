@@ -1,7 +1,7 @@
 // Pens and erasers: taking them over from CLIP STUDIO PAINT sub tools
 // (crates/clip-core/src/subtool.rs reads the files), and how a brush turns
 // pen pressure and the stroke's length into width and opacity.
-import type { Brush, PressureCurve, Project, Stroke, StrokePoint } from "./model";
+import type { Brush, CspToolData, PressureCurve, Project, Stroke, StrokePoint } from "./model";
 import { newId } from "./project";
 
 /** What the Rust side reads from a .sut or CSP's tool database. */
@@ -47,6 +47,8 @@ export interface CspSubTool {
   tipMaterial: string | null;
   tip: { width: number; height: number; pngBase64: string } | null;
   vectorErase: "touched" | "intersection" | "whole" | null;
+  /** Every setting as CSP keeps it (its `dpi` is set when the brush is made). */
+  csp?: CspToolData;
 }
 
 /** Resolution CSP brush sizes in pixels are measured at, unless chosen otherwise. */
@@ -91,6 +93,7 @@ export function brushFromSubTool(tool: CspSubTool, dpi: number, id: string): Bru
     rotation: tool.rotation,
     source: sourceLabel(tool),
   };
+  if (tool.csp) brush.csp = { ...tool.csp, dpi };
   const keys = { pressure: "Pressure", tilt: "Tilt", velocity: "Speed", random: "Random" } as const;
   for (const input of ["pressure", "tilt", "velocity", "random"] as const) {
     const size = inputOf(tool.sizeDynamics, input);

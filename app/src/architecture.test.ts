@@ -31,7 +31,7 @@ const LAYERS = {
    * storage, no Rust side, and nothing of the editor's screen.
    */
   domain: [
-    "alternatives", "arrange", "aside", "autotail", "balloon", "brush", "carry", "cast", "csppage", "dialogue", "export", "exportmemory", "fonts", "hold", "koma",
+    "alternatives", "arrange", "aside", "autotail", "balloon", "brush", "carry", "cast", "csppage", "cspsettings", "dialogue", "export", "exportmemory", "fonts", "hold", "koma",
     "komaedit", "mask", "mininame", "minisplit", "namecheck", "namedefaults", "pagebox", "pages", "panelfolders", "panels", "plotimport", "project", "projectjson",
     "readback", "readingorder", "references", "removal", "reorder", "repair", "roughlayers", "scriptimport", "series", "shapes", "sketchpanels", "snapping", "stickies",
     "story", "strokes", "structures", "style", "tidy", "transform", "wrap",
@@ -53,7 +53,7 @@ const LAYERS = {
   service: ["autosave", "batch", "flatpage", "nameexport", "picturecheck", "roughcache", "updatereport"],
   /** The screens. */
   ui: [
-    "actions", "alerts", "altdialog", "board", "boarddock", "boardemotion", "boardpages", "boardscene", "boardshape", "boardview", "brushdialog", "controlbar", "cursors", "dock", "dragsort", "drophint", "editor", "editorcore", "exportdialog", "fontpicker", "helpbar", "helpoverlay", "imageimport", "inplace", "inspector",
+    "actions", "alerts", "altdialog", "board", "boarddock", "boardemotion", "boardpages", "boardscene", "boardshape", "boardview", "brushdialog", "brusheditor", "brushpad", "controlbar", "cursors", "dock", "dragsort", "drophint", "editor", "editorcore", "exportdialog", "fontpicker", "helpbar", "helpoverlay", "imageimport", "inplace", "inspector",
     "layers", "livefields", "lookpane", "markbar", "namesaver", "nameedits", "palette", "palettes", "pendialog", "perfdialog", "reader", "readbackpick", "recoverydialog", "referencebar", "roughpanel", "scriptdialog", "seriespanel", "settingsdialog", "sheetexport", "shortcutdialog", "sidelists", "startscreen", "toolaside", "tooleraser", "toolfill",
     "toolmark", "toolpanels", "toolpen", "toolreference", "tools", "toolselect", "toolsticky", "tooltext", "tooltransform", "tour", "updater", "versiondialog",
     "viewer", "workbench",

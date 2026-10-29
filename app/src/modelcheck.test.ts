@@ -84,6 +84,9 @@ interface Pairs {
   PressureCurve: [Rust.PressureCurve, App.PressureCurve];
   BrushTip: [Rust.BrushTip, App.BrushTip];
   Brush: [Rust.Brush, App.Brush];
+  CspValue: [Rust.CspValue, App.CspValue];
+  CspMaterial: [Rust.CspMaterial, App.CspMaterial];
+  CspToolData: [Rust.CspToolData, App.CspToolData];
   RoughImage: [Rust.RoughImage, App.RoughImage];
   Character: [Rust.Character, App.Character];
   Scene: [Rust.Scene, App.Scene];
@@ -100,7 +103,7 @@ const agreed: { [K in keyof Pairs]: Agrees<Pairs[K][0], Pairs[K][1]> } = {
   StoryPosition: true, CspStory: true, StoryPageNumber: true, NombrePlace: true, ShownNombre: true, Plan: true, StoryShape: true, ShapePart: true,
   ShapeBeat: true, Panel: true, PanelBorder: true, PanelFill: true, PanelEffect: true, Breakout: true, LineKind: true, LineShapes: true, BalloonShape: true,
   TailStyle: true, Tail: true, Line: true, Stroke: true, StrokePoint: true, RoughLayer: true, BrushKind: true, EraseMode: true, PressureCurve: true,
-  BrushTip: true, Brush: true, RoughImage: true, Character: true, Scene: true, EmotionPoint: true, SourceSheet: true, Series: true, SeriesEpisode: true,
+  BrushTip: true, Brush: true, CspValue: true, CspMaterial: true, CspToolData: true, RoughImage: true, Character: true, Scene: true, EmotionPoint: true, SourceSheet: true, Series: true, SeriesEpisode: true,
   SeriesShared: true,
 };
 
