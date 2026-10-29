@@ -21,7 +21,7 @@ const PLOT = `# 星の話 第1話 ページ配分付きプロット
 | 本文ページ | ページ数 | 場面 |
 |---|---:|---|
 | 1〜2 | 2 | 出会い。屋上のミカとソラ |
-| 3〜5 | 3 | 町を出る相談 |
+| 3〜5 | 3 | 翌日。町を出る相談 |
 | 6 | 1 | 出発 |
 | 合計 | 6 | |
 
@@ -54,7 +54,8 @@ const PLOT = `# 星の話 第1話 ページ配分付きプロット
 describe("プロットの取り込み", () => {
   it("reads pages, the page table and the other sections", () => {
     const doc = parsePlot(PLOT);
-    expect(doc.title).toBe("星の話 第1話 ページ配分付きプロット");
+    // The closing word for the kind of document is not the name's title.
+    expect(doc.title).toBe("星の話 第1話");
     expect(doc.total).toBe(6);
     expect(doc.pages.map((p) => [p.number, p.last, p.heading])).toEqual([
       [1, 1, "屋上"],
@@ -63,10 +64,11 @@ describe("プロットの取り込み", () => {
       [6, 6, "出発"],
     ]);
     expect(doc.pages[0].text).toEqual(["夜。ミカが屋上で空を見上げる。", "星はひとつも見えない。"]);
-    expect(doc.scenes.map((s) => [s.first, s.last, s.title])).toEqual([
-      [1, 2, "出会い"],
-      [3, 5, "町を出る相談"],
-      [6, 6, "出発"],
+    // A word of time opening a scene (or its first page) says when it happens, and is not its name.
+    expect(doc.scenes.map((s) => [s.first, s.last, s.title, s.storyTime])).toEqual([
+      [1, 2, "出会い", "夜"],
+      [3, 5, "町を出る相談", "翌日"],
+      [6, 6, "出発", undefined],
     ]);
     // A note that names no page goes to the page it is about (ソラ), the story's flow stays on the first.
     expect(doc.notes.map((n) => [n.section, n.page, !!n.guessed])).toEqual([
@@ -75,6 +77,17 @@ describe("プロットの取り込み", () => {
       ["残っている論点", 4, false],
     ]);
     expect(doc.notes[1].text).toBe("ソラの正体。 どこまで明かすか。");
+  });
+
+  it("keeps a title that is only the kind of document, and short scene names that are not times", () => {
+    expect(parsePlot("# プロット\n").title).toBe("プロット");
+    expect(parsePlot("# 第4話 場面プロット\n").title).toBe("第4話");
+    const doc = parsePlot("| 1 | 1 | 現在。叔母からの緊急電話、家へ |\n| 2 | 1 | 再会。二人が出会う |\n| 3 | 1 | 3日後 |\n");
+    expect(doc.scenes.map((s) => [s.title, s.storyTime])).toEqual([
+      ["叔母からの緊急電話、家へ", "現在"],
+      ["再会", undefined],
+      ["3日後", undefined],
+    ]);
   });
 
   it("tells a plot from a script", () => {
@@ -89,7 +102,7 @@ describe("プロットの取り込み", () => {
     const old = addScene(project, project.pages[2].id, project.pages[3].id, "古いシーン");
     const report = applyPlot(project, parsePlot(PLOT));
     expect(report).toEqual({ memos: 4, scenes: 3, stickies: 3, addedPages: 2 });
-    expect(project.title).toBe("星の話 第1話 ページ配分付きプロット");
+    expect(project.title).toBe("星の話 第1話");
     expect(project.pages).toHaveLength(6);
     expect(project.plan?.targetPages).toBe(6);
     expect(project.pages[0].memo).toBe("前からのメモ\n\n屋上\n夜。ミカが屋上で空を見上げる。\n星はひとつも見えない。");
@@ -100,7 +113,8 @@ describe("プロットの取り込み", () => {
       ["町を出る相談", 3, 5],
       ["出発", 6, 6],
     ]);
-    expect(project.scenes[1].summary).toBe("町を出る相談");
+    expect(project.scenes[1].summary).toBe("翌日。町を出る相談");
+    expect(project.scenes.map((s) => s.storyTime)).toEqual(["夜", "翌日", undefined]);
     expect(project.pages[0].stickies).toHaveLength(1);
     expect(project.pages[1].stickies?.[0].text).toBe("【残っている論点】ソラの正体。 どこまで明かすか。");
     expect(project.pages[3].stickies?.[0].text).toBe("【残っている論点】4ページの間の取り方。");

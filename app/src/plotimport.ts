@@ -2,9 +2,10 @@
 // page, no dialogue) dealt out as page memos, scenes and 付箋.
 //
 // What is read:
-//   # タイトル                                   the title
+//   # タイトル                                   the title (a closing word like ページ配分付きプロット left off)
 //   ### 3ページ 見出し / ### P3 / ### 5〜7ページ   a page (its heading and text become the memo)
 //   | 1〜3 | 3 | 場面 |  (a table row)          a scene over pages 1–3; a 合計 row gives the aimed page count
+//   現在。/ 過去。 opening a scene or its first page  when the scene happens (not its name)
 //   ## 見出し with page headings under it        a scene, when no table gives scenes
 //                                                 (headings naming ページ, like ページごとのプロット, are not scenes)
 //   ## any other section                         its list items (or its text) become 付箋, on the page they name
@@ -28,6 +29,8 @@ export interface PlotScene {
   last: number;
   title: string;
   summary: string;
+  /** When it happens in the story, from a word like 現在 or 回想 opening it or its first page. */
+  storyTime?: string;
 }
 
 export interface PlotNote {
@@ -65,10 +68,26 @@ function item(row: string): { text: string; listed: boolean } {
   return match ? { text: plain(match[1]), listed: true } : { text: plain(row), listed: false };
 }
 
-/** The first sentence, short enough for a scene name. */
-function shortTitle(text: string): string {
+/** A sentence that only says when: 現在。 回想。 翌朝。 3日後。 */
+const WHEN = /^(?:現在|過去|回想|未来|当日|前日|翌日|翌朝|翌晩|朝|昼|夕方|夜|深夜|(?:[一二三四五六七八九十数]+|\d+)(?:日|週間|か月|ヶ月|年)(?:前|後))$/;
+
+/** The opening word of time, if the text starts with one. */
+function opening(text: string): string | undefined {
   const first = text.split(/[。．]/)[0].trim();
+  return WHEN.test(first) && /[。．]/.test(text) ? first : undefined;
+}
+
+/** The first sentence, short enough for a scene name; a word of time before it is not the name. */
+function shortTitle(text: string): string {
+  const sentences = text.split(/[。．]/).map((s) => s.trim());
+  const first = (opening(text) ? sentences.slice(1).find(Boolean) : undefined) ?? sentences[0];
   return [...first].length > 24 ? `${[...first].slice(0, 23).join("")}…` : first;
+}
+
+/** The plot's name without the word for the kind of document closing it (ユメノ 第4話 ページ配分付きプロット → ユメノ 第4話). */
+function plotTitle(text: string): string {
+  const rest = text.replace(/[\s　]+\S*(?:プロット|あらすじ|構成案?)$/, "").trim();
+  return rest || text;
 }
 
 /** Read a plot. */
@@ -91,7 +110,7 @@ export function parsePlot(source: string): PlotDoc {
       const level = heading[1].length;
       const text = plain(heading[2]);
       if (level === 1) {
-        doc.title ??= text;
+        doc.title ??= plotTitle(text);
         continue;
       }
       if (level === 2) {
@@ -121,7 +140,8 @@ export function parsePlot(source: string): PlotDoc {
       if (range && cells.length >= 2) {
         const first = Number(range[1]);
         const description = cells.slice(1).find((cell) => cell && !/^\d+$/.test(cell)) ?? "";
-        doc.scenes.push({ first, last: Math.max(first, Number(range[2] ?? first)), title: shortTitle(description) || `${first} ページ`, summary: description });
+        const when = opening(description);
+        doc.scenes.push({ first, last: Math.max(first, Number(range[2] ?? first)), title: shortTitle(description) || `${first} ページ`, summary: description, ...(when ? { storyTime: when } : {}) });
       } else if (/^(合計|計|total)$/i.test(cells[0] ?? "")) {
         const total = cells.slice(1).map((cell) => Number.parseInt(cell, 10)).find((n) => Number.isInteger(n) && n > 0);
         if (total) doc.total = total;
@@ -140,6 +160,12 @@ export function parsePlot(source: string): PlotDoc {
       const last = Math.max(...s.pages.map((p) => p.last));
       doc.scenes.push({ first, last, title: s.heading, summary: s.rows.filter(Boolean).map((row) => item(row).text).join("\n") });
     }
+  }
+  // A scene's time, when its first page opens with one.
+  for (const scene of doc.scenes) {
+    const first = doc.pages.find((p) => p.number <= scene.first && scene.first <= p.last);
+    const when = first?.text[0] && opening(first.text[0]);
+    if (when) scene.storyTime ??= when;
   }
   // Other sections: their list items, or their paragraphs, as notes.
   for (const s of sections) {
@@ -249,7 +275,8 @@ export function applyPlot(project: Project, doc: PlotDoc, firstAlone = true): Pl
     const first = scene.first - 1;
     const last = Math.min(scene.last, project.pages.length) - 1;
     if (first < 0 || last < first) continue;
-    putScene(project, first, last, scene.title, scene.summary);
+    const { scene: put } = putScene(project, first, last, scene.title, scene.summary);
+    if (scene.storyTime) put.storyTime = scene.storyTime;
     report.scenes++;
   }
   // 付箋 down the outer side of their page (page 1 when none), in columns
