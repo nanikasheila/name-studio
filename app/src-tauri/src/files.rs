@@ -38,6 +38,32 @@ pub(crate) async fn read_csp_sub_tools(
     clip_core::subtool::read_sub_tools(&path, materials.as_deref().map(Path::new)).map_err(|error| error.to_string())
 }
 
+/// What writing a sub tool for CSP left out.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct WrittenSubTool {
+    /// Materials (brush tips, paper) the settings use that were not found.
+    missing_materials: Vec<String>,
+}
+
+/// A brush's CSP settings as a .sut for CSP's ツールの読み込み (CSP names
+/// the tool after the file). `materials` is CSP's material folder, where
+/// the tips and papers it uses are packed from.
+#[tauri::command]
+pub(crate) async fn write_csp_sub_tool(
+    path: String,
+    tool: name_model::CspToolData,
+    name: String,
+    materials: Option<String>,
+) -> Result<WrittenSubTool, String> {
+    let file = clip_core::subtool::sub_tool_file(&tool, &name, materials.as_deref().map(Path::new))
+        .map_err(|error| error.to_string())?;
+    name_model::atomic::write(Path::new(&path), &file.bytes).map_err(|error| error.to_string())?;
+    Ok(WrittenSubTool {
+        missing_materials: file.missing_materials,
+    })
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PdfMeta {

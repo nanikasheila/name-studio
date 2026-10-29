@@ -179,6 +179,7 @@ pub fn run() {
             files::record_dialogue_update,
             files::csp_tool_locations,
             files::read_csp_sub_tools,
+            files::write_csp_sub_tool,
             fonts::list_fonts,
             is_release_build,
             started_at,

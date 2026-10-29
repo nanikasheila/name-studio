@@ -220,6 +220,7 @@ export function buildCommands(host: CommandHost): Command[] {
     { id: "brush.smaller", label: "ペン・消しゴムを細く", group: "道具", keys: ["["], available: named, run: () => host.resizeBrush(0.8) },
     button("reference-add", "資料画像を貼る…", "道具", [], "写真 背景 画像"),
     button("brush-import", "CSP のブラシを取り込む…", "道具", [], "サブツール sut ペン"),
+    button("brush-edit", "ペン・消しゴムの設定…", "道具", [], "ブラシ サブツール 描き味 筆圧 入り抜き 手ブレ補正 sut 書き出し CSP"),
     { id: "page.next", label: "左の見開きへ（右綴じは次・左綴じは前。何も選んでいないとき）", group: "ページ", keys: ["ArrowLeft"], available: named, run: always(() => host.flipLeft(1)) },
     { id: "page.previous", label: "右の見開きへ（右綴じは前・左綴じは次。何も選んでいないとき）", group: "ページ", keys: ["ArrowRight"], available: named, run: always(() => host.flipLeft(-1)) },
     {

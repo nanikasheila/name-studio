@@ -145,7 +145,8 @@ describe("taking CSP sub tools over", () => {
     expect(pen.opacityPressure).toBeUndefined();
     expect(pen.source).toBe("CSP: ペン / 丸ペン");
     expect(pen.erase).toBeUndefined();
-    expect(brushFromSubTool({ ...maruPen, size: { value: 0.5, unit: "mm" } }, 350, "b").sizeMm).toBe(0.5);
+    // CSP's unit 2 is tens of pixels.
+    expect(brushFromSubTool({ ...maruPen, size: { value: 1.2, unit: "px10" } }, 600, "b").sizeMm).toBeCloseTo((12 * 25.4) / 600);
   });
 
   it("keeps how erasers erase and the tip picture", () => {

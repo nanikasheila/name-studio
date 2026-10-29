@@ -14,6 +14,7 @@ import { formatTime } from "./autosave";
 import { penPreferences, rememberName } from "./prefs";
 import { NameSaver } from "./namesaver";
 import { BrushDialog } from "./brushdialog";
+import { BrushEditor } from "./brusheditor";
 import { AltDialog } from "./altdialog";
 import { ScriptDialog } from "./scriptdialog";
 import { ShortcutDialog } from "./shortcutdialog";
@@ -183,6 +184,7 @@ export class Workbench {
     (message) => this.setStatus(message),
   );
   private readonly brushDialog: BrushDialog;
+  private readonly brushEditor: BrushEditor;
   private readonly settingsDialog: SettingsDialog;
   private readonly versionDialog: VersionDialog;
   /** 一時切り替え: a tool's key held lends the tool. */
@@ -401,7 +403,15 @@ export class Workbench {
         const kind = this.editor.tool === "eraser" ? "eraser" : "pen";
         const brush = brushes.find((b) => b.kind === kind) ?? brushes[0];
         if (brush) this.bars.useBrush(brush);
+        this.brushEditor.refresh();
       },
+    });
+    this.brushEditor = new BrushEditor({
+      project: () => this.session.project,
+      edit: (change) => this.edit(change),
+      inHand: (kind) => this.editor.brush(kind) ?? null,
+      changed: (brush, kind) => this.bars.useBrush(brush, kind),
+      importFromCsp: () => void this.brushDialog.open(),
     });
     this.versionDialog = new VersionDialog({
       path: () => this.session.path,
@@ -640,6 +650,7 @@ export class Workbench {
   private restored(): void {
     this.dropLostSelection();
     this.renderAll();
+    this.brushEditor.refresh();
   }
 
   /** The selection goes when what it picked is no longer there. */
@@ -784,6 +795,7 @@ export class Workbench {
     $("undo").addEventListener("click", () => this.undo());
     $("redo").addEventListener("click", () => this.redo());
     $("brush-import").addEventListener("click", () => void this.brushDialog.open());
+    $("brush-edit").addEventListener("click", () => this.brushEditor.openFor(this.editor.tool === "eraser" ? "eraser" : "pen"));
     $("name-export").addEventListener("click", () => this.exportDialog.open());
     $("focus-mode").addEventListener("click", () => this.toggleFocus());
     $("read-mode").addEventListener("click", () => void this.reader.open());

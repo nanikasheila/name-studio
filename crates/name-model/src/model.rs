@@ -989,6 +989,10 @@ pub struct Brush {
     pub taper_in_mm: f64,
     #[serde(default)]
     pub taper_out_mm: f64,
+    /// Width at the very ends of 入り・抜き, 0..1 of the full width (CSP's
+    /// 入り抜き影響先 ブラシサイズ minimum; none: 0).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub taper_min: Option<f64>,
     /// Tip height in % of its width, and its angle in degrees.
     #[serde(default = "default_thickness")]
     pub thickness: f64,
@@ -1001,6 +1005,57 @@ pub struct Brush {
     /// Where it came from, e.g. "CSP: ペン / 丸ペン".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    /// The CSP sub tool behind it, every setting as CSP keeps it: what the
+    /// brush settings edit and what goes back to CSP as a .sut. The values
+    /// above are worked out from it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub csp: Option<CspToolData>,
+}
+
+/// One value of a CSP sub tool setting: a number, text, or bytes in base64.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(untagged)]
+pub enum CspValue {
+    Number(f64),
+    Text(String),
+    Blob {
+        /// Base64.
+        blob: String,
+    },
+}
+
+/// A material (brush tip, paper) a .sut carried, kept to go back with the
+/// sub tool: CSP's own `MaterialFile` row.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
+#[serde(rename_all = "camelCase")]
+pub struct CspMaterial {
+    /// The path the settings name it by.
+    pub original_path: String,
+    #[serde(default)]
+    pub catalog_path: String,
+    #[serde(default)]
+    pub install_folder: i64,
+    /// The material folder as a tar, base64.
+    pub data: String,
+}
+
+/// A CSP sub tool as rows of its own tables, column by column: the settings
+/// (`Variant`), the node (kind of tool, icon) and the manager (file version).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
+#[serde(rename_all = "camelCase")]
+pub struct CspToolData {
+    pub settings: std::collections::BTreeMap<String, CspValue>,
+    #[serde(default)]
+    pub node: std::collections::BTreeMap<String, CspValue>,
+    #[serde(default)]
+    pub manager: std::collections::BTreeMap<String, CspValue>,
+    /// Resolution sizes in pixels were turned into mm at.
+    pub dpi: f64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub materials: Vec<CspMaterial>,
 }
 
 fn default_thickness() -> f64 {

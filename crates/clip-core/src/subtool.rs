@@ -28,9 +28,15 @@
 use std::path::{Path, PathBuf};
 
 use csp_assets::subtool::blob::{
-    Effector, INPUT_PRESSURE, INPUT_RANDOM, INPUT_TILT, INPUT_VELOCITY, MaterialList, Records,
+    Effector, INPUT_PRESSURE, INPUT_RANDOM, INPUT_TILT, INPUT_VELOCITY, InOutTarget, MaterialList, Records,
+    in_out_targets,
 };
-use csp_assets::subtool::{MaterialFile, Node, SubToolDb};
+
+/// The 入り抜き影響先 item of the brush size.
+const IN_OUT_SIZE: u32 = 1001;
+use csp_assets::subtool::{Cells, MaterialFile, Node, SubToolDb, SutParts};
+use name_model::{CspMaterial, CspToolData, CspValue};
+use rusqlite::types::Value;
 use serde::Serialize;
 
 use crate::RgbaImage;
@@ -57,7 +63,11 @@ pub enum SubToolKind {
 pub enum LengthUnit {
     /// Pixels of the canvas the tool draws on.
     Px,
-    Mm,
+    /// Unit 2: tens of pixels, whatever the canvas's resolution (CSP shows
+    /// 1.2 as 12.0 px and draws it as wide as 12 px, on 600 and 1200 dpi
+    /// canvases alike). Taken for mm before; only a few tools use it.
+    #[serde(rename = "px10")]
+    TenPx,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -72,7 +82,7 @@ impl Length {
             return None;
         }
         let unit = match row.int(unit) {
-            2 => LengthUnit::Mm,
+            2 => LengthUnit::TenPx,
             _ => LengthUnit::Px,
         };
         Some(Length {
@@ -83,7 +93,7 @@ impl Length {
 
     pub fn to_mm(self, dpi: f64) -> f64 {
         match self.unit {
-            LengthUnit::Mm => self.value,
+            LengthUnit::TenPx => self.value * 10.0 * 25.4 / dpi,
             LengthUnit::Px => self.value * 25.4 / dpi,
         }
     }
@@ -201,8 +211,11 @@ pub struct SubTool {
     pub stabilization_by_speed: bool,
     /// 後補正: the strength the line is smoothed with once drawn (0 when off).
     pub post_correction: f64,
+    /// 入り・抜き: only when they change the brush size (入り抜きの影響先).
     pub taper_in: Option<Length>,
     pub taper_out: Option<Length>,
+    /// The width they start and end at, 0..1 of the size.
+    pub taper_min: f64,
     /// Stamp spacing in % of the size.
     pub interval: f64,
     /// Tip height in % of its width.
@@ -213,6 +226,9 @@ pub struct SubTool {
     pub tip_material: Option<String>,
     pub tip: Option<TipImage>,
     pub vector_erase: Option<VectorErase>,
+    /// Every setting as CSP keeps it, to edit and to write back as a .sut
+    /// ([`sub_tool_file`]); `dpi` is left for the app to fill in.
+    pub csp: CspToolData,
 }
 
 /// Where CSP keeps its tools and materials on Windows, under `%APPDATA%`.
@@ -250,12 +266,230 @@ pub fn read_sub_tools_from_bytes(bytes: &[u8], material_root: Option<&Path>) -> 
             continue;
         };
         let kind = kind_of(node, variant);
-        if kind == SubToolKind::Other || !variant.has("BrushSize") {
+        // Not "has BrushSize": a .sut keeps only the columns its tool sets, and
+        // ドットペン leaves its size to the tool above it.
+        if kind == SubToolKind::Other {
             continue;
         }
-        tools.push(sub_tool(node, variant, entry.path, kind, &db.materials, material_root));
+        let parts = db
+            .sut_parts(entry.node)
+            .map_err(|error| CspError::format(format!("サブツールを読めません: {error}")))?;
+        let mut tool = sub_tool(node, variant, entry.path, kind, &db.materials, material_root);
+        tool.csp = csp_rows(&parts);
+        tools.push(tool);
     }
     Ok(tools)
+}
+
+/// Materials a .sut carries are kept with the brush up to this size in all.
+const KEEP_MATERIALS_BYTES: usize = 2 << 20;
+
+/// One value as the name data keeps it.
+fn csp_value(value: &Value) -> Option<CspValue> {
+    match value {
+        Value::Null => None,
+        Value::Integer(v) => Some(CspValue::Number(*v as f64)),
+        Value::Real(v) => Some(CspValue::Number(*v)),
+        Value::Text(v) => Some(CspValue::Text(v.clone())),
+        Value::Blob(v) => Some(CspValue::Blob { blob: base64(v) }),
+    }
+}
+
+fn csp_map(cells: &Cells, leave_out: &[&str]) -> std::collections::BTreeMap<String, CspValue> {
+    cells
+        .iter()
+        .filter(|(name, _)| !leave_out.contains(&name.as_str()))
+        .filter_map(|(name, value)| Some((name.clone(), csp_value(value)?)))
+        .collect()
+}
+
+/// A sub tool's rows as the name data keeps them: the settings, the node
+/// without its place in the tree, the manager without what names the tree,
+/// and the materials the file carries when they are small.
+fn csp_rows(parts: &SutParts) -> CspToolData {
+    let materials: Vec<CspMaterial> = parts
+        .materials
+        .iter()
+        .map(|material| CspMaterial {
+            original_path: material.original_path.trim_end_matches('\0').to_owned(),
+            catalog_path: material.catalog_path.clone(),
+            install_folder: material.install_folder,
+            data: base64(&material.file_data),
+        })
+        .collect();
+    let size: usize = parts.materials.iter().map(|m| m.file_data.len()).sum();
+    CspToolData {
+        settings: parts
+            .variants
+            .first()
+            .map(|row| csp_map(row, &["VariantID"]))
+            .unwrap_or_default(),
+        node: csp_map(
+            &parts.node,
+            &[
+                "NodeUuid",
+                "NodeNextUuid",
+                "NodeFirstChildUuid",
+                "NodeSelectedUuid",
+                "NodeVariantID",
+                "NodeInitVariantID",
+            ],
+        ),
+        manager: csp_map(
+            &parts.manager,
+            &["RootUuid", "CurrentNodeUuid", "MaxVariantID", "ObjectNodeUuid"],
+        ),
+        dpi: 0.0,
+        materials: if size <= KEEP_MATERIALS_BYTES {
+            materials
+        } else {
+            Vec::new()
+        },
+    }
+}
+
+/// A value of the name data as SQLite keeps it (whole numbers as integers;
+/// CSP's column types turn them into reals where it keeps reals).
+fn sql_value(value: &CspValue) -> Result<Value> {
+    Ok(match value {
+        CspValue::Number(v) if v.fract() == 0.0 && v.abs() < 9.0e15 => Value::Integer(*v as i64),
+        CspValue::Number(v) => Value::Real(*v),
+        CspValue::Text(v) => Value::Text(v.clone()),
+        CspValue::Blob { blob } => Value::Blob(
+            unbase64(blob).ok_or_else(|| CspError::format("サブツールの設定に読めない値があります（base64）"))?,
+        ),
+    })
+}
+
+fn sql_cells(map: &std::collections::BTreeMap<String, CspValue>) -> Result<Cells> {
+    map.iter()
+        .map(|(name, value)| Ok((name.clone(), sql_value(value)?)))
+        .collect()
+}
+
+/// A .sut written by [`sub_tool_file`], and the materials it could not pack.
+#[derive(Debug)]
+pub struct SubToolFile {
+    pub bytes: Vec<u8>,
+    /// Names (or paths) of materials the settings use that were not found:
+    /// CSP reads the sub tool, with its default tip or paper for these.
+    pub missing_materials: Vec<String>,
+}
+
+/// Write a sub tool as a .sut for CSP's ツールの読み込み: the settings (also
+/// as its initial settings), its node and manager rows, and the materials
+/// its settings name, from the ones kept with it or else from CSP's
+/// material folder (`material_root`). CSP names the tool after the file.
+pub fn sub_tool_file(tool: &CspToolData, name: &str, material_root: Option<&Path>) -> Result<SubToolFile> {
+    let mut node = sql_cells(&tool.node)?;
+    for column in ["NodeInputOp", "NodeOutputOp"] {
+        if !node.iter().any(|(n, _)| n == column) {
+            return Err(CspError::format(format!("サブツールの種類（{column}）がありません")));
+        }
+    }
+    let set = |cells: &mut Cells, column: &str, value: Value| match cells.iter_mut().find(|(n, _)| n == column) {
+        Some(cell) => cell.1 = value,
+        None => cells.push((column.to_owned(), value)),
+    };
+    set(
+        &mut node,
+        "NodeUuid",
+        Value::Blob(uuid::Uuid::new_v4().as_bytes().to_vec()),
+    );
+    set(&mut node, "NodeName", Value::Text(name.to_owned()));
+    set(&mut node, "NodeVariantID", Value::Integer(1));
+    set(&mut node, "NodeInitVariantID", Value::Integer(2));
+    let mut manager = sql_cells(&tool.manager)?;
+    for (column, value) in [("ToolType", 0), ("Version", DEFAULT_SUT_VERSION)] {
+        if !manager.iter().any(|(n, _)| n == column) {
+            manager.push((column.to_owned(), Value::Integer(value)));
+        }
+    }
+    let settings = sql_cells(&tool.settings)?;
+    let mut variants = Vec::new();
+    for id in [1, 2] {
+        let mut row = settings.clone();
+        set(&mut row, "VariantID", Value::Integer(id));
+        variants.push(row);
+    }
+    let (materials, missing_materials) = pack_materials(tool, &settings, material_root)?;
+    let bytes = csp_assets::subtool::build_sut(&SutParts {
+        manager,
+        node,
+        variants,
+        materials,
+    })
+    .map_err(|error| CspError::format(format!("サブツールを書けません: {error}")))?;
+    Ok(SubToolFile {
+        bytes,
+        missing_materials,
+    })
+}
+
+/// `Manager.Version` of the .sut files CSP EX 5 writes.
+const DEFAULT_SUT_VERSION: i64 = 145;
+
+/// The materials the settings name: kept ones first, then CSP's own folder.
+fn pack_materials(
+    tool: &CspToolData,
+    settings: &Cells,
+    material_root: Option<&Path>,
+) -> Result<(Vec<MaterialFile>, Vec<String>)> {
+    use csp_assets::subtool::blob::{BlobKind, kind_of_column};
+    let mut refs = Vec::new();
+    for (column, value) in settings {
+        if kind_of_column(column) != BlobKind::MaterialList {
+            continue;
+        }
+        if let Value::Blob(data) = value
+            && let Ok(list) = MaterialList::parse(data)
+        {
+            refs.extend(list.materials);
+        }
+    }
+    let mut index = None;
+    let mut packed: Vec<MaterialFile> = Vec::new();
+    let mut missing = Vec::new();
+    for material in refs {
+        let path = material.path.trim_end_matches('\0').to_owned();
+        if packed.iter().any(|m| m.original_path == path) {
+            continue;
+        }
+        if let Some(kept) = tool.materials.iter().find(|m| m.original_path == path) {
+            packed.push(MaterialFile {
+                original_path: path,
+                catalog_path: kept.catalog_path.clone(),
+                install_folder: kept.install_folder,
+                file_data: unbase64(&kept.data)
+                    .ok_or_else(|| CspError::format("取り込んだ素材が壊れています（base64）"))?,
+            });
+            continue;
+        }
+        let found = material_root.and_then(|root| {
+            let index = index.get_or_insert_with(|| csp_assets::material::index_by_uuid(&[root.to_path_buf()]));
+            let dir = csp_assets::material::resolve_ref(index, &path)?;
+            csp_assets::material::sut_tar(&csp_assets::material::DirSource(dir))
+                .ok()
+                .flatten()
+        });
+        match found {
+            Some(tar) => {
+                let user = material.user_relative_path();
+                let catalog = user.as_ref().map(|p| {
+                    let parts: Vec<&str> = p.split('/').take(3).collect();
+                    format!(".:{}", parts.join(":"))
+                });
+                packed.push(MaterialFile {
+                    original_path: path,
+                    catalog_path: catalog.unwrap_or_default(),
+                    install_folder: if user.is_some() { 0 } else { 1 },
+                    file_data: tar,
+                });
+            }
+            None => missing.push(material.name.clone().filter(|n| !n.is_empty()).unwrap_or(path)),
+        }
+    }
+    Ok((packed, missing))
 }
 
 fn kind_of(node: &Node, variant: &Row) -> SubToolKind {
@@ -299,8 +533,20 @@ fn sub_tool(
     material_root: Option<&Path>,
 ) -> SubTool {
     let dynamics = |column: &str| variant.blob(column).and_then(Dynamics::parse);
+    // 入り抜き changes what its 影響先 names; without the list (older CSP) the size.
+    let size_target = match variant.blob("BrushInOutTarget").map(in_out_targets) {
+        Some(Ok(targets)) => targets
+            .into_iter()
+            .find(|t| t.item == IN_OUT_SIZE)
+            .filter(|t| t.enabled),
+        _ => Some(InOutTarget {
+            item: IN_OUT_SIZE,
+            enabled: true,
+            value: 0,
+        }),
+    };
     let taper = |use_column: &str, length: &str, unit: &str| {
-        if variant.int(use_column) != 0 {
+        if size_target.is_some() && variant.int(use_column) != 0 {
             Length::from_row(variant, length, unit)
         } else {
             None
@@ -348,12 +594,20 @@ fn sub_tool(
         },
         taper_in: taper("BrushUseIn", "BrushInLength", "BrushInLengthUnit"),
         taper_out: taper("BrushUseOut", "BrushOutLength", "BrushOutLengthUnit"),
+        taper_min: size_target.map_or(0.0, |t| (t.value as f64 / 100.0).clamp(0.0, 1.0)),
         interval: real_or(variant, "BrushInterval", 10.0),
         thickness: real_or(variant, "BrushThickness", 100.0),
         rotation: variant.real("BrushRotation"),
         tip_material,
         tip,
         vector_erase,
+        csp: CspToolData {
+            settings: Default::default(),
+            node: Default::default(),
+            manager: Default::default(),
+            dpi: 0.0,
+            materials: Vec::new(),
+        },
     }
 }
 
@@ -448,6 +702,38 @@ pub fn tip_mask(png: &[u8]) -> Result<TipImage> {
         height: mask.height,
         png_base64: base64(&mask.to_png()?),
     })
+}
+
+/// Bytes of standard base64 (padding optional); None for anything else.
+fn unbase64(text: &str) -> Option<Vec<u8>> {
+    let mut out = Vec::with_capacity(text.len() / 4 * 3);
+    let mut bits = 0u32;
+    let mut count = 0;
+    for c in text.bytes() {
+        let value = match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            b'=' => break,
+            _ => return None,
+        };
+        bits = bits << 6 | value as u32;
+        count += 1;
+        if count == 4 {
+            out.extend_from_slice(&[(bits >> 16) as u8, (bits >> 8) as u8, bits as u8]);
+            bits = 0;
+            count = 0;
+        }
+    }
+    match count {
+        0 => {}
+        2 => out.push((bits >> 4) as u8),
+        3 => out.extend_from_slice(&[(bits >> 10) as u8, (bits >> 2) as u8]),
+        _ => return None,
+    }
+    Some(out)
 }
 
 fn base64(data: &[u8]) -> String {
@@ -726,7 +1012,7 @@ mod tests {
             pen.taper_out,
             Some(Length {
                 value: 1.5,
-                unit: LengthUnit::Mm
+                unit: LengthUnit::TenPx
             })
         );
         assert_eq!(pen.tip_material.as_deref(), Some(".:91:20:abc:data:material_0.layer"));
@@ -754,6 +1040,75 @@ mod tests {
         assert!(read_sub_tools_from_bytes(b"not sqlite", None).is_err());
     }
 
+    #[test]
+    fn base64_decodes_what_it_encodes() {
+        for data in [&b""[..], b"f", b"fo", b"foo", b"foobar", &[0, 255, 128, 7, 9]] {
+            assert_eq!(unbase64(&base64(data)).as_deref(), Some(data));
+        }
+        assert_eq!(unbase64("Zg").as_deref(), Some(&b"f"[..]));
+        assert!(unbase64("Z").is_none());
+        assert!(unbase64("Zm9v!").is_none());
+    }
+
+    #[test]
+    fn keeps_every_setting_and_writes_it_back() {
+        let tool = read_sub_tools_from_bytes(&sut("丸ペン", 11, 0, None), None)
+            .unwrap()
+            .remove(0);
+        let csp = &tool.csp;
+        assert_eq!(csp.settings.get("Opacity"), Some(&CspValue::Number(80.0)));
+        assert_eq!(csp.settings.get("BrushSize"), Some(&CspValue::Number(5.0)));
+        assert!(matches!(
+            csp.settings.get("BrushSizeEffector"),
+            Some(CspValue::Blob { .. })
+        ));
+        assert!(!csp.settings.contains_key("VariantID"));
+        assert_eq!(csp.node.get("NodeInputOp"), Some(&CspValue::Number(11.0)));
+        assert!(!csp.node.contains_key("NodeUuid"));
+        assert_eq!(csp.manager.get("Version"), Some(&CspValue::Number(145.0)));
+        assert_eq!(csp.materials.len(), 1);
+
+        // Edited (a whole number where CSP keeps a real), then written back.
+        let mut edited = csp.clone();
+        edited.settings.insert("BrushSize".into(), CspValue::Number(12.0));
+        edited.settings.insert("Opacity".into(), CspValue::Number(55.0));
+        let file = sub_tool_file(&edited, "太い丸ペン", None).unwrap();
+        assert!(file.missing_materials.is_empty());
+        let db = SubToolDb::from_bytes(&file.bytes).unwrap();
+        let entry = &db.sub_tools()[0];
+        let node = &db.nodes[entry.node];
+        assert_eq!(node.name, "太い丸ペン");
+        assert_eq!((node.input_op, node.output_op), (11, 11));
+        let settings = db.variant(node.variant_id).unwrap();
+        assert_eq!(settings.get("BrushSize"), Some(&Value::Real(12.0)));
+        assert_eq!(settings.int("Opacity"), 55);
+        assert_eq!(db.variant(node.init_variant_id).unwrap().int("Opacity"), 55);
+        assert!(settings.blob("VariantShowParam").is_some());
+        assert_eq!(db.materials.len(), 1);
+        // Read again, it is the same tool.
+        let again = read_sub_tools_from_bytes(&file.bytes, None).unwrap().remove(0);
+        assert_eq!(again.name, "太い丸ペン");
+        assert_eq!(again.opacity, 0.55);
+        assert_eq!(again.tip, tool.tip);
+        let mut settings = again.csp.settings.clone();
+        settings.remove("VariantShowParam");
+        settings.remove("VariantShowSeparator");
+        assert_eq!(settings, edited.settings);
+    }
+
+    #[test]
+    fn names_materials_it_cannot_pack() {
+        let mut csp = read_sub_tools_from_bytes(&sut("丸ペン", 11, 0, None), None)
+            .unwrap()
+            .remove(0)
+            .csp;
+        csp.materials.clear();
+        let file = sub_tool_file(&csp, "素材なし", None).unwrap();
+        assert_eq!(file.missing_materials, [".:91:20:abc:data:material_0.layer"]);
+        csp.node.remove("NodeInputOp");
+        assert!(sub_tool_file(&csp, "種類なし", None).is_err());
+    }
+
     /// Real files from CSP, when CSP_SUBTOOL_SAMPLES names a folder of them
     /// (.sut and EditImageTool.todb). Artwork-free, but not in the repository.
     #[test]
@@ -772,6 +1127,21 @@ mod tests {
             // A few (ドットペン) leave the size to the tool above them.
             let sized = tools.iter().filter(|tool| tool.size.is_some()).count();
             assert!(sized * 10 >= tools.len() * 9, "{}", path.display());
+            // Each written back as a .sut reads as the same settings.
+            for tool in &tools {
+                let file = sub_tool_file(&tool.csp, &tool.name, None).unwrap();
+                let again = read_sub_tools_from_bytes(&file.bytes, None).unwrap();
+                assert_eq!(again.len(), 1, "{}", tool.name);
+                let again = &again[0];
+                let mut settings = again.csp.settings.clone();
+                for column in ["VariantShowParam", "VariantShowSeparator"] {
+                    if !tool.csp.settings.contains_key(column) {
+                        settings.remove(column);
+                    }
+                }
+                assert_eq!(settings, tool.csp.settings, "{}", tool.name);
+                assert_eq!(again.size, tool.size, "{}", tool.name);
+            }
         }
     }
 }

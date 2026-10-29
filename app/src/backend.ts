@@ -8,7 +8,7 @@ import type { CspSubTool } from "./brush";
 import type { ExportReport, ExportRequest, OverwriteCheck } from "./export";
 import type { BuiltTemplate, PageSetup } from "./csppage";
 import type { FontFace } from "./fonts";
-import type { Project, Series } from "./model";
+import type { CspToolData, Project, Series } from "./model";
 import type { SheetView } from "./types";
 
 /** The template page as `begin_name_export` reports it (clip-core `TemplateCanvas`). */
@@ -232,6 +232,7 @@ export interface Commands {
   record_dialogue_update: [{ outDir: string; entry: string }, void];
   csp_tool_locations: [void, CspToolLocations];
   read_csp_sub_tools: [{ path: string; materials: string | null }, CspSubTool[]];
+  write_csp_sub_tool: [{ path: string; tool: CspToolData; name: string; materials: string | null }, { missingMaterials: string[] }];
   // The fonts on the computer (fonts.rs)
   list_fonts: [void, FontFace[]];
   // The app (lib.rs)

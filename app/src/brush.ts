@@ -1,13 +1,14 @@
 // Pens and erasers: taking them over from CLIP STUDIO PAINT sub tools
 // (crates/clip-core/src/subtool.rs reads the files), and how a brush turns
 // pen pressure and the stroke's length into width and opacity.
-import type { Brush, PressureCurve, Project, Stroke, StrokePoint } from "./model";
+import type { Brush, CspToolData, PressureCurve, Project, Stroke, StrokePoint } from "./model";
 import { newId } from "./project";
 
 /** What the Rust side reads from a .sut or CSP's tool database. */
 export interface CspLength {
   value: number;
-  unit: "px" | "mm";
+  /** px10: CSP's unit 2, tens of pixels (CSP draws 1.2 as wide as 12 px, at any resolution). */
+  unit: "px" | "px10";
 }
 
 export interface CspDynamics {
@@ -39,14 +40,19 @@ export interface CspSubTool {
   stabilization: number;
   stabilizationBySpeed?: boolean;
   postCorrection?: number;
+  /** 入り・抜き, only when they change the size (入り抜きの影響先). */
   taperIn: CspLength | null;
   taperOut: CspLength | null;
+  /** The width they start and end at, 0..1. */
+  taperMin?: number;
   interval: number;
   thickness: number;
   rotation: number;
   tipMaterial: string | null;
   tip: { width: number; height: number; pngBase64: string } | null;
   vectorErase: "touched" | "intersection" | "whole" | null;
+  /** Every setting as CSP keeps it (its `dpi` is set when the brush is made). */
+  csp?: CspToolData;
 }
 
 /** Resolution CSP brush sizes in pixels are measured at, unless chosen otherwise. */
@@ -54,7 +60,7 @@ export const DEFAULT_BRUSH_DPI = 600;
 
 export function lengthMm(length: CspLength | null, dpi: number): number {
   if (!length) return 0;
-  return length.unit === "mm" ? length.value : (length.value * 25.4) / dpi;
+  return ((length.unit === "px10" ? length.value * 10 : length.value) * 25.4) / dpi;
 }
 
 type Input = "pressure" | "tilt" | "velocity" | "random";
@@ -87,10 +93,12 @@ export function brushFromSubTool(tool: CspSubTool, dpi: number, id: string): Bru
     ...(tool.postCorrection ? { postCorrection: tool.postCorrection } : {}),
     taperInMm: lengthMm(tool.taperIn, dpi),
     taperOutMm: lengthMm(tool.taperOut, dpi),
+    ...(tool.taperMin && (tool.taperIn || tool.taperOut) ? { taperMin: tool.taperMin } : {}),
     thickness: tool.thickness || 100,
     rotation: tool.rotation,
     source: sourceLabel(tool),
   };
+  if (tool.csp) brush.csp = { ...tool.csp, dpi };
   const keys = { pressure: "Pressure", tilt: "Tilt", velocity: "Speed", random: "Random" } as const;
   for (const input of ["pressure", "tilt", "velocity", "random"] as const) {
     const size = inputOf(tool.sizeDynamics, input);
@@ -243,8 +251,10 @@ export function widthFactors(stroke: Stroke, brush: Brush | undefined, from = 0,
   return points.map((point, i) => {
     if (i < from) return 0;
     let factor = inputFactor(curves, point, stroke.id, i);
-    if (taperIn > 0) factor *= Math.min(1, along[i] / taperIn);
-    if (taperOut > 0) factor *= Math.min(1, (total - along[i]) / taperOut);
+    // 入り抜き goes from its least width (CSP's 影響先 minimum) to the full one.
+    const least = brush.taperMin ?? 0;
+    if (taperIn > 0) factor *= least + (1 - least) * Math.min(1, along[i] / taperIn);
+    if (taperOut > 0) factor *= least + (1 - least) * Math.min(1, (total - along[i]) / taperOut);
     return Math.max(factor, 0.02);
   });
 }
