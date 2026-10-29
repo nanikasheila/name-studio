@@ -9,6 +9,12 @@ import { BrushPad, GraphBox } from "./brushpad";
 import {
   applyCspSettings,
   blobOf,
+  bytesOf,
+  defaultInOutTargets,
+  IN_OUT_ITEMS,
+  inOutTargetsBytes,
+  parseInOutTargets,
+  type InOutTarget,
   cspSettingsFor,
   effectorBytes,
   effectorOf,
@@ -478,12 +484,42 @@ export class BrushEditor {
       }
       case "materials": {
         const blob = value && typeof value === "object" ? value.blob : null;
-        const names = blob ? materialNames(Uint8Array.from(atob(blob), (c) => c.charCodeAt(0))) : [];
+        const names = blob ? materialNames(bytesOf(blob)) : [];
         return element("span", { className: "be-fixed", textContent: names.length ? names.join("、") : "なし", title: "素材は CSP で選び直してください（.sut には素材も入れて書き出します）" });
       }
       default:
+        if (name === "BrushInOutTarget") return this.inOutTargets(value);
         return element("span", { className: "be-fixed", textContent: value === undefined ? "（なし）" : typeof value === "object" ? `${Math.round((value.blob.length * 3) / 4)} バイト` : String(value), title: "CSP の値のまま書き出します" });
     }
+  }
+
+  /** 入り抜きの影響先: which settings 入り抜き changes, each down to its least value. */
+  private inOutTargets(value: CspValue | undefined): HTMLElement {
+    const blob = value && typeof value === "object" ? bytesOf(value.blob) : null;
+    const stored = blob ? parseInOutTargets(blob) : null;
+    if (blob && !stored) return element("span", { className: "be-fixed", textContent: "（読めない形式なので、そのまま書き出します）" });
+    const targets = stored ?? defaultInOutTargets();
+    const box = element("span", { className: "be-targets" });
+    const commit = (change: (targets: InOutTarget[]) => void) => {
+      const next = targets.map((t) => ({ ...t }));
+      change(next);
+      this.set("BrushInOutTarget", inOutTargetsBytes(next));
+    };
+    targets.forEach((target, index) => {
+      const label = IN_OUT_ITEMS[target.item];
+      // Items CSP's list does not show are kept as they are.
+      if (!label) return;
+      const on = element("input", { type: "checkbox", checked: target.on });
+      on.addEventListener("change", () => commit((next) => (next[index].on = on.checked)));
+      const item = element("label", { className: "check" }, on, ` ${label}`);
+      if (target.on) {
+        const min = element("input", { type: "number", min: "0", max: "100", step: "1", value: String(target.min), title: "入り抜きの端での値（%）" });
+        min.addEventListener("change", () => commit((next) => (next[index].min = Math.min(100, Math.max(0, Math.round(Number(min.value) || 0))))));
+        item.append(element("span", { className: "be-number" }, element("small", { textContent: "最小値" }), min, element("small", { textContent: "%" })));
+      }
+      box.append(item);
+    });
+    return box;
   }
 
   /** 影響元設定: which inputs change the value, their least value and their graphs. */

@@ -166,6 +166,73 @@ export function effectorOf(tool: CspToolData, column: string): Effector | null {
   return blob ? parseEffector(blob) : null;
 }
 
+// --- 入り抜きの影響先 ---------------------------------------------------------------------
+
+/** One setting 入り抜き changes: its item id, whether on, and its least value (%). */
+export interface InOutTarget {
+  item: number;
+  on: boolean;
+  min: number;
+}
+
+/** The items 入り抜き can change, as CSP's 影響先 list names them. */
+export const IN_OUT_ITEMS: Record<number, string> = {
+  1001: "ブラシサイズ",
+  1021: "ブラシ濃度",
+  1041: "間隔",
+  1051: "厚さ",
+  112: "紙質濃度",
+  1082: "絵の具量",
+  1084: "絵の具濃度",
+  1100: "サブ描画色混合率",
+  1104: "色相",
+  1106: "彩度",
+  1108: "明度",
+  1132: "粒子サイズ",
+  1134: "粒子密度",
+};
+export const IN_OUT_SIZE = 1001;
+
+/** `BrushInOutTarget`: u32 12, count, 12, then (item, on, least %) records. */
+export function parseInOutTargets(data: Uint8Array): InOutTarget[] | null {
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  if (data.length < 12 || view.getUint32(0) !== 12 || view.getUint32(8) !== 12) return null;
+  const count = view.getUint32(4);
+  if (data.length !== 12 + count * 12) return null;
+  const targets: InOutTarget[] = [];
+  for (let i = 0; i < count; i++) {
+    const at = 12 + i * 12;
+    targets.push({ item: view.getUint32(at), on: view.getUint32(at + 4) !== 0, min: view.getUint32(at + 8) });
+  }
+  return targets;
+}
+
+export function inOutTargetsBytes(targets: readonly InOutTarget[]): Uint8Array {
+  const view = new DataView(new ArrayBuffer(12 + targets.length * 12));
+  view.setUint32(0, 12);
+  view.setUint32(4, targets.length);
+  view.setUint32(8, 12);
+  targets.forEach(({ item, on, min }, i) => {
+    view.setUint32(12 + i * 12, item);
+    view.setUint32(16 + i * 12, on ? 1 : 0);
+    view.setUint32(20 + i * 12, Math.max(0, Math.round(min)));
+  });
+  return new Uint8Array(view.buffer);
+}
+
+/** The 影響先 of a pen made in name-studio: the size, from nothing. */
+export function defaultInOutTargets(): InOutTarget[] {
+  return [1001, 1021, 1041, 1051].map((item) => ({ item, on: item === IN_OUT_SIZE, min: 0 }));
+}
+
+/** How 入り抜き changes the size: off, or on down to `min` (%). Without the list (older CSP) it does, from nothing. */
+function sizeTarget(tool: CspToolData): InOutTarget | null {
+  const blob = blobOf(tool, "BrushInOutTarget");
+  if (!blob) return { item: IN_OUT_SIZE, on: true, min: 0 };
+  const target = parseInOutTargets(blob)?.find((t) => t.item === IN_OUT_SIZE);
+  return target?.on ? target : null;
+}
+
 // --- the drawing values ------------------------------------------------------------------
 
 /** A graph's points in 0..1; none for no graph or the straight line. */
@@ -215,7 +282,8 @@ export type DrawnValues = Omit<Brush, "id" | "name" | "kind" | "tip" | "source" 
 /** The brush's drawing values from its CSP settings (as taking it over from CSP gives them). */
 export function drawnValues(tool: CspToolData, kind: BrushKind): DrawnValues {
   const percent = (column: string, fallback: number) => Math.min(1, Math.max(0, numberOf(tool, column, fallback * 100) / 100));
-  const taper = (use: string, length: string, unit: string) => (numberOf(tool, use) ? lengthMm(tool, length, unit) : 0);
+  const sizeTaper = sizeTarget(tool);
+  const taper = (use: string, length: string, unit: string) => (sizeTaper && numberOf(tool, use) ? lengthMm(tool, length, unit) : 0);
   const values: DrawnValues = {
     sizeMm: has(tool, "BrushSize") ? Math.max(lengthMm(tool, "BrushSize", "BrushSizeUnit"), 0.01) : 0.5,
     opacity: percent("Opacity", 1),
@@ -226,6 +294,7 @@ export function drawnValues(tool: CspToolData, kind: BrushKind): DrawnValues {
     thickness: numberOf(tool, "BrushThickness", 100) || 100,
     rotation: numberOf(tool, "BrushRotation"),
   };
+  if (sizeTaper?.min && (values.taperInMm || values.taperOutMm)) values.taperMin = Math.min(1, sizeTaper.min / 100);
   if (numberOf(tool, "FlickerReductionBySpeed")) values.stabilizationBySpeed = true;
   if (numberOf(tool, "BrushUseRevision") && numberOf(tool, "BrushRevision")) values.postCorrection = numberOf(tool, "BrushRevision");
   const size = effectorOf(tool, "BrushSizeEffector");
@@ -257,6 +326,7 @@ const DRAWN_OPTIONAL: (keyof DrawnValues)[] = [
   "opacityRandom",
   "stabilizationBySpeed",
   "postCorrection",
+  "taperMin",
   "erase",
 ];
 
@@ -321,6 +391,7 @@ export function cspSettingsFor(brush: Brush): CspToolData {
       BrushUseIn: brush.taperInMm > 0 ? 1 : 0,
       BrushInLength: pxOf(brush.taperInMm, dpi),
       BrushInLengthUnit: 0,
+      BrushInOutBySpeed: 0,
       BrushUseOut: brush.taperOutMm > 0 ? 1 : 0,
       BrushOutLength: pxOf(brush.taperOutMm, dpi),
       BrushOutLengthUnit: 0,
@@ -338,6 +409,9 @@ export function cspSettingsFor(brush: Brush): CspToolData {
     "BrushOpacityEffector",
     effectorBytes(effectorFrom({ pressure: brush.opacityPressure, tilt: brush.opacityTilt, speed: brush.opacitySpeed, random: brush.opacityRandom })),
   );
+  const targets = defaultInOutTargets();
+  targets[0].min = Math.round((brush.taperMin ?? 0) * 100);
+  setSetting(tool, "BrushInOutTarget", inOutTargetsBytes(targets));
   if (eraser) {
     const type = ERASE_TYPES.indexOf(brush.erase ?? "touched");
     setSetting(tool, "BrushUseVectorEraser", 1);

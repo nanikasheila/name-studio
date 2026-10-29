@@ -28,8 +28,12 @@
 use std::path::{Path, PathBuf};
 
 use csp_assets::subtool::blob::{
-    Effector, INPUT_PRESSURE, INPUT_RANDOM, INPUT_TILT, INPUT_VELOCITY, MaterialList, Records,
+    Effector, INPUT_PRESSURE, INPUT_RANDOM, INPUT_TILT, INPUT_VELOCITY, InOutTarget, MaterialList, Records,
+    in_out_targets,
 };
+
+/// The 入り抜き影響先 item of the brush size.
+const IN_OUT_SIZE: u32 = 1001;
 use csp_assets::subtool::{Cells, MaterialFile, Node, SubToolDb, SutParts};
 use name_model::{CspMaterial, CspToolData, CspValue};
 use rusqlite::types::Value;
@@ -207,8 +211,11 @@ pub struct SubTool {
     pub stabilization_by_speed: bool,
     /// 後補正: the strength the line is smoothed with once drawn (0 when off).
     pub post_correction: f64,
+    /// 入り・抜き: only when they change the brush size (入り抜きの影響先).
     pub taper_in: Option<Length>,
     pub taper_out: Option<Length>,
+    /// The width they start and end at, 0..1 of the size.
+    pub taper_min: f64,
     /// Stamp spacing in % of the size.
     pub interval: f64,
     /// Tip height in % of its width.
@@ -526,8 +533,20 @@ fn sub_tool(
     material_root: Option<&Path>,
 ) -> SubTool {
     let dynamics = |column: &str| variant.blob(column).and_then(Dynamics::parse);
+    // 入り抜き changes what its 影響先 names; without the list (older CSP) the size.
+    let size_target = match variant.blob("BrushInOutTarget").map(in_out_targets) {
+        Some(Ok(targets)) => targets
+            .into_iter()
+            .find(|t| t.item == IN_OUT_SIZE)
+            .filter(|t| t.enabled),
+        _ => Some(InOutTarget {
+            item: IN_OUT_SIZE,
+            enabled: true,
+            value: 0,
+        }),
+    };
     let taper = |use_column: &str, length: &str, unit: &str| {
-        if variant.int(use_column) != 0 {
+        if size_target.is_some() && variant.int(use_column) != 0 {
             Length::from_row(variant, length, unit)
         } else {
             None
@@ -575,6 +594,7 @@ fn sub_tool(
         },
         taper_in: taper("BrushUseIn", "BrushInLength", "BrushInLengthUnit"),
         taper_out: taper("BrushUseOut", "BrushOutLength", "BrushOutLengthUnit"),
+        taper_min: size_target.map_or(0.0, |t| (t.value as f64 / 100.0).clamp(0.0, 1.0)),
         interval: real_or(variant, "BrushInterval", 10.0),
         thickness: real_or(variant, "BrushThickness", 100.0),
         rotation: variant.real("BrushRotation"),

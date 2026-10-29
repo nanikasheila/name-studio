@@ -202,6 +202,8 @@ export interface Brush {
   postCorrection?: number;
   taperInMm: number;
   taperOutMm: number;
+  /** Width at the very ends of 入り・抜き, 0..1 (CSP's 入り抜き影響先 ブラシサイズ minimum; none: 0). */
+  taperMin?: number;
   /** Tip height in % of its width, and its angle in degrees. */
   thickness: number;
   rotation: number;

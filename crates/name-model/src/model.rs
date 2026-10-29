@@ -989,6 +989,10 @@ pub struct Brush {
     pub taper_in_mm: f64,
     #[serde(default)]
     pub taper_out_mm: f64,
+    /// Width at the very ends of 入り・抜き, 0..1 of the full width (CSP's
+    /// 入り抜き影響先 ブラシサイズ minimum; none: 0).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub taper_min: Option<f64>,
     /// Tip height in % of its width, and its angle in degrees.
     #[serde(default = "default_thickness")]
     pub thickness: f64,

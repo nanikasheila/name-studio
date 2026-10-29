@@ -40,8 +40,11 @@ export interface CspSubTool {
   stabilization: number;
   stabilizationBySpeed?: boolean;
   postCorrection?: number;
+  /** 入り・抜き, only when they change the size (入り抜きの影響先). */
   taperIn: CspLength | null;
   taperOut: CspLength | null;
+  /** The width they start and end at, 0..1. */
+  taperMin?: number;
   interval: number;
   thickness: number;
   rotation: number;
@@ -90,6 +93,7 @@ export function brushFromSubTool(tool: CspSubTool, dpi: number, id: string): Bru
     ...(tool.postCorrection ? { postCorrection: tool.postCorrection } : {}),
     taperInMm: lengthMm(tool.taperIn, dpi),
     taperOutMm: lengthMm(tool.taperOut, dpi),
+    ...(tool.taperMin && (tool.taperIn || tool.taperOut) ? { taperMin: tool.taperMin } : {}),
     thickness: tool.thickness || 100,
     rotation: tool.rotation,
     source: sourceLabel(tool),
@@ -247,8 +251,10 @@ export function widthFactors(stroke: Stroke, brush: Brush | undefined, from = 0,
   return points.map((point, i) => {
     if (i < from) return 0;
     let factor = inputFactor(curves, point, stroke.id, i);
-    if (taperIn > 0) factor *= Math.min(1, along[i] / taperIn);
-    if (taperOut > 0) factor *= Math.min(1, (total - along[i]) / taperOut);
+    // 入り抜き goes from its least width (CSP's 影響先 minimum) to the full one.
+    const least = brush.taperMin ?? 0;
+    if (taperIn > 0) factor *= least + (1 - least) * Math.min(1, along[i] / taperIn);
+    if (taperOut > 0) factor *= least + (1 - least) * Math.min(1, (total - along[i]) / taperOut);
     return Math.max(factor, 0.02);
   });
 }

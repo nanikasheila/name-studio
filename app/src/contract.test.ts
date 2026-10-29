@@ -184,6 +184,7 @@ export const FULL_PROJECT: Full<Project> = {
       postCorrection: 3,
       taperInMm: 1.5,
       taperOutMm: 2.5,
+      taperMin: 0.2,
       thickness: 80,
       rotation: 30,
       tip: { pngBase64: "iVBORw0KGgo=", width: 16, height: 8, interval: 25, enabled: true },

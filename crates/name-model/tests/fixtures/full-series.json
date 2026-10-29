@@ -104,6 +104,7 @@
         "postCorrection": 3,
         "taperInMm": 1.5,
         "taperOutMm": 2.5,
+        "taperMin": 0.2,
         "thickness": 80,
         "rotation": 30,
         "tip": {
