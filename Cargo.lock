@@ -492,7 +492,7 @@ dependencies = [
 [[package]]
 name = "csp-assets"
 version = "0.1.0"
-source = "git+https://github.com/nanikasheila/csp-format?rev=c583fa736b2d92c6f1eb2b91f13bfa09b95c87b6#c583fa736b2d92c6f1eb2b91f13bfa09b95c87b6"
+source = "git+https://github.com/nanikasheila/csp-format?rev=92c5dadf95476bd935b25a9bcfb2cae443080b12#92c5dadf95476bd935b25a9bcfb2cae443080b12"
 dependencies = [
  "csp-format",
  "encoding_rs",
@@ -505,7 +505,7 @@ dependencies = [
 [[package]]
 name = "csp-format"
 version = "0.1.0"
-source = "git+https://github.com/nanikasheila/csp-format?rev=c583fa736b2d92c6f1eb2b91f13bfa09b95c87b6#c583fa736b2d92c6f1eb2b91f13bfa09b95c87b6"
+source = "git+https://github.com/nanikasheila/csp-format?rev=92c5dadf95476bd935b25a9bcfb2cae443080b12#92c5dadf95476bd935b25a9bcfb2cae443080b12"
 dependencies = [
  "flate2",
  "libc",
@@ -536,7 +536,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d045de693cb712d0b22c6a64be5b953f67b3ce00ab5ad3dd5d8b441886ab8e1a"
 dependencies = [
  "quote",
- "syn 3.0.9",
+ "syn 2.0.119",
 ]
 
 [[package]]
