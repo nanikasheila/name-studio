@@ -160,7 +160,11 @@ holes: Array<Array<[number, number]>>,
 /**
  * "gray" or "white"; none is black (ベタ).
  */
-tone?: string, };
+tone?: string, 
+/**
+ * Under the rough lines (as a fill layer under the drawing in CSP); none: over them.
+ */
+under?: boolean, };
 
 export type Sticky = { id: string, text: string, at: [number, number], color?: string, 
 /**
