@@ -36,6 +36,11 @@
       </div>
       <div class="editor-only toolbar-group app-bar" hidden>
         <div class="spacer"></div>
+        <div class="segmented workspace-modes" id="workspace-modes" role="group" aria-label="作業の配置">
+          <button id="ws-draw" data-command="workspace.draw" title="描く配置: ページを大きく、サブツールとレイヤーだけ。物語の帯はたたむ。欄を動かすとこの配置に覚えます"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M13.5 3l3.5 3.5-8.5 8.5-4.5 1 1-4.5z"/></svg><span>描く</span></button>
+          <button id="ws-overview" data-command="workspace.overview" title="全体を見る配置: 全ページを一枚に並べ、ページ・台本・付箋の一覧と物語の帯を出す"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="3.5" width="7" height="5"/><rect x="11" y="3.5" width="7" height="5"/><rect x="2" y="11.5" width="7" height="5"/><rect x="11" y="11.5" width="7" height="5"/></svg><span>全体</span></button>
+          <button id="ws-handoff" data-command="workspace.handoff" title="CSP に渡す配置: ページ・付箋（未決）・保留とレイヤー・詳細。書き出す前に残りを確かめる"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 10h11M10 5.5l4.5 4.5-4.5 4.5M17 4v12"/></svg><span>CSP</span></button>
+        </div>
         <button id="undo" class="icon-button" data-command="undo" title="元に戻す" disabled><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M7 4L3 8l4 4"/><path d="M3 8h9a5 5 0 0 1 0 10H8"/></svg></button>
         <button id="redo" class="icon-button" data-command="redo" title="やり直す" disabled><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M13 4l4 4-4 4"/><path d="M17 8H8a5 5 0 0 0 0 10h4"/></svg></button>
         <button id="image-import" class="with-icon" title="全ページを 1 枚にまとめたネーム画像（ミニネーム・スキャンしたネーム）をページに分けて取り込む"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 12.5v-10M6 6.5l4-4 4 4"/><path d="M3 13.5v3.5h14v-3.5"/></svg><span>取り込む…</span></button>
@@ -389,7 +394,7 @@
           <button type="button" id="ii-pick">選ぶ…</button>
         </div>
         <input type="file" id="ii-input" accept="image/png,image/jpeg,image/webp,image/bmp,image/gif" hidden />
-        <canvas id="ii-preview" class="ii-preview" title="押したページを外す・戻す"></canvas>
+        <canvas id="ii-preview" class="ii-preview" title="押したページを外す・戻す。辺・角のドラッグで範囲を、中のドラッグで位置を直す"></canvas>
         <div class="field">
           <label for="ii-split">分け方</label>
           <select id="ii-split">

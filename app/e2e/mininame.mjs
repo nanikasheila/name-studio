@@ -5,7 +5,7 @@
 // the trim; undo; a picture of the name that no longer reads is named before
 // anything is written (stop, or write without it), and so are the roughs of a
 // name sheet moved since (stop, choose the sheet again, or write without
-// them). Each page carries a bar at its own height, so that a page
+// them); a page's box dragged by its edge is cut as dragged. Each page carries a bar at its own height, so that a page
 // out of order or out of place is seen.
 // Run: npm run e2e:mininame (-- --shots <dir> keeps the pictures).
 import { writeFileSync } from "node:fs";
@@ -367,6 +367,48 @@ try {
   await page.waitForFunction((n) => window.__calls.filter((c) => c.command === "write_pdf").length > n, before);
   check((await page.locator("#ne-message").textContent()).includes("ミニネームを書き出しました"), "除いて書き出す: the ミニネーム is written without it");
   await page.keyboard.press("Escape");
+
+  // A page cut a little off is put right by dragging its edge: the click that ends the drag leaves nothing out.
+  await page.evaluate(async () => {
+    const { newProject } = await import("/src/project.ts");
+    window.nameStudio.show(newProject("範囲を直す", 7));
+  });
+  await page.locator("#image-import").click();
+  await page.setInputFiles("#ii-input", { name: "往復_ミニネーム.png", mimeType: "image/png", buffer: png });
+  await page.waitForFunction(() => document.getElementById("ii-summary").textContent.includes("見つけました"));
+  const edge = await page.evaluate(async () => {
+    const { miniSheet, MINI_DEFAULTS } = await import("/src/mininame.ts");
+    const { newProject } = await import("/src/project.ts");
+    const sheet = miniSheet(newProject("x", 7), MINI_DEFAULTS, true);
+    const [x0, y0, , y1] = sheet.pages[0].box;
+    const rect = document.getElementById("ii-preview").getBoundingClientRect();
+    const scale = Math.min(rect.width / sheet.widthMm, rect.height / sheet.heightMm);
+    const left = rect.left + (rect.width - sheet.widthMm * scale) / 2;
+    const top = rect.top + (rect.height - sheet.heightMm * scale) / 2;
+    return { x: left + x0 * scale + 1, y: top + ((y0 + y1) / 2) * scale };
+  });
+  const cursor = async () => {
+    await page.mouse.move(edge.x, edge.y);
+    return page.evaluate(() => document.getElementById("ii-preview").style.cursor);
+  };
+  check((await cursor()) === "ew-resize", "over a page's left edge the pointer shows it can be dragged");
+  await page.mouse.down();
+  await page.mouse.move(edge.x + 15, edge.y, { steps: 4 });
+  await page.mouse.move(edge.x + 30, edge.y, { steps: 4 });
+  await page.mouse.up();
+  const fixed = await page.locator("#ii-summary").textContent();
+  check(fixed.startsWith("7 ページ見つけました（1 枚は範囲を直した）"), `the edge dragged in: said, and the page not left out (${fixed.slice(0, 30)})`);
+  if (shots) await dialog.screenshot({ path: `${shots}/dialog-adjusted.png` });
+  await page.locator("#ii-run").click();
+  await page.waitForFunction(() => window.nameStudio.workbench.project?.pages.every((p) => (p.references ?? []).length === 1));
+  const ratios = await page.evaluate(() => {
+    const project = window.nameStudio.workbench.project;
+    return project.pages.slice(0, 2).map((p) => {
+      const image = project.images.find((i) => i.id === p.references[0].image);
+      return image.widthPx / image.heightPx;
+    });
+  });
+  check(ratios[0] < ratios[1] * 0.9, `page 1 is cut as dragged, narrower than page 2 (${ratios.map((r) => r.toFixed(3)).join(" / ")})`);
 
   // The name sheet the roughs are read from, moved since: said before anything is written.
   await page.evaluate(() => {

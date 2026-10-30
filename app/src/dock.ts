@@ -184,6 +184,12 @@ export class Docks {
     this.commit();
   }
 
+  /** Put every palette as `layout` has them (作業の配置). */
+  apply(layout: DockLayout): void {
+    this.layout = readLayout(JSON.stringify(layout));
+    this.commit();
+  }
+
   collapse(side: Side, collapsed = !this.layout.collapsed[side]): void {
     this.layout.collapsed[side] = collapsed;
     this.commit();

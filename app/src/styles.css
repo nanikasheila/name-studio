@@ -820,7 +820,7 @@ button.small { padding: 1px 6px; font-size: calc(12 * var(--px)); }
 .icon .fill { fill: currentColor; stroke: none; }
 .icon.fill, .icon path.fill { fill: currentColor; }
 button.icon-button { display: inline-flex; align-items: center; justify-content: center; padding: 4px 7px; }
-button.with-icon, .page-nav .segmented button { display: inline-flex; align-items: center; gap: 5px; }
+button.with-icon, .page-nav .segmented button, .workspace-modes button { display: inline-flex; align-items: center; gap: 5px; }
 .app-bar { flex-wrap: nowrap; gap: 8px; }
 .tool-rail {
   /* Wider with larger words (設定 › 画面の見た目), so a tool's name stays on one line. */
@@ -895,7 +895,7 @@ button.with-icon, .page-nav .segmented button { display: inline-flex; align-item
 .toolbar .app-bar { flex-shrink: 0; }
 /* A narrow window keeps the top buttons as icons (the names stay for screen readers and tips). */
 @media (max-width: 1180px) {
-  .toolbar button.labelled span, .toolbar #name-export span {
+  .toolbar button.labelled span, .toolbar #name-export span, .workspace-modes button span {
     position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
   }
   .toolbar { gap: 4px; }
