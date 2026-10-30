@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CAPTION, GRID_GAP_MM, MARGIN, GRID_GAP_PX, extent, fitContinuous, fittedTo, layoutPages, nearestTo, onStage, pageGapPx, rowCount, slotAt, spreadWidth, toPage, type Arrangement, type Pair, type Slot } from "./layout";
+import { CAPTION, GRID_GAP_MM, captionRoom, MARGIN, GRID_GAP_PX, extent, fitContinuous, fittedTo, layoutPages, nearestTo, onStage, pageGapPx, rowCount, slotAt, spreadWidth, toPage, type Arrangement, type Pair, type Slot } from "./layout";
 import type { Project } from "./model";
 import { trimBox } from "./pagebox";
 import { newProject } from "./project";
@@ -64,6 +64,31 @@ describe("the pages on screen", () => {
     expect(at(4).x).toBeCloseTo(at(1).x);
     // 単独 does not split the canvas into pages: 連続 wins.
     expect(layoutPages(p, list, 0, view({ continuous: true, single: true, rows: 2 }))).toEqual(slots);
+  });
+
+  it("leaves room under the pages for all of a long memo, row by row in 連続", () => {
+    const p = project("right", 8);
+    p.pages[3].memo = "long";
+    // A long memo takes 5 rows, any other caption one.
+    const captionRows = (page: { memo?: string }) => (page.memo === "long" ? 5 : 1);
+    const list: Pair[] = [[1, null], [2, 3], [4, 5], [6, 7]];
+    const plain = layoutPages(p, list, 0, view({ continuous: true, rows: 2 }));
+    const slots = layoutPages(p, list, 0, view({ continuous: true, rows: 2, captionRows }));
+    const at = (all: Slot[], page: number) => all.find((slot) => slot.index === page - 1)!;
+    // The first row has short memos: as before. Page 4 is on the second row, which is taller under its pages.
+    expect(at(slots, 1).caption).toBe(CAPTION);
+    expect(at(slots, 4).caption).toBe(captionRoom(5));
+    expect(at(slots, 4).y).toBeCloseTo(at(plain, 4).y);
+    const pageH = p.pageFormat.canvasMm[1];
+    expect(extent(slots, pageH)![3] - extent(plain, pageH)![3]).toBeCloseTo(captionRoom(5) - CAPTION);
+    // 見開き: the pages are smaller so that the longest memo of all fits under them, whichever spread is shown.
+    const spread = (current: number) => layoutPages(p, list, current, view({ captionRows }));
+    const [first] = spread(0);
+    const [plainFirst] = layoutPages(p, list, 0, view());
+    expect(first.scale).toBeLessThan(plainFirst.scale);
+    expect(spread(1)[0].scale).toBe(first.scale);
+    const box = extent(spread(2), pageH)!;
+    expect(box[3]).toBeLessThanOrEqual(800 - MARGIN + 0.01);
   });
 
   it("keeps the rows between one and the number of spreads", () => {
