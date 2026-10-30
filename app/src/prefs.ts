@@ -3,6 +3,7 @@
 // full) and hands the modules that compute plain values, so that those never
 // touch the browser's storage themselves.
 import { withBrushes } from "./brush";
+import { handSizesFrom, presetsFrom, type HandSizes, type SizePresets } from "./brushpicks";
 import { EXPORT_MEMORIES, memoryFrom, memoryKey, withMemory, type ExportMemory } from "./exportmemory";
 import { defaultsFrom, defaultsOf, type NewNameDefaults } from "./namedefaults";
 import { normalizeCurve, defaultPenSettings, parsePenSettings, type PenSettings } from "./pen";
@@ -89,6 +90,29 @@ export function loadLibrary(): Brush[] {
 export function saveToLibrary(brushes: Brush[]): void {
   // Storage full or blocked: the brushes still live in the project.
   writeJson(BRUSHES_KEY, withBrushes(loadLibrary(), brushes));
+}
+
+// --- ブラシサイズ: the round buttons, and the size each pen was last used at ---------
+
+const SIZE_PRESETS_KEY = "namestudio.sizePresets";
+const HAND_SIZES_KEY = "namestudio.handSizes";
+
+export function loadSizePresets(): SizePresets {
+  return presetsFrom(readJson(SIZE_PRESETS_KEY, null));
+}
+
+/** None: back to the sizes out of the box. */
+export function saveSizePresets(presets: SizePresets | null): void {
+  if (presets) writeJson(SIZE_PRESETS_KEY, presets);
+  else writeText(SIZE_PRESETS_KEY, null);
+}
+
+export function loadHandSizes(): HandSizes {
+  return handSizesFrom(readJson(HAND_SIZES_KEY, null));
+}
+
+export function saveHandSizes(sizes: HandSizes): void {
+  writeJson(HAND_SIZES_KEY, sizes);
 }
 
 // --- 新しいネームの既定 -------------------------------------------------------------

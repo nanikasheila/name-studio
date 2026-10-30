@@ -53,6 +53,19 @@ describe("ショートカット", () => {
     expect(again.changed()).toBe(false);
   });
 
+  it("takes a key from a pen of another name too, so that it does not come back with it", () => {
+    const actions = [...ACTIONS, { id: "subtool:pen:a", label: "ペン: A", group: "サブツール", keys: [] }];
+    const storage = memory();
+    const shortcuts = new Shortcuts(storage, actions);
+    shortcuts.bind("subtool:pen:a", "1");
+    // A name without that pen: its command is not there, its key is still kept.
+    const other = new Shortcuts(storage, [...ACTIONS, { id: "subtool:pen:b", label: "ペン: B", group: "サブツール", keys: [] }]);
+    expect(other.bind("subtool:pen:b", "1")).toBeNull();
+    const back = new Shortcuts(storage, [...actions, { id: "subtool:pen:b", label: "ペン: B", group: "サブツール", keys: [] }]);
+    expect(back.keys("subtool:pen:a")).toEqual([]);
+    expect(back.actionFor("1")).toBe("subtool:pen:b");
+  });
+
   it("tells whoever shows the keys when they change", () => {
     const shortcuts = new Shortcuts(memory(), ACTIONS);
     let told = 0;
