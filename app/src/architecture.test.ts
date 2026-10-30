@@ -43,7 +43,7 @@ const LAYERS = {
    * name's vocabulary).
    */
   editing: [
-    "brushpicks", "callouts", "commands", "fillsettings", "helptopics", "history", "hittest", "layout", "pen", "recent", "savestate", "session", "shortcuts", "snapshot", "springtool", "tooldefs", "viewport",
+    "brushpicks", "callouts", "commands", "fillsettings", "helptopics", "history", "hittest", "layout", "pageaxis", "pen", "recent", "savestate", "session", "shortcuts", "snapshot", "springtool", "tooldefs", "viewport",
   ],
   /** This computer and the Rust side: storage, settings, commands, the page's elements. */
   platform: ["backend", "dom", "errorlog", "look", "perfmeter", "prefs", "settings"],

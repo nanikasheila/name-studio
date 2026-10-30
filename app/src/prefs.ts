@@ -41,6 +41,22 @@ export function setSwapFit(fit: PanelFit): void {
   writeText(SWAP_FIT_KEY, fit);
 }
 
+// --- 物語の帯 -------------------------------------------------------------------------
+
+/** 下の帯のページの並び: "left" (1 ページ目が左から) or "binding" (編集画面と同じ: 右綴じは右から左). */
+export const STRIP_ORDER_KEY = "namestudio.stripOrder";
+
+export type StripOrder = "left" | "binding";
+
+/** Out of the box the pages run from the left, as before. */
+export function stripOrder(): StripOrder {
+  return readText(STRIP_ORDER_KEY) === "binding" ? "binding" : "left";
+}
+
+export function setStripOrder(order: StripOrder): void {
+  writeText(STRIP_ORDER_KEY, order);
+}
+
 // --- 塗り -------------------------------------------------------------------------------
 
 export const FILL_KEY = "namestudio.fill";

@@ -12,7 +12,7 @@ import { clip, formatValue, icon, type LaneView, ROW, SCENE, track } from "./boa
 export function sceneLane(view: LaneView, project: Project, top: number): SVGGElement {
   const group = svg("g", { class: "lane scene-lane" });
   const count = project.pages.length;
-  const bg = svg("rect", { x: 0, y: top, width: view.x(count), height: SCENE, class: "lane-bg empty-scene" });
+  const bg = svg("rect", { x: 0, y: top, width: view.width(), height: SCENE, class: "lane-bg empty-scene" });
   bg.addEventListener("dblclick", (event) => {
     const { index } = view.at(event);
     const run = uncoveredRunAt(project, index);
@@ -30,8 +30,7 @@ export function sceneLane(view: LaneView, project: Project, top: number): SVGGEl
   group.append(bg);
   const spans = sceneSpans(project);
   spans.forEach((span, i) => {
-    const x = view.x(span.first);
-    const w = view.x(span.last + 1) - x;
+    const { left: x, width: w } = view.span(span.first, span.last);
     const bar = svg("rect", { x: x + 1, y: top + 4, width: Math.max(2, w - 2), height: SCENE - 8, rx: 6, class: `scene ${i % 2 ? "odd" : ""}`, "data-scene": span.scene.id });
     const text = svg("text", { x: x + 8, y: top + SCENE / 2 + 4, class: "scene-label" }, clip(span.scene.title, Math.floor((w - 12) / 12)));
     group.append(bar, text);
@@ -76,7 +75,7 @@ export function sceneLane(view: LaneView, project: Project, top: number): SVGGEl
       });
     });
     for (const edge of ["first", "last"] as const) {
-      const ex = edge === "first" ? x : x + w;
+      const ex = view.x(edge === "first" ? span.first : span.last + 1);
       const handle = svg("rect", { x: ex - 5, y: top + 4, width: 10, height: SCENE - 8, class: "scene-handle" });
       handle.addEventListener("pointerdown", (down) => {
         if (down.button !== 0) return;
@@ -89,8 +88,9 @@ export function sceneLane(view: LaneView, project: Project, top: number): SVGGEl
             const index = view.edgeIndex(event, edge);
             const a = edge === "first" ? Math.min(index, span.last) : span.first;
             const b = edge === "last" ? Math.max(index, span.first) : span.last;
-            bar.setAttribute("x", String(view.x(a) + 1));
-            bar.setAttribute("width", String(Math.max(2, view.x(b + 1) - view.x(a) - 2)));
+            const box = view.span(a, b);
+            bar.setAttribute("x", String(box.left + 1));
+            bar.setAttribute("width", String(Math.max(2, box.width - 2)));
             view.tip.show(event, [span.scene.title, `${a + 1}〜${b + 1} ページ`]);
           },
           end: (event, moved) => {
@@ -110,8 +110,7 @@ export function sceneLane(view: LaneView, project: Project, top: number): SVGGEl
 
 export function timeLane(view: LaneView, project: Project, top: number, height: number): SVGGElement {
   const group = svg("g", { class: "lane time-lane" });
-  const count = project.pages.length;
-  group.append(svg("rect", { x: 0, y: top, width: view.x(count), height, class: "lane-bg" }));
+  group.append(svg("rect", { x: 0, y: top, width: view.width(), height, class: "lane-bg" }));
   const rows = timeline(project);
   if (!rows.length) {
     group.append(svg("text", { x: 8, y: top + 26, class: "lane-hint" }, "シーンを足すと、ページの順と物語の中の時間の流れがここに並びます"));
@@ -123,8 +122,9 @@ export function timeLane(view: LaneView, project: Project, top: number, height: 
     group.append(svg("path", { d: `M${view.x(a.last + 1)},${rowY(a.storyRank)} L${view.x(b.first)},${rowY(b.storyRank)}`, class: "reading-path" }));
   }
   for (const row of rows) {
-    const x = view.x(row.first);
-    const w = Math.max(4, view.x(row.last + 1) - x - 2);
+    const box = view.span(row.first, row.last);
+    const x = box.left;
+    const w = Math.max(4, box.width - 2);
     const cy = rowY(row.storyRank);
     const bar = svg("rect", { x: x + 1, y: cy - 7, width: w, height: 14, rx: 4, class: `time-bar${row.flashback ? " flashback" : ""}`, "data-scene": row.scene.id });
     const label = `${row.scene.title}${row.scene.storyTime ? `（${row.scene.storyTime}）` : ""}`;

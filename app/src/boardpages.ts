@@ -41,7 +41,7 @@ export function pageLane(view: LaneView, project: Project, thumbWidth: number, t
   project.pages.forEach((page, index) => {
     const card = html("div", { className: "board-page" });
     card.dataset.page = page.id;
-    card.style.left = `${view.x(index) + 4}px`;
+    card.style.left = `${view.cell(index) + 4}px`;
     card.style.width = `${thumbWidth}px`;
     const part = partOf(index);
     const scene = spans.find((span) => span.first === index);

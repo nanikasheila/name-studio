@@ -12,7 +12,7 @@ import { APP_FONT_LABEL, FONT_ROLES, FONT_ROLE_LABELS, roleFont, setRoleFont } f
 import type { PageEditor } from "./editor";
 import { helpBarShown, showHelpBar } from "./helpbar";
 import { LookPane } from "./lookpane";
-import { BALLOON_TEXT_KEY, PAGE_GAP_KEY, PANEL_CARRIES_KEY, saveNewNameDefaults, saveSnap, setSwapFit, swapFit } from "./prefs";
+import { BALLOON_TEXT_KEY, PAGE_GAP_KEY, PANEL_CARRIES_KEY, saveNewNameDefaults, saveSnap, setStripOrder, setSwapFit, stripOrder, swapFit } from "./prefs";
 import { GRID_GAP_MM } from "./layout";
 import type { BalloonShape, LineKind, Project } from "./model";
 import { KIND_LABELS, setBinding, setDefaultLineSize, setDefaultShape, setLineSpacing } from "./dialogue";
@@ -42,6 +42,8 @@ export interface SettingsHost {
   status(message: string): void;
   /** The snap settings changed (the grid box beside the panel tool shows them). */
   snapChanged(): void;
+  /** The order of the pages in the strip under the pages changed. */
+  stripOrderChanged(): void;
   /** 自動保存 was turned on or off. */
   autosaveChanged(): void;
   /** When autosave writes was changed (settings `autosaveTiming`). */
@@ -144,6 +146,12 @@ export class SettingsDialog {
       notes.dispatchEvent(new Event("change"));
     });
     $<HTMLInputElement>("st-help-bar").addEventListener("change", (event) => showHelpBar((event.target as HTMLInputElement).checked));
+    $<HTMLSelectElement>("st-strip-order").addEventListener("change", (event) => {
+      const order = (event.target as HTMLSelectElement).value === "binding" ? "binding" : "left";
+      setStripOrder(order);
+      this.host.stripOrderChanged();
+      this.host.status(order === "binding" ? "下の帯のページを編集画面と同じ向きに並べます（右綴じは右から左）" : "下の帯のページを左から右に並べます");
+    });
     $<HTMLInputElement>("st-panel-carries").addEventListener("change", (event) => {
       this.host.editor.panelCarries = (event.target as HTMLInputElement).checked;
       writeFlag(PANEL_CARRIES_KEY, this.host.editor.panelCarries);
@@ -441,6 +449,7 @@ export class SettingsDialog {
     if (document.activeElement !== gap) gap.value = String(this.host.editor.pageGapMm);
     $<HTMLInputElement>("st-show-notes").checked = this.host.editor.showNotes;
     $<HTMLInputElement>("st-help-bar").checked = helpBarShown();
+    $<HTMLSelectElement>("st-strip-order").value = stripOrder();
     $<HTMLInputElement>("st-panel-carries").checked = this.host.editor.panelCarries;
     $<HTMLInputElement>("st-balloon-text").checked = this.host.editor.balloonTextFollows;
     $<HTMLSelectElement>("st-swap-fit").value = swapFit();

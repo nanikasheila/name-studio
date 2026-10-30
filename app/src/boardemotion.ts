@@ -10,8 +10,7 @@ import { formatValue, type LaneView, TEXT, track } from "./boardview";
 export function emotionLane(view: LaneView, project: Project, top: number): SVGGElement {
   const group = svg("g", { class: "lane emotion-lane" });
   const EMOTION = view.emotionHeight();
-  const count = project.pages.length;
-  const width = view.x(count);
+  const width = view.width();
   const pad = 12;
   const plot = EMOTION - pad * 2;
   const y = (value: number) => top + pad + plot * (1 - (value + 1) / 2);
@@ -24,8 +23,10 @@ export function emotionLane(view: LaneView, project: Project, top: number): SVGG
     return group;
   }
   for (const value of [1, 0.5, 0, -0.5, -1]) group.append(svg("line", { x1: 0, x2: width, y1: y(value), y2: y(value), class: value === 0 ? "axis" : "grid" }));
-  group.append(svg("text", { x: 4, y: y(1) + 12, class: "lane-hint small" }, "前向き"), svg("text", { x: 4, y: y(-1) - 4, class: "lane-hint small" }, "後ろ向き"));
-  const center = (index: number) => view.x(index) + view.column / 2;
+  // At the first page's end; the names go after the last values.
+  const start: Record<string, string | number> = view.reversed ? { x: width - 4, "text-anchor": "end" } : { x: 4 };
+  group.append(svg("text", { ...start, y: y(1) + 12, class: "lane-hint small" }, "前向き"), svg("text", { ...start, y: y(-1) - 4, class: "lane-hint small" }, "後ろ向き"));
+  const center = (index: number) => view.cell(index) + view.column / 2;
   const series = project.characters.map((character) => ({ character, samples: emotionSeries(project, character.id) }));
   series.sort((a, b) => Number(a.character.id === view.character) - Number(b.character.id === view.character));
   for (const { character, samples } of series) {
@@ -47,7 +48,7 @@ export function emotionLane(view: LaneView, project: Project, top: number): SVGG
     }
     for (const sample of samples) group.append(svg("circle", { cx: center(sample.index), cy: y(sample.value), r: editing ? 4 : 3, class: "curve-point", fill: color }));
     const last = samples[samples.length - 1];
-    if (last && project.characters.length <= 5) group.append(svg("text", { x: center(last.index) + 7, y: y(last.value) + 4, class: "curve-label" }, character.name));
+    if (last && project.characters.length <= 5) group.append(svg("text", { x: center(last.index) + (view.reversed ? -7 : 7), y: y(last.value) + 4, class: "curve-label", "text-anchor": view.reversed ? "end" : "start" }, character.name));
   }
   const preview = svg("g", { class: "curve-preview" });
   group.append(preview);
@@ -120,20 +121,19 @@ export function emotionLane(view: LaneView, project: Project, top: number): SVGG
 
 export function textLane(view: LaneView, project: Project, top: number): SVGGElement {
   const group = svg("g", { class: "lane text-lane" });
-  const count = project.pages.length;
-  group.append(svg("rect", { x: 0, y: top, width: view.x(count), height: TEXT, class: "lane-bg" }));
+  group.append(svg("rect", { x: 0, y: top, width: view.width(), height: TEXT, class: "lane-bg" }));
   const amounts = project.pages.map(textAmount);
   const max = Math.max(HEAVY_TEXT, ...amounts);
   const barWidth = Math.max(2, Math.min(24, view.column - 6));
   amounts.forEach((amount, index) => {
     if (!amount) return;
     const h = ((TEXT - 8) * amount) / max;
-    const bar = svg("rect", { x: view.x(index) + (view.column - barWidth) / 2, y: top + TEXT - 4 - h, width: barWidth, height: h, rx: 2, class: `amount${amount > HEAVY_TEXT ? " heavy" : ""}` });
+    const bar = svg("rect", { x: view.cell(index) + (view.column - barWidth) / 2, y: top + TEXT - 4 - h, width: barWidth, height: h, rx: 2, class: `amount${amount > HEAVY_TEXT ? " heavy" : ""}` });
     bar.addEventListener("mousemove", (event) => view.tip.show(event, [`${index + 1} ページ`, `${amount} 字${amount > HEAVY_TEXT ? "（多め）" : ""}`]));
     bar.addEventListener("mouseleave", () => view.tip.hide());
     group.append(bar);
   });
   const heavy = top + TEXT - 4 - ((TEXT - 8) * HEAVY_TEXT) / max;
-  group.append(svg("line", { x1: 0, x2: view.x(count), y1: heavy, y2: heavy, class: "heavy-line" }));
+  group.append(svg("line", { x1: 0, x2: view.width(), y1: heavy, y2: heavy, class: "heavy-line" }));
   return group;
 }
