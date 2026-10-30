@@ -84,8 +84,11 @@ try {
   await expectAll("連続 1 行", true);
   await shot("2-continuous-1");
   await page.evaluate(() => {
-    window.nameStudio.workbench.editor.setRows(2);
-    window.nameStudio.workbench.editor.fitRows?.();
+    const { editor } = window.nameStudio.workbench;
+    editor.setRows(2);
+    // Ctrl+0: the spread worked on as large as on its own. (Rows as tall as the stage can make the pages
+    // too small for their memos, depending on how tall the stage is.)
+    editor.fitView();
   });
   await page.waitForTimeout(600);
   await expectAll("連続 2 行", false);
