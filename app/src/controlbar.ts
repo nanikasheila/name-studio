@@ -13,6 +13,7 @@ import { SubToolPanel } from "./subtools";
 import { writeCount, writeFlag } from "./settings";
 import { TONE_LABELS } from "./strokes";
 import { MarkBar } from "./markbar";
+import { fitRow } from "./rowfit";
 import type { RoughChange } from "./roughpanel";
 import { TOOL_IDS, TOOLS, type ToolId } from "./tooldefs";
 
@@ -318,6 +319,8 @@ export class ControlBar {
   /** The bars' buttons, boxes and sliders. */
   bind(): void {
     this.marks.bind();
+    // The row under the pages: all of its switches in sight, never scrolled sideways.
+    fitRow($("page-nav"), 3);
     for (const tone of ["black", "gray", "white"] as const) {
       $(`fill-${tone}`).addEventListener("click", () => this.setFillTone(tone));
     }

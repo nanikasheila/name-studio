@@ -196,6 +196,37 @@ try {
   check(lowState.focus, "and the ページだけ button is on screen");
   await low.close();
 
+  // The row under the pages holds switches: all of them in sight at any width, never scrolled
+  // sideways (narrower, the names give way to icons, then the strip's buttons take a row of their own).
+  for (const [width, text] of [[1000], [1280], [1600], [1920], [1600, 18]]) {
+    const narrow = await browser.newPage({ viewport: { width, height: 1250 } });
+    await narrow.addInitScript({ path: fileURLToPath(new URL("tauri-mock.js", import.meta.url)) });
+    await narrow.goto(server.resolvedUrls.local[0]);
+    await narrow.waitForFunction(() => window.nameStudio);
+    await narrow.evaluate(async () => {
+      const { newProject } = await import("/src/project.ts");
+      window.nameStudio.show(newProject("長い", 40));
+    });
+    // 設定 › 画面の見た目: larger words take more of the row.
+    if (text) await narrow.evaluate((px) => document.documentElement.style.setProperty("--text-size", `${px}px`), text);
+    for (const view of ["spread", "continuous"]) {
+      await narrow.evaluate((mode) => window.nameStudio.workbench.bars.setView(mode), view);
+      await narrow.waitForTimeout(300);
+      const row = await narrow.evaluate(() => {
+        const nav = document.getElementById("page-nav");
+        const box = nav.getBoundingClientRect();
+        const items = [...nav.querySelectorAll("button, input, output, #editor-page-label")].filter((item) => item.offsetParent);
+        const out = items.filter((item) => {
+          const r = item.getBoundingClientRect();
+          return r.left < box.left - 1 || r.right > box.right + 1 || r.bottom > box.bottom + 1;
+        });
+        return { fits: nav.scrollWidth <= nav.clientWidth, out: out.length, height: Math.round(box.height), step: nav.dataset.fit, items: items.length };
+      });
+      check(row.fits && !row.out, `${width} px${text ? `, words ${text} px` : ""}, ${view}: all ${row.items} of the row's switches in sight, no scrolling sideways (look ${row.step}, ${row.height} px high)`);
+    }
+    await narrow.close();
+  }
+
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(" / ")}` : ""}`);
 } finally {
   await browser.close();

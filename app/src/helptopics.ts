@@ -520,7 +520,7 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
   { target: "#marks-shown", name: "指示", text: "指示を全部出す・隠す", command: "button.marks-shown", side: "above" },
   { target: "#read-mode", name: "読む", text: "見開きで通し読み", command: "button.read-mode", side: "above" },
   { target: "#focus-mode", name: "ページだけ", text: "欄と帯を隠す", command: "view.focus", side: "above" },
-  { target: ".lane-toggles", name: "帯に出すもの", text: "型・シーン・時系列・感情・字数", side: "above" },
+  { target: ".lane-toggles", name: "帯に出すもの", text: "型・シーン・時系列・感情・字数", side: "right" },
   { target: "#story", name: "物語の帯", text: "シーン・感情・ページを並びにそろえて見る。クリックでそのページへ", command: "view.board", side: "inside" },
   { target: "#dock-left", name: "左の欄", text: "サブツール・ページ・台本・人物・付箋・保留・レイヤー・シリーズ。アイコンで出し入れ、見出しのドラッグで反対側へ", side: "inside" },
   { target: "#dock-right", name: "右の欄（詳細）", text: "選んだもの（ページ・コマ・セリフ・付箋・シーン）の設定", side: "inside" },

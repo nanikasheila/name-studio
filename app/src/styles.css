@@ -853,12 +853,26 @@ button.with-icon, .page-nav .segmented button { display: inline-flex; align-item
 .tone.black { background: #111; }
 .tone.gray { background: #9a9a9a; }
 .tone.white { background: #fff; }
+/* The row under the pages holds switches, so all of them stay in sight: no scrolling sideways.
+   Narrower (or holding more), it steps through narrower looks until it fits one row (rowfit.ts):
+   1 the views as icons, 2 the check boxes as icons, 3 the strip's buttons in a row of their own.
+   Past that, what is left wraps. */
 .page-nav {
-  height: 40px; flex: none; display: flex; align-items: center; justify-content: safe center; gap: 14px; padding: 0 10px; white-space: nowrap;
-  overflow-x: auto; background: var(--panel); border-top: 1px solid var(--line);
+  min-height: 40px; flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: safe center; gap: 0 14px; padding: 2px 10px; white-space: nowrap;
+  overflow: hidden; background: var(--panel); border-top: 1px solid var(--line);
 }
-.page-nav > * { flex-shrink: 0; }
+.page-nav > * { flex-shrink: 0; min-height: 34px; }
 .page-nav .pager span { min-width: 6em; }
+.page-nav .check .icon { color: var(--text); }
+.page-nav:not([data-fit="0"]) { column-gap: 10px; }
+.page-nav:not([data-fit="0"]) .segmented button span { display: none; }
+.page-nav:not([data-fit="0"]) .pager span { min-width: 4.5em; }
+.page-nav[data-fit="2"] .check .nav-label, .page-nav[data-fit="3"] .check .nav-label {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+.page-nav[data-fit="2"] .rows-control input[type="range"], .page-nav[data-fit="3"] .rows-control input[type="range"] { width: 80px; }
+.page-nav[data-fit="3"] { column-gap: 6px; }
+.page-nav[data-fit="3"] .story-controls { flex-basis: 100%; margin-left: 0; padding-left: 0; border-left: none; border-top: 1px solid var(--line); }
 .page-nav .check[aria-disabled="true"] { opacity: 0.4; }
 .rows-control { display: inline-flex; align-items: center; gap: 6px; }
 .rows-control[hidden] { display: none; }
@@ -871,8 +885,6 @@ button.with-icon, .page-nav .segmented button { display: inline-flex; align-item
 @media (max-width: 1380px) {
   button.with-icon span { display: none; }
   .toolbar button.labelled span { display: inline; }
-  .page-nav .segmented button span { display: none; }
-  .rows-control input[type="range"] { width: 80px; }
 }
 /* The undo and export buttons never give way: they stay on screen at the smallest window. */
 .toolbar .app-bar { flex-shrink: 0; }
