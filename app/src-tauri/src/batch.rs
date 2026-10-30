@@ -19,8 +19,10 @@
 //!
 //! The window opens, writes the pages and the work as the export dialog would
 //! (CSP layers where it can), writes a report (JSON, by default
-//! `<folder>/name-studio-export.json`) and closes; the exit code is 0 when the
-//! written files read back as sent.
+//! `<folder>/name-studio-export.json`) and closes. Exit code 0: the written
+//! files read back as sent; 1: they did not, or the export failed (the
+//! report says why); 2: the arguments are wrong; 3: the report itself could
+//! not be written. Whenever it is not 0, why also goes to stderr.
 
 use std::path::Path;
 

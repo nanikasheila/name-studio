@@ -123,9 +123,18 @@ fn batch_export_task(state: tauri::State<'_, AppState>) -> Result<Option<batch::
     state.batch.clone()
 }
 
-/// End a command-line export: close the app with this exit code.
+/// End a command-line export: close the app with this exit code, saying why
+/// on stderr (and in the error log) when it did not go through. The report
+/// may be the very thing that could not be written, so this is the one place
+/// sure to be seen by whatever ran it.
 #[tauri::command]
-fn end_batch_export(app: tauri::AppHandle, code: i32) {
+fn end_batch_export(app: tauri::AppHandle, code: i32, message: Option<String>) {
+    if let Some(message) = message.filter(|message| !message.is_empty()) {
+        eprintln!("{message}");
+        if code != 0 {
+            errorlog::append(&format!("command-line export (exit {code}): {message}"));
+        }
+    }
     app.exit(code);
 }
 

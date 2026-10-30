@@ -180,17 +180,24 @@ pub struct OverwriteCheck {
     pub last_export_ms: Option<u64>,
 }
 
-/// What exporting into `dir` would overwrite.
-pub fn check_overwrite(dir: &Path) -> OverwriteCheck {
+/// What exporting into `dir` would overwrite: nothing when the folder is not
+/// there yet (the export makes it), an error when it cannot be looked into
+/// (no permission, not a folder, a drive gone), which is not the same as
+/// finding nothing there.
+pub fn check_overwrite(dir: &Path) -> std::io::Result<OverwriteCheck> {
     let mut check = OverwriteCheck::default();
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return check;
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(check),
+        Err(error) => return Err(error),
     };
     let manifest = load(dir);
     check.last_export_ms = manifest.as_ref().map(|m| m.written_ms);
-    let mut names: Vec<(String, PathBuf)> = entries
-        .filter_map(|entry| entry.ok())
-        .map(|entry| entry.path())
+    let paths = entries
+        .map(|entry| entry.map(|entry| entry.path()))
+        .collect::<std::io::Result<Vec<_>>>()?;
+    let mut names: Vec<(String, PathBuf)> = paths
+        .into_iter()
         .filter(|path| {
             path.is_file()
                 && path
@@ -211,7 +218,7 @@ pub fn check_overwrite(dir: &Path) -> OverwriteCheck {
         }
         check.existing.push(name);
     }
-    check
+    Ok(check)
 }
 
 #[cfg(test)]
@@ -222,7 +229,7 @@ mod tests {
     fn tells_changed_pages_from_its_own() {
         let dir = std::env::temp_dir().join(format!("manifest-test-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&dir).unwrap();
-        assert_eq!(check_overwrite(&dir), OverwriteCheck::default());
+        assert_eq!(check_overwrite(&dir).unwrap(), OverwriteCheck::default());
         let pages: Vec<PathBuf> = ["page0001.clip", "page0002.clip", "作品.cmc"]
             .iter()
             .map(|name| dir.join(name))
@@ -241,7 +248,7 @@ mod tests {
         assert_eq!(written(&pages[0]), Some(record("セリフ")));
         record_page(&pages[0], record("直したセリフ")).unwrap();
         assert_eq!(written(&pages[0]), Some(record("直したセリフ")));
-        let check = check_overwrite(&dir);
+        let check = check_overwrite(&dir).unwrap();
         assert_eq!(check.existing.len(), 3);
         assert!(check.changed.is_empty() && check.unknown.is_empty());
         assert!(check.last_export_ms.is_some());
@@ -249,7 +256,7 @@ mod tests {
         std::fs::write(&pages[1], b"drawn over in CSP").unwrap();
         std::fs::write(dir.join("page0003.clip"), b"?").unwrap();
         std::fs::write(dir.join("notes.txt"), b"not a page").unwrap();
-        let check = check_overwrite(&dir);
+        let check = check_overwrite(&dir).unwrap();
         assert_eq!(check.changed, ["page0002.clip"]);
         assert_eq!(check.unknown, ["page0003.clip"]);
         assert_eq!(check.existing.len(), 4);
@@ -257,9 +264,38 @@ mod tests {
         std::fs::write(&pages[0], b"written again").unwrap();
         merge_manifest(&dir, &[(pages[0].clone(), record("また"))]).unwrap();
         assert_eq!(written(&pages[0]), Some(record("また")));
-        let check = check_overwrite(&dir);
+        let check = check_overwrite(&dir).unwrap();
         assert_eq!(check.changed, ["page0002.clip"]);
         assert_eq!(check.unknown, ["page0003.clip"]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_folder_not_there_is_empty_but_one_that_cannot_be_read_is_an_error() {
+        let dir = std::env::temp_dir().join(format!("manifest-test-{}", uuid::Uuid::new_v4().simple()));
+        // Not made yet: the export makes it, nothing to overwrite.
+        assert_eq!(
+            check_overwrite(&dir.join("新しいフォルダー")).unwrap(),
+            OverwriteCheck::default()
+        );
+        // A file where the folder should be: cannot be looked into, so not "nothing there".
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("page0001.clip");
+        std::fs::write(&file, b"written").unwrap();
+        assert!(check_overwrite(&file).is_err());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let locked = dir.join("locked");
+            std::fs::create_dir_all(&locked).unwrap();
+            std::fs::write(locked.join("page0001.clip"), b"drawn in CSP").unwrap();
+            std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+            // Root reads it anyway; anyone else is refused, and told so.
+            if std::fs::read_dir(&locked).is_err() {
+                assert!(check_overwrite(&locked).is_err());
+            }
+            std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

@@ -13,8 +13,13 @@ export interface RoughCacheHost {
   arrived(): void;
 }
 
+/** A rough that could not be read, and why. */
+interface Failed {
+  failed: string;
+}
+
 export class RoughCache {
-  private images = new Map<string, ImageBitmap | "loading" | "failed">();
+  private images = new Map<string, ImageBitmap | "loading" | Failed>();
 
   constructor(private readonly host: RoughCacheHost) {}
 
@@ -25,20 +30,31 @@ export class RoughCache {
 
   /** A rough as drawn so far, starting to load it when it is not there yet. */
   get(rough: RoughImage): CanvasImageSource | null {
-    const cached = this.images.get(keyOf(rough));
+    const sheet = this.host.sheet();
+    const cached = sheet ? this.images.get(keyOf(sheet, rough)) : undefined;
     if (cached instanceof ImageBitmap) return cached;
-    if (!cached) void this.load(rough).then((image) => image && this.host.arrived());
+    if (!cached && sheet) void this.load(rough).then((image) => image && this.host.arrived());
     return null;
+  }
+
+  /** Why a rough cannot be read (reading it if not tried yet), or null when it can. */
+  async problem(rough: RoughImage): Promise<string | null> {
+    const sheet = this.host.sheet();
+    if (!sheet) return "元のネーム用紙が記録されていません";
+    if (await this.load(rough)) return null;
+    const cached = this.images.get(keyOf(sheet, rough));
+    return cached && typeof cached === "object" && "failed" in cached ? cached.failed : "読めませんでした";
   }
 
   /** Pixels of a rough from the source sheet (null when the sheet cannot be read). */
   async load(rough: RoughImage): Promise<ImageBitmap | null> {
     const sheet = this.host.sheet();
     if (!sheet) return null;
-    const key = keyOf(rough);
+    // By sheet too: the name pointed at another sheet reads its roughs afresh.
+    const key = keyOf(sheet, rough);
     const cached = this.images.get(key);
     if (cached instanceof ImageBitmap) return cached;
-    if (cached === "failed") return null;
+    if (cached && cached !== "loading") return null;
     // Kept in the map it was asked for: a name opened meanwhile has its own.
     const images = this.images;
     images.set(key, "loading");
@@ -50,16 +66,16 @@ export class RoughCache {
         maxHeight: ROUGH_MAX_HEIGHT,
       });
       const image = bytes.byteLength ? await createImageBitmap(new Blob([bytes], { type: "image/png" })) : null;
-      images.set(key, image ?? "failed");
+      images.set(key, image ?? { failed: "ラフの画像が空です" });
       return image;
     } catch (error) {
-      images.set(key, "failed");
+      images.set(key, { failed: String(error) });
       this.host.status(`ラフ画像を読めませんでした（元のネーム用紙が必要です）: ${error}`);
       return null;
     }
   }
 }
 
-function keyOf(rough: RoughImage): string {
-  return `${rough.layerId}:${rough.sheetCrop.join(",")}`;
+function keyOf(sheet: string, rough: RoughImage): string {
+  return `${sheet}|${rough.layerId}:${rough.sheetCrop.join(",")}`;
 }

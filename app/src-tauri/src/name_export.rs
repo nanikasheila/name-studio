@@ -573,8 +573,9 @@ pub(crate) async fn finish_name_export(state: tauri::State<'_, AppState>) -> Res
 
 /// CSP files an export into `out_dir` would overwrite, and which of them were changed after the last export.
 #[tauri::command]
-pub(crate) async fn check_export_target(out_dir: String) -> manifest::OverwriteCheck {
+pub(crate) async fn check_export_target(out_dir: String) -> Result<manifest::OverwriteCheck, String> {
     manifest::check_overwrite(Path::new(&out_dir))
+        .map_err(|error| format!("書き出し先 {out_dir} の中を確かめられません: {error}"))
 }
 
 #[tauri::command]

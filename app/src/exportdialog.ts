@@ -1,7 +1,7 @@
 // The dialog that writes the name data out (CSP pages and work, PDF, script).
 import { call } from "./backend";
-import { ask, open, save } from "@tauri-apps/plugin-dialog";
-import { buildRequest, folderOf, overwriteWarning, type ExportForm } from "./export";
+import { ask, message, open, save } from "@tauri-apps/plugin-dialog";
+import { buildRequest, folderOf, overwriteWarning, type ExportForm, type OverwriteCheck } from "./export";
 import {
   checkSummary,
   dialogueUpdateSummary,
@@ -31,7 +31,7 @@ import { updateRecord, updatedPages } from "./updatereport";
 import { formatTime } from "./autosave";
 import { installedFont } from "./fonts";
 import { hasMarks } from "./roughlayers";
-import { unreadableNote, unreadablePictures } from "./picturecheck";
+import { unreadableNote, unreadablePictures, unreadableRoughs, unreadableRoughsNote, withoutRoughs } from "./picturecheck";
 import { isNamePicture } from "./references";
 
 export interface ExportDialogHost {
@@ -41,6 +41,10 @@ export interface ExportDialogHost {
   /** Which opened name it is (a new one per name opened, even unsaved ones). */
   projectId(): number;
   rough(rough: RoughImage): Promise<CanvasImageSource | null>;
+  /** Why a rough of the name sheet cannot be read, or null when it can. */
+  roughProblem(rough: RoughImage): Promise<string | null>;
+  /** The name sheet the roughs are read from, chosen again (one undoable step). */
+  relinkSheet(path: string): void;
   /** 見開きの組み方: the first page on its own (the ミニネーム pairs pages as the editor does). */
   firstAlone(): boolean;
   status(message: string): void;
@@ -741,6 +745,21 @@ export class ExportDialog {
     return { template: built.page, workTemplate: built.work, donors: [built.parts], pieces: piecesPerPage(project, page) };
   }
 
+  /**
+   * The CSP files already in `outDir`, or false (said in the dialog) when the
+   * folder cannot be looked into: what would be overwritten is not known then,
+   * so nothing goes on.
+   */
+  private async exportTarget(outDir: string): Promise<OverwriteCheck | null | false> {
+    try {
+      return await call("check_export_target", { outDir });
+    } catch (error) {
+      this.message(`${error}\n何も書き換えていません。フォルダーがあるか、開けるかを確かめるか、別のフォルダーを選んでください。`, true);
+      this.host.status("書き出し先を確かめられないので、やめました");
+      return false;
+    }
+  }
+
   /** Asks first when pictures the export would show cannot be read; false: the user stopped. */
   private async picturesReadable(project: Project, takes: Parameters<typeof unreadablePictures>[1]): Promise<boolean> {
     const note = unreadableNote(await unreadablePictures(project, takes));
@@ -753,6 +772,39 @@ export class ExportDialog {
     });
     if (!go) this.message(`書き出しをやめました。\n${note}`);
     return go;
+  }
+
+  /**
+   * The name to write when the sheet's roughs can be read, or, when they
+   * cannot, as the user says: the sheet chosen again, written without the
+   * roughs, or null to stop.
+   */
+  private async roughsReadable(): Promise<Project | null> {
+    for (;;) {
+      const project = this.host.project();
+      if (!project) return null;
+      const found = await unreadableRoughs(project, (rough) => this.host.roughProblem(rough));
+      if (!found) return project;
+      const note = unreadableRoughsNote(found);
+      const [relink, without, stop] = ["ネーム用紙を選び直す", "ラフを除いて書き出す", "やめる"];
+      const choice = found.sheet
+        ? await message(note, { title: "Name Studio", kind: "warning", buttons: { yes: relink, no: without, cancel: stop } })
+        : (await ask(note, { title: "Name Studio", kind: "warning", okLabel: without, cancelLabel: stop }))
+          ? without
+          : stop;
+      if (choice === relink || choice === "Yes") {
+        const picked = await open({
+          title: "元のネーム用紙を選ぶ",
+          defaultPath: found.sheet ?? undefined,
+          filters: [{ name: "CLIP STUDIO PAINT のネーム用紙", extensions: ["clip"] }],
+        });
+        if (typeof picked === "string") this.host.relinkSheet(picked);
+        continue;
+      }
+      if (choice === without || choice === "No") return withoutRoughs(project);
+      this.message(`書き出しをやめました。\n${note}`);
+      return null;
+    }
   }
 
   /** Writes the name out; `again`: to the PDF or script file written last, without asking where. */
@@ -785,7 +837,8 @@ export class ExportDialog {
           return;
         }
         // 上書きの知らせ: pages there may have been drawn on in CSP since.
-        const target = await call("check_export_target", { outDir: request.outDir }).catch(() => null);
+        const target = await this.exportTarget(request.outDir);
+        if (target === false) return;
         const warning = target && overwriteWarning(target);
         if (warning && !(await ask(warning, { title: "Name Studio", kind: "warning", okLabel: "上書きする", cancelLabel: "やめる" }))) {
           this.message("書き出しをやめました。CSP の作業を残すには、別のフォルダーを選んでください。");
@@ -793,8 +846,11 @@ export class ExportDialog {
         }
         // 資料画像 and the pictures of the name each go to a layer.
         if (!(await this.picturesReadable(project, () => true))) return;
+        // The sheet's roughs go to the ラフ（ネーム用紙） layer.
+        const written = await this.roughsReadable();
+        if (!written) return;
         const report = await exportToCsp(
-          project,
+          written,
           {
             template: request.template,
             outDir: request.outDir,
@@ -802,7 +858,7 @@ export class ExportDialog {
             workName: request.workName,
             storyIndex: request.storyIndex,
             inputs: this.sources(),
-            donors: [this.donor, project.source?.path, ...templates.donors].filter((path): path is string => !!path),
+            donors: [this.donor, written.source?.path, ...templates.donors].filter((path): path is string => !!path),
             draftLayers: this.draftRough ? ROUGH_LAYERS : [],
             frameFolders: this.panels === "frames",
             panelMasks: this.panels === "masks",
@@ -844,6 +900,9 @@ export class ExportDialog {
       } else {
         // The PDF and the ミニネーム show the pictures of the name (資料 stay out).
         if (this.kind !== "text" && !(await this.picturesReadable(project, isNamePicture))) return;
+        // …and the sheet's roughs under the drawing.
+        const written = this.kind === "text" ? project : await this.roughsReadable();
+        if (!written) return;
         const mini = readMini();
         const extension = this.kind === "pdf" ? "pdf" : this.kind === "mini" ? MINI_EXTENSIONS[mini.format] : "txt";
         const base = (this.host.projectPath() ?? project.title ?? "ネーム").replace(/\.[^.\\/]+$/, "");
@@ -866,7 +925,7 @@ export class ExportDialog {
         }
         if (this.kind === "pdf") {
           await exportPdf(
-            project,
+            written,
             path,
             {
               area: $<HTMLSelectElement>("ne-pdf-area").value as "trim" | "canvas",
@@ -877,7 +936,7 @@ export class ExportDialog {
             progress,
           );
         } else if (this.kind === "mini") {
-          const result = await exportMiniName(project, path, mini, mini.format, this.host.firstAlone(), (rough) => this.host.rough(rough), progress);
+          const result = await exportMiniName(written, path, mini, mini.format, this.host.firstAlone(), (rough) => this.host.rough(rough), progress);
           const note = result.reduced ? `。大きすぎるので ${result.dpi} dpi に下げました` : "";
           this.message(`ミニネームを書き出しました（${result.widthPx}×${result.heightPx} px・横に ${result.columns}${note}・${seconds()} 秒）: ${path}`);
           this.remember(path);
@@ -916,7 +975,8 @@ export class ExportDialog {
       this.message(String(request), true);
       return;
     }
-    const target = await call("check_export_target", { outDir: request.outDir }).catch(() => null);
+    const target = await this.exportTarget(request.outDir);
+    if (target === false) return;
     if (!target?.existing.some((name) => name.toLowerCase().endsWith(".clip"))) {
       this.message("書き出し先に CSP のページがありません。前に書き出したフォルダーを選んでください", true);
       return;
@@ -987,7 +1047,8 @@ export class ExportDialog {
       this.message(String(request), true);
       return;
     }
-    const target = await call("check_export_target", { outDir: request.outDir }).catch(() => null);
+    const target = await this.exportTarget(request.outDir);
+    if (target === false) return;
     if (!target?.existing.some((name) => name.toLowerCase().endsWith(".clip"))) {
       this.message("書き出し先に CSP のページがありません。前に書き出したフォルダーを選んでください", true);
       return;
