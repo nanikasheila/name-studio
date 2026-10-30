@@ -257,12 +257,17 @@ function stampStroke(
 const EFFECT_INK = "rgba(27, 26, 24, 0.45)";
 const FILLS: Record<string, string> = { white: "#ffffff", black: INK, gray: "#b9b6b0" };
 
-/** 投げなわ塗り: the page's filled areas, in the order they were made. */
-export function drawPageFills(ctx: CanvasRenderingContext2D, page: Page, m: MmToPx, outline?: (id: string) => string | null): void {
+/** 塗り: the page's filled areas (with their holes), in the order they were made: those over the rough lines, or with `under` those under them. */
+export function drawPageFills(ctx: CanvasRenderingContext2D, page: Page, m: MmToPx, outline?: (id: string) => string | null, under = false): void {
   for (const fill of page.fills ?? []) {
+    if (!!fill.under !== under) continue;
     tracePath(ctx, fill.shape, m, true);
+    for (const hole of fill.holes ?? []) {
+      hole.forEach(([x, y], i) => (i ? ctx.lineTo : ctx.moveTo).call(ctx, x * m.scale + m.x, y * m.scale + m.y));
+      ctx.closePath();
+    }
     ctx.fillStyle = FILLS[fill.tone ?? "black"];
-    ctx.fill();
+    ctx.fill("evenodd");
     const color = outline?.(fill.id);
     if (color) {
       ctx.strokeStyle = color;

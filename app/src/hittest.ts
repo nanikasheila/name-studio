@@ -10,7 +10,7 @@ import type { Page, PageFormat, Panel, Point, Sticky, Stroke } from "./model";
 import { trimBox } from "./pagebox";
 import { corners } from "./references";
 import { stickyBox } from "./stickies";
-import { strokeHit } from "./strokes";
+import { insideFill, strokeHit } from "./strokes";
 
 /** Half the size of a handle on screen (px). */
 export const HANDLE = 5;
@@ -57,7 +57,7 @@ export function pickAt(page: Page, point: Point, scale: number, state: PickState
   if (line) return { kind: "line", id: line };
   const stroke = [...page.strokes].reverse().find((stroke) => state.editable(stroke) && strokeHit(stroke, point, tolerance));
   if (stroke) return { kind: "stroke", id: stroke.id };
-  const fill = [...(page.fills ?? [])].reverse().find((fill) => insidePolygon(fill.shape, point));
+  const fill = [...(page.fills ?? [])].reverse().find((fill) => insideFill(fill, point));
   if (fill) return { kind: "fill", id: fill.id };
   const breakout = [...page.breakouts].reverse().find((breakout) => insidePolygon(breakout.shape, point));
   if (breakout) return { kind: "breakout", id: breakout.id };

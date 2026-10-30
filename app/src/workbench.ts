@@ -314,6 +314,7 @@ export class Workbench {
       setRows: (rows) => this.bars.setRows(rows),
       setTool: (tool) => this.setTool(tool),
       setEraseMode: (mode) => this.setEraseMode(mode),
+      setFillWay: (way) => (way === "next" ? this.bars.fills.nextWay() : this.bars.fills.setWay(way)),
       setPanelMode: (mode) => this.bars.setPanelMode(mode),
       holdSelected: () => this.edits.holdSelection(),
       tidyPanels: () => this.edits.tidyPanels(),

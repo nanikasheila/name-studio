@@ -98,13 +98,13 @@ export const TOOLS: Record<ToolId, ToolDefinition> = {
   },
   fill: {
     name: "塗り",
-    label: "投げなわ塗り（ベタ・グレー・白）",
+    label: "塗り（もう一度で塗り方を切り替え）",
     keys: ["G"],
-    words: "塗り ベタ トーン",
-    title: "囲んだ所を塗る。ベタ・グレー・白",
+    words: "塗り ベタ トーン 塗りつぶし バケツ 囲って塗る 投げなわ 塗り残し 隙間閉じ",
+    title: "線で閉じた所や囲んだ所を塗る。ベタ・グレー・白。塗りつぶし・囲って塗る・投げなわ塗り・塗り残し部分に塗る",
     icon: '<path d="M10 2.5c3.2 4.2 5 7 5 9.2a5 5 0 0 1-10 0c0-2.2 1.8-5 5-9.2z" class="fill"/>',
-    hint: "囲んだ所を塗る",
-    overlay: "囲んでベタ・グレー・白",
+    hint: "線で閉じた所や囲んだ所を塗る",
+    overlay: "もう一度押すと塗り方を切り替え",
     cursor: "crosshair",
   },
   breakout: {

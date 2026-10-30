@@ -194,8 +194,14 @@ export const TOOL_TOPICS: Record<ToolId, HelpTopic> & Record<string, HelpTopic> 
   },
   fill: {
     name: "塗り",
-    what: "囲んだ所を塗る（黒・グレー・白）",
-    steps: [{ input: "ドラッグで囲む", does: "塗る" }, ...VIEW_STEPS],
+    what: "線とコマ枠で閉じた所や囲んだ所を塗る。塗り方と隙間閉じなどは上の段で",
+    steps: [
+      { input: "クリック", does: "塗りつぶし: 線で閉じた範囲を塗る（塗りの上なら色を変える）" },
+      { input: "ドラッグで囲む", does: "囲って塗る: 囲んだ中の閉じた範囲を全部 ／ 投げなわ塗り: 囲んだ形を塗る" },
+      { input: "なぞる", does: "塗り残し部分に塗る: 線と塗りの間の隙間を塗る" },
+      { command: "tool.fill", does: "塗り方を切り替える（塗りを持っているとき）" },
+      ...VIEW_STEPS,
+    ],
   },
   breakout: {
     name: "はみ出し",

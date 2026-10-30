@@ -557,6 +557,11 @@ dialog.brush-editor { width: min(980px, calc(100vw - 32px)); height: min(760px, 
 
 .mark-bar { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .mark-bar.off { display: none; }
+.fill-bar { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.fill-bar.off { display: none; }
+.fill-bar .size { display: flex; align-items: center; gap: 3px; color: var(--muted); }
+.fill-bar .size input { width: 4em; font: inherit; padding: 3px 4px; }
+.fill-bar select { font: inherit; padding: 3px 4px; }
 .mark-bar .size { display: flex; align-items: center; gap: 2px; color: var(--muted); }
 .mark-bar .size input { width: 4em; font: inherit; padding: 3px 4px; }
 .mark-colors { display: flex; gap: 4px; }

@@ -7,7 +7,7 @@
 // Coordinates on a page are millimetres; each page of the spread has its own
 // mm → screen mapping.
 import { isTyping } from "./dom";
-import { BALLOON_TEXT_KEY, CONTINUOUS_KEY, loadSnap, PAGE_GAP_KEY, PANEL_CARRIES_KEY, penPreferences, ROWS_KEY, SHOW_NOTES_KEY, SINGLE_PAGE_KEY } from "./prefs";
+import { BALLOON_TEXT_KEY, CONTINUOUS_KEY, loadFillSettings, loadSnap, PAGE_GAP_KEY, PANEL_CARRIES_KEY, penPreferences, ROWS_KEY, SHOW_NOTES_KEY, SINGLE_PAGE_KEY } from "./prefs";
 import { spreads } from "./pages";
 import { GRID_GAP_MM, MARGIN, MAX_PAGE_GAP_MM, extent, fitContinuous, fittedTo, layoutPages, nearestSlot, nearestTo, onScreenOf, onStage, rowCount, slotAt, toPage, type Arrangement, type Slot } from "./layout";
 import { holdPanel, placeHeld } from "./hold";
@@ -34,7 +34,8 @@ import { StrokeCache } from "./strokecache";
 import { ROUGH_BASE, shownStrokes, strokeEditable } from "./roughlayers";
 import { neighbour, setLineText } from "./dialogue";
 import { bounds, insideBox, insidePolygon } from "./geometry";
-import type { Binding, BoxMm, Brush, FillTone, Line, Page, Panel, Point, Project } from "./model";
+import type { FillSettings } from "./fillsettings";
+import type { Binding, BoxMm, Brush, Line, Page, Panel, Point, Project } from "./model";
 import { snapCut, trimBox } from "./pagebox";
 import { type CarriedContents, carryContents, followPanel, panelContents } from "./panels";
 import { gutters, pageIndex } from "./project";
@@ -68,7 +69,7 @@ import { snapPointTo, snapTargets, type SnapSettings, type SnapTargets } from ".
 import { Viewport } from "./viewport";
 import { ACCENT, drawSticky, NOTE_FONT, NOTE_ROW, noteBox, stickyHandle, type NoteBox } from "./notedraw";
 import { writeInPlace, type InPlaceEdit, type InPlaceHost } from "./inplace";
-import { captionMeter, drawCorners, drawCutOrFrame, drawDashedLine, drawFillArea, drawGoingTo, drawGuideLines, drawLasso, drawLifted, drawOverflowPanels, drawPenCursor, drawPointerNote, drawReferenceFrames, drawSpreadMarks, drawRing, drawScreenPage, drawSeam, drawSketch, drawSnapGrid, drawStickyLink, drawTransformFrame, drawTailHandles, drawWarpCorners } from "./screendraw";
+import { captionMeter, drawCorners, drawCutOrFrame, drawDashedLine, drawFillDrag, drawGoingTo, drawGuideLines, drawLasso, drawLifted, drawOverflowPanels, drawPenCursor, drawPointerNote, drawReferenceFrames, drawSpreadMarks, drawRing, drawScreenPage, drawSeam, drawSketch, drawSnapGrid, drawStickyLink, drawTransformFrame, drawTailHandles, drawWarpCorners } from "./screendraw";
 import { badgeAt, cornerAt, HANDLE, linesAt, panelAt, panelBadge, pickAt, referenceCornerAt, tailAt } from "./hittest";
 
 export type { EditorEraseMode, EditorHost, PanelMode, Selection, Tool } from "./editorcore";
@@ -138,8 +139,8 @@ export class PageEditor {
   penBrush: string | null = null;
   eraserBrush: string | null = null;
   eraserSizeMm = 2;
-  /** 投げなわ塗り: the tone the fill tool fills with. */
-  fillTone: FillTone = "black";
+  /** 塗り: the way in hand (CSP's sub tools), the tone and each way's settings. */
+  fill: FillSettings = loadFillSettings();
   /** The eraser's way of erasing; the pen's eraser end uses it too. */
   eraseMode: EditorEraseMode = "whole";
   /** The pen's eraser end is down or hovering: erase whatever the tool. */
@@ -1145,11 +1146,7 @@ export class PageEditor {
       const b = drag.kind === "cut" && !drag.free ? snapCut(drag.a, drag.b) : drag.b;
       drawCutOrFrame(ctx, drag.slot, drag.a, b, drag.kind === "cut");
     }
-    if (drag?.kind === "fill" && drag.points.length > 2) {
-      // The area as it will be filled, while it is drawn round.
-      const tone = this.fillTone === "black" ? "rgba(40, 38, 34, 0.55)" : this.fillTone === "gray" ? "rgba(150, 146, 140, 0.55)" : "rgba(255, 255, 255, 0.8)";
-      drawFillArea(ctx, drag.slot, drag.points, tone);
-    }
+    if (drag?.kind === "fill") drawFillDrag(ctx, drag.slot, drag.points, drag.way, this.fill);
     if ((drag?.kind === "lasso" || drag?.kind === "pick" || drag?.kind === "eraseLasso") && drag.points.length > 1) {
       drawLasso(ctx, drag.slot, drag.points, drag.kind === "lasso" ? "rgba(214, 120, 40, 0.9)" : drag.kind === "pick" ? ACCENT : "rgba(192, 57, 43, 0.9)");
     }
@@ -1849,8 +1846,8 @@ export class PageEditor {
       get eraseMode() {
         return editor.eraseMode;
       },
-      get fillTone() {
-        return editor.fillTone;
+      get fill() {
+        return editor.fill;
       },
       get roughLayer() {
         return editor.roughLayer;

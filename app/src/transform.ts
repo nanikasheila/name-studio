@@ -10,7 +10,7 @@ import { carryContents, movePanel } from "./panels";
 import { newId } from "./project";
 import { assignPanels, orderPanels, sortLines } from "./readingorder";
 import { stickyBox } from "./stickies";
-import { moveStroke } from "./strokes";
+import { fillShape, mapFill, moveStroke, type FillShape } from "./strokes";
 
 /** x' = a x + c y + e, y' = b x + d y + f. */
 export type Affine = [number, number, number, number, number, number];
@@ -109,7 +109,7 @@ export function moveItems(page: Page, items: readonly ItemRef[], dx: number, dy:
       if (panel) movePanel(panel, dx, dy);
     } else if (item.kind === "fill") {
       const fill = page.fills?.find((f) => f.id === item.id);
-      if (fill) fill.shape = shift(fill.shape);
+      if (fill) mapFill(fill, ([x, y]) => [x + dx, y + dy]);
     } else {
       const breakout = page.breakouts.find((b) => b.id === item.id);
       if (breakout) breakout.shape = shift(breakout.shape);
@@ -128,7 +128,7 @@ export interface TransformBase {
   strokes: { id: string; points: StrokePoint[]; widthMm: number }[];
   lines: { id: string; box: BoxMm; fontSizePt: number; balloon?: Point[]; tails?: Point[]; balloonScale?: [number, number] }[];
   panels?: { id: string; shape: Point[] }[];
-  fills?: { id: string; shape: Point[] }[];
+  fills?: FillShape[];
   breakouts?: { id: string; shape: Point[] }[];
   /** A balloon transformed on its own: its text grows and shrinks with it. */
   scaleText?: boolean;
@@ -146,7 +146,8 @@ export function transformBase(page: Page, items: readonly ItemRef[], lone?: Lone
   const shapes = <T extends { id: string; shape: Point[] }>(list: readonly T[] | undefined, wanted: Set<string>) =>
     (list ?? []).filter((x) => wanted.has(x.id)).map((x) => ({ id: x.id, shape: x.shape.map((p) => [...p] as Point) }));
   const panels = shapes(page.panels, ids("panel"));
-  const fills = shapes(page.fills, ids("fill"));
+  const fillIds = ids("fill");
+  const fills = (page.fills ?? []).filter((fill) => fillIds.has(fill.id)).map(fillShape);
   const breakouts = shapes(page.breakouts, ids("breakout"));
   return {
     ...(panels.length ? { panels } : {}),
@@ -247,7 +248,10 @@ export function transformItems(page: Page, base: TransformBase, w: Warp): void {
     }
   };
   reshape(page.panels, base.panels);
-  reshape(page.fills, base.fills);
+  for (const from of base.fills ?? []) {
+    const fill = page.fills?.find((f) => f.id === from.id);
+    if (fill) mapFill(fill, map, from);
+  }
   reshape(page.breakouts, base.breakouts);
   // A flip turns shapes inside out: keep panels the same way round.
   if (Array.isArray(w) && w[0] * w[3] - w[1] * w[2] < 0) {
@@ -371,7 +375,7 @@ export function pasteClip(project: Project, page: Page, clip: Clip, offset: Poin
   for (const source of clip.fills ?? []) {
     const fill = clone(source);
     fill.id = newId(project, "fill");
-    fill.shape = fill.shape.map(move);
+    mapFill(fill, move);
     page.fills = [...(page.fills ?? []), fill];
     pasted.fills.push(fill.id);
   }

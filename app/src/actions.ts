@@ -5,6 +5,7 @@ import type { Board, LaneId } from "./board";
 import type { Command } from "./commands";
 import type { PaletteId } from "./dock";
 import { ERASE_MODE_LABELS, type EditorEraseMode, type PageEditor, type PanelMode, type Tool } from "./editor";
+import type { FillWay } from "./fillsettings";
 import type { HelpKind } from "./helptopics";
 import type { Page } from "./model";
 import { TOOL_IDS, TOOLS } from "./tooldefs";
@@ -23,6 +24,8 @@ export interface CommandHost {
   setRows(rows: number): void;
   setTool(tool: Tool): void;
   setEraseMode(mode: EditorEraseMode): void;
+  /** 塗り: take up a sub tool ("next": the one after the one in hand), the fill tool with it. */
+  setFillWay(way: FillWay | "next"): void;
   /** コマ割り: how a drag makes panels (the tool comes too). */
   setPanelMode(mode: PanelMode): void;
   /** The selected panel into 保留, contents and all; false when no panel is selected. */
@@ -85,6 +88,7 @@ export function buildCommands(host: CommandHost): Command[] {
     run: () => {
       // As CSP's sub tools cycle: the eraser again changes how it erases.
       if (to === "eraser" && editor.tool === "eraser") nextEraseMode();
+      else if (to === "fill" && editor.tool === "fill") host.setFillWay("next");
       else host.setTool(to);
       return true;
     },

@@ -5,6 +5,7 @@
 import { withBrushes } from "./brush";
 import { handSizesFrom, presetsFrom, type HandSizes, type SizePresets } from "./brushpicks";
 import { EXPORT_MEMORIES, memoryFrom, memoryKey, withMemory, type ExportMemory } from "./exportmemory";
+import { fillSettingsFrom, type FillSettings } from "./fillsettings";
 import { defaultsFrom, defaultsOf, type NewNameDefaults } from "./namedefaults";
 import { normalizeCurve, defaultPenSettings, parsePenSettings, type PenSettings } from "./pen";
 import { forgotten, recentFrom, remembered, type RecentName } from "./recent";
@@ -38,6 +39,19 @@ export function swapFit(): PanelFit {
 
 export function setSwapFit(fit: PanelFit): void {
   writeText(SWAP_FIT_KEY, fit);
+}
+
+// --- 塗り -------------------------------------------------------------------------------
+
+export const FILL_KEY = "namestudio.fill";
+
+/** The fill tool's way, tone and settings kept on this computer (anything unreadable is the default). */
+export function loadFillSettings(): FillSettings {
+  return fillSettingsFrom(readJson(FILL_KEY, null));
+}
+
+export function saveFillSettings(settings: FillSettings): void {
+  writeJson(FILL_KEY, settings);
 }
 
 // --- 吸着 ------------------------------------------------------------------------------

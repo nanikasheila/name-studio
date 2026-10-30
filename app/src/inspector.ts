@@ -37,7 +37,7 @@ import { tidyPanels } from "./tidy";
 import { addCharacter } from "./cast";
 import { fitLine, KIND_LABELS, setDefaultLineSize, setDefaultShape, setLineKind, setLineText, wrapTypedLine } from "./dialogue";
 import { rectShape } from "./geometry";
-import type { Alternatives, BalloonShape, FillTone, Line, LineKind, Page, Panel, PanelBorder, PanelEffect, PanelFill, Project, Sticky, StickyColor, TailStyle } from "./model";
+import type { Alternatives, BalloonShape, Fill, FillTone, Line, LineKind, Page, Panel, PanelBorder, PanelEffect, PanelFill, Project, Sticky, StickyColor, TailStyle } from "./model";
 import { basicBox } from "./pagebox";
 import { addPanel, wantsSpread } from "./panels";
 import { insertPage, pageIndex, pageIsEmpty, removePage } from "./project";
@@ -45,6 +45,9 @@ import { moveBlock, pageBlock } from "./reorder";
 import { assignPanels, orderPanels, sortLines } from "./readingorder";
 import { linkLabel, STICKY_COLORS } from "./stickies";
 import { TONE_LABELS } from "./strokes";
+
+/** 塗り: where it lies against the rough lines. */
+const FILL_PLACES = { under: "線の下", over: "線の上" } as const;
 
 /** What the inspector needs from the workbench around it. */
 export interface InspectorHost {
@@ -166,7 +169,7 @@ export class Inspector {
             else fill.tone = value;
           }),
         );
-        return [tone, ...turns(), copy, remove];
+        return [tone, this.fillPlace(fill), ...turns(), copy, remove];
       }
       case "breakout":
         return [...turns(), copy, remove];
@@ -227,7 +230,11 @@ export class Inspector {
         return panel.replaceChildren(
           element("h2", { textContent: "塗り" }),
           element("label", {}, "色", tone),
-          element("p", { className: "hint", textContent: "ドラッグや矢印キーで動かせます。枠の四角で大きさ、丸で向きを変えられます。コマを動かすと一緒に動きます。CSP には「コマの塗り・効果」の画像レイヤーで書き出します。" }),
+          element("label", {}, "重なり", this.fillPlace(fill)),
+          element("p", {
+            className: "hint",
+            textContent: `ドラッグや矢印キーで動かせます。枠の四角で大きさ、丸で向きを変えられます。コマを動かすと一緒に動きます。CSP には「${fill.under ? "塗り（線の下）" : "コマの塗り・効果"}」の画像レイヤーで書き出します。`,
+          }),
           ...this.transformButtons(),
           remove,
         );
@@ -665,6 +672,18 @@ export class Inspector {
       }),
       remove,
     ];
+  }
+
+  /** 塗り: over the rough lines or under them. */
+  private fillPlace(fill: Fill): HTMLSelectElement {
+    const place = choice(FILL_PLACES, fill.under ? "under" : "over", (value) =>
+      this.host.edit(() => {
+        if (value === "under") fill.under = true;
+        else delete fill.under;
+      }),
+    );
+    place.title = "ラフ線の下に塗るか（CSP では線の下のレイヤー）、上に塗るか（線も隠れる）";
+    return place;
   }
 
   /** 反転・回転 of what is selected. */

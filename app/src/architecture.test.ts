@@ -31,7 +31,7 @@ const LAYERS = {
    * storage, no Rust side, and nothing of the editor's screen.
    */
   domain: [
-    "alternatives", "arrange", "aside", "autotail", "balloon", "brush", "carry", "cast", "csppage", "cspsettings", "dialogue", "export", "exportmemory", "fonts", "hold", "koma",
+    "alternatives", "arrange", "aside", "autotail", "balloon", "brush", "carry", "cast", "csppage", "cspsettings", "dialogue", "export", "exportmemory", "fillregion", "fonts", "hold", "koma",
     "komaedit", "mask", "mininame", "minisplit", "namecheck", "namedefaults", "pagebox", "pages", "panelfolders", "panels", "plotimport", "project", "projectjson",
     "readback", "readingorder", "references", "removal", "reorder", "repair", "roughlayers", "scriptimport", "series", "shapes", "sketchpanels", "snapping", "stickies",
     "story", "strokes", "structures", "style", "tidy", "transform", "wrap",
@@ -43,7 +43,7 @@ const LAYERS = {
    * name's vocabulary).
    */
   editing: [
-    "brushpicks", "callouts", "commands", "helptopics", "history", "hittest", "layout", "pen", "recent", "savestate", "session", "shortcuts", "snapshot", "springtool", "tooldefs", "viewport",
+    "brushpicks", "callouts", "commands", "fillsettings", "helptopics", "history", "hittest", "layout", "pen", "recent", "savestate", "session", "shortcuts", "snapshot", "springtool", "tooldefs", "viewport",
   ],
   /** This computer and the Rust side: storage, settings, commands, the page's elements. */
   platform: ["backend", "dom", "errorlog", "look", "perfmeter", "prefs", "settings"],
@@ -53,7 +53,7 @@ const LAYERS = {
   service: ["autosave", "batch", "flatpage", "nameexport", "picturecheck", "roughcache", "updatereport"],
   /** The screens. */
   ui: [
-    "actions", "alerts", "altdialog", "board", "boarddock", "boardemotion", "boardpages", "boardscene", "boardshape", "boardview", "brushdialog", "brusheditor", "brushpad", "brushsource", "controlbar", "cursors", "dock", "dragsort", "drophint", "editor", "editorcore", "exportdialog", "fontpicker", "helpbar", "helpoverlay", "imageimport", "inplace", "inspector",
+    "actions", "alerts", "altdialog", "board", "boarddock", "boardemotion", "boardpages", "boardscene", "boardshape", "boardview", "brushdialog", "brusheditor", "brushpad", "brushsource", "controlbar", "cursors", "dock", "dragsort", "drophint", "editor", "editorcore", "exportdialog", "fillbar", "fillsource", "fontpicker", "helpbar", "helpoverlay", "imageimport", "inplace", "inspector",
     "layers", "livefields", "lookpane", "markbar", "namesaver", "nameedits", "palette", "palettes", "pendialog", "perfdialog", "reader", "readbackpick", "recoverydialog", "referencebar", "roughpanel", "rowfit", "scriptdialog", "seriespanel", "settingsdialog", "sheetexport", "shortcutdialog", "sidelists", "startscreen", "subtools", "toolaside", "tooleraser", "toolfill",
     "toolmark", "toolpanels", "toolpen", "toolreference", "tools", "toolselect", "toolsticky", "tooltext", "tooltransform", "tour", "updater", "versiondialog",
     "viewer", "workbench",

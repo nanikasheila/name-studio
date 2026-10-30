@@ -103,6 +103,7 @@ function drawHeld(ctx: CanvasRenderingContext2D, project: Project, slot: Slot, h
   tracePath(ctx, held.panel.shape, m, true);
   ctx.clip();
   const rough = { ...page, strokes: withoutMarks(project, page.strokes) };
+  drawPageFills(ctx, page, m, undefined, true);
   drawStrokes(ctx, rough, m, false, () => "#3a3834", 0.7, brushes);
   drawPanelFills(ctx, page, m);
   drawPageFills(ctx, page, m);

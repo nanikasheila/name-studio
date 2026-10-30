@@ -7,11 +7,12 @@ import { BrushSource } from "./brushsource";
 import { subtoolCommandId, type Command } from "./commands";
 import { $, element } from "./dom";
 import { ERASE_MODE_LABELS, PANEL_MODE_LABELS, type EditorEraseMode, type PageEditor, type PanelMode, type Tool } from "./editor";
-import type { Brush, BrushKind, FillTone, Project } from "./model";
+import { FillBar } from "./fillbar";
+import { FillSource } from "./fillsource";
+import type { Brush, BrushKind, Project } from "./model";
 import { CONTINUOUS_KEY, loadHandSizes, loadLibrary, ROWS_KEY, saveHandSizes, SHOW_NOTES_KEY, SINGLE_PAGE_KEY } from "./prefs";
 import { SubToolPanel } from "./subtools";
 import { writeCount, writeFlag } from "./settings";
-import { TONE_LABELS } from "./strokes";
 import { MarkBar } from "./markbar";
 import { fitRow } from "./rowfit";
 import type { RoughChange } from "./roughpanel";
@@ -56,6 +57,8 @@ export interface ControlBarHost {
 export class ControlBar {
   /** The 指示 tool's bar. */
   private readonly marks: MarkBar;
+  /** The fill tool's bar: its sub tools and their settings. */
+  readonly fills: FillBar;
 
   /** サブツール: the kinds of the tool in hand, and ツールプロパティ. */
   readonly subtools: SubToolPanel;
@@ -87,6 +90,16 @@ export class ControlBar {
     };
     this.subtools.add(new BrushSource("pen", brushes));
     this.subtools.add(new BrushSource("eraser", brushes));
+    this.fills = new FillBar({
+      editor: host.editor,
+      status: (message) => host.status(message),
+      setTool: (tool) => this.setTool(tool),
+      changed: () => {
+        this.fills.render();
+        this.subtools.render(true);
+      },
+    });
+    this.subtools.add(new FillSource(host.editor, this.fills));
   }
 
   /** A command for each sub tool, to take it up by name (Ctrl+K) or by its keys. */
@@ -115,7 +128,6 @@ export class ControlBar {
   setTool(tool: Tool): void {
     this.editor.setTool(tool);
     for (const name of TOOL_IDS) $(`tool-${name}`).classList.toggle("active", name === tool);
-    $("fill-tones").hidden = tool !== "fill";
     $("panel-modes").hidden = tool !== "cut";
     $("grid-snap-label").hidden = tool !== "cut";
     $("panel-tidy").hidden = tool !== "cut";
@@ -129,6 +141,7 @@ export class ControlBar {
     $("tool-hint").textContent = TOOLS[tool].hint;
     this.showPanelModes();
     this.renderBrushBar();
+    this.fills.render();
   }
 
   /** コマ割り: how a drag makes panels, and whether they snap to the grid. */
@@ -203,13 +216,6 @@ export class ControlBar {
     this.showRows();
   }
 
-  /** 投げなわ塗り: what the fill tool fills with. */
-  private setFillTone(tone: FillTone): void {
-    this.editor.fillTone = tone;
-    for (const name of ["black", "gray", "white"] as const) $(`fill-${name}`).classList.toggle("active", name === tone);
-    if (this.editor.tool !== "fill") this.setTool("fill");
-    this.host.status(`塗り: ${TONE_LABELS[tone]}`);
-  }
 
   // --- pens and erasers -------------------------------------------------------------------
 
@@ -321,9 +327,6 @@ export class ControlBar {
     this.marks.bind();
     // The row under the pages: all of its switches in sight, never scrolled sideways.
     fitRow($("page-nav"), 3);
-    for (const tone of ["black", "gray", "white"] as const) {
-      $(`fill-${tone}`).addEventListener("click", () => this.setFillTone(tone));
-    }
     for (const mode of Object.keys(PANEL_MODE_LABELS) as PanelMode[]) {
       $(`panel-${mode}`).addEventListener("click", () => this.setPanelMode(mode));
     }

@@ -6,6 +6,7 @@ import type { Binding, BoxMm, Page, Panel, Point, Project, StrokePoint } from ".
 import { gutters, newId } from "./project";
 import { assignPanels, orderPanels, sortLines } from "./readingorder";
 import { gutterFor, segmentTouches, splitShape } from "./pagebox";
+import { fillShape, mapFill, type FillShape } from "./strokes";
 
 export function addPanel(project: Project, page: Page, shape: Point[]): Panel {
   const panel: Panel = { id: newId(project, "panel"), shape, order: page.panels.length + 1 };
@@ -102,7 +103,7 @@ export function panelContents(page: Page, panel: Panel): { strokes: string[]; li
 /** The contents of a panel as they were, to follow the panel as it changes. */
 export interface CarriedContents {
   box: BoxMm;
-  fills?: { id: string; shape: Point[] }[];
+  fills?: FillShape[];
   strokes: { id: string; points: StrokePoint[] }[];
   lines: { id: string; box: BoxMm; balloon?: Point[]; tails?: Point[] }[];
 }
@@ -112,7 +113,7 @@ export function carryContents(page: Page, panel: Panel): CarriedContents {
   const owned = (page.fills ?? []).filter((fill) => ownerAt(page, centroid(fill.shape))?.id === panel.id);
   return {
     box: bounds(panel.shape),
-    ...(owned.length ? { fills: owned.map((fill) => ({ id: fill.id, shape: fill.shape.map((p) => [...p] as Point) })) } : {}),
+    ...(owned.length ? { fills: owned.map(fillShape) } : {}),
     strokes: page.strokes.filter((s) => strokes.includes(s.id)).map((s) => ({ id: s.id, points: s.points.map((p) => [...p] as StrokePoint) })),
     lines: page.lines
       .filter((l) => lines.includes(l.id))
@@ -154,13 +155,13 @@ export function followPanel(page: Page, panel: Panel, carried: CarriedContents, 
     ay = (ny0 + ny1) / 2 - ((oy1 - oy0) * uniform) / 2;
   }
   const map = ([x, y]: readonly number[]): Point => [ax + (x - ox0) * sx, ay + (y - oy0) * sy];
-  for (const { id, shape } of carried.fills ?? []) {
-    const fill = page.fills?.find((f) => f.id === id);
+  for (const from of carried.fills ?? []) {
+    const fill = page.fills?.find((f) => f.id === from.id);
     if (!fill) continue;
-    const [cx0, cy0, cx1, cy1] = bounds(shape);
+    const [cx0, cy0, cx1, cy1] = bounds(from.shape);
     const centre: Point = [(cx0 + cx1) / 2, (cy0 + cy1) / 2];
     const [mx, my] = map(centre);
-    fill.shape = shape.map(([x, y]) => [mx + (x - centre[0]) * uniform, my + (y - centre[1]) * uniform]);
+    mapFill(fill, ([x, y]) => [mx + (x - centre[0]) * uniform, my + (y - centre[1]) * uniform], from);
   }
   for (const { id, points } of carried.strokes) {
     const stroke = page.strokes.find((s) => s.id === id);

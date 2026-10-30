@@ -1,6 +1,6 @@
 // The 別案 dialog: the options of a set side by side, to compare and pick.
 import { optionPages, removeAlternative, useAlternative } from "./alternatives";
-import { drawBalloons, drawPageTexts, drawPanelBorders, drawPanelFills, drawStrokes } from "./pagedraw";
+import { drawBalloons, drawPageFills, drawPageTexts, drawPanelBorders, drawPanelFills, drawStrokes } from "./pagedraw";
 import type { Alternatives, Page, Project } from "./model";
 import { trimBox } from "./pagebox";
 import { $ } from "./dom";
@@ -32,8 +32,10 @@ export function pageThumbnail(project: Project, page: Page, width = THUMB_WIDTH)
   const m = { scale, x: -x0 * scale, y: -y0 * scale };
   const brushes = project.brushes;
   const rough = { ...page, strokes: withoutMarks(project, page.strokes) };
+  drawPageFills(ctx, page, m, undefined, true);
   drawStrokes(ctx, rough, m, false, () => "#3a3834", 0.4, brushes);
   drawPanelFills(ctx, page, m, 0.4);
+  drawPageFills(ctx, page, m);
   drawPanelBorders(ctx, page, m, undefined, 0.6);
   drawStrokes(ctx, rough, m, true, () => "#3a3834", 0.4, brushes);
   drawBalloons(ctx, page, m, 0.5);

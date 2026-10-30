@@ -6,6 +6,7 @@ import { stacked } from "./koma";
 import { bounds, centroid } from "./geometry";
 import type { Page, Panel, Point } from "./model";
 import { carryContents } from "./panels";
+import { mapFill } from "./strokes";
 
 /** Something a row stands for. Rough lines are listed together, per panel. */
 export type LayerRef =
@@ -131,7 +132,7 @@ export function moveIntoPanel(from: Page, ref: LayerRef, to: Page, panel: Panel)
   } else {
     const fill = from.fills?.find((f) => f.id === ref.id);
     if (!fill) return false;
-    fill.shape = fill.shape.map((p) => shift(p) as Point);
+    mapFill(fill, (p) => shift(p) as Point);
     if (from !== to) {
       from.fills = (from.fills ?? []).filter((f) => f !== fill);
       to.fills = [...(to.fills ?? []), fill];

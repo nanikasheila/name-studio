@@ -8,6 +8,7 @@ import type { HeldPanel, Page, Panel, Point, Project, Sticky } from "./model";
 import { type CarriedContents, carryContents, followPanel, type PanelFit } from "./panels";
 import { newId } from "./project";
 import { assignPanels, orderPanels, sortLines } from "./readingorder";
+import { fillShape } from "./strokes";
 
 /** Take a panel and what is in it off its page, into the 保留 list; `near`: the page it is meant to go near. */
 export function holdPanel(project: Project, page: Page, panel: Panel, near: string | undefined = page.id): HeldPanel {
@@ -68,7 +69,7 @@ export function placeHeld(project: Project, page: Page, held: HeldPanel, at?: Po
       ...(l.balloon ? { balloon: l.balloon.map((p) => [...p] as Point) } : {}),
       ...(l.tails ? { tails: l.tails.map((t) => [...t.tip] as Point) } : {}),
     })),
-    ...(held.fills ? { fills: held.fills.map((f) => ({ id: f.id, shape: f.shape.map((p) => [...p] as Point) })) } : {}),
+    ...(held.fills ? { fills: held.fills.map(fillShape) } : {}),
   };
   let target: Panel;
   if (into) {
