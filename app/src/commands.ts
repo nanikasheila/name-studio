@@ -87,3 +87,27 @@ export function findCommands(query: string, commands: readonly Command[], recent
 export function usedNow(recent: readonly string[], id: string): string[] {
   return [id, ...recent.filter((other) => other !== id)].slice(0, RECENT_COMMANDS);
 }
+
+/** サブツール: picking one is a command too ("subtool:pen:CSP: ペン / Gペン"), so it can have keys. */
+export const SUBTOOL_COMMAND = "subtool:";
+
+export function subtoolCommandId(ref: string): string {
+  return `${SUBTOOL_COMMAND}${ref}`;
+}
+
+/**
+ * Put the sub tools' commands as they are now in place of the ones before
+ * (the list is the one the keys and the palette read). False when nothing changed.
+ */
+export function replaceSubtoolCommands(commands: Command[], fresh: readonly Command[]): boolean {
+  const old = commands.filter((command) => command.id.startsWith(SUBTOOL_COMMAND));
+  const same = old.length === fresh.length && old.every((command, i) => command.id === fresh[i].id && command.label === fresh[i].label);
+  if (same) {
+    // The same commands: what they do may hold newer objects.
+    old.forEach((command, i) => Object.assign(command, fresh[i]));
+    return false;
+  }
+  const kept = commands.filter((command) => !command.id.startsWith(SUBTOOL_COMMAND));
+  commands.splice(0, commands.length, ...kept, ...fresh);
+  return true;
+}

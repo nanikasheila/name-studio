@@ -2,13 +2,18 @@
 // ways, the fill's tones, the pen or eraser and its size), and how the pages
 // are shown (見開き, 単独 or 連続 and its rows).
 import { addBrushes } from "./brush";
+import { clampSize, sizeInHand, withHandSize } from "./brushpicks";
+import { BrushSource } from "./brushsource";
+import { subtoolCommandId, type Command } from "./commands";
 import { $, element } from "./dom";
 import { ERASE_MODE_LABELS, PANEL_MODE_LABELS, type EditorEraseMode, type PageEditor, type PanelMode, type Tool } from "./editor";
 import { FillBar } from "./fillbar";
-import type { Brush, Project } from "./model";
-import { CONTINUOUS_KEY, loadLibrary, ROWS_KEY, SHOW_NOTES_KEY, SINGLE_PAGE_KEY } from "./prefs";
+import type { Brush, BrushKind, Project } from "./model";
+import { CONTINUOUS_KEY, loadHandSizes, loadLibrary, ROWS_KEY, saveHandSizes, SHOW_NOTES_KEY, SINGLE_PAGE_KEY } from "./prefs";
+import { SubToolPanel } from "./subtools";
 import { writeCount, writeFlag } from "./settings";
 import { MarkBar } from "./markbar";
+import { fitRow } from "./rowfit";
 import type { RoughChange } from "./roughpanel";
 import { TOOL_IDS, TOOLS, type ToolId } from "./tooldefs";
 
@@ -37,6 +42,15 @@ export interface ControlBarHost {
   snapGrid(on: boolean): void;
   /** A change to the layers (指示のレイヤー), as one undoable step. */
   rough(change: RoughChange): void;
+  /** The サブツール palette is on screen. */
+  subtoolsShown(): boolean;
+  /** The keys of a command, and giving or taking one (the label of the command it was taken from). */
+  keysOf(command: string): string[];
+  bindKey(command: string, combo: string): string | null;
+  unbindKey(command: string, combo: string): void;
+  /** ペン・消しゴムの設定, and taking them over from CSP. */
+  openBrushEditor(kind: BrushKind): void;
+  importBrushes(): void;
 }
 
 export class ControlBar {
@@ -45,10 +59,56 @@ export class ControlBar {
   /** The fill tool's bar: its sub tools and their settings. */
   readonly fills: FillBar;
 
+  /** サブツール: the kinds of the tool in hand, and ツールプロパティ. */
+  readonly subtools: SubToolPanel;
+  /** The size each pen was last used at (this computer). */
+  private handSizes = loadHandSizes();
+
   constructor(private readonly host: ControlBarHost) {
     $("editor-tools").replaceChildren(...TOOL_IDS.map(toolButton));
     this.marks = new MarkBar({ ...host, setTool: (tool) => this.setTool(tool) });
     this.fills = new FillBar({ editor: host.editor, status: (message) => host.status(message), setTool: (tool) => this.setTool(tool) });
+    this.subtools = new SubToolPanel($("side-subtools"), {
+      tool: () => this.editor.tool,
+      shown: () => host.subtoolsShown(),
+      keysOf: (command) => host.keysOf(command),
+      bindKey: (command, combo) => host.bindKey(command, combo),
+      unbindKey: (command, combo) => host.unbindKey(command, combo),
+      status: (message) => host.status(message),
+    });
+    const brushes = {
+      editor: host.editor,
+      project: () => host.project(),
+      edit: (change: (project: Project) => void) => host.edit(change),
+      useBrush: (brush: Brush | null, kind: BrushKind) => this.useBrush(brush, kind),
+      setSize: (kind: BrushKind, mm: number) => this.setSize(kind, mm),
+      setEraseMode: (mode: EditorEraseMode) => this.setEraseMode(mode),
+      openEditor: (kind: BrushKind) => host.openBrushEditor(kind),
+      importBrushes: () => host.importBrushes(),
+      status: (message: string) => host.status(message),
+      refresh: () => this.subtools.render(true),
+    };
+    this.subtools.add(new BrushSource("pen", brushes));
+    this.subtools.add(new BrushSource("eraser", brushes));
+  }
+
+  /** A command for each sub tool, to take it up by name (Ctrl+K) or by its keys. */
+  subtoolCommands(available: () => boolean): Command[] {
+    return this.subtools.all().flatMap((source) =>
+      source.list().map((tool) => ({
+        id: subtoolCommandId(tool.ref),
+        label: `${source.label}: ${tool.name}`,
+        group: "サブツール",
+        keys: [],
+        words: "持ち替え サブツール ブラシ",
+        available,
+        run: () => {
+          if (!available()) return false;
+          source.pick(tool.ref);
+          return true;
+        },
+      })),
+    );
   }
 
   private get editor(): PageEditor {
@@ -157,25 +217,38 @@ export class ControlBar {
     this.host.status(`消し方: ${ERASE_MODE_LABELS[mode]}`);
   }
 
-  /** Use a brush for its kind of tool, with its own size. */
-  useBrush(brush: Brush | null, kind: "pen" | "eraser" = brush?.kind ?? "pen"): void {
+  /** Use a brush for its kind of tool, at the size it was last used at (its own, once that is set anew). */
+  useBrush(brush: Brush | null, kind: BrushKind = brush?.kind ?? "pen"): void {
+    const size = sizeInHand(this.handSizes, kind, brush);
     if (kind === "eraser") {
       this.editor.eraserBrush = brush?.id ?? null;
-      if (brush) this.editor.eraserSizeMm = brush.sizeMm;
+      if (brush) this.editor.eraserSizeMm = size;
       // A CSP vector eraser brings its way of erasing; it can be switched after.
       if (brush?.erase) this.editor.eraseMode = brush.erase;
     } else {
       this.editor.penBrush = brush?.id ?? null;
-      this.editor.penWidthMm = brush ? brush.sizeMm : 0.4;
+      this.editor.penWidthMm = size;
     }
     if (this.editor.tool !== kind) this.setTool(kind);
     else this.renderBrushBar();
     this.editor.draw();
   }
 
+  /** The size of the pen or eraser in hand; the pen keeps it for the next time it is taken up. */
+  setSize(kind: BrushKind, mm: number): void {
+    const size = clampSize(kind, mm);
+    if (kind === "pen") this.editor.penWidthMm = size;
+    else this.editor.eraserSizeMm = size;
+    this.handSizes = withHandSize(this.handSizes, kind, this.editor.brush(kind) ?? null, size);
+    saveHandSizes(this.handSizes);
+    this.renderBrushBar();
+    this.editor.draw();
+  }
+
   /** The pen / eraser chooser: the project's brushes, then ones taken in other projects. */
   renderBrushBar(): void {
     this.marks.render();
+    this.subtools.render();
     const tool = this.editor.tool;
     const bar = $("brush-bar");
     bar.classList.toggle("off", tool !== "pen" && tool !== "eraser");
@@ -234,11 +307,7 @@ export class ControlBar {
     const tool = this.editor.tool;
     if (tool === "mark") return this.marks.resize(factor), this.editor.draw(), true;
     if (tool !== "pen" && tool !== "eraser") return false;
-    const round2 = (value: number) => Math.round(value * 100) / 100;
-    if (tool === "pen") this.editor.penWidthMm = Math.min(20, Math.max(0.05, round2(this.editor.penWidthMm * factor)));
-    else this.editor.eraserSizeMm = Math.min(50, Math.max(0.2, round2(this.editor.eraserSizeMm * factor)));
-    this.renderBrushBar();
-    this.editor.draw();
+    this.setSize(tool, (tool === "pen" ? this.editor.penWidthMm : this.editor.eraserSizeMm) * factor);
     this.host.status(`${tool === "pen" ? "ペン" : "消しゴム"}の太さ: ${tool === "pen" ? this.editor.penWidthMm : this.editor.eraserSizeMm} mm`);
     return true;
   }
@@ -246,6 +315,8 @@ export class ControlBar {
   /** The bars' buttons, boxes and sliders. */
   bind(): void {
     this.marks.bind();
+    // The row under the pages: all of its switches in sight, never scrolled sideways.
+    fitRow($("page-nav"), 3);
     for (const mode of Object.keys(PANEL_MODE_LABELS) as PanelMode[]) {
       $(`panel-${mode}`).addEventListener("click", () => this.setPanelMode(mode));
     }
@@ -260,9 +331,7 @@ export class ControlBar {
     $<HTMLInputElement>("brush-size").addEventListener("change", (event) => {
       const value = Number((event.target as HTMLInputElement).value);
       if (!(value > 0)) return;
-      if (this.editor.tool === "eraser") this.editor.eraserSizeMm = value;
-      else this.editor.penWidthMm = value;
-      this.editor.draw();
+      this.setSize(this.editor.tool === "eraser" ? "eraser" : "pen", value);
     });
     $<HTMLInputElement>("brush-tip").addEventListener("change", (event) => {
       const kind = this.editor.tool === "eraser" ? "eraser" : "pen";

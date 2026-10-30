@@ -1,4 +1,4 @@
-// 欄（パレット）: the lists beside the pages (ページ・台本・人物・付箋・保留・レイヤー)
+// 欄（パレット）: the lists beside the pages (サブツール・ページ・台本・人物・付箋・保留・レイヤー)
 // and the inspector, as CSP's palettes: each can sit in the left or the right
 // column, several open at once one above another, in any order, folded to
 // their title or hidden to their icon. Their header is dragged to another
@@ -6,7 +6,7 @@
 // inner edge its width. The arrangement is kept for the next start.
 import { localStore } from "./settings";
 
-export type PaletteId = "pages" | "script" | "cast" | "notes" | "held" | "layers" | "series" | "inspector";
+export type PaletteId = "subtools" | "pages" | "script" | "cast" | "notes" | "held" | "layers" | "series" | "inspector";
 export type Side = "left" | "right";
 
 export interface PaletteState {
@@ -44,13 +44,14 @@ export const DOCK_KEY = "namestudio.docks";
 export const MIN_WIDTH = 200;
 export const MAX_WIDTH = 640;
 
-const PALETTE_IDS: PaletteId[] = ["pages", "script", "cast", "notes", "held", "layers", "series", "inspector"];
+const PALETTE_IDS: PaletteId[] = ["subtools", "pages", "script", "cast", "notes", "held", "layers", "series", "inspector"];
 
 export function defaultLayout(leftCollapsed = false): DockLayout {
   const left = (shown: boolean): PaletteState => ({ side: "left", shown, folded: false, weight: 1 });
   return {
     order: [...PALETTE_IDS],
     palettes: {
+      subtools: left(true),
       pages: left(true),
       script: left(false),
       cast: left(false),
@@ -72,7 +73,12 @@ export function readLayout(text: string | null, leftCollapsed = false): DockLayo
   try {
     const saved = JSON.parse(text) as Partial<DockLayout>;
     const order = (saved.order ?? []).filter((id): id is PaletteId => PALETTE_IDS.includes(id as PaletteId));
-    for (const id of PALETTE_IDS) if (!order.includes(id)) order.push(id);
+    // One added since: before the one it comes before by default (サブツール above ページ).
+    PALETTE_IDS.forEach((id, index) => {
+      if (order.includes(id)) return;
+      const next = PALETTE_IDS.slice(index + 1).find((other) => order.includes(other));
+      order.splice(next ? order.indexOf(next) : order.length, 0, id);
+    });
     const palettes = { ...base.palettes };
     for (const id of PALETTE_IDS) {
       const p = saved.palettes?.[id];

@@ -27,7 +27,7 @@ import { RoughPanel } from "./roughpanel";
 import { SeriesPanel } from "./seriespanel";
 import { isMark, ROUGH_BASE } from "./roughlayers";
 import { buildCommands } from "./actions";
-import type { Command } from "./commands";
+import { replaceSubtoolCommands, type Command } from "./commands";
 import { CommandPalette } from "./palette";
 import { comboOf, Shortcuts, type ActionId } from "./shortcuts";
 import type { HelpKind } from "./helptopics";
@@ -233,6 +233,15 @@ export class Workbench {
       toolChanged: (tool) => this.references.toolChanged(tool),
       snapGrid: (on) => this.settingsDialog.changeSnap({ grid: on }),
       rough: (change) => this.edits.changeRough(change),
+      subtoolsShown: () => this.docks?.isOpen("subtools") ?? false,
+      keysOf: (command) => this.shortcuts.keys(command),
+      bindKey: (command, combo) => {
+        const taken = this.shortcuts.bind(command, combo);
+        return taken && (this.commands.find((c) => c.id === taken)?.label ?? taken);
+      },
+      unbindKey: (command, combo) => this.shortcuts.unbind(command, combo),
+      openBrushEditor: (kind) => this.brushEditor.openFor(kind),
+      importBrushes: () => void this.brushDialog.open(),
     });
     this.references = new ReferenceBar({
       ...around,
@@ -340,6 +349,7 @@ export class Workbench {
       help,
     });
     this.shortcuts = new Shortcuts(localStore(), this.commands);
+    this.shortcuts.onChange(() => this.bars.subtools.render(true));
     this.shortcutDialog = new ShortcutDialog(this.shortcuts);
     this.palette = new CommandPalette({
       commands: () => this.commands,
@@ -667,6 +677,8 @@ export class Workbench {
     this.resting = 0;
     useFonts(this.session.project?.fonts);
     useStyle(this.session.project?.style);
+    // The pens of this name (and of others) as commands, for their keys.
+    replaceSubtoolCommands(this.commands, this.bars.subtoolCommands(() => this.session.project !== null));
     this.bars.renderBrushBar();
     this.editor.draw();
     this.board.update(this.session.revision);
@@ -711,6 +723,7 @@ export class Workbench {
     const project = this.session.project;
     if (!project || !this.docks) return;
     const open = (id: PaletteId) => this.docks.isOpen(id);
+    if (open("subtools")) this.bars.subtools.render();
     if (open("pages")) this.lists.pages(project);
     if (open("script")) this.lists.script(project);
     if (open("cast")) this.lists.cast(project);

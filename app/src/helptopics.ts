@@ -160,6 +160,7 @@ export const TOOL_TOPICS: Record<ToolId, HelpTopic> & Record<string, HelpTopic> 
       { input: "Shift+ドラッグ", does: "まっすぐな線" },
       { command: "brush.bigger", does: "太く" },
       { command: "brush.smaller", does: "細く" },
+      { input: "サブツールの欄", does: "ペンの種類・太さを選ぶ（キーも割り当てられる）" },
       { input: "ペンの消しゴム側", does: "消す" },
       ...VIEW_STEPS,
     ],
@@ -187,6 +188,7 @@ export const TOOL_TOPICS: Record<ToolId, HelpTopic> & Record<string, HelpTopic> 
       { command: "tool.eraser", does: "消し方を切り替える（消しゴムを持っているとき）" },
       { command: "brush.bigger", does: "太く" },
       { command: "brush.smaller", does: "細く" },
+      { input: "サブツールの欄", does: "消しゴムの種類・大きさを選ぶ" },
       ...VIEW_STEPS,
     ],
   },
@@ -355,7 +357,7 @@ export const HOVER_TOPICS: Record<string, HelpTopic> = {
 export const AREA_TOPICS: Record<string, HelpTopic> = {
   "dock-left": {
     name: "左の欄",
-    what: "ページ・台本・人物・付箋・保留・レイヤー・シリーズ",
+    what: "サブツール・ページ・台本・人物・付箋・保留・レイヤー・シリーズ",
     steps: [
       { input: "上のアイコン", does: "欄を出す・隠す" },
       { input: "見出しをドラッグ", does: "別の場所・右の欄へ" },
@@ -376,6 +378,19 @@ export const AREA_TOPICS: Record<string, HelpTopic> = {
     steps: [
       { input: "クリック", does: "持ち替える" },
       { input: "道具のキーを押したまま", does: "その間だけ持ち替える" },
+    ],
+  },
+  "side-subtools": {
+    name: "サブツール",
+    what: "ペン・消しゴムの種類と太さ・不透明度・手ブレ補正（CSP のように）",
+    steps: [
+      { input: "行をクリック", does: "そのペン・消しゴムを持つ" },
+      { input: "行の ⌨・右クリック", does: "キーを割り当てる（押すとそのペンを持つ）" },
+      { input: "行をドラッグ", does: "並べ替え" },
+      { input: "丸いボタン", does: "その太さに（右クリックで候補から外す）" },
+      { input: "＋", does: "今の太さを候補に足す" },
+      { command: "brush.bigger", does: "太く" },
+      { command: "brush.smaller", does: "細く" },
     ],
   },
   "tool-options": { name: "道具の設定", what: "持っている道具の設定とひと言の説明" },
@@ -511,9 +526,9 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
   { target: "#marks-shown", name: "指示", text: "指示を全部出す・隠す", command: "button.marks-shown", side: "above" },
   { target: "#read-mode", name: "読む", text: "見開きで通し読み", command: "button.read-mode", side: "above" },
   { target: "#focus-mode", name: "ページだけ", text: "欄と帯を隠す", command: "view.focus", side: "above" },
-  { target: ".lane-toggles", name: "帯に出すもの", text: "型・シーン・時系列・感情・字数", side: "above" },
+  { target: ".lane-toggles", name: "帯に出すもの", text: "型・シーン・時系列・感情・字数", side: "right" },
   { target: "#story", name: "物語の帯", text: "シーン・感情・ページを並びにそろえて見る。クリックでそのページへ", command: "view.board", side: "inside" },
-  { target: "#dock-left", name: "左の欄", text: "ページ・台本・人物・付箋・保留・レイヤー・シリーズ。上のアイコンで出し入れ、見出しのドラッグで反対側へ", side: "inside" },
+  { target: "#dock-left", name: "左の欄", text: "サブツール・ページ・台本・人物・付箋・保留・レイヤー・シリーズ。アイコンで出し入れ、見出しのドラッグで反対側へ", side: "inside" },
   { target: "#dock-right", name: "右の欄（詳細）", text: "選んだもの（ページ・コマ・セリフ・付箋・シーン）の設定", side: "inside" },
   { target: "#help-bar", name: "ヘルプの帯", text: "ポインターの下の名前と操作。設定 › 表示で隠せる", side: "above" },
   // The start screen.
@@ -566,7 +581,7 @@ export const TOUR_STOPS: TourStop[] = [
   {
     target: "#dock-left",
     title: "左の欄",
-    text: ["ページの一覧・台本・人物・付箋・保留・レイヤー。上のアイコンで出し入れし、見出しをドラッグすると右の欄へ移せます。"],
+    text: ["サブツール（ペン・消しゴムの種類と太さ。行の ⌨ でキーを割り当て）・ページの一覧・台本・人物・付箋・保留・レイヤー。上のアイコンで出し入れし、見出しをドラッグすると右の欄へ移せます。"],
   },
   {
     target: "#dock-right",

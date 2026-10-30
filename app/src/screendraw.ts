@@ -6,7 +6,7 @@
 // decides what is selected, dragged or hovered.
 import type { BoxMm, Line, Page, Panel, Point, Project, RoughImage, Stroke } from "./model";
 import { basicBox, trimBox } from "./pagebox";
-import type { Slot } from "./layout";
+import { CAPTION_ROW, type Slot } from "./layout";
 import type { FillSettings, FillWay } from "./fillsettings";
 import { HANDLE } from "./hittest";
 import { tailGeometry } from "./balloon";
@@ -204,7 +204,7 @@ export function drawScreenPage(ctx: CanvasRenderingContext2D, project: Project, 
   ctx.restore();
 
   ctx.fillStyle = "#f4f3f0";
-  ctx.font = "13px sans-serif";
+  ctx.font = CAPTION_FONT;
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
   if (project.scroll) {
@@ -214,11 +214,47 @@ export function drawScreenPage(ctx: CanvasRenderingContext2D, project: Project, 
     ctx.fillText(String(slot.index + 1), sx(0) - 8, sy(0) + 4);
     return;
   }
-  // The page number and its memo, wrapped to the page's width so the two pages of a spread do not run into each other.
   const [trimX0, , trimX1] = trimBox(project.pageFormat);
+  const rows = captionRows(ctx, page, slot.index, (trimX1 - trimX0) * scale, small);
+  rows.forEach((row, i) => ctx.fillText(row, sx((trimX0 + trimX1) / 2), sy(pageH) + 18 + i * CAPTION_ROW));
+}
+
+/** The font of a page's number and memo under it. */
+export const CAPTION_FONT = "13px sans-serif";
+
+/**
+ * A page's number and its memo (`ctx` in CAPTION_FONT), all of it, wrapped
+ * to the page's width (`widthPx`, its trim on screen) so that the two pages
+ * of a spread do not run into each other. A small page shows its number only.
+ */
+export function captionRows(ctx: CanvasRenderingContext2D, page: Page, index: number, widthPx: number, small: boolean): string[] {
   const memo = page.memo && !small ? `  ${page.memo.replace(/\s*\n\s*/g, " ")}` : "";
-  const rows = wrapText(ctx, `${slot.index + 1}${memo}`, Math.max(small ? 0 : 80, (trimX1 - trimX0) * scale - 8), 2);
-  rows.forEach((row, i) => ctx.fillText(row, sx((trimX0 + trimX1) / 2), sy(pageH) + 18 + i * 16));
+  return wrapText(ctx, `${index + 1}${memo}`, Math.max(small ? 0 : 80, widthPx - 8), Infinity);
+}
+
+/**
+ * How many rows captionRows gives a page at a width (pages narrower than
+ * `smallPx` are small), remembered by width and memo. Measured a little
+ * narrower (to the 2 px below): never fewer rows than drawn, and fewer to
+ * measure while zooming.
+ */
+export function captionMeter(context: () => CanvasRenderingContext2D, smallPx: number): (page: Page, index: number, widthPx: number) => number {
+  const known = new Map<string, number>();
+  return (page, index, widthPx) => {
+    const width = Math.floor(widthPx / 2) * 2;
+    const key = `${width}|${index}|${page.memo ?? ""}`;
+    let rows = known.get(key);
+    if (rows === undefined) {
+      if (known.size > 4000) known.clear();
+      const ctx = context();
+      ctx.save();
+      ctx.font = CAPTION_FONT;
+      rows = captionRows(ctx, page, index, width, widthPx < smallPx).length;
+      ctx.restore();
+      known.set(key, rows);
+    }
+    return rows;
+  };
 }
 
 /** Everywhere but `slot`'s own page (where things are drawn already): clip to it. */

@@ -69,7 +69,7 @@ import { snapPointTo, snapTargets, type SnapSettings, type SnapTargets } from ".
 import { Viewport } from "./viewport";
 import { ACCENT, drawSticky, NOTE_FONT, NOTE_ROW, noteBox, stickyHandle, type NoteBox } from "./notedraw";
 import { writeInPlace, type InPlaceEdit, type InPlaceHost } from "./inplace";
-import { drawCorners, drawCutOrFrame, drawDashedLine, drawFillDrag, drawGoingTo, drawGuideLines, drawLasso, drawLifted, drawOverflowPanels, drawPenCursor, drawPointerNote, drawReferenceFrames, drawSpreadMarks, drawRing, drawScreenPage, drawSeam, drawSketch, drawSnapGrid, drawStickyLink, drawTransformFrame, drawTailHandles, drawWarpCorners } from "./screendraw";
+import { captionMeter, drawCorners, drawCutOrFrame, drawDashedLine, drawFillDrag, drawGoingTo, drawGuideLines, drawLasso, drawLifted, drawOverflowPanels, drawPenCursor, drawPointerNote, drawReferenceFrames, drawSpreadMarks, drawRing, drawScreenPage, drawSeam, drawSketch, drawSnapGrid, drawStickyLink, drawTransformFrame, drawTailHandles, drawWarpCorners } from "./screendraw";
 import { badgeAt, cornerAt, HANDLE, linesAt, panelAt, panelBadge, pickAt, referenceCornerAt, tailAt } from "./hittest";
 
 export type { EditorEraseMode, EditorHost, PanelMode, Selection, Tool } from "./editorcore";
@@ -582,8 +582,11 @@ export class PageEditor {
 
   private arrangement(): Arrangement {
     const { width, height } = this.stageSize();
-    return { single: this.single, continuous: this.continuous, rows: this.rows, zoom: this.view.zoom, pan: this.view.pan, width, height, gapMm: this.pageGapMm, room: this.room };
+    return { single: this.single, continuous: this.continuous, rows: this.rows, zoom: this.view.zoom, pan: this.view.pan, width, height, gapMm: this.pageGapMm, room: this.room, captionRows: this.captionRows };
   }
+
+  /** How many rows a page's number and memo take under it, as drawn. */
+  private readonly captionRows = captionMeter(() => this.ctx, SMALL_PAGE_PX);
 
   private layout(project: Project): Slot[] {
     return layoutPages(project, this.spreadList(), this.spreadIndex, this.arrangement());

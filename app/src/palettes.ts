@@ -8,6 +8,7 @@ import { readFlag } from "./settings";
 const SIDE_FOLDED_KEY = "namestudio.sideFolded";
 
 /** The palettes' icons. */
+const SUBTOOLS_ICON = '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M13.5 3l3.5 3.5-8.5 8.5-4.5 1 1-4.5z"/><path d="M11.5 5l3.5 3.5M3 18h6"/></svg>';
 const PAGES_ICON = '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="2.5" width="12" height="15" rx="1"/><path d="M4 9h12M10 9v8.5"/></svg>';
 const SCRIPT_ICON = '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.5h10v15H5z"/><path d="M8 6.5h4M8 9.5h4M8 12.5h2.5"/></svg>';
 const CAST_ICON = '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="6.5" r="3"/><path d="M4 17c0-3.3 2.7-5.2 6-5.2s6 1.9 6 5.2"/></svg>';
@@ -32,6 +33,7 @@ export function editorDocks(changed: () => void): Docks {
   return new Docks(
     { left: $("dock-left"), right: $("dock-right") },
     [
+      palette("subtools", "サブツール", "ペン・消しゴムの種類を選ぶ・太さなどの設定（CSP のサブツールとツールプロパティのように）。行の ⌨ でキーを割り当てる", SUBTOOLS_ICON),
       palette("pages", "ページ", "ページの一覧（ドラッグで並べ替え）", PAGES_ICON),
       palette("script", "台本", "全ページのセリフを台本の形で。台本・プロットの取り込みも", SCRIPT_ICON),
       palette("cast", "人物", "登場人物（名前・色・口調）", CAST_ICON),

@@ -22,19 +22,39 @@ export interface NoteBox {
   rows: string[];
 }
 
+/** What does not begin a row (行頭禁則): a mark that closes or ends what is before it. */
+const NOT_FIRST = new Set([..."、。，．,.・：；:;！？!?）)」』】〕］]｝}〉》ー～ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶ…‥"]);
+
+/** Each letter's width in a font (px), measured once: a row is as wide as its letters, so wrapping a long memo stays quick. */
+const letterWidths = new Map<string, Map<string, number>>();
+
+function letterWidth(ctx: CanvasRenderingContext2D, char: string): number {
+  let widths = letterWidths.get(ctx.font);
+  if (!widths) letterWidths.set(ctx.font, (widths = new Map()));
+  let width = widths.get(char);
+  if (width === undefined) widths.set(char, (width = ctx.measureText(char).width));
+  return width;
+}
+
 /** Break `text` into rows no wider than `width` px, at most `max` rows (the last ends in …). */
 export function wrapText(ctx: CanvasRenderingContext2D, text: string, width: number, max: number): string[] {
   const rows: string[] = [];
   for (const paragraph of text.replace(/\r\n?/g, "\n").split("\n")) {
-    let row = "";
+    let row: string[] = [];
+    let rowWidth = 0;
     for (const char of paragraph) {
-      if (row && ctx.measureText(row + char).width > width) {
-        rows.push(row);
-        row = "";
+      const charWidth = letterWidth(ctx, char);
+      if (row.length && rowWidth + charWidth > width) {
+        // A row does not begin with 。 and the like: the last letter before it goes down with it (追い出し).
+        const carried = NOT_FIRST.has(char) && row.length > 1 && !NOT_FIRST.has(row[row.length - 1]) ? [row.pop()!] : [];
+        rows.push(row.join(""));
+        row = carried;
+        rowWidth = carried.reduce((sum, c) => sum + letterWidth(ctx, c), 0);
       }
-      row += char;
+      row.push(char);
+      rowWidth += charWidth;
     }
-    rows.push(row);
+    rows.push(row.join(""));
   }
   if (rows.length <= max) return rows;
   const kept = rows.slice(0, max);
