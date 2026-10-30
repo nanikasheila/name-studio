@@ -48,6 +48,8 @@ name-studio-app --export-csp ネーム.namestudio (--template page.clip | --buil
   [--work-template 作品.cmc --work-name 第1話] [--story-index 1] [--donor 見本.clip] [--no-draft-rough] [--no-notes] [--no-marks] [--frame-folders | --panel-masks] [--update-dialogue] [--report 結果.json]
 ```
 
+終了コード: 0 = 書き出して読み直しも問題なし、1 = 問題あり・失敗（理由は結果の JSON）、2 = 引数の誤り、3 = 結果の JSON を保存できなかった（ページは書き出してあることもある）。0 以外のときは理由を標準エラーにも出します。書き出し先の中を確かめられない（権限がない・フォルダーでない）ときは、何も書かずに 1 で終わります。
+
 `--builtin` はひな形の代わりに、ネームに保存した CSP のページ設定（書き出し画面の「ツールで設定する」、なければネームの用紙・600 dpi）でページを作ります。`--work-name` があれば作品ファイルも作ります（[builtin-template.md](builtin-template.md)）。
 
 ## テスト

@@ -3,7 +3,9 @@
 // half, laid by their inner frame on the 基本枠); a name written out as a
 // ミニネーム (PNG and a one-page PDF) and taken back in, page for page, onto
 // the trim; undo; a picture of the name that no longer reads is named before
-// anything is written (stop, or write without it). Each page carries a bar at its own height, so that a page
+// anything is written (stop, or write without it), and so are the roughs of a
+// name sheet moved since (stop, choose the sheet again, or write without
+// them). Each page carries a bar at its own height, so that a page
 // out of order or out of place is seen.
 // Run: npm run e2e:mininame (-- --shots <dir> keeps the pictures).
 import { writeFileSync } from "node:fs";
@@ -33,8 +35,21 @@ try {
         case "plugin:dialog|message": {
           // Asked before writing: the button the test picks (the first, or the second when it declines).
           window.__asked.push(args.message);
+          const three = args.buttons?.YesNoCancelCustom;
+          if (three) return three[window.__roughChoice ?? 2];
           const custom = args.buttons?.OkCancelCustom;
           return custom ? custom[window.__decline ? 1 : 0] : "Ok";
+        }
+        case "plugin:dialog|open":
+          window.__opened = args.options;
+          return window.__sheetPicked ?? null;
+        case "rough_image": {
+          // The sheet the name was made from was moved: only the one chosen again reads.
+          window.__roughReads = (window.__roughReads ?? []).concat(args.sheet);
+          if (!args.sheet.startsWith("D:")) throw `${args.sheet}: 指定されたファイルが見つかりません。 (os error 2)`;
+          const canvas = new OffscreenCanvas(40, 60);
+          canvas.getContext("2d").fillRect(0, 0, 40, 60);
+          return canvas.convertToBlob({ type: "image/png" }).then((blob) => blob.arrayBuffer());
         }
         case "write_binary_file":
         case "write_pdf":
@@ -351,6 +366,62 @@ try {
   await page.locator("#ne-run").click();
   await page.waitForFunction((n) => window.__calls.filter((c) => c.command === "write_pdf").length > n, before);
   check((await page.locator("#ne-message").textContent()).includes("ミニネームを書き出しました"), "除いて書き出す: the ミニネーム is written without it");
+  await page.keyboard.press("Escape");
+
+  // The name sheet the roughs are read from, moved since: said before anything is written.
+  await page.evaluate(() => {
+    const project = window.nameStudio.workbench.project;
+    project.source = { path: "C:\\ネーム\\第4話_ネーム.clip", resolution: 600, cells: [] };
+    project.pages[1].roughs.push({ id: "rough-1", layerId: 12, layerName: "ラフ", sheetCrop: [0, 0, 400, 600], box: [20, 20, 120, 170] });
+    window.__dialogs.push("C:\\out\\ラフ.png", "C:\\out\\ラフ.png", "C:\\out\\ラフ.png");
+  });
+  const minis = () => page.evaluate(() => window.__calls.filter((c) => c.command === "write_binary_file" || c.command === "write_pdf").length);
+  await page.locator("#name-export").click();
+  await page.locator("#ne-kind-mini").click();
+  await page.selectOption("#ne-mini-format", "png");
+  const stopped = await minis();
+  await page.evaluate(() => {
+    window.__roughChoice = 2;
+  });
+  await page.locator("#ne-run").click();
+  await page.waitForFunction(() => window.__asked.at(-1)?.startsWith("元のネーム用紙のラフ"));
+  await page.waitForFunction(() => document.getElementById("ne-message").textContent.includes("書き出しをやめました"));
+  const roughNote = await page.evaluate(() => window.__asked.at(-1));
+  check(
+    roughNote.split("\n")[1] === "・ページ: 2" && roughNote.includes("第4話_ネーム.clip") && roughNote.includes("見つかりません"),
+    `the export names the sheet, the page and why (${roughNote.split("\n").slice(0, 2).join(" / ")})`,
+  );
+  check((await minis()) === stopped && (await page.evaluate(() => window.__dialogs.length)) === 3, "やめる (roughs): nothing is written, not even a file asked for");
+
+  // ネーム用紙を選び直す: the name points at the sheet chosen, the roughs read from it, and it is written.
+  await page.evaluate(() => {
+    window.__roughChoice = 0;
+    window.__sheetPicked = "D:\\移した\\第4話_ネーム.clip";
+  });
+  await page.locator("#ne-run").click();
+  await page.waitForFunction((n) => window.__calls.filter((c) => c.command === "write_binary_file" || c.command === "write_pdf").length > n, stopped);
+  const relinked = await page.evaluate(() => ({
+    sheet: window.nameStudio.workbench.project.source.path,
+    read: window.__roughReads.at(-1),
+    from: window.__opened?.defaultPath,
+  }));
+  check(relinked.sheet === "D:\\移した\\第4話_ネーム.clip" && relinked.read === relinked.sheet, `選び直す: the name keeps the sheet chosen and reads the rough from it (${JSON.stringify(relinked)})`);
+  check(relinked.from === "C:\\ネーム\\第4話_ネーム.clip", "the file dialog starts at the sheet the name had");
+  check((await page.locator("#ne-message").textContent()).includes("ミニネームを書き出しました"), "選び直す: the ミニネーム is written with the rough");
+  await page.keyboard.press("Escape");
+
+  // Undone, the old sheet again: ラフを除いて書き出す writes it, the name keeps its roughs.
+  await page.keyboard.press("Control+z");
+  check((await page.evaluate(() => window.nameStudio.workbench.project.source.path)) === "C:\\ネーム\\第4話_ネーム.clip", "choosing the sheet again is one step undone");
+  const relinkedCount = await minis();
+  await page.evaluate(() => {
+    window.__roughChoice = 1;
+  });
+  await page.locator("#name-export").click();
+  await page.locator("#ne-run").click();
+  await page.waitForFunction((n) => window.__calls.filter((c) => c.command === "write_binary_file" || c.command === "write_pdf").length > n, relinkedCount);
+  check((await page.locator("#ne-message").textContent()).includes("ミニネームを書き出しました"), "ラフを除いて書き出す: written without it");
+  check((await page.evaluate(() => window.nameStudio.workbench.project.pages[1].roughs.length)) === 1, "the name itself keeps the rough");
   await page.keyboard.press("Escape");
 
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(" / ")}` : ""}`);

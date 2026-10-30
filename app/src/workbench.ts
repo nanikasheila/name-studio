@@ -396,6 +396,11 @@ export class Workbench {
       projectPath: () => this.session.path,
       projectId: () => this.session.id,
       rough: (rough) => this.roughs.load(rough),
+      roughProblem: (rough) => this.roughs.problem(rough),
+      relinkSheet: (path) =>
+        this.edit((project) => {
+          if (project.source) project.source.path = path;
+        }),
       firstAlone: () => this.editor.firstAlone,
       status: (message) => this.setStatus(message),
       edit: (change) => this.edit(change),

@@ -1,6 +1,7 @@
 // 作品情報・ノンブル in the export dialog (ツールで設定する): サブタイトル,
 // positions, ページ番号 and a shown ノンブル go into the page the Rust side
-// makes, are kept with the name, and come back when the dialog opens again.
+// makes, are kept with the name, and come back when the dialog opens again;
+// an export folder that cannot be looked into stops the export, saying why.
 // Run: npm run e2e:storyinfo
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
@@ -27,7 +28,12 @@ try {
         window.__setups.push(args.setup);
         return { page: "/t/page.clip", parts: "/t/parts.clip", work: "/t/work.cmc" };
       }
-      if (command === "check_export_target") return null;
+      if (command === "plugin:dialog|open") return "C:\\out";
+      if (command === "check_export_target") {
+        // A folder that cannot be looked into (no permission, a drive gone).
+        if (window.__targetFails) throw "書き出し先 C:\\out の中を確かめられません: アクセスが拒否されました。 (os error 5)";
+        return null;
+      }
       return undefined;
     };
   });
@@ -89,6 +95,19 @@ try {
     JSON.stringify(shown) === JSON.stringify({ subtitle: "はじまり", place: "bottom-outer", start: "7", prefix: "p." }),
     `the dialog shows them again (${JSON.stringify(shown)})`,
   );
+
+  // The export folder cannot be looked into: said, and nothing is written (not taken for an empty folder).
+  await page.evaluate(() => {
+    window.__targetFails = true;
+  });
+  await page.click("#ne-pick-out-dir");
+  const begun = () => page.evaluate(() => window.__calls.filter((c) => c.command === "begin_name_export").length);
+  const before = await begun();
+  await page.click("#ne-run");
+  await page.waitForFunction(() => document.getElementById("ne-message").textContent.includes("確かめられません"));
+  const said = await page.locator("#ne-message").textContent();
+  check(said.includes("アクセスが拒否されました") && said.includes("何も書き換えていません"), `a folder that cannot be looked into stops the export, saying why (${said.split("\n")[0].slice(0, 50)})`);
+  check((await begun()) === before, "nothing is written");
 
   check(errors.length === 0, `no page errors (${errors.join(" / ")})`);
 } finally {

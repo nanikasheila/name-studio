@@ -245,7 +245,7 @@ export interface Commands {
   check_update: [{ channel: UpdateChannel; timeoutMs: number }, FoundUpdate | null];
   install_release: [{ version: string }, void];
   batch_export_task: [void, BatchExport | null];
-  end_batch_export: [{ code: number }, void];
+  end_batch_export: [{ code: number; message?: string | null }, void];
 }
 
 export type Command = keyof Commands;

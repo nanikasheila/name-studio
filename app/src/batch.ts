@@ -35,12 +35,17 @@ export async function batchExportTask(): Promise<BatchExport | { error: string }
   }
 }
 
-/** Run the export, write the report and close the app (exit code 0 when everything checked out). */
+/**
+ * Run the export, write the report and close the app. Exit code 0: everything
+ * checked out; 1: it did not (the report says why); 2: the arguments are
+ * wrong; 3: the report could not be written. Whenever it is not 0, why goes
+ * to stderr too.
+ */
 export async function runBatchExport(task: BatchExport | { error: string }, status: (text: string) => void): Promise<void> {
   if ("error" in task) {
     // No report path to trust: the arguments themselves are wrong.
     status(`書き出せません: ${task.error}`);
-    await call("end_batch_export", { code: 2 });
+    await call("end_batch_export", { code: 2, message: `書き出せません: ${task.error}` });
     return;
   }
   const started = Date.now();
@@ -49,7 +54,8 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
   try {
     status(`${task.project} を書き出し中…`);
     // Not asked here (no one to ask): what was overwritten goes in the report.
-    const overwrite = await call("check_export_target", { outDir: task.outDir }).catch(() => null);
+    // A folder that cannot be looked into stops it, as in the dialog.
+    const overwrite = await call("check_export_target", { outDir: task.outDir });
     // As when the window opens a file: empty lists are left out of the saved JSON.
     const project = normalize(await call("load_project", { path: task.project }));
     // Parts a newer version added are not written out: said first in the report.
@@ -140,6 +146,30 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
     ok = false;
     result = { ok, error: String(error) };
   }
-  await call("write_text_file", { path: task.report, text: JSON.stringify(result, null, 2) }).catch(() => undefined);
-  await call("end_batch_export", { code: ok ? 0 : 1 });
+  const unsaved = await call("write_text_file", { path: task.report, text: JSON.stringify(result, null, 2) }).then(
+    () => null,
+    (error) => String(error),
+  );
+  if (unsaved !== null) {
+    // No record of the run: never taken for a success, whatever was written.
+    await call("end_batch_export", { code: 3, message: reportUnsaved(task, result, unsaved) });
+    return;
+  }
+  await call("end_batch_export", { code: ok ? 0 : 1, message: ok ? null : failure(task, result) });
+}
+
+/** Why the run failed, for stderr (the report has the rest). */
+function failure(task: BatchExport, result: Record<string, unknown>): string {
+  const why = typeof result.error === "string" ? result.error : "書き出したファイルに問題があります";
+  return `書き出せませんでした: ${why}\n結果レポート: ${task.report}`;
+}
+
+/** The report could not be saved: why, where, and what was written all the same (to decide whether to run again). */
+function reportUnsaved(task: BatchExport, result: Record<string, unknown>, error: string): string {
+  const pages = Array.isArray(result.pages) ? result.pages.length : 0;
+  const lines = [`結果レポートを保存できませんでした: ${task.report}（${error}）`];
+  if (pages) lines.push(`${pages} 枚のページは ${task.outDir} に書き出してあります（${result.ok ? "読み直しで問題なし" : "問題あり"}）。`);
+  else if (typeof result.error === "string") lines.push(`書き出しも失敗しています: ${result.error}`);
+  else lines.push(`${task.outDir} に何を書いたかは記録できていません。`);
+  return lines.join("\n");
 }

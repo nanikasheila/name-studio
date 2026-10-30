@@ -9,6 +9,10 @@ let unknownFields: string[] | null = null;
 let failLate = false;
 /** What the export says it left out or changed on the way. */
 let exportWarnings: string[] = [];
+/** The report cannot be written (a folder that is gone, no permission). */
+let reportFails = false;
+/** The export folder cannot be looked into. */
+let targetFails = false;
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: async (command: string, args: Record<string, unknown> = {}) => {
@@ -18,6 +22,11 @@ vi.mock("@tauri-apps/api/core", () => ({
       return { title: "t", pageFormat: { canvasMm: [257, 364], trimMm: [220, 310], basicMm: [180, 270] }, pages: [{ id: "p1", panels: [], lines: [] }] };
     }
     if (command === "unknown_project_fields") return unknownFields;
+    if (command === "write_text_file" && reportFails) throw "アクセスが拒否されました。 (os error 5)";
+    if (command === "check_export_target") {
+      if (targetFails) throw "書き出し先 out の中を確かめられません: アクセスが拒否されました。 (os error 5)";
+      return { existing: [], changed: [], unknown: [], lastExportMs: null };
+    }
     if (command === "prepare_builtin_template") return { page: "/data/page.clip", parts: "/data/parts.clip", work: "/data/work.cmc" };
     return null;
   },
@@ -27,7 +36,7 @@ vi.mock("./nameexport", () => ({
   exportToCsp: async (project: unknown, given: (typeof options)[number]) => {
     exported.push(project);
     options.push(given);
-    return { warnings: exportWarnings };
+    return { warnings: exportWarnings, pages: ["out/page0001.clip", "out/page0002.clip"] };
   },
   checkSummary: () => ({ ok: true, lines: [] }),
   missingEditable: () => {
@@ -48,6 +57,8 @@ describe("runBatchExport", () => {
     unknownFields = null;
     failLate = false;
     exportWarnings = [];
+    reportFails = false;
+    targetFails = false;
   });
 
   it("reports a failure after the check as a failure, with the exit code", async () => {
@@ -55,7 +66,30 @@ describe("runBatchExport", () => {
     await runBatchExport({ project: "a.namestudio", template: "t.clip", outDir: "out", workTemplate: null, workName: null, storyIndex: null, report: "out/r.json" }, () => undefined);
     const written = calls.find((c) => c.command === "write_text_file");
     expect(JSON.parse(written?.args.text as string)).toEqual({ ok: false, error: "Error: late" });
-    expect(calls.at(-1)).toEqual({ command: "end_batch_export", args: { code: 1 } });
+    expect(calls.at(-1)).toEqual({ command: "end_batch_export", args: { code: 1, message: "書き出せませんでした: Error: late\n結果レポート: out/r.json" } });
+  });
+
+  it("does not end as a success when the report cannot be written, and says what was written", async () => {
+    reportFails = true;
+    await runBatchExport({ project: "a.namestudio", template: "t.clip", outDir: "out", workTemplate: null, workName: null, storyIndex: null, report: "gone/r.json" }, () => undefined);
+    // The pages went out and read back fine: only the record of it is missing.
+    expect(exported).toHaveLength(1);
+    const end = calls.at(-1);
+    expect(end?.command).toBe("end_batch_export");
+    expect(end?.args.code).toBe(3);
+    expect(String(end?.args.message).split("\n")).toEqual([
+      "結果レポートを保存できませんでした: gone/r.json（アクセスが拒否されました。 (os error 5)）",
+      "2 枚のページは out に書き出してあります（読み直しで問題なし）。",
+    ]);
+  });
+
+  it("stops before writing when the export folder cannot be looked into", async () => {
+    targetFails = true;
+    await runBatchExport({ project: "a.namestudio", template: "t.clip", outDir: "out", workTemplate: null, workName: null, storyIndex: null, report: "out/r.json" }, () => undefined);
+    expect(exported).toHaveLength(0);
+    const written = calls.find((c) => c.command === "write_text_file");
+    expect(JSON.parse(written?.args.text as string)).toEqual({ ok: false, error: "書き出し先 out の中を確かめられません: アクセスが拒否されました。 (os error 5)" });
+    expect(calls.at(-1)?.args.code).toBe(1);
   });
 
   it("says first in the report when the name holds parts a newer version added", async () => {
@@ -88,7 +122,7 @@ describe("runBatchExport", () => {
     expect(project.characters).toEqual([]);
     const report = calls.find((call) => call.command === "write_text_file");
     expect(JSON.parse(String(report?.args.text))).toMatchObject({ ok: true, summary: [] });
-    expect(calls.at(-1)).toEqual({ command: "end_batch_export", args: { code: 0 } });
+    expect(calls.at(-1)).toEqual({ command: "end_batch_export", args: { code: 0, message: null } });
   });
 
   it("makes the template from the name's settings with --builtin", async () => {
@@ -104,6 +138,6 @@ describe("runBatchExport", () => {
     expect(options[0].template).toBe("/data/page.clip");
     expect(options[0].workTemplate).toBe("/data/work.cmc");
     expect(options[0].donors).toContain("/data/parts.clip");
-    expect(calls.at(-1)).toEqual({ command: "end_batch_export", args: { code: 0 } });
+    expect(calls.at(-1)).toEqual({ command: "end_batch_export", args: { code: 0, message: null } });
   });
 });
