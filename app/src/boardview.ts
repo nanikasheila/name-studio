@@ -57,8 +57,16 @@ export interface LaneView {
   /** The element the lanes are drawn in. */
   canvas(): HTMLDivElement | null;
   emotionHeight(): number;
-  /** Left edge of page `index`, px. */
-  x(index: number): number;
+  /** Pages run right to left (編集画面と同じ並び, 右綴じ). */
+  readonly reversed: boolean;
+  /** Where page boundary `boundary` (0 = before the first page, count = after the last) is, px. */
+  x(boundary: number): number;
+  /** Left edge of page `index`'s column, px. */
+  cell(index: number): number;
+  /** Left edge and width of pages `first`..`last`, px. */
+  span(first: number, last: number): { left: number; width: number };
+  /** Width of all the pages, px. */
+  width(): number;
   /** Page column under a pointer (clamped), and the nearest page boundary. */
   at(event: MouseEvent): { index: number; boundary: number; x: number };
   /** First or last page of a scene whose edge is dragged to the boundary nearest the pointer. */

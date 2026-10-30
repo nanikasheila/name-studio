@@ -7,6 +7,7 @@
 // pages on the canvas are framed here.
 import { element as html, svg } from "./dom";
 import type { Project } from "./model";
+import { stripOrder } from "./prefs";
 import { readJson, writeJson } from "./settings";
 import { DockHeight, type Mode } from "./boarddock";
 import { emotionSeries, markSpeakingPages, sceneSpans, speakingPages, timeline } from "./story";
@@ -15,6 +16,7 @@ import { pageLane } from "./boardpages";
 import { pageStory, sceneInspector, sceneLane, timeLane } from "./boardscene";
 import { shapeInspector, shapeLane } from "./boardshape";
 import { type BoardSelection, type BoardTip, icon, type LaneId, type LaneView, ROW, RULER, SCENE, SHAPE, type StoryHost, TEXT } from "./boardview";
+import { boundaryX, cellX, type PageAxis, pageAt, spanX } from "./pageaxis";
 import { refitRow } from "./rowfit";
 
 export type { BoardSelection, BoardTip, LaneId, StoryHost } from "./boardview";
@@ -46,6 +48,8 @@ export class Board {
   /** Width of one page column, px; 0 fits all pages in the width. */
   private columns: Record<Mode, number> = { strip: 0, wide: 0 };
   private column = 0;
+  /** The pages run right to left, as on the canvas of a 右綴じ name (設定 › 表示). */
+  private reversed = false;
   private mode: Mode = "strip";
   private shown: Record<Mode, LaneId[]> = readSaved(LANES_KEY, DEFAULT_LANES);
   private selection: BoardSelection | null = null;
@@ -130,9 +134,15 @@ export class Board {
       get character() {
         return board.character;
       },
+      get reversed() {
+        return board.reversed;
+      },
       canvas: () => this.canvas,
       emotionHeight: () => this.emotionHeight(),
-      x: (index) => this.x(index),
+      x: (boundary) => this.x(boundary),
+      cell: (index) => cellX(this.axis(), index),
+      span: (first, last) => spanX(this.axis(), first, last),
+      width: () => this.axis().count * this.column,
       at: (event) => this.at(event),
       edgeIndex: (event, edge) => this.edgeIndex(event, edge),
       edit: (change) => this.edit(change),
@@ -144,6 +154,11 @@ export class Board {
       mark: (kind) => this.mark(kind),
       placeMark: (marker, x) => this.placeMark(marker, x),
     };
+  }
+
+  /** Draw again now (a setting of the strip changed). */
+  redraw(): void {
+    if (this.project) this.render();
   }
 
   get expanded(): boolean {
@@ -188,6 +203,7 @@ export class Board {
     this.tip.hide();
     this.checkSelection(project);
     this.column = this.columns[this.mode] || this.fitColumn(project);
+    this.reversed = stripOrder() === "binding" && project.binding === "right";
     this.controls.replaceChildren(...this.controlBar(project));
     // The row's look before the strip sizes itself from what the row leaves.
     refitRow(this.bar);
@@ -479,20 +495,18 @@ export class Board {
   }
 
 
-  private x(index: number): number {
-    return index * this.column;
+  private axis(): PageAxis {
+    return { count: this.project?.pages.length ?? 0, column: this.column, reversed: this.reversed };
+  }
+
+  private x(boundary: number): number {
+    return boundaryX(this.axis(), boundary);
   }
 
   /** Page column under a pointer (clamped), and the nearest page boundary. */
   private at(event: MouseEvent): { index: number; boundary: number; x: number } {
-    const box = this.canvas!.getBoundingClientRect();
-    const x = event.clientX - box.left;
-    const count = this.project?.pages.length ?? 1;
-    return {
-      x,
-      index: Math.max(0, Math.min(count - 1, Math.floor(x / this.column))),
-      boundary: Math.max(0, Math.min(count, Math.round(x / this.column))),
-    };
+    const x = event.clientX - this.canvas!.getBoundingClientRect().left;
+    return { x, ...pageAt(this.axis(), x) };
   }
 
   /** First or last page of a scene whose edge is dragged to the boundary nearest the pointer. */
@@ -506,12 +520,12 @@ export class Board {
     const group = svg("g", { class: "lane ruler" });
     const every = this.column >= 30 ? 1 : this.column >= 14 ? 5 : 10;
     project.pages.forEach((page, index) => {
-      const x = this.x(index);
+      const x = cellX(this.axis(), index);
       const cell = svg("rect", { x, y: top, width: this.column, height: RULER, class: "ruler-cell" });
       cell.addEventListener("click", () => this.host.openPage(index + 1));
       group.append(cell);
       if (index % every === 0 || every === 1) group.append(svg("text", { x: x + this.column / 2, y: top + 14, class: "ruler-number", "text-anchor": "middle" }, String(index + 1)));
-      if (page.joinNext) group.append(svg("line", { x1: x + this.column, x2: x + this.column, y1: top + 4, y2: top + RULER - 4, class: "spread-mark" }));
+      if (page.joinNext) group.append(svg("line", { x1: this.x(index + 1), x2: this.x(index + 1), y1: top + 4, y2: top + RULER - 4, class: "spread-mark" }));
     });
     return group;
   }
@@ -557,8 +571,9 @@ export class Board {
     }
     if (range) {
       const shade = html("div", { className: "board-shade" });
-      shade.style.left = `${this.x(range[0])}px`;
-      shade.style.width = `${this.x(range[1] + 1) - this.x(range[0])}px`;
+      const { left, width } = spanX(this.axis(), range[0], range[1]);
+      shade.style.left = `${left}px`;
+      shade.style.width = `${width}px`;
       marks.append(shade);
     }
   }
@@ -580,14 +595,15 @@ export class Board {
       if (id) this.canvas.querySelector(`.board-page[data-page="${id}"]`)?.classList.add("current");
     }
     frame.hidden = false;
-    frame.style.left = `${this.x(first)}px`;
-    frame.style.width = `${this.x(last + 1) - this.x(first)}px`;
-    const key = `${first}-${last}-${this.column}`;
+    const { left, width } = spanX(this.axis(), first, last);
+    frame.style.left = `${left}px`;
+    frame.style.width = `${width}px`;
+    const key = `${first}-${last}-${this.column}-${this.reversed}`;
     if (key === this.framed) return;
     this.framed = key;
     const scroller = this.scroller;
     if (!scroller) return;
-    const [left, right] = [this.x(first), this.x(last + 1)];
+    const right = left + width;
     const view = [scroller.scrollLeft, scroller.scrollLeft + scroller.clientWidth];
     if (left < view[0] + 8 || right > view[1] - 8) {
       scroller.scrollLeft = Math.max(0, (left + right) / 2 - scroller.clientWidth / 2);

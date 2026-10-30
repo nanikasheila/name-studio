@@ -294,6 +294,7 @@ export class Workbench {
       edit: (change) => this.edit(change),
       status: (message) => this.setStatus(message),
       snapChanged: () => this.bars.showPanelModes(),
+      stripOrderChanged: () => this.board.redraw(),
       // What is unsaved goes where autosave says now.
       autosaveChanged: () => this.saver.settingsChanged(),
       autosaveTimingChanged: () => this.saver.timingChanged(),

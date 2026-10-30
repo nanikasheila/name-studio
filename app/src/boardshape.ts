@@ -12,7 +12,7 @@ export function shapeLane(view: LaneView, project: Project, top: number): SVGGEl
   const group = svg("g", { class: "lane shape-lane" });
   const count = project.pages.length;
   const shape = currentShape(project);
-  group.append(svg("rect", { x: 0, y: top, width: view.x(count), height: SHAPE, class: "lane-bg" }));
+  group.append(svg("rect", { x: 0, y: top, width: view.width(), height: SHAPE, class: "lane-bg" }));
   if (!shape || !count) {
     const hint = svg("text", { x: 8, y: top + 24, class: "lane-hint" }, "クリックで話の型（起承転結・Save the Cat・自分の型）を選ぶと、ページの区切りがここに出ます");
     group.addEventListener("click", () => view.select({ kind: "shape" }));
@@ -26,8 +26,7 @@ export function shapeLane(view: LaneView, project: Project, top: number): SVGGEl
     return group;
   }
   for (const span of spans) {
-    const x = view.x(span.first);
-    const w = view.x(span.last + 1) - x;
+    const { left: x, width: w } = view.span(span.first, span.last);
     const part = svg("rect", { x: x + 1, y: top + 3, width: Math.max(1, w - 2), height: 20, rx: 5, class: "part", fill: span.color });
     part.addEventListener("click", () => view.select({ kind: "shape" }));
     part.addEventListener("mousemove", (event) => view.tip.show(event, [span.name, `${span.first + 1}〜${span.last + 1} ページ（${span.last - span.first + 1} ページ）`, "クリックで型を直す"]));
@@ -71,7 +70,7 @@ export function shapeLane(view: LaneView, project: Project, top: number): SVGGEl
   // Beats: markers to drag along the pages.
   (shape.beats ?? []).forEach((beat, index) => {
     const page = beatPage(beat.at, count);
-    const cx = view.x(page) + view.column / 2;
+    const cx = view.cell(page) + view.column / 2;
     const marker = svg("path", { d: diamond(cx, top + 32, 6), class: "beat" });
     const label = view.column >= 60 || (shape.beats?.length ?? 0) <= count / 3 ? svg("text", { x: cx + 9, y: top + 36, class: "beat-label" }, clip(beat.name, Math.max(2, Math.floor((view.column * 2.2) / 11)))) : null;
     marker.addEventListener("mousemove", (event) => view.tip.show(event, [beat.name, `${page + 1} ページあたり`, "ドラッグで動かす"]));
@@ -83,7 +82,7 @@ export function shapeLane(view: LaneView, project: Project, top: number): SVGGEl
       track(down, marker, {
         move: (event) => {
           const { index: at } = view.at(event);
-          marker.setAttribute("d", diamond(view.x(at) + view.column / 2, top + 32, 7));
+          marker.setAttribute("d", diamond(view.cell(at) + view.column / 2, top + 32, 7));
           view.tip.show(event, [beat.name, `${at + 1} ページへ`]);
         },
         end: (event, moved) => {
