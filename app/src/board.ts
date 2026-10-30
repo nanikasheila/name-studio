@@ -15,6 +15,7 @@ import { pageLane } from "./boardpages";
 import { pageStory, sceneInspector, sceneLane, timeLane } from "./boardscene";
 import { shapeInspector, shapeLane } from "./boardshape";
 import { type BoardSelection, type BoardTip, icon, type LaneId, type LaneView, ROW, RULER, SCENE, SHAPE, type StoryHost, TEXT } from "./boardview";
+import { refitRow } from "./rowfit";
 
 export type { BoardSelection, BoardTip, LaneId, StoryHost } from "./boardview";
 
@@ -80,7 +81,7 @@ export class Board {
     dock: HTMLElement,
     handle: HTMLElement,
     /** The row under the pages: the strip's buttons go at its end (one row less over the strip). */
-    bar: HTMLElement,
+    private readonly bar: HTMLElement,
     private readonly host: StoryHost,
   ) {
     this.controls = html("div", { className: "story-controls" });
@@ -188,6 +189,8 @@ export class Board {
     this.checkSelection(project);
     this.column = this.columns[this.mode] || this.fitColumn(project);
     this.controls.replaceChildren(...this.controlBar(project));
+    // The row's look before the strip sizes itself from what the row leaves.
+    refitRow(this.bar);
     this.root.replaceChildren(this.lanes(project), this.tipNode);
     this.height.apply();
     this.scroller!.scrollLeft = this.scroll.left;
