@@ -55,7 +55,7 @@ const LAYERS = {
   ui: [
     "actions", "alerts", "altdialog", "board", "boarddock", "boardemotion", "boardpages", "boardscene", "boardshape", "boardview", "brushdialog", "brusheditor", "brushpad", "brushsource", "controlbar", "cursors", "dock", "dragsort", "drophint", "editor", "editorcore", "exportdialog", "fillbar", "fillsource", "fontpicker", "helpbar", "helpoverlay", "imageimport", "inplace", "inspector",
     "layers", "livefields", "lookpane", "markbar", "namesaver", "nameedits", "palette", "palettes", "pendialog", "perfdialog", "reader", "readbackpick", "recoverydialog", "referencebar", "roughpanel", "rowfit", "scriptdialog", "seriespanel", "settingsdialog", "sheetexport", "shortcutdialog", "sidelists", "startscreen", "subtools", "toolaside", "tooleraser", "toolfill",
-    "toolmark", "toolpanels", "toolpen", "toolreference", "tools", "toolselect", "toolsticky", "tooltext", "tooltransform", "tour", "updater", "versiondialog",
+    "toolmark", "toolpanels", "toolpen", "toolreference", "tools", "toolselect", "toolsticky", "tooltext", "tooltransform", "tour", "updater", "versiondialog", "workspaces",
     "viewer", "workbench",
   ],
   /** Starting the app: puts the rest together. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findPages, gridPages, guessOrder, orderCells, placeOnPage, skewOf, toGray, turnGray, type Gray, type PxBox } from "./minisplit";
+import { dragCell, findPages, gripAt, gripCursor, gridPages, guessOrder, orderCells, placeOnPage, skewOf, toGray, turnGray, type Gray, type PxBox } from "./minisplit";
 import { newProject } from "./project";
 import { basicBox, trimBox } from "./pagebox";
 
@@ -200,5 +200,30 @@ describe("a picture scanned a little askew", () => {
       expect(found.cells).toHaveLength(8);
       for (const page of pages) expect(found.cells.some((cell) => near(cell, page, 4)), `${degrees}°`).toBe(true);
     }
+  });
+});
+
+describe("a page's box put right by hand", () => {
+  const box: PxBox = [100, 100, 300, 400];
+
+  it("takes hold of the edge or corner near the pointer, else the inside to move it", () => {
+    expect(gripAt(box, 102, 250, 6)).toEqual({ left: true, top: false, right: false, bottom: false });
+    expect(gripCursor(gripAt(box, 299, 398, 6))).toBe("nwse-resize");
+    expect(gripCursor(gripAt(box, 301, 99, 6))).toBe("nesw-resize");
+    expect(gripAt(box, 200, 250, 6)).toBe("move");
+    expect(gripAt(box, 90, 250, 6)).toBeNull();
+    // A page drawn small on the preview: its middle still moves it.
+    expect(gripAt([10, 10, 22, 30], 16, 20, 6)).toBe("move");
+  });
+
+  it("moves the edges taken, never past the one across nor out of the picture", () => {
+    const right = { left: false, top: false, right: true, bottom: false };
+    expect(dragCell(box, right, 40, 25, [1000, 1000], 8)).toEqual([100, 100, 340, 400]);
+    expect(dragCell(box, right, -500, 0, [1000, 1000], 8)).toEqual([100, 100, 108, 400]);
+    expect(dragCell(box, { left: true, top: true, right: false, bottom: false }, -150, -150, [1000, 1000], 8)).toEqual([0, 0, 300, 400]);
+    // Moved whole, it stops at the picture's edge with its size kept.
+    expect(dragCell(box, "move", 900, -30, [1000, 1000], 8)).toEqual([800, 70, 1000, 370]);
+    // A page that was found reaching past the edge (a tilted scan) is not pulled in by a drag elsewhere.
+    expect(dragCell([-12, 0, 200, 300], { left: false, top: false, right: false, bottom: true }, 0, 10, [500, 500], 8)).toEqual([-12, 0, 200, 310]);
   });
 });

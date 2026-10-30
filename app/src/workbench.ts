@@ -53,6 +53,7 @@ import { LiveFields } from "./livefields";
 import { saveState } from "./savestate";
 import { NameEdits, pickedStrokes } from "./nameedits";
 import { editorDocks } from "./palettes";
+import { WORKSPACES, Workspaces, type Workspace, type WorkspaceId } from "./workspaces";
 import { ReferenceBar } from "./referencebar";
 import { RoughCache } from "./roughcache";
 import { Reader } from "./reader";
@@ -107,6 +108,8 @@ export class Workbench {
   });
   /** The palettes beside the pages (left or right, several at once). */
   private docks!: Docks;
+  /** 作業の配置: 描く・全体・CSP に渡す. */
+  private workspaces!: Workspaces;
   private readonly layerView = new LayerView({
     selected: (ref) => this.layerSelected(ref),
     select: (ref) => this.selectLayer(ref),
@@ -334,6 +337,7 @@ export class Workbench {
       flipLeft: (step) => this.flip(step * this.leftward()),
       makeOption: (first, last) => this.edits.makeOption(first, last),
       toggleFocus: () => this.toggleFocus(),
+      useWorkspace: (id) => this.useWorkspace(id),
       arrange: (pageId) => this.edits.arrange(pageId),
       addTails: (pageId) => this.edits.addTails(pageId),
       addPageAfter: (page) => this.edits.addPageAfter(page),
@@ -475,6 +479,37 @@ export class Workbench {
 
   get dirty(): boolean {
     return this.session.dirty;
+  }
+
+  /** 作業の配置 `id` (描く・全体・CSP に渡す), or "reset": the one in use as it comes. */
+  useWorkspace(id: WorkspaceId | "reset"): void {
+    if (id === "reset") this.workspaces.reset();
+    else this.workspaces.use(id);
+    this.showWorkspace();
+  }
+
+  private showWorkspace(): void {
+    for (const def of WORKSPACES) {
+      const button = $(def.buttonId);
+      button.classList.toggle("active", def.id === this.workspaces.current);
+      button.setAttribute("aria-pressed", String(def.id === this.workspaces.current));
+    }
+  }
+
+  /** The palettes, the way the pages are shown and the band as a workspace has them. */
+  private applyWorkspace(workspace: Workspace): void {
+    if (document.body.classList.contains("focus-mode")) this.toggleFocus();
+    this.docks.apply(workspace.docks);
+    if (workspace.band === "wide") this.board.toggleWide(true);
+    else {
+      if (this.board.expanded) this.board.toggleWide(false);
+      this.board.toggleFold(workspace.band === "folded");
+    }
+    this.bars.setView(workspace.view);
+    this.bars.setRows(workspace.rows);
+    this.editor.resize();
+    // 全体を見る: every page on screen.
+    if (workspace.view === "continuous") this.editor.fitAll(false);
   }
 
   /** As CSP's Tab: the side palettes and the story band go, the pages take the room. */
@@ -832,6 +867,18 @@ export class Workbench {
     $("editor-next").addEventListener("click", () => this.flip(this.leftward()));
     $("editor-prev").addEventListener("click", () => this.flip(-this.leftward()));
     this.docks = editorDocks(() => this.renderSide());
+    this.workspaces = new Workspaces({
+      current: () => ({
+        docks: structuredClone(this.docks.layout),
+        view: this.editor.continuous ? "continuous" : this.editor.single ? "single" : "spread",
+        rows: this.editor.rows,
+        band: this.board.expanded ? "wide" : this.board.isFolded ? "folded" : "strip",
+      }),
+      apply: (workspace) => this.applyWorkspace(workspace),
+      status: (message) => this.setStatus(message),
+    });
+    for (const def of WORKSPACES) $(def.buttonId).addEventListener("click", () => this.useWorkspace(def.id));
+    this.showWorkspace();
     $("held-badge").addEventListener("click", () => this.docks.open("held"));
     $("panel-tidy").addEventListener("click", () => this.edits.tidyPanels());
     this.references.bind();

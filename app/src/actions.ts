@@ -9,6 +9,7 @@ import type { FillWay } from "./fillsettings";
 import type { HelpKind } from "./helptopics";
 import type { Page } from "./model";
 import { TOOL_IDS, TOOLS } from "./tooldefs";
+import { WORKSPACES, type WorkspaceId } from "./workspaces";
 
 /** What the commands need from the workbench. */
 export interface CommandHost {
@@ -46,6 +47,8 @@ export interface CommandHost {
   makeOption(first: number, last: number): void;
   /** Tab: the side palettes and the story band hidden, the pages take the room (again: back). */
   toggleFocus(): void;
+  /** 作業の配置: 描く・全体・CSP に渡す, or "reset" (the one in use as it comes). */
+  useWorkspace(id: WorkspaceId | "reset"): void;
   arrange(pageId: string): void;
   addTails(pageId?: string): number;
   addPageAfter(page: Page): void;
@@ -333,6 +336,16 @@ export function buildCommands(host: CommandHost): Command[] {
       }),
     },
     button("read-mode", "読む（見開きで通し読み。←→・クリック・ホイールでめくる、Esc で戻る）", "画面", ["F5"], "読む 通し読み プレビュー 確認"),
+    ...WORKSPACES.map((w) => ({
+      id: `workspace.${w.id}`,
+      label: `配置: ${w.tip.split(": ")[0].replace("配置", "")}（${w.tip.split(": ")[1]}）`,
+      group: "画面",
+      keys: w.keys,
+      words: "作業の配置 ワークスペース レイアウト 欄",
+      available: named,
+      run: always(() => host.useWorkspace(w.id)),
+    })),
+    { id: "workspace.reset", label: "今の配置を既定に戻す（欄・見せ方・物語の帯）", group: "画面", keys: [], words: "作業の配置 ワークスペース リセット", available: named, run: always(() => host.useWorkspace("reset")) },
     { id: "view.focus", label: "左右の欄と物語の帯を隠してページを大きく（もう一度で戻す）", group: "画面", keys: ["Tab"], available: named, run: always(() => host.toggleFocus()) },
     palette("pages", "ページ", "一覧 並べ替え"),
     palette("script", "台本", "台本 プロット 取り込み markdown"),

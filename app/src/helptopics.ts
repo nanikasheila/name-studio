@@ -510,6 +510,7 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
   { target: "#shortcuts", name: "キー設定", text: "キーの割り当てを変える", side: "below" },
   { target: "#pen-settings", name: "ペン設定", text: "筆圧・タブレット", side: "below" },
   { target: "#save-state", name: "保存の状態", text: "保存済み・未保存・自動保存の写し", side: "below" },
+  { target: "#workspace-modes", name: "作業の配置", text: "描く・全体・CSP に渡すで欄と見せ方をまとめて切り替え", command: "workspace.draw", side: "below" },
   { target: "#undo", name: "元に戻す", text: "", command: "undo", side: "below" },
   { target: "#image-import", name: "取り込む", text: "1 枚にまとめたネーム画像をページに分けて置く", command: "button.image-import", side: "below" },
   { target: "#name-export", name: "書き出す", text: "CSP のページと作品・PDF・ミニネーム・台本", command: "exportAgain", side: "below" },
@@ -567,6 +568,11 @@ export const TOUR_STOPS: TourStop[] = [
     target: "#editor-canvas",
     title: "紙面",
     text: ["まずコマ割り {tool.cut} でページを横切るように引くとコマが割れます。セリフ {tool.text} はクリックした所に書けます。", "Space+ドラッグで動かす、ホイールで拡大縮小、{view.fit} で全体を表示。"],
+  },
+  {
+    target: "#workspace-modes",
+    title: "作業の配置",
+    text: ["描く・全体・CSP（{workspace.draw}・{workspace.overview}・{workspace.handoff}）で、欄と見せ方と物語の帯をまとめて切り替えます。", "動かした欄はその配置に覚えます。"],
   },
   {
     target: "#page-nav",

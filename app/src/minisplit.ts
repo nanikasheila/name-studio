@@ -610,3 +610,49 @@ export function placeOnPage(format: PageFormat, fit: ImportFit, widthPx: number,
   const y = (ty0 + ty1 - h) / 2;
   return [x, y, x + w, y + h];
 }
+
+/** What a point on a page's box takes hold of: some of its edges (a corner is two), or the whole box to move. */
+export type Grip = { left: boolean; top: boolean; right: boolean; bottom: boolean } | "move";
+
+/** The part of `box` at (x, y): an edge or corner within `reach` of it, else its inside; null outside it. */
+export function gripAt(box: PxBox, x: number, y: number, reach: number): Grip | null {
+  const [x0, y0, x1, y1] = box;
+  if (x < x0 - reach || x > x1 + reach || y < y0 - reach || y > y1 + reach) return null;
+  // A small box: the edges never take all of it, so it can still be moved.
+  const near = Math.min(reach, (x1 - x0) / 4, (y1 - y0) / 4);
+  const grip = { left: Math.abs(x - x0) <= near, top: Math.abs(y - y0) <= near, right: Math.abs(x - x1) <= near, bottom: Math.abs(y - y1) <= near };
+  if (grip.left || grip.top || grip.right || grip.bottom) return grip;
+  return x > x0 && x < x1 && y > y0 && y < y1 ? "move" : null;
+}
+
+/**
+ * `cell` as dragged by `grip` (dx, dy in the same px): edges moved, never
+ * closer than `least` to the one across, nor out of the picture (`size`)
+ * further than they already were.
+ */
+export function dragCell(cell: PxBox, grip: Grip, dx: number, dy: number, size: [number, number], least: number): PxBox {
+  const [x0, y0, x1, y1] = cell;
+  const lo = [Math.min(0, x0), Math.min(0, y0)];
+  const hi = [Math.max(size[0], x1), Math.max(size[1], y1)];
+  const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+  if (grip === "move") {
+    const mx = clamp(dx, lo[0] - x0, hi[0] - x1);
+    const my = clamp(dy, lo[1] - y0, hi[1] - y1);
+    return [x0 + mx, y0 + my, x1 + mx, y1 + my];
+  }
+  return [
+    grip.left ? clamp(x0 + dx, lo[0], x1 - least) : x0,
+    grip.top ? clamp(y0 + dy, lo[1], y1 - least) : y0,
+    grip.right ? clamp(x1 + dx, x0 + least, hi[0]) : x1,
+    grip.bottom ? clamp(y1 + dy, y0 + least, hi[1]) : y1,
+  ];
+}
+
+/** The pointer for a grip: arrows along the edges it moves, or the move cross. */
+export function gripCursor(grip: Grip | null): string {
+  if (!grip) return "default";
+  if (grip === "move") return "move";
+  if ((grip.left && grip.top) || (grip.right && grip.bottom)) return "nwse-resize";
+  if ((grip.right && grip.top) || (grip.left && grip.bottom)) return "nesw-resize";
+  return grip.left || grip.right ? "ew-resize" : "ns-resize";
+}

@@ -59,13 +59,17 @@ export class DockHeight {
     return this.chosen ?? !this.roomy();
   }
 
-  /** Fold or open, kept for the next time; false when it already was. Folding takes the room at once. */
+  /**
+   * Fold or open, kept for the next time; false when it already was (chosen
+   * all the same: it then stays so whatever the window's height). Folding
+   * takes the room at once.
+   */
   fold(fold: boolean): boolean {
-    if (fold === this.isFolded) return false;
+    const changed = fold !== this.isFolded;
     this.chosen = fold;
     writeJson(FOLDED_KEY, fold);
-    if (fold) this.apply();
-    return true;
+    if (fold && changed) this.apply();
+    return changed;
   }
 
   apply(): void {

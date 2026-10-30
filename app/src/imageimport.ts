@@ -3,11 +3,32 @@
 // scanned) cut into its pages and laid on the name's pages, one picture of
 // the name each. The pages are found by minisplit.ts; this dialog shows what
 // was found, numbered in reading order, to check before taking it in. A
-// page found by mistake is left out with a click on it.
+// page found by mistake is left out with a click on it; one cut a little off
+// (a frame drawn short, uneven margins) is put right by dragging its edges or
+// corners, or moved by dragging its inside.
 import { $ } from "./dom";
 import { logError } from "./errorlog";
 import type { Binding, PageFormat, Project, StoredImage } from "./model";
-import { fitAspect, findPages, gridPages, guessOrder, orderCells, paperOf, placeOnPage, skewOf, turnGray, type FoundPages, type Gray, type ImportFit, type PxBox, type ReadingOrder } from "./minisplit";
+import {
+  dragCell,
+  fitAspect,
+  findPages,
+  gridPages,
+  gripAt,
+  gripCursor,
+  guessOrder,
+  orderCells,
+  paperOf,
+  placeOnPage,
+  skewOf,
+  turnGray,
+  type FoundPages,
+  type Gray,
+  type Grip,
+  type ImportFit,
+  type PxBox,
+  type ReadingOrder,
+} from "./minisplit";
 import { MAX_NAME_PICTURE_PX, placeNamePictures } from "./references";
 import { grayOf } from "./pictures";
 import { defaultPageFormat } from "./project";
@@ -28,6 +49,10 @@ export interface ImageImportHost {
 
 /** The picture is looked at no larger than this (px on the long side) to find the pages. */
 const LOOK_PX = 2400;
+/** How near an edge of a page on the preview (px on screen) takes hold of it. */
+const GRIP_PX = 6;
+/** A drag shorter than this (px on screen) is a click. */
+const DRAG_PX = 3;
 
 const ORDER_LABELS: Record<ReadingOrder, string> = {
   rtl: "右上から左へ、段ごとに下へ（右綴じ）",
@@ -58,6 +83,14 @@ export class ImageImportDialog {
   private skipped = new Set<PxBox>();
   /** Where each page is drawn on the preview, for clicks. */
   private shown: { cell: PxBox; box: [number, number, number, number] }[] = [];
+  /** Pages whose box was dragged to fit (by their box, changed in place). */
+  private adjusted = new Set<PxBox>();
+  /** px of the picture looked at per px on the preview. */
+  private lookPerScreen = 1;
+  /** A page's box being dragged: which, by what, from where. */
+  private drag: { cell: PxBox; grip: Grip; from: PxBox; x: number; y: number; moved: boolean } | null = null;
+  /** The click that ends a drag is not one that leaves the page out. */
+  private dragged = false;
   private busy = false;
 
   constructor(private readonly host: ImageImportHost) {
@@ -76,7 +109,15 @@ export class ImageImportDialog {
       if (this.found) $<HTMLSelectElement>("ii-order").value = guessOrder(this.found.cells, this.rightToLeft());
       this.arrange();
     });
-    $("ii-preview").addEventListener("click", (event) => this.toggleAt(event));
+    const preview = $<HTMLCanvasElement>("ii-preview");
+    preview.addEventListener("click", (event) => {
+      if (this.dragged) this.dragged = false;
+      else this.toggleAt(event);
+    });
+    preview.addEventListener("pointerdown", (event) => this.grab(event));
+    preview.addEventListener("pointermove", (event) => this.dragTo(event));
+    preview.addEventListener("pointerup", () => this.letGo());
+    preview.addEventListener("pointercancel", () => this.letGo());
     $("ii-run").addEventListener("click", () => void this.run());
     $<HTMLSelectElement>("ii-order").replaceChildren(...Object.entries(ORDER_LABELS).map(([value, label]) => new Option(label, value)));
     $<HTMLDialogElement>("image-import-dialog").addEventListener("close", () => this.forget());
@@ -109,6 +150,7 @@ export class ImageImportDialog {
     this.found = null;
     this.cells = [];
     this.skipped.clear();
+    this.adjusted.clear();
     this.fileName = "";
   }
 
@@ -162,6 +204,7 @@ export class ImageImportDialog {
       this.found = findPages(this.gray, fitAspect(this.format(), "trim"));
     }
     this.skipped.clear();
+    this.adjusted.clear();
     if (fresh || grid) {
       $<HTMLSelectElement>("ii-order").value = grid ? (this.rightToLeft() ? "rtl" : "ltr") : guessOrder(this.found.cells, this.rightToLeft());
     }
@@ -207,7 +250,8 @@ export class ImageImportDialog {
       $("ii-summary").textContent = "画像を選んでください（PNG・JPEG など）";
       return;
     }
-    const left = this.skipped.size ? `（${this.skipped.size} 枚は外した）` : "";
+    const changes = [this.skipped.size ? `${this.skipped.size} 枚は外した` : "", this.adjusted.size ? `${this.adjusted.size} 枚は範囲を直した` : ""].filter(Boolean);
+    const left = changes.length ? `（${changes.join("・")}）` : "";
     const tilt = this.skew ? `画像が ${Math.abs(this.skew).toFixed(2)}° 傾いていたので、まっすぐに直して切り分けます。` : "";
     const found = `${taken.length} ページ見つけました${left}。${tilt}`;
     if (project) {
@@ -216,9 +260,9 @@ export class ImageImportDialog {
       const more = Math.max(0, last - project.pages.length);
       $("ii-summary").textContent =
         `${found}${start}〜${last} ページに置きます${more ? `（足りない ${more} ページを足す）` : ""}。前に取り込んだネーム画像は置き換え、描いたもの・資料画像はそのままです。` +
-        "違うところで分かれていたら、分け方・読む順を変えるか、余分なページを押して外してください。";
+        "違うところで分かれていたら、分け方・読む順を変えるか、余分なページを押して外してください。枠がずれたページは、辺・角のドラッグで範囲を、中のドラッグで位置を直せます。";
     } else {
-      $("ii-summary").textContent = `${found}${taken.length} ページの新しいネーム「${this.fileName || "ネーム"}」を作ります。違うところで分かれていたら、分け方・読む順を変えるか、余分なページを押して外してください。`;
+      $("ii-summary").textContent = `${found}${taken.length} ページの新しいネーム「${this.fileName || "ネーム"}」を作ります。違うところで分かれていたら、分け方・読む順を変えるか、余分なページを押して外してください。枠がずれたページは、辺・角のドラッグで範囲を、中のドラッグで位置を直せます。`;
     }
   }
 
@@ -238,6 +282,7 @@ export class ImageImportDialog {
     this.shown = [];
     if (!this.picture) return;
     const scale = Math.min(room.width / this.picture.width, room.height / this.picture.height);
+    this.lookPerScreen = this.lookScale / scale;
     const left = (room.width - this.picture.width * scale) / 2;
     const top = (room.height - this.picture.height * scale) / 2;
     ctx.save();
@@ -256,6 +301,12 @@ export class ImageImportDialog {
       ctx.strokeStyle = skipped ? "#777777" : "#2f6fdb";
       ctx.lineWidth = 1.5;
       ctx.strokeRect(x0 + 0.75, y0 + 0.75, x1 - x0 - 1.5, y1 - y0 - 1.5);
+      // The corners to drag, as small squares (filled where the box was put right by hand).
+      ctx.fillStyle = this.adjusted.has(cell) ? ctx.strokeStyle : "#ffffff";
+      for (const [x, y] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) {
+        ctx.fillRect(x - 2.5, y - 2.5, 5, 5);
+        ctx.strokeRect(x - 2.5, y - 2.5, 5, 5);
+      }
       if (!skipped && this.found?.inner && this.fit() === "inner") {
         const [l, t, r, b] = this.found.inner;
         ctx.setLineDash([3, 3]);
@@ -274,6 +325,59 @@ export class ImageImportDialog {
       ctx.fillStyle = skipped ? "#444444" : "#1f4fa8";
       ctx.fillText(label, (x0 + x1) / 2, (y0 + y1) / 2);
     }
+  }
+
+  /** Where the pointer is on the preview (px on screen). */
+  private pointAt(event: PointerEvent | MouseEvent): [number, number] {
+    const rect = $<HTMLCanvasElement>("ii-preview").getBoundingClientRect();
+    return [event.clientX - rect.left, event.clientY - rect.top];
+  }
+
+  /** What the pointer would take hold of: an edge or corner of any page first, else the page it is in. */
+  private gripUnder(x: number, y: number): { cell: PxBox; grip: Grip } | null {
+    let inside: { cell: PxBox; grip: Grip } | null = null;
+    for (const { cell, box } of this.shown) {
+      const grip = gripAt(box, x, y, GRIP_PX);
+      if (grip && grip !== "move") return { cell, grip };
+      if (grip) inside ??= { cell, grip };
+    }
+    return inside;
+  }
+
+  private grab(event: PointerEvent): void {
+    this.dragged = false;
+    if (event.button !== 0 || this.busy) return;
+    const [x, y] = this.pointAt(event);
+    const under = this.gripUnder(x, y);
+    if (!under) return;
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    this.drag = { ...under, from: [...under.cell], x, y, moved: false };
+  }
+
+  /** Dragging: the page's box follows; not dragging: the pointer shows what a drag would do. */
+  private dragTo(event: PointerEvent): void {
+    const [x, y] = this.pointAt(event);
+    const canvas = event.currentTarget as HTMLElement;
+    if (!this.drag) {
+      canvas.style.cursor = gripCursor(this.gripUnder(x, y)?.grip ?? null);
+      return;
+    }
+    const drag = this.drag;
+    if (!drag.moved && Math.hypot(x - drag.x, y - drag.y) < DRAG_PX) return;
+    drag.moved = true;
+    const k = this.lookPerScreen;
+    const size: [number, number] = [this.picture!.width * this.lookScale, this.picture!.height * this.lookScale];
+    // The box is changed in place: it stays the same page in the order and among the ones left out.
+    drag.cell.splice(0, 4, ...dragCell(drag.from, drag.grip, (x - drag.x) * k, (y - drag.y) * k, size, 8));
+    this.adjusted.add(drag.cell);
+    this.drawPreview();
+  }
+
+  private letGo(): void {
+    if (!this.drag) return;
+    this.dragged = this.drag.moved;
+    this.drag = null;
+    if (this.dragged) this.render();
   }
 
   /** A click on a page of the preview leaves it out (or takes it back). */
