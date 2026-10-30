@@ -9,6 +9,8 @@ export function fitRow(row: HTMLElement, steps: number): void {
   let queued = false;
   const fit = (): void => {
     queued = false;
+    // Not on screen (the start screen): nothing to measure yet.
+    if (!row.offsetParent) return;
     let step = 0;
     for (; step < steps; step++) {
       row.dataset.fit = String(step);
@@ -21,10 +23,18 @@ export function fitRow(row: HTMLElement, steps: number): void {
     queued = true;
     requestAnimationFrame(fit);
   };
+  fitters.set(row, fit);
   new ResizeObserver(later).observe(row);
   // What it holds changes too: 連続's rows, the strip's buttons for the lanes shown, 指示.
   new MutationObserver(later).observe(row, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "class"] });
   fit();
+}
+
+const fitters = new WeakMap<HTMLElement, () => void>();
+
+/** Fit the row now, not at the next frame: for whoever filled it and is about to measure around it. */
+export function refitRow(row: HTMLElement): void {
+  fitters.get(row)?.();
 }
 
 /** Whether the row's items share one line (each overlaps all the others from top to bottom). */
