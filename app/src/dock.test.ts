@@ -10,7 +10,7 @@ describe("欄（パレット）", () => {
     movePalette(layout, "notes", "right", null);
     expect(column(layout, "right")).toEqual(["script", "inspector", "notes"]);
     movePalette(layout, "inspector", "left", "pages");
-    expect(column(layout, "left")[0]).toBe("inspector");
+    expect(column(layout, "left").slice(0, 3)).toEqual(["subtools", "inspector", "pages"]);
     expect(column(layout, "right")).toEqual(["script", "notes"]);
   });
 
@@ -22,6 +22,15 @@ describe("欄（パレット）", () => {
     expect(isOpen(layout, "cast")).toBe(true);
   });
 
+  it("puts サブツール above the pages for those who kept an arrangement before it came", () => {
+    const before = defaultLayout();
+    before.order = before.order.filter((id) => id !== "subtools");
+    const { subtools: _, ...palettes } = before.palettes;
+    const layout = readLayout(JSON.stringify({ ...before, palettes }));
+    expect(column(layout, "left").slice(0, 2)).toEqual(["subtools", "pages"]);
+    expect(isOpen(layout, "subtools")).toBe(true);
+  });
+
   it("reads a kept arrangement, adding palettes it did not know and keeping widths in range", () => {
     const kept = JSON.stringify({
       order: ["inspector", "pages", "bogus"],
@@ -30,12 +39,15 @@ describe("欄（パレット）", () => {
       collapsed: { left: true },
     });
     const layout = readLayout(kept);
-    expect(layout.order.slice(0, 2)).toEqual(["inspector", "pages"]);
-    expect(layout.order).toHaveLength(8);
+    // Palettes that came after the arrangement was kept go before the one they come before by default.
+    expect(layout.order.indexOf("subtools")).toBe(layout.order.indexOf("pages") - 1);
+    expect(layout.order.indexOf("script")).toBeLessThan(layout.order.indexOf("inspector"));
+    expect(layout.order).toHaveLength(9);
+    expect(layout.palettes.subtools).toMatchObject({ side: "left", shown: true });
     expect(layout.palettes.pages).toEqual({ side: "right", shown: true, folded: true, weight: 2 });
     expect(layout.palettes.script.side).toBe("left");
     expect(layout.width).toEqual({ left: 640, right: 200 });
     expect(layout.collapsed).toEqual({ left: true, right: false });
-    expect(readLayout("{not json").order).toHaveLength(8);
+    expect(readLayout("{not json").order).toHaveLength(9);
   });
 });

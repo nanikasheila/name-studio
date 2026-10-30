@@ -463,6 +463,46 @@ dialog.brushes { width: min(720px, calc(100vw - 32px)); }
 .brush-row .meta { color: var(--muted); font-size: calc(12 * var(--px)); font-variant-numeric: tabular-nums; }
 .brush-row .badge { font-size: calc(11 * var(--px)); color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
 .brush-bar.off { display: none; }
+
+/* サブツール: the kinds of the tool in hand, their keys, and ツールプロパティ */
+.panel.subtools { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.subtool-tabs { padding: 6px 8px 4px; }
+.subtool-tabs button { flex: 1; padding: 2px 6px; font-size: calc(12 * var(--px)); }
+.subtool-list { flex: 1 1 auto; min-height: 60px; overflow: auto; padding: 2px 0; }
+.subtool-group { font-size: calc(11 * var(--px)); color: var(--muted); padding: 6px 10px 2px; }
+.subtool-row { display: flex; align-items: center; gap: 6px; padding: 2px 6px 2px 8px; cursor: pointer; user-select: none; touch-action: none; font-size: calc(13 * var(--px)); }
+.subtool-row:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.subtool-row.current { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 3px 0 0 var(--accent); }
+.subtool-row.waiting { outline: 2px dashed var(--accent); outline-offset: -2px; }
+.subtool-row.dragging { opacity: 0.5; }
+.subtool-sample { width: 96px; height: 20px; flex: none; background: var(--paper); border: 1px solid var(--line); border-radius: 3px; }
+.subtool-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subtool-detail { color: var(--muted); font-size: calc(11 * var(--px)); font-variant-numeric: tabular-nums; }
+.subtool-key { border: 1px solid transparent; background: none; padding: 0 4px; min-height: 0; font-size: calc(11 * var(--px)); color: var(--muted); border-radius: 4px; min-width: 22px; }
+.subtool-row:not(:hover) .subtool-key:not(.set) { opacity: 0.35; }
+.subtool-key.set { border-color: var(--line); color: var(--text); font-variant-numeric: tabular-nums; }
+.subtool-key:hover { border-color: var(--accent); color: var(--text); }
+.subtool-footer { display: flex; gap: 6px; padding: 4px 8px; border-top: 1px solid var(--line); }
+.subtool-footer button { font-size: calc(12 * var(--px)); padding: 2px 8px; }
+.subtool-props { flex: none; border-top: 1px solid var(--line); padding: 6px 8px 8px; display: flex; flex-direction: column; gap: 6px; font-size: calc(12 * var(--px)); }
+.subtool-props-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subtool-field { display: flex; align-items: center; gap: 6px; }
+.subtool-field > span:first-child { flex: none; width: 6.2em; white-space: nowrap; color: var(--muted); }
+.subtool-field input[type="range"] { flex: 1; min-width: 0; }
+.subtool-field input[type="number"] { width: 4.2em; font: inherit; padding: 1px 3px; }
+.subtool-field output { width: 2.2em; text-align: right; font-variant-numeric: tabular-nums; }
+.subtool-field .unit { color: var(--muted); }
+.subtool-erase button { padding: 1px 6px; font-size: calc(12 * var(--px)); }
+.subtool-check { display: flex; align-items: center; gap: 4px; }
+.subtool-note { margin: 0; color: var(--muted); font-size: calc(11 * var(--px)); }
+.size-presets { display: flex; flex-wrap: wrap; gap: 3px; }
+.size-presets button { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 1px; width: 34px; height: 36px; padding: 2px 0; min-height: 0; font-size: calc(10 * var(--px)); font-variant-numeric: tabular-nums; }
+.size-presets button i { display: block; border-radius: 50%; background: currentColor; flex: none; }
+.size-presets button.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.size-presets button.add { justify-content: center; font-size: calc(14 * var(--px)); color: var(--muted); }
+.subtool-menu { position: fixed; z-index: 50; display: flex; flex-direction: column; min-width: 12em; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 14px rgb(0 0 0 / 0.18); }
+.subtool-menu button { text-align: left; border: none; background: none; padding: 4px 8px; border-radius: 4px; }
+.subtool-menu button:hover, .subtool-menu button:focus { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 /* ペン・消しゴムの設定: the brushes on the left, the chosen one's pad and settings on the right. */
 dialog.brush-editor { width: min(980px, calc(100vw - 32px)); height: min(760px, calc(100vh - 32px)); }
 .brush-editor > form { display: flex; flex-direction: column; height: 100%; }
