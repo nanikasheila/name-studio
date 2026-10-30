@@ -187,10 +187,33 @@ try {
   made = newest(s, before);
   check(made.length === 1 && made[0].box[1] > 167.5 && made[0].box[3] < 171, `塗り残し: the sliver between the fill and the line (${JSON.stringify(made[0]?.box)}, ${s.status})`);
 
+  // The サブツール palette: the four ways, the one in hand marked, its settings, kept in step with the bar.
+  const panel = page.locator("#side-subtools");
+  check((await panel.locator(".subtool-row .subtool-name").allTextContents()).join("/") === "塗りつぶし/囲って塗る/投げなわ塗り/塗り残し部分に塗る", "サブツール lists the four ways");
+  check((await panel.locator(".subtool-row.current .subtool-name").textContent()) === "塗り残し部分に塗る", "the way in hand is marked there");
+  await panel.locator(".subtool-row", { hasText: "囲って塗る" }).click();
+  await settle();
+  check((await state()).way === "enclose" && (await page.locator("#fill-enclose").getAttribute("class")).includes("active"), "a click on a row takes that way up, and the bar follows");
+  await panel.locator(".subtool-field", { hasText: "隙間閉じ" }).locator("select").selectOption("2");
+  await settle();
+  check((await page.locator("#fill-gap").inputValue()) === "2", "a setting changed in the palette shows on the bar");
+  await page.selectOption("#fill-gap", "0.5");
+  await settle();
+  check((await panel.locator(".subtool-field", { hasText: "隙間閉じ" }).locator("select").inputValue()) === "0.5", "and the other way round");
+  const drawn = await panel.locator(".subtool-row", { hasText: "囲って塗る" }).locator("canvas").evaluate((canvas) => {
+    const data = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+    let ink = 0;
+    for (let i = 3; i < data.length; i += 4) if (data[i] > 0) ink++;
+    return ink;
+  });
+  check(drawn > 50, `each row has a small picture of the way (${drawn} px)`);
+  await panel.locator(".subtool-row", { hasText: "塗り残し部分に塗る" }).click();
+
   // Kept on this computer.
   const kept = await page.evaluate(() => JSON.parse(localStorage.getItem("namestudio.fill") ?? "null"));
   check(kept?.way === "remaining" && kept?.tone === "gray" && kept?.options?.click?.gapMm === 1, `the way and settings are kept (${JSON.stringify(kept)?.slice(0, 80)})`);
 
+  if (process.env.FULL) await page.screenshot({ path: process.env.FULL });
   if (process.env.SHOT) {
     const [x0, y0] = await at([30, 40]);
     const [x1, y1] = await at([180, 180]);

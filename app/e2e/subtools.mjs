@@ -56,7 +56,7 @@ try {
   });
   const panel = page.locator("#side-subtools");
   check(await panel.isVisible(), "サブツール shows beside the pages out of the box");
-  check((await panel.locator(".subtool-tabs button").allTextContents()).join("/") === "ペン/消しゴム", "it has ペン and 消しゴム");
+  check((await panel.locator(".subtool-tabs button").allTextContents()).join("/") === "ペン/消しゴム/塗り", "it has ペン, 消しゴム and 塗り");
   const names = async () => (await panel.locator(".subtool-row .subtool-name").allTextContents()).join("/");
   check((await names()) === "標準のペン/Gペン/丸ペン/鉛筆", "the plain pen, the name's pens, then one of another name");
   check((await panel.locator(".subtool-group").allTextContents()).includes("ほかのネームで取り込んだもの"), "the other name's pen is under its own heading");

@@ -8,6 +8,7 @@ import { subtoolCommandId, type Command } from "./commands";
 import { $, element } from "./dom";
 import { ERASE_MODE_LABELS, PANEL_MODE_LABELS, type EditorEraseMode, type PageEditor, type PanelMode, type Tool } from "./editor";
 import { FillBar } from "./fillbar";
+import { FillSource } from "./fillsource";
 import type { Brush, BrushKind, Project } from "./model";
 import { CONTINUOUS_KEY, loadHandSizes, loadLibrary, ROWS_KEY, saveHandSizes, SHOW_NOTES_KEY, SINGLE_PAGE_KEY } from "./prefs";
 import { SubToolPanel } from "./subtools";
@@ -67,7 +68,6 @@ export class ControlBar {
   constructor(private readonly host: ControlBarHost) {
     $("editor-tools").replaceChildren(...TOOL_IDS.map(toolButton));
     this.marks = new MarkBar({ ...host, setTool: (tool) => this.setTool(tool) });
-    this.fills = new FillBar({ editor: host.editor, status: (message) => host.status(message), setTool: (tool) => this.setTool(tool) });
     this.subtools = new SubToolPanel($("side-subtools"), {
       tool: () => this.editor.tool,
       shown: () => host.subtoolsShown(),
@@ -90,6 +90,16 @@ export class ControlBar {
     };
     this.subtools.add(new BrushSource("pen", brushes));
     this.subtools.add(new BrushSource("eraser", brushes));
+    this.fills = new FillBar({
+      editor: host.editor,
+      status: (message) => host.status(message),
+      setTool: (tool) => this.setTool(tool),
+      changed: () => {
+        this.fills.render();
+        this.subtools.render(true);
+      },
+    });
+    this.subtools.add(new FillSource(host.editor, this.fills));
   }
 
   /** A command for each sub tool, to take it up by name (Ctrl+K) or by its keys. */

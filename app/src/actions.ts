@@ -5,7 +5,7 @@ import type { Board, LaneId } from "./board";
 import type { Command } from "./commands";
 import type { PaletteId } from "./dock";
 import { ERASE_MODE_LABELS, type EditorEraseMode, type PageEditor, type PanelMode, type Tool } from "./editor";
-import { FILL_WAY_LABELS, FILL_WAYS, type FillWay } from "./fillsettings";
+import type { FillWay } from "./fillsettings";
 import type { HelpKind } from "./helptopics";
 import type { Page } from "./model";
 import { TOOL_IDS, TOOLS } from "./tooldefs";
@@ -220,15 +220,6 @@ export function buildCommands(host: CommandHost): Command[] {
         else nextEraseMode();
       }),
     },
-    ...FILL_WAYS.map((way): Command => ({
-      id: `fill.${way}`,
-      label: `塗り: ${FILL_WAY_LABELS[way]}`,
-      group: "道具",
-      keys: [],
-      words: "塗り ベタ 塗りつぶし バケツ 隙間閉じ",
-      available: named,
-      run: always(() => host.setFillWay(way)),
-    })),
     { id: "brush.bigger", label: "ペン・消しゴムを太く", group: "道具", keys: ["]"], available: named, run: () => host.resizeBrush(1.25) },
     { id: "brush.smaller", label: "ペン・消しゴムを細く", group: "道具", keys: ["["], available: named, run: () => host.resizeBrush(0.8) },
     button("reference-add", "資料画像を貼る…", "道具", [], "写真 背景 画像"),
