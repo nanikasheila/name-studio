@@ -84,11 +84,7 @@
           </div>
           <button id="panel-tidy" class="with-icon" data-command="panel.tidy" title="仮のコマを清書する: ほぼ水平・垂直の線をまっすぐに、辺をそろえ、コマ間を設定の幅に、基本枠・裁ち切りへ。選んだコマがあればそのコマだけ" hidden><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="2.5" width="6.5" height="6.5"/><rect x="11" y="2.5" width="6.5" height="6.5"/><rect x="2.5" y="11" width="15" height="6.5"/></svg>整える</button>
           <label class="check" id="grid-snap-label" title="コマの角や辺をグリッドに吸着させる（間隔は 設定 で）" hidden><input type="checkbox" id="grid-snap" /> グリッド</label>
-          <div class="segmented" id="fill-tones" role="group" aria-label="塗りの色" hidden>
-            <button id="fill-black" class="active" title="黒（ベタ）"><i class="tone black"></i>黒</button>
-            <button id="fill-gray" title="グレー（トーンの代わり）"><i class="tone gray"></i>グレー</button>
-            <button id="fill-white" title="白（ホワイトで消す）"><i class="tone white"></i>白</button>
-          </div>
+          <div class="fill-bar off" id="fill-bar"></div>
           <div class="brush-bar" id="brush-bar">
             <select id="brush-select" title="ペン・消しゴムの種類"></select>
             <label class="size" title="太さ（mm）。ホイールでも変えられます"><input id="brush-size" type="number" min="0.05" max="30" step="0.05" /> mm</label>

@@ -4,10 +4,10 @@
 import { addBrushes } from "./brush";
 import { $, element } from "./dom";
 import { ERASE_MODE_LABELS, PANEL_MODE_LABELS, type EditorEraseMode, type PageEditor, type PanelMode, type Tool } from "./editor";
-import type { Brush, FillTone, Project } from "./model";
+import { FillBar } from "./fillbar";
+import type { Brush, Project } from "./model";
 import { CONTINUOUS_KEY, loadLibrary, ROWS_KEY, SHOW_NOTES_KEY, SINGLE_PAGE_KEY } from "./prefs";
 import { writeCount, writeFlag } from "./settings";
-import { TONE_LABELS } from "./strokes";
 import { MarkBar } from "./markbar";
 import type { RoughChange } from "./roughpanel";
 import { TOOL_IDS, TOOLS, type ToolId } from "./tooldefs";
@@ -42,10 +42,13 @@ export interface ControlBarHost {
 export class ControlBar {
   /** The 指示 tool's bar. */
   private readonly marks: MarkBar;
+  /** The fill tool's bar: its sub tools and their settings. */
+  readonly fills: FillBar;
 
   constructor(private readonly host: ControlBarHost) {
     $("editor-tools").replaceChildren(...TOOL_IDS.map(toolButton));
     this.marks = new MarkBar({ ...host, setTool: (tool) => this.setTool(tool) });
+    this.fills = new FillBar({ editor: host.editor, status: (message) => host.status(message), setTool: (tool) => this.setTool(tool) });
   }
 
   private get editor(): PageEditor {
@@ -55,7 +58,6 @@ export class ControlBar {
   setTool(tool: Tool): void {
     this.editor.setTool(tool);
     for (const name of TOOL_IDS) $(`tool-${name}`).classList.toggle("active", name === tool);
-    $("fill-tones").hidden = tool !== "fill";
     $("panel-modes").hidden = tool !== "cut";
     $("grid-snap-label").hidden = tool !== "cut";
     $("panel-tidy").hidden = tool !== "cut";
@@ -69,6 +71,7 @@ export class ControlBar {
     $("tool-hint").textContent = TOOLS[tool].hint;
     this.showPanelModes();
     this.renderBrushBar();
+    this.fills.render();
   }
 
   /** コマ割り: how a drag makes panels, and whether they snap to the grid. */
@@ -143,13 +146,6 @@ export class ControlBar {
     this.showRows();
   }
 
-  /** 投げなわ塗り: what the fill tool fills with. */
-  private setFillTone(tone: FillTone): void {
-    this.editor.fillTone = tone;
-    for (const name of ["black", "gray", "white"] as const) $(`fill-${name}`).classList.toggle("active", name === tone);
-    if (this.editor.tool !== "fill") this.setTool("fill");
-    this.host.status(`塗り: ${TONE_LABELS[tone]}`);
-  }
 
   // --- pens and erasers -------------------------------------------------------------------
 
@@ -250,9 +246,6 @@ export class ControlBar {
   /** The bars' buttons, boxes and sliders. */
   bind(): void {
     this.marks.bind();
-    for (const tone of ["black", "gray", "white"] as const) {
-      $(`fill-${tone}`).addEventListener("click", () => this.setFillTone(tone));
-    }
     for (const mode of Object.keys(PANEL_MODE_LABELS) as PanelMode[]) {
       $(`panel-${mode}`).addEventListener("click", () => this.setPanelMode(mode));
     }

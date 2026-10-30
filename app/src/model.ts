@@ -293,11 +293,15 @@ export interface StoredImage {
 
 export type FillTone = "black" | "gray" | "white";
 
-/** 投げなわ塗り: an outline filled with one tone (black when none is given). */
+/** 塗り: an outline filled with one tone (black when none is given). */
 export interface Fill {
   id: string;
   shape: Point[];
+  /** Holes in it (塗りつぶし round a closed line inside the area). */
+  holes?: Point[][];
   tone?: FillTone;
+  /** Under the rough lines (as a fill layer under the drawing in CSP); none: over them. */
+  under?: boolean;
 }
 
 export type StickyColor = "yellow" | "pink" | "blue" | "green";

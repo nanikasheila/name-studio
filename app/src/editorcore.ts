@@ -5,7 +5,8 @@
 import type { TailHit, TailPart } from "./hittest";
 import type { Seam } from "./komaedit";
 import type { Slot } from "./layout";
-import type { Binding, BoxMm, Brush, EraseMode, FillTone, Page, Panel, Point, Project, RoughImage, Sticky, StrokePoint } from "./model";
+import type { FillSettings, FillWay } from "./fillsettings";
+import type { Binding, BoxMm, Brush, EraseMode, Page, Panel, Point, Project, RoughImage, Sticky, StrokePoint } from "./model";
 import type { CarriedContents } from "./panels";
 import type { SnapTargets } from "./snapping";
 import type { ToolId } from "./tooldefs";
@@ -157,7 +158,7 @@ export type ToolDrag =
       created?: boolean;
     }
   | { kind: "lasso"; slot: Slot; points: Point[] }
-  | { kind: "fill"; slot: Slot; points: Point[] }
+  | { kind: "fill"; slot: Slot; points: Point[]; way: FillWay }
   | {
       kind: "pick";
       slot: Slot;
@@ -300,7 +301,8 @@ export interface EditorCore {
   readonly panelCarries: boolean;
   readonly balloonTextFollows: boolean;
   readonly eraseMode: EditorEraseMode;
-  readonly fillTone: FillTone;
+  /** 塗り: the way in hand, the tone and each way's settings. */
+  readonly fill: FillSettings;
   readonly penWidthMm: number;
   /** The ラフ線のレイヤー the pen draws on. */
   readonly roughLayer: string;

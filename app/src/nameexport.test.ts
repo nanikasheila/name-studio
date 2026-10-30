@@ -76,10 +76,14 @@ describe("editable layers", () => {
     // 投げなわ塗り go to the same image layer.
     page.fills = [{ id: "f1", shape: rectShape([40, 40, 50, 50]) }];
     expect(partCount(page, "fills")).toBe(3);
+    // 塗りつぶし under the rough lines: a layer of their own, under the rough.
+    page.fills.push({ id: "f2", shape: rectShape([40, 60, 50, 70]), under: true });
+    expect([partCount(page, "fills"), partCount(page, "underFills")]).toEqual([3, 1]);
+    expect(LAYER_ORDER.indexOf("underFills")).toBeLessThan(LAYER_ORDER.indexOf("strokes"));
     addLine(project, page, [50, 50], "白");
     expect(partCount(page, "balloonFills")).toBe(1);
     expect(LAYER_ORDER.indexOf("balloonFills")).toBe(LAYER_ORDER.indexOf("balloons") - 1);
-    expect(LAYER_ORDER.filter((kind) => !canBeVector(kind))).toEqual(["fills", "balloonFills", "text"]);
+    expect(LAYER_ORDER.filter((kind) => !canBeVector(kind))).toEqual(["underFills", "fills", "balloonFills", "text"]);
   });
 
   it("writes plain panels as frames of a コマ枠フォルダー and keeps the others as lines", () => {
@@ -345,9 +349,9 @@ describe("the layer plan of a page", () => {
 
   it("sends each part as lines, text or a picture as CSP allows", () => {
     const forms = (vector: boolean, text: boolean) => LAYER_ORDER.map((kind) => layerForm(kind, vector, text));
-    expect(forms(true, true)).toEqual(["vector", "raster", "vector", "vector", "raster", "vector", "text"]);
-    expect(forms(false, false)).toEqual(["raster", "raster", "raster", "raster", "none", "raster", "raster"]);
-    expect(forms(true, false)).toEqual(["vector", "raster", "vector", "vector", "raster", "vector", "raster"]);
+    expect(forms(true, true)).toEqual(["raster", "vector", "raster", "vector", "vector", "raster", "vector", "text"]);
+    expect(forms(false, false)).toEqual(["raster", "raster", "raster", "raster", "raster", "none", "raster", "raster"]);
+    expect(forms(true, false)).toEqual(["raster", "vector", "raster", "vector", "vector", "raster", "vector", "raster"]);
   });
 });
 

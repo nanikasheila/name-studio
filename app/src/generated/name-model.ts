@@ -154,6 +154,10 @@ mime: string, dataBase64: string, widthPx: number, heightPx: number, };
 
 export type Fill = { id: string, shape: Array<[number, number]>, 
 /**
+ * Holes in it (塗りつぶし round a closed line inside the area).
+ */
+holes: Array<Array<[number, number]>>, 
+/**
  * "gray" or "white"; none is black (ベタ).
  */
 tone?: string, };

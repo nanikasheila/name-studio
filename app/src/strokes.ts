@@ -7,11 +7,35 @@ import { newId } from "./project";
 
 export const TONE_LABELS: Record<FillTone, string> = { black: "黒（ベタ）", gray: "グレー", white: "白" };
 
-export function addFill(project: Project, page: Page, shape: Point[], tone: FillTone): Fill {
+export function addFill(project: Project, page: Page, shape: Point[], tone: FillTone, holes?: Point[][], under = false): Fill {
   const fill: Fill = { id: newId(project, "fill"), shape };
+  if (holes?.length) fill.holes = holes;
   if (tone !== "black") fill.tone = tone;
+  if (under) fill.under = true;
   page.fills = [...(page.fills ?? []), fill];
   return fill;
+}
+
+/** A fill's outline and holes, as they were (to put back changed: a transform, a panel it follows). */
+export interface FillShape {
+  id: string;
+  shape: Point[];
+  holes?: Point[][];
+}
+
+export function fillShape(fill: FillShape): FillShape {
+  return { id: fill.id, shape: fill.shape.map((p) => [...p] as Point), ...(fill.holes?.length ? { holes: fill.holes.map((hole) => hole.map((p) => [...p] as Point)) } : {}) };
+}
+
+/** Whether a point is in a fill (not in one of its holes). */
+export function insideFill(fill: Pick<Fill, "shape" | "holes">, point: Point): boolean {
+  return insidePolygon(fill.shape, point) && !(fill.holes ?? []).some((hole) => insidePolygon(hole, point));
+}
+
+/** Put a fill where `map` takes each point of `from` (its outline and holes; none: the fill as it is). */
+export function mapFill(fill: Fill, map: (point: Point) => Point, from: Pick<FillShape, "shape" | "holes"> = fill): void {
+  fill.shape = from.shape.map(map);
+  if (from.holes?.length) fill.holes = from.holes.map((hole) => hole.map(map));
 }
 
 export function moveStroke(stroke: Stroke, dx: number, dy: number): void {

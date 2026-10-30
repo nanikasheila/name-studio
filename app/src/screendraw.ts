@@ -7,6 +7,7 @@
 import type { BoxMm, Line, Page, Panel, Point, Project, RoughImage, Stroke } from "./model";
 import { basicBox, trimBox } from "./pagebox";
 import type { Slot } from "./layout";
+import type { FillSettings, FillWay } from "./fillsettings";
 import { HANDLE } from "./hittest";
 import { tailGeometry } from "./balloon";
 import { maskShape } from "./mask";
@@ -108,9 +109,11 @@ export function drawScreenPage(ctx: CanvasRenderingContext2D, project: Project, 
     }
     ctx.globalAlpha = 1;
   };
+  const outlined = (id: string) => (marks.selected("fill", id) ? ACCENT : null);
+  drawPageFills(ctx, page, m, outlined, true);
   drawRoughs(false);
   drawPanelFills(ctx, page, m);
-  drawPageFills(ctx, page, m, (id) => (marks.selected("fill", id) ? ACCENT : null));
+  drawPageFills(ctx, page, m, outlined);
   const selectedPanels = page.panels.filter((panel) => marks.selected("panel", panel.id));
   for (const panel of selectedPanels) {
     tracePath(ctx, panel.shape, m, true);
@@ -244,6 +247,7 @@ export function drawLifted(ctx: CanvasRenderingContext2D, project: Project, slot
     ctx.fill();
   }
   const brushes = project.brushes ?? [];
+  drawPageFills(ctx, lifted, m, undefined, true);
   drawStrokes(ctx, lifted, m, false, () => ACCENT, 0.7, brushes);
   drawPanelFills(ctx, lifted, m);
   drawPageFills(ctx, lifted, m);
@@ -391,6 +395,22 @@ export function drawFillArea(ctx: CanvasRenderingContext2D, slot: Slot, points: 
   ctx.strokeStyle = ACCENT;
   ctx.lineWidth = 1;
   ctx.stroke();
+}
+
+/** 塗り being drawn: the area as it will be filled (投げなわ塗り), the lasso (囲って塗る) or where the brush went (塗り残し). */
+export function drawFillDrag(ctx: CanvasRenderingContext2D, slot: Slot, points: Point[], way: FillWay, fill: Pick<FillSettings, "tone" | "brushMm">): void {
+  const tone = fill.tone === "black" ? "rgba(40, 38, 34, 0.55)" : fill.tone === "gray" ? "rgba(150, 146, 140, 0.55)" : "rgba(255, 255, 255, 0.8)";
+  if (way === "lasso" && points.length > 2) drawFillArea(ctx, slot, points, tone);
+  if (way === "enclose" && points.length > 1) drawLasso(ctx, slot, points, ACCENT);
+  if (way !== "remaining" || !points.length) return;
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = Math.max(fill.brushMm * slot.scale, 2);
+  ctx.strokeStyle = "rgba(47, 111, 219, 0.3)";
+  tracePath(ctx, points.length > 1 ? points : [points[0], points[0]], at(slot), false);
+  ctx.stroke();
+  ctx.restore();
 }
 
 /** A lasso being drawn round, dashed in `color`. */

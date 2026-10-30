@@ -131,12 +131,13 @@ export function mapBox([x0, y0, x1, y1]: number[], m: MmToPx): [number, number, 
   return [x0 * m.scale + m.x, y0 * m.scale + m.y, x1 * m.scale + m.x, y1 * m.scale + m.y];
 }
 
-export type LayerKind = "strokes" | "fills" | "panels" | "overStrokes" | "balloonFills" | "balloons" | "text";
+export type LayerKind = "underFills" | "strokes" | "fills" | "panels" | "overStrokes" | "balloonFills" | "balloons" | "text";
 
 /** Layers of a page, bottom first. */
-export const LAYER_ORDER: LayerKind[] = ["strokes", "fills", "panels", "overStrokes", "balloonFills", "balloons", "text"];
+export const LAYER_ORDER: LayerKind[] = ["underFills", "strokes", "fills", "panels", "overStrokes", "balloonFills", "balloons", "text"];
 
 export const LAYER_NAMES: Record<LayerKind, string> = {
+  underFills: "塗り（線の下）",
   strokes: "ラフ線",
   fills: "コマの塗り・効果",
   panels: "コマ枠",
@@ -160,11 +161,13 @@ export function partCount(page: Page, kind: LayerKind): number {
       return page.strokes.filter((stroke) => !stroke.over).length;
     case "overStrokes":
       return page.strokes.filter((stroke) => stroke.over).length;
+    case "underFills":
+      return (page.fills ?? []).filter((fill) => fill.under).length;
     case "fills":
       return (
         page.panels.filter((panel) => (panel.fill ?? "none") !== "none" || (panel.effect ?? "none") !== "none").length +
         (page.breakouts ?? []).length +
-        (page.fills ?? []).length
+        (page.fills ?? []).filter((fill) => !fill.under).length
       );
     case "panels":
       return page.panels.length;
@@ -178,7 +181,7 @@ export function partCount(page: Page, kind: LayerKind): number {
 
 /** Parts CSP can hold as vector lines; fills and effects are always an image. */
 export function canBeVector(kind: LayerKind): kind is LinePartKind {
-  return kind !== "text" && kind !== "fills" && kind !== "balloonFills";
+  return kind !== "text" && kind !== "fills" && kind !== "underFills" && kind !== "balloonFills";
 }
 
 /** Draw one kind of part of a page (transparent elsewhere). */
@@ -187,6 +190,9 @@ export function drawPart(ctx: CanvasRenderingContext2D, page: Page, kind: LayerK
     case "strokes":
     case "overStrokes":
       drawStrokes(ctx, page, m, kind === "overStrokes", () => "#3a3834", 1, brushes);
+      break;
+    case "underFills":
+      drawPageFills(ctx, page, m, undefined, true);
       break;
     case "fills":
       drawPanelFills(ctx, page, m, 1);
@@ -241,7 +247,7 @@ export type LayerMeta =
       lineSpacing?: number;
     };
 
-export type LinePartKind = Exclude<LayerKind, "text" | "fills" | "balloonFills">;
+export type LinePartKind = Exclude<LayerKind, "text" | "fills" | "underFills" | "balloonFills">;
 
 /** One kind of line part of a page as vector lines (`m`: mm → template px). */
 export function vectorLines(
@@ -775,6 +781,8 @@ export async function exportToCsp(
           if (lines.length) layers.push({ kind: "vector", name: LAYER_NAMES[kind], lines });
           continue;
         }
+        // 塗り（線の下）: only on pages that have some (the pages of names without them stay as they were).
+        if (kind === "underFills" && !placed.some(({ page }) => partCount(page, kind))) continue;
         layers.push(await part(kind, placed, LAYER_NAMES[kind]));
       }
       if (notes) {

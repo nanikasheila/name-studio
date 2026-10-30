@@ -255,16 +255,22 @@ pub struct StoredImage {
     pub height_px: u32,
 }
 
-/// 投げなわ塗り: an outline filled with one tone.
+/// 塗り: an outline (with holes) filled with one tone.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct Fill {
     pub id: String,
     pub shape: Vec<Point>,
+    /// Holes in it (塗りつぶし round a closed line inside the area).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub holes: Vec<Vec<Point>>,
     /// "gray" or "white"; none is black (ベタ).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tone: Option<String>,
+    /// Under the rough lines (as a fill layer under the drawing in CSP); none: over them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub under: Option<bool>,
 }
 
 /// 付箋: a note on the page, at its top-left corner in millimetres.

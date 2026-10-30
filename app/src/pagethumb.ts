@@ -12,6 +12,7 @@ export function drawThumb(ctx: CanvasRenderingContext2D, project: Project, sheet
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, pageW * m.scale, pageH * m.scale);
   const ink = () => "#55524c";
+  drawPageFills(ctx, page, m, undefined, true);
   drawStrokes(ctx, page, m, false, ink, 0.5);
   drawPanelFills(ctx, page, m, 0.4);
   drawPageFills(ctx, page, m);

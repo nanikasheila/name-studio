@@ -221,7 +221,24 @@
               10
             ]
           ],
-          "tone": "gray"
+          "holes": [
+            [
+              [
+                4,
+                3
+              ],
+              [
+                6,
+                3
+              ],
+              [
+                6,
+                5
+              ]
+            ]
+          ],
+          "tone": "gray",
+          "under": true
         }
       ],
       "references": [
@@ -614,7 +631,24 @@
                       10
                     ]
                   ],
-                  "tone": "gray"
+                  "holes": [
+                    [
+                      [
+                        4,
+                        3
+                      ],
+                      [
+                        6,
+                        3
+                      ],
+                      [
+                        6,
+                        5
+                      ]
+                    ]
+                  ],
+                  "tone": "gray",
+                  "under": true
                 }
               ],
               "references": [
@@ -804,7 +838,24 @@
               10
             ]
           ],
-          "tone": "gray"
+          "holes": [
+            [
+              [
+                4,
+                3
+              ],
+              [
+                6,
+                3
+              ],
+              [
+                6,
+                5
+              ]
+            ]
+          ],
+          "tone": "gray",
+          "under": true
         }
       ],
       "stickies": [

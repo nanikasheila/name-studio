@@ -66,6 +66,7 @@ export function heldThumbnail(project: Project, held: HeldPanel, width = 116): H
   ctx.fillRect(0, 0, width, height);
   const page: Page = { id: "", memo: "", panels: [held.panel], lines: held.lines, strokes: held.strokes, roughs: [], breakouts: [], fills: held.fills };
   const m = { scale, x: pad - x0 * scale, y: pad - y0 * scale };
+  drawPageFills(ctx, page, m, undefined, true);
   drawStrokes(ctx, page, m, false, () => "#3a3834", 0.4, project.brushes);
   drawPanelFills(ctx, page, m, 0.4);
   drawPageFills(ctx, page, m);
