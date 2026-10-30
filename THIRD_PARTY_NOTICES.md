@@ -146,7 +146,7 @@ SQLite（rusqlite に同梱）はパブリックドメインです。SQLite (bun
 | keyboard-types | 0.8.3 | MIT OR Apache-2.0 | https://github.com/rust-windowing/keyboard-types |
 | libc | 0.2.191 | MIT OR Apache-2.0 | https://github.com/rust-lang/libc |
 | libsqlite3-sys | 0.38.2 | MIT | https://github.com/rusqlite/rusqlite |
-| libz-sys | 1.1.30 | MIT OR Apache-2.0 | https://github.com/rust-lang/libz-sys |
+| libz-sys | 1.1.31 | MIT OR Apache-2.0 | https://github.com/rust-lang/libz-sys |
 | litemap | 0.8.3 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | lock_api | 0.4.14 | MIT OR Apache-2.0 | https://github.com/Amanieu/parking_lot |
 | log | 0.4.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/log |
