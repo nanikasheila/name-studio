@@ -140,8 +140,8 @@
             <label title="見開きを何行に並べるか。1 で全ページを横一列に（Alt+↑ / Alt+↓）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg><input type="range" id="rows-range" min="1" max="1" step="1" value="1" /><output id="rows-value">1 行</output></label>
             <button id="fit-all" class="icon-button" data-command="view.all" title="全ページを画面に収める"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg></button>
           </div>
-          <label class="check" id="first-alone-label" title="見開きの組み方: 1 ページ目を左ページだけで始める"><input type="checkbox" id="editor-first-alone" checked /> 1ページ目を単独</label>
-          <label class="check" title="コマのメモをページの上に出す（画面だけ。書き出しには入りません）"><input type="checkbox" id="show-notes" checked /> コマのメモ</label>
+          <label class="check" id="first-alone-label" title="見開きの組み方: 1 ページ目を左ページだけで始める"><input type="checkbox" id="editor-first-alone" checked /><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="10" y="4" width="7.5" height="12"/><path d="M9 4H2.5v12H9" stroke-dasharray="2 2"/></svg><span class="nav-label">1ページ目を単独</span></label>
+          <label class="check" title="コマのメモをページの上に出す（画面だけ。書き出しには入りません）"><input type="checkbox" id="show-notes" checked /><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 3.5h13v9l-4 4h-9z"/><path d="M12.5 16.5v-4h4M6.5 7.5h7M6.5 10.5h4"/></svg><span class="nav-label">コマのメモ</span></label>
           <span id="marks-shown-label" hidden><button id="marks-shown" class="marks-shown" data-command="button.marks-shown" aria-pressed="true" title="指示（指示ツールで描いたもの）をページの上に出す・隠す。隠すと CSP へも隠したレイヤーで出ます"><i></i>指示</button></span>
           <button id="held-badge" class="held-badge" title="このあたりのページに入れたい保留のコマ" hidden></button>
         </div>
