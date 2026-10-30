@@ -7,8 +7,10 @@ import { trimBox } from "./pagebox";
 
 /** Room around the pages (px). */
 export const MARGIN = 28;
-/** Room under the pages for their number and memo (px). */
+/** Room under the pages for their number and memo (px): at least this, more for a long memo (captionRoom). */
 export const CAPTION = 36;
+/** The pitch of the rows of a page's number and memo (px). */
+export const CAPTION_ROW = 16;
 /** 連続: room between the spreads by default (mm, and px so that they stay apart when small). */
 export const GRID_GAP_MM = 12;
 export const GRID_GAP_PX = 14;
@@ -27,6 +29,8 @@ export interface Slot {
   /** Page mm shown, `[x0, x1]`: a page facing another ends at the gutter
    * (the edge of its trim), so the two read as one spread. */
   shown: [number, number];
+  /** Room under the page for its number and memo (px); none is CAPTION. */
+  caption?: number;
 }
 
 /** A spread: its page numbers (1-based), right page first; null where there is none. */
@@ -49,6 +53,27 @@ export interface Arrangement {
   /** The stage (CSS px). */
   width: number;
   height: number;
+  /** How many rows a page's number and memo take under it, as wide as its trim is at `widthPx`; none is one. */
+  captionRows?: (page: Page, index: number, widthPx: number) => number;
+}
+
+/** The room (px) for a number and memo of `rows` rows: the first row's baseline 18 px under the page, a row's pitch for each further one, and the letters' tails. */
+export function captionRoom(rows: number): number {
+  return Math.max(CAPTION, 18 + CAPTION_ROW * (rows - 1) + 6);
+}
+
+/** The room (px) the numbers and memos of `pages` (indexes) need under them at `scale`. */
+function roomUnder(project: Project, view: Arrangement, pages: number[], scale: number): number {
+  const rows = view.captionRows;
+  if (!rows) return CAPTION;
+  const [trimX0, , trimX1] = trimBox(project.pageFormat);
+  const width = (trimX1 - trimX0) * scale;
+  return captionRoom(Math.max(1, ...pages.flatMap((index) => (project.pages[index] ? [rows(project.pages[index], index, width)] : []))));
+}
+
+/** The page indexes of the spreads in `list`. */
+function indexesOf(list: Pair[]): number[] {
+  return list.flatMap((pair) => pair.flatMap((number) => (number === null ? [] : [number - 1])));
 }
 
 /** A spread's width (mm): the trims of its two pages meet at the gutter, as in the book. */
@@ -59,9 +84,9 @@ export function spreadWidth(format: PageFormat): number {
 }
 
 /** px per mm with a whole spread on a stage of `width` x `height` (zoom 1). */
-export function spreadFit(format: PageFormat, width: number, height: number): number {
+export function spreadFit(format: PageFormat, width: number, height: number, caption = CAPTION): number {
   const [, pageH] = format.canvasMm;
-  return Math.min((width - 2 * MARGIN) / spreadWidth(format), (height - 2 * MARGIN - CAPTION) / pageH);
+  return Math.min((width - 2 * MARGIN) / spreadWidth(format), (height - 2 * MARGIN - caption) / pageH);
 }
 
 /** 連続: how many rows `count` spreads are in (1 to one spread a row). */
@@ -100,16 +125,39 @@ export function layoutPages(project: Project, list: Pair[], current: number, vie
     // 単独 (and a piece of a 縦スクロール strip): the whole page in the middle.
     const page = pair[0] ?? pair[1];
     if (page === null) return [];
-    const scale = Math.min((width - 2 * MARGIN) / pageW, (height - 2 * MARGIN - CAPTION) / pageH) * view.zoom;
+    const [fit, room] = fitWithCaptions(project, list, view, (caption) => Math.min((width - 2 * MARGIN) / pageW, (height - 2 * MARGIN - caption) / pageH));
+    const scale = fit * view.zoom;
     const x = (width - pageW * scale) / 2 + view.pan[0];
-    const y = (height - CAPTION - pageH * scale) / 2 + view.pan[1];
-    return [{ page: project.pages[page - 1], index: page - 1, x, y, scale, shown: [0, pageW] }];
+    const y = (height - room - pageH * scale) / 2 + view.pan[1];
+    const caption = roomUnder(project, view, [page - 1], scale);
+    return [{ page: project.pages[page - 1], index: page - 1, x, y, scale, shown: [0, pageW], caption }];
   }
   const spreadMm = spreadWidth(project.pageFormat);
-  const scale = spreadFit(project.pageFormat, width, height) * view.zoom;
+  const [fit, room] = fitWithCaptions(project, list, view, (caption) => spreadFit(project.pageFormat, width, height, caption));
+  const scale = fit * view.zoom;
   const left = (width - spreadMm * scale) / 2 + view.pan[0];
-  const top = (height - CAPTION - pageH * scale) / 2 + view.pan[1];
-  return spreadSlots(project, pair, left, top, scale);
+  const top = (height - room - pageH * scale) / 2 + view.pan[1];
+  const caption = roomUnder(project, view, indexesOf([pair]), scale);
+  return spreadSlots(project, pair, left, top, scale).map((slot) => ({ ...slot, caption }));
+}
+
+/**
+ * 見開き・単独: the scale (zoom 1) that fits a page with the room for the
+ * longest number and memo of all of `list` under it, and that room: as
+ * large for every spread, so that the pages keep their size while turned.
+ * A smaller page wraps its memo into more rows: a second round settles it.
+ */
+function fitWithCaptions(project: Project, list: Pair[], view: Arrangement, fit: (caption: number) => number): [number, number] {
+  const pages = indexesOf(list);
+  let room = CAPTION;
+  let scale = fit(room);
+  for (let i = 0; i < 2 && view.captionRows; i++) {
+    const need = roomUnder(project, view, pages, scale);
+    if (need <= room) break;
+    room = need;
+    scale = fit(room);
+  }
+  return [scale, room];
 }
 
 /**
@@ -126,11 +174,18 @@ function continuousLayout(project: Project, list: Pair[], view: Arrangement): Sl
   const gap = pageGapPx(view.gapMm ?? GRID_GAP_MM, scale);
   const [roomTop, roomRight, roomBottom, roomLeft] = (view.room ?? [0, 0, 0, 0]).map((mm) => mm * scale);
   const pitchX = spreadMm * scale + gap + roomLeft + roomRight;
-  const pitchY = pageH * scale + CAPTION + gap + roomTop + roomBottom;
   const step = project.binding === "right" ? -1 : 1;
   const left = (step < 0 ? view.width - MARGIN - roomRight - spreadMm * scale : MARGIN + roomLeft) + view.pan[0];
-  const top = MARGIN + roomTop + view.pan[1];
-  return list.flatMap((pair, i) => spreadSlots(project, pair, left + step * (i % columns) * pitchX, top + Math.floor(i / columns) * pitchY, scale));
+  // Each row as far below the one above as that one's longest memo needs.
+  const slots: Slot[] = [];
+  let top = MARGIN + roomTop + view.pan[1];
+  for (let start = 0; start < list.length; start += columns) {
+    const row = list.slice(start, start + columns);
+    const caption = roomUnder(project, view, indexesOf(row), scale);
+    row.forEach((pair, i) => slots.push(...spreadSlots(project, pair, left + step * i * pitchX, top, scale).map((slot) => ({ ...slot, caption }))));
+    top += pageH * scale + caption + gap + roomTop + roomBottom;
+  }
+  return slots;
 }
 
 /**
@@ -170,7 +225,7 @@ export function extent(slots: Slot[], pageH: number, room?: Room): BoxMm | null 
     Math.min(...slots.map((slot) => slot.x + (slot.shown[0] - left) * slot.scale)),
     Math.min(...slots.map((slot) => slot.y - top * slot.scale)),
     Math.max(...slots.map((slot) => slot.x + (slot.shown[1] + right) * slot.scale)),
-    Math.max(...slots.map((slot) => slot.y + (pageH + bottom) * slot.scale + CAPTION)),
+    Math.max(...slots.map((slot) => slot.y + (pageH + bottom) * slot.scale + (slot.caption ?? CAPTION))),
   ];
 }
 
@@ -180,7 +235,7 @@ export function onStage(slot: Slot, pageH: number, width: number, height: number
   const room = rotation ? Math.max(width, height) / 2 : 0;
   const x0 = slot.x + slot.shown[0] * slot.scale;
   const x1 = slot.x + slot.shown[1] * slot.scale;
-  const y1 = slot.y + pageH * slot.scale + CAPTION;
+  const y1 = slot.y + pageH * slot.scale + (slot.caption ?? CAPTION);
   return x1 >= -room && x0 <= width + room && y1 >= -room && slot.y <= height + room;
 }
 
