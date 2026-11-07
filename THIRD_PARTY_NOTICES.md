@@ -15,9 +15,9 @@ SQLite（rusqlite に同梱）はパブリックドメインです。SQLite (bun
 | 名前 | 版 | ライセンス | 入手先 |
 |---|---|---|---|
 | @tauri-apps/api | 2.12.4 | Apache-2.0 OR MIT | https://www.npmjs.com/package/@tauri-apps/api |
-| @tauri-apps/plugin-dialog | 2.8.3 | MIT OR Apache-2.0 | https://www.npmjs.com/package/@tauri-apps/plugin-dialog |
+| @tauri-apps/plugin-dialog | 2.8.4 | MIT OR Apache-2.0 | https://www.npmjs.com/package/@tauri-apps/plugin-dialog |
 | @tauri-apps/plugin-process | 2.4.0 | MIT OR Apache-2.0 | https://www.npmjs.com/package/@tauri-apps/plugin-process |
-| @tauri-apps/plugin-updater | 2.14.0 | MIT OR Apache-2.0 | https://www.npmjs.com/package/@tauri-apps/plugin-updater |
+| @tauri-apps/plugin-updater | 2.14.1 | MIT OR Apache-2.0 | https://www.npmjs.com/package/@tauri-apps/plugin-updater |
 
 ## アプリ本体（Rust）
 
@@ -192,7 +192,7 @@ SQLite（rusqlite に同梱）はパブリックドメインです。SQLite (bun
 | regex-automata | 0.4.18 | MIT OR Apache-2.0 | https://github.com/rust-lang/regex |
 | regex-syntax | 0.8.11 | MIT OR Apache-2.0 | https://github.com/rust-lang/regex |
 | reqwest | 0.13.5 | MIT OR Apache-2.0 | https://github.com/seanmonstar/reqwest |
-| rfd | 0.16.0 | MIT | https://github.com/PolyMeilex/rfd |
+| rfd | 0.17.2 | MIT | https://github.com/PolyMeilex/rfd |
 | ring | 0.17.14 | Apache-2.0 AND ISC | https://github.com/briansmith/ring |
 | rusqlite | 0.40.2 | MIT | https://github.com/rusqlite/rusqlite |
 | rustc-hash | 2.1.3 | Apache-2.0 OR MIT | https://github.com/rust-lang/rustc-hash |
@@ -249,7 +249,7 @@ SQLite（rusqlite に同梱）はパブリックドメインです。SQLite (bun
 | tauri-codegen | 2.7.4 | Apache-2.0 OR MIT | https://github.com/tauri-apps/tauri |
 | tauri-macros | 2.7.4 | Apache-2.0 OR MIT | https://github.com/tauri-apps/tauri |
 | tauri-plugin | 2.7.2 | Apache-2.0 OR MIT | https://github.com/tauri-apps/tauri |
-| tauri-plugin-dialog | 2.8.3 | Apache-2.0 OR MIT | https://github.com/tauri-apps/plugins-workspace |
+| tauri-plugin-dialog | 2.8.4 | Apache-2.0 OR MIT | https://github.com/tauri-apps/plugins-workspace |
 | tauri-plugin-fs | 2.7.1 | Apache-2.0 OR MIT | https://github.com/tauri-apps/plugins-workspace |
 | tauri-plugin-process | 2.4.0 | Apache-2.0 OR MIT | https://github.com/tauri-apps/plugins-workspace |
 | tauri-plugin-updater | 2.14.1 | Apache-2.0 OR MIT | https://github.com/tauri-apps/plugins-workspace |
@@ -315,12 +315,9 @@ SQLite（rusqlite に同梱）はパブリックドメインです。SQLite (bun
 | windows-registry | 0.6.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows-result | 0.4.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows-strings | 0.5.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
-| windows-sys | 0.60.2 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows-sys | 0.61.2 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
-| windows-targets | 0.53.5 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows-threading | 0.2.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows-version | 0.1.7 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
-| windows_x86_64_msvc | 0.53.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | winnow | 1.0.4 | MIT | https://github.com/winnow-rs/winnow |
 | winreg | 0.56.0 | MIT | https://github.com/gentoo90/winreg-rs |
 | writeable | 0.6.4 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
