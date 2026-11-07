@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { asideCount, asideRoom, heldBox, layAside, offPage, onPageOnly, reachesOff, strokeBox } from "./aside";
+import { asideCount, asideRooms, heldBox, layAside, offPage, onPageOnly, reachesOff, strokeBox } from "./aside";
 import { bounds, rectShape } from "./geometry";
 import { holdPanel, placeHeld } from "./hold";
 import { layoutPages } from "./layout";
@@ -94,21 +94,59 @@ describe("欄外", () => {
 
   it("makes room between the pages of 連続 for what lies beside them", () => {
     const { project, h } = setUp();
-    const [top, right, bottom, left] = asideRoom(project, 1000);
+    const rooms = asideRooms(project, 1000);
+    const [top, right, bottom, left] = rooms[0];
     expect(top).toBeGreaterThanOrEqual(50);
     expect(right).toBeGreaterThanOrEqual(60);
     expect(bottom).toBe(0);
     expect(left).toBe(0);
+    // Only for the page it lies beside.
+    expect(rooms.slice(1)).toEqual([[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
     // At most `most` on a side.
-    expect(asideRoom(project, 30)[0]).toBe(30);
+    expect(asideRooms(project, 30)[0][0]).toBe(30);
     const view = { single: false, continuous: true, rows: 2, zoom: 1, pan: [0, 0] as [number, number], width: 1200, height: 800 };
     const list: [number | null, number | null][] = [[1, null], [2, 3], [4, null]];
     const tight = layoutPages(project, list, 0, view);
-    const roomy = layoutPages(project, list, 0, { ...view, room: [top, right, bottom, left] });
+    const roomy = layoutPages(project, list, 0, { ...view, rooms });
     const rowPitch = (slots: typeof tight) => slots.find((s) => s.index === 3)!.y - slots[0].y;
-    expect(rowPitch(roomy) - rowPitch(tight)).toBeCloseTo((top + bottom) * tight[0].scale);
+    // What is above page 1 needs room above the first row only: the second row (page 4, nothing beside it) stays as close.
+    expect(rowPitch(roomy)).toBeCloseTo(rowPitch(tight));
+    // Something above page 4 pushes its row down by as much.
+    addStroke(project, project.pages[3], [[30, -40, 1], [90, -20, 1]], 0.4);
+    const four = asideRooms(project, 1000);
+    expect(rowPitch(layoutPages(project, list, 0, { ...view, rooms: four })) - rowPitch(tight)).toBeCloseTo(four[3][0] * tight[0].scale);
     // The first row starts low enough to show what is above it.
     expect(roomy[0].y - top * roomy[0].scale).toBeCloseTo(tight[0].y);
     expect(h).toBeGreaterThan(0);
+  });
+
+  it("widens only the gaps beside the page with something in its 欄外", () => {
+    // 1 row of spreads, right binding: [1] then [2,3], [4,5], [6,7] going left.
+    const project = newProject("t", 7);
+    const [w] = project.pageFormat.canvasMm;
+    addSticky(project, project.pages[0], [w + 10, 20], "1 ページの右の外");
+    const view = { single: false, continuous: true, rows: 1, zoom: 0.3, pan: [0, 0] as [number, number], width: 1600, height: 800 };
+    const list: [number | null, number | null][] = [[1, null], [2, 3], [4, 5], [6, 7]];
+    const tight = layoutPages(project, list, 0, view);
+    const rooms = asideRooms(project, 1000);
+    expect(rooms[0][1]).toBeGreaterThan(0);
+    const roomy = layoutPages(project, list, 0, { ...view, rooms });
+    const x = (slots: typeof tight, index: number) => slots.find((s) => s.index === index)!.x;
+    const scale = tight[0].scale;
+    // Page 1 moves left by its room on the right; every other page goes along, and the gaps between them stay.
+    const shift = x(roomy, 0) - x(tight, 0);
+    expect(shift).toBeCloseTo(-rooms[0][1] * scale);
+    for (const index of [1, 2, 3, 4, 5, 6]) expect(x(roomy, index) - x(tight, index), `page ${index + 1}`).toBeCloseTo(shift);
+    // No room above or below: the row stays where it was.
+    expect(roomy[0].y).toBeCloseTo(tight[0].y);
+  });
+
+  it("keeps no room for what is hidden on screen", () => {
+    const project = newProject("t", 2);
+    const [w] = project.pageFormat.canvasMm;
+    const sticky = addSticky(project, project.pages[1], [w + 10, 20], "外");
+    expect(asideRooms(project, 1000)[1][1]).toBeGreaterThan(0);
+    expect(asideRooms(project, 1000, (kind) => kind !== "sticky")[1]).toEqual([0, 0, 0, 0]);
+    expect(asideRooms(project, 1000, (kind, id) => !(kind === "sticky" && id === sticky.id))[1]).toEqual([0, 0, 0, 0]);
   });
 });

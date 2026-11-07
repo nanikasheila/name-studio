@@ -206,6 +206,7 @@ export function buildCommands(host: CommandHost): Command[] {
     },
     ...TOOL_IDS.map((id) => tool(`tool.${id}`, id, TOOLS[id].label, TOOLS[id].keys, TOOLS[id].words)),
     button("marks-shown", "指示を出す・隠す", "画面", ["Shift+R"], "赤ペン 注釈 表示"),
+    { id: "view.stickies", label: "付箋を出す・隠す", group: "画面", keys: ["Shift+M"], words: "付箋 メモ 表示 隠す 欄外", available: named, run: always(() => editor.setStickiesShown(!editor.showStickies)) },
     { id: "panel.modeCut", label: "コマ割り: 割る（横切るように引く）", group: "道具", keys: [], words: "コマ 割る", available: named, run: always(() => host.setPanelMode("cut")) },
     { id: "panel.modeSketch", label: "コマ割り: 描く（なぐり描きで仮のコマ割り）", group: "道具", keys: [], words: "コマ 描く 手描き ラフ 仮 なぐり描き", available: named, run: always(() => host.setPanelMode("sketch")) },
     { id: "panel.modeRect", label: "コマ割り: 四角（ドラッグで四角いコマ）", group: "道具", keys: [], words: "コマ 四角 矩形", available: named, run: always(() => host.setPanelMode("rect")) },

@@ -1,7 +1,7 @@
 // Where the pages lie on the editor's screen: one spread (見開き), one page
 // (単独), or every spread on one canvas (連続), and the conversions between
 // the screen (CSS px, before the view's rotation) and a page (mm).
-import type { Room } from "./aside";
+import { NO_ROOM, type Room, widestRoom } from "./aside";
 import type { BoxMm, Page, PageFormat, Point, Project } from "./model";
 import { trimBox } from "./pagebox";
 
@@ -48,8 +48,8 @@ export interface Arrangement {
   pan: [number, number];
   /** 連続: room between the spreads (mm); none is GRID_GAP_MM. */
   gapMm?: number;
-  /** 連続: room kept around every page for what lies in the 欄外 (mm: top, right, bottom, left). */
-  room?: Room;
+  /** 連続: room kept around each page for what lies in its 欄外 (mm: top, right, bottom, left), by page index. */
+  rooms?: readonly Room[];
   /** The stage (CSS px). */
   width: number;
   height: number;
@@ -172,20 +172,46 @@ function continuousLayout(project: Project, list: Pair[], view: Arrangement): Sl
   const scale = spreadFit(project.pageFormat, view.width, view.height) * view.zoom;
   const columns = Math.ceil(list.length / rowCount(view.rows, list.length));
   const gap = pageGapPx(view.gapMm ?? GRID_GAP_MM, scale);
-  const [roomTop, roomRight, roomBottom, roomLeft] = (view.room ?? [0, 0, 0, 0]).map((mm) => mm * scale);
-  const pitchX = spreadMm * scale + gap + roomLeft + roomRight;
   const step = project.binding === "right" ? -1 : 1;
-  const left = (step < 0 ? view.width - MARGIN - roomRight - spreadMm * scale : MARGIN + roomLeft) + view.pan[0];
+  const spreadPx = spreadMm * scale;
+  // Room for the 欄外 only where there is something in it: a column of
+  // spreads as wide as the widest of it needs, a row as tall as its tallest.
+  // (Every column as wide made the gaps between spreads with nothing beside
+  // them grow too.) The columns stay lined up from row to row.
+  const room = (pair: Pair): Room => spreadRoom(project, pair, view.rooms);
+  const rowCountOf = Math.ceil(list.length / columns);
+  const columnRoom = Array.from({ length: columns }, (_, c) => widestRoom(list.filter((_, i) => i % columns === c).map(room)));
+  const rowRoom = Array.from({ length: rowCountOf }, (_, r) => widestRoom(list.slice(r * columns, (r + 1) * columns).map(room)));
+  // The left edge of each column, in reading order (right to left for right binding).
+  const xs: number[] = [];
+  for (let c = 0; c < columns; c++) {
+    const [, right, , left] = columnRoom[c].map((mm) => mm * scale);
+    if (!c) xs.push((step < 0 ? view.width - MARGIN - right - spreadPx : MARGIN + left) + view.pan[0]);
+    else {
+      const [, beforeRight, , beforeLeft] = columnRoom[c - 1].map((mm) => mm * scale);
+      xs.push(step < 0 ? xs[c - 1] - beforeLeft - gap - right - spreadPx : xs[c - 1] + spreadPx + beforeRight + gap + left);
+    }
+  }
   // Each row as far below the one above as that one's longest memo needs.
   const slots: Slot[] = [];
-  let top = MARGIN + roomTop + view.pan[1];
-  for (let start = 0; start < list.length; start += columns) {
+  let top = MARGIN + (rowRoom[0]?.[0] ?? 0) * scale + view.pan[1];
+  for (let r = 0, start = 0; start < list.length; r++, start += columns) {
     const row = list.slice(start, start + columns);
     const caption = roomUnder(project, view, indexesOf(row), scale);
-    row.forEach((pair, i) => slots.push(...spreadSlots(project, pair, left + step * i * pitchX, top, scale).map((slot) => ({ ...slot, caption }))));
-    top += pageH * scale + caption + gap + roomTop + roomBottom;
+    row.forEach((pair, i) => slots.push(...spreadSlots(project, pair, xs[i], top, scale).map((slot) => ({ ...slot, caption }))));
+    top += pageH * scale + caption + gap + rowRoom[r][2] * scale + (rowRoom[r + 1]?.[0] ?? 0) * scale;
   }
   return slots;
+}
+
+/** The room a spread keeps for the 欄外 of its pages (mm): above and below as much as either needs, at its sides what the outer page there needs. */
+function spreadRoom(project: Project, pair: Pair, rooms: readonly Room[] | undefined): Room {
+  if (!rooms) return NO_ROOM;
+  const [rightPage, leftPage] = project.binding === "right" ? pair : [pair[1], pair[0]];
+  const of = (number: number | null): Room => (number === null ? NO_ROOM : (rooms[number - 1] ?? NO_ROOM));
+  const [leftOuter, rightOuter] = [of(leftPage ?? rightPage), of(rightPage ?? leftPage)];
+  const both = widestRoom([of(leftPage), of(rightPage)]);
+  return [both[0], rightOuter[1], both[2], leftOuter[3]];
 }
 
 /**
@@ -198,15 +224,23 @@ function stripLayout(project: Project, list: Pair[], view: Arrangement): Slot[] 
   const [pageW, pageH] = project.pageFormat.canvasMm;
   const scale = Math.min((view.width - 2 * MARGIN - STRIP_SIDE) / pageW, (view.height - 2 * MARGIN) / pageH) * view.zoom;
   const perColumn = Math.ceil(list.length / rowCount(view.rows, list.length));
-  const [, roomRight, , roomLeft] = (view.room ?? [0, 0, 0, 0]).map((mm) => mm * scale);
-  const pitchX = pageW * scale + STRIP_SIDE + pageGapPx(view.gapMm ?? GRID_GAP_MM, scale) + roomLeft + roomRight;
-  const left = MARGIN + STRIP_SIDE + roomLeft + view.pan[0];
+  const gap = pageGapPx(view.gapMm ?? GRID_GAP_MM, scale);
+  // Each column as wide apart as what lies beside its own pieces needs.
+  const numberOf = (pair: Pair) => pair[0] ?? pair[1];
+  const columnRoom = Array.from({ length: Math.ceil(list.length / perColumn) }, (_, c) =>
+    widestRoom(list.slice(c * perColumn, (c + 1) * perColumn).map((pair) => view.rooms?.[(numberOf(pair) ?? 0) - 1] ?? NO_ROOM)),
+  );
+  const xs: number[] = [];
+  columnRoom.forEach((room, c) => {
+    const before = c ? xs[c - 1] + (pageW + columnRoom[c - 1][1]) * scale + gap : MARGIN + view.pan[0];
+    xs.push(before + STRIP_SIDE + room[3] * scale);
+  });
   const top = MARGIN + view.pan[1];
   return list.flatMap((pair, i): Slot[] => {
-    const number = pair[0] ?? pair[1];
+    const number = numberOf(pair);
     const page = number === null ? undefined : project.pages[number - 1];
     if (!page || number === null) return [];
-    const x = left + Math.floor(i / perColumn) * pitchX;
+    const x = xs[Math.floor(i / perColumn)];
     return [{ page, index: number - 1, x, y: top + (i % perColumn) * pageH * scale, scale, shown: [0, pageW] }];
   });
 }
@@ -217,15 +251,15 @@ export function pageGapPx(gapMm: number, scale: number): number {
   return gap * scale + GRID_GAP_PX * Math.min(1, gap / GRID_GAP_MM);
 }
 
-/** The screen box (px) of the pages in `slots`, with the room for their page numbers (and `room` around them for the 欄外). */
-export function extent(slots: Slot[], pageH: number, room?: Room): BoxMm | null {
+/** The screen box (px) of the pages in `slots`, with the room for their page numbers (and each page's `rooms` around it for the 欄外). */
+export function extent(slots: Slot[], pageH: number, rooms?: readonly Room[]): BoxMm | null {
   if (!slots.length) return null;
-  const [top, right, bottom, left] = room ?? [0, 0, 0, 0];
+  const room = (slot: Slot) => rooms?.[slot.index] ?? NO_ROOM;
   return [
-    Math.min(...slots.map((slot) => slot.x + (slot.shown[0] - left) * slot.scale)),
-    Math.min(...slots.map((slot) => slot.y - top * slot.scale)),
-    Math.max(...slots.map((slot) => slot.x + (slot.shown[1] + right) * slot.scale)),
-    Math.max(...slots.map((slot) => slot.y + (pageH + bottom) * slot.scale + (slot.caption ?? CAPTION))),
+    Math.min(...slots.map((slot) => slot.x + (slot.shown[0] - room(slot)[3]) * slot.scale)),
+    Math.min(...slots.map((slot) => slot.y - room(slot)[0] * slot.scale)),
+    Math.max(...slots.map((slot) => slot.x + (slot.shown[1] + room(slot)[1]) * slot.scale)),
+    Math.max(...slots.map((slot) => slot.y + (pageH + room(slot)[2]) * slot.scale + (slot.caption ?? CAPTION))),
   ];
 }
 
@@ -251,13 +285,13 @@ export function fitContinuous(project: Project, list: Pair[], view: Arrangement,
   const slots = (pan: [number, number] = [0, 0]) => layoutPages(project, list, 0, { ...view, continuous: true, zoom, pan });
   for (let i = 0; i < 3; i++) {
     // The gaps between the spreads are partly px: a few rounds settle the zoom.
-    const box = extent(slots(), pageH, view.room);
+    const box = extent(slots(), pageH, view.rooms);
     if (!box) return { zoom: 1, pan: [0, 0] };
     const tall = (view.height - 2 * MARGIN) / (box[3] - box[1]);
     zoom = Math.min(Math.max(zoom * (what === "rows" ? tall : Math.min((view.width - 2 * MARGIN) / (box[2] - box[0]), tall)), 0.02), 1);
   }
   const laid = slots();
-  const box = extent(laid, pageH, view.room)!;
+  const box = extent(laid, pageH, view.rooms)!;
   const x = what === "rows" ? (across(laid) ?? (box[0] + box[2]) / 2) : (box[0] + box[2]) / 2;
   return { zoom, pan: [view.width / 2 - x, view.height / 2 - (box[1] + box[3]) / 2] };
 }
@@ -267,8 +301,8 @@ export function fitContinuous(project: Project, list: Pair[], view: Arrangement,
  * they were: every page inside and filling it across or down (`all`), or
  * the rows filling its height (`rows`, or in its middle at zoom 1).
  */
-export function fittedTo(slots: Slot[], pageH: number, width: number, height: number, zoom: number, room?: Room): "all" | "rows" | null {
-  const box = extent(slots, pageH, room);
+export function fittedTo(slots: Slot[], pageH: number, width: number, height: number, zoom: number, rooms?: readonly Room[]): "all" | "rows" | null {
+  const box = extent(slots, pageH, rooms);
   if (!box) return null;
   const [w, h] = [box[2] - box[0], box[3] - box[1]];
   const middle = (a: number, b: number, size: number) => Math.abs((a + b) / 2 - size / 2) < 2;

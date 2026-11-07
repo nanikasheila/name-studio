@@ -143,6 +143,7 @@
           </div>
           <label class="check" id="first-alone-label" title="見開きの組み方: 1 ページ目を左ページだけで始める"><input type="checkbox" id="editor-first-alone" checked /><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="10" y="4" width="7.5" height="12"/><path d="M9 4H2.5v12H9" stroke-dasharray="2 2"/></svg><span class="nav-label">1ページ目を単独</span></label>
           <label class="check" title="コマのメモをページの上に出す（画面だけ。書き出しには入りません）"><input type="checkbox" id="show-notes" checked /><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 3.5h13v9l-4 4h-9z"/><path d="M12.5 16.5v-4h4M6.5 7.5h7M6.5 10.5h4"/></svg><span class="nav-label">コマのメモ</span></label>
+          <label class="check" id="show-stickies-label" data-command="view.stickies" title="付箋をページの上と欄外に出す・隠す（画面だけ）。隠すと、付箋だけのために空けていたページの間も詰めます"><input type="checkbox" id="show-stickies" checked /><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3.5h12v9.5l-3.5 3.5H4z"/><path d="M12.5 16.5V13H16"/></svg><span class="nav-label">付箋</span></label>
           <span id="marks-shown-label" hidden><button id="marks-shown" class="marks-shown" data-command="button.marks-shown" aria-pressed="true" title="指示（指示ツールで描いたもの）をページの上に出す・隠す。隠すと CSP へも隠したレイヤーで出ます"><i></i>指示</button></span>
           <button id="held-badge" class="held-badge" title="このあたりのページに入れたい保留のコマ" hidden></button>
         </div>
@@ -718,6 +719,10 @@
               <div class="setting-item" data-keys="メモ コマのメモ 演出 表示">
                 <label class="check"><input type="checkbox" id="st-show-notes" /> コマのメモをページの上に出す</label>
                 <p class="hint">画面だけで、書き出しには入りません。紙面の上の「コマのメモ」と同じです。</p>
+              </div>
+              <div class="setting-item" data-keys="付箋 メモ 表示 隠す 欄外">
+                <label class="check"><input type="checkbox" id="st-show-stickies" /> 付箋を出す</label>
+                <p class="hint">画面だけで、隠しても付箋は消えません（CSP・PDF にはもともと書き出しません）。紙面の下の「付箋」と同じです。隠すと連続では付箋のために空けていたページの間も詰めます。</p>
               </div>
             </section>
             <section class="settings-pane" data-pane="edit" data-scope="pc" data-title="操作">

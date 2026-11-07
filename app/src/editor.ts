@@ -7,7 +7,7 @@
 // Coordinates on a page are millimetres; each page of the spread has its own
 // mm → screen mapping.
 import { isTyping } from "./dom";
-import { BALLOON_TEXT_KEY, CONTINUOUS_KEY, loadFillSettings, loadSnap, PAGE_GAP_KEY, PANEL_CARRIES_KEY, penPreferences, ROWS_KEY, SHOW_NOTES_KEY, SINGLE_PAGE_KEY } from "./prefs";
+import { BALLOON_TEXT_KEY, CONTINUOUS_KEY, loadFillSettings, loadSnap, PAGE_GAP_KEY, PANEL_CARRIES_KEY, penPreferences, ROWS_KEY, SHOW_NOTES_KEY, SHOW_STICKIES_KEY, SINGLE_PAGE_KEY } from "./prefs";
 import { spreads } from "./pages";
 import { GRID_GAP_MM, MARGIN, MAX_PAGE_GAP_MM, extent, fitContinuous, fittedTo, layoutPages, nearestSlot, nearestTo, onScreenOf, onStage, rowCount, slotAt, toPage, type Arrangement, type Slot } from "./layout";
 import { holdPanel, placeHeld } from "./hold";
@@ -31,7 +31,7 @@ import {
 import { drawLineText, drawStroke, LiveLine, onTipLoaded, tracePath } from "./pagedraw";
 import { perfMeter } from "./perfmeter";
 import { StrokeCache } from "./strokecache";
-import { ROUGH_BASE, shownStrokes, strokeEditable } from "./roughlayers";
+import { ROUGH_BASE, strokeEditable } from "./roughlayers";
 import { neighbour, setLineText } from "./dialogue";
 import { bounds, insideBox, insidePolygon } from "./geometry";
 import type { FillSettings } from "./fillsettings";
@@ -41,11 +41,12 @@ import { type CarriedContents, carryContents, followPanel, panelContents } from 
 import { gutters, pageIndex } from "./project";
 import { assignPanels, orderPanels, sortLines } from "./readingorder";
 import { settleSticky, stickyFolds } from "./stickies";
-import { asideRoom, NO_ROOM, offPage, type Room } from "./aside";
+import { asideRooms, offPage, type Room, sameRooms } from "./aside";
+import { withoutHidden } from "./layers";
 import { drawAside } from "./asidedraw";
 import { asideSlot, pressHeld } from "./toolaside";
 import { strokeHit } from "./strokes";
-import { readCount, readFlag, readNumber } from "./settings";
+import { readCount, readFlag, readNumber, writeFlag } from "./settings";
 import {
   FRAME_HANDLES,
   framedAtOnce,
@@ -132,6 +133,8 @@ export class PageEditor {
   balloonTextFollows = readFlag(BALLOON_TEXT_KEY, true);
   /** Each panel's memo shown on the page (only on screen, never exported). */
   showNotes = readFlag(SHOW_NOTES_KEY, true);
+  /** 付箋 shown on the pages and beside them (setStickiesShown). */
+  showStickies = readFlag(SHOW_STICKIES_KEY, true);
   penWidthMm = 0.4;
   /** The ラフ線のレイヤー the pen draws on (ROUGH_BASE when the name has one layer). */
   roughLayer = ROUGH_BASE;
@@ -149,8 +152,8 @@ export class PageEditor {
   snapping: SnapSettings = loadSnap();
   /** 連続: room between the spreads (mm). */
   pageGapMm = readNumber(PAGE_GAP_KEY, GRID_GAP_MM, 0, MAX_PAGE_GAP_MM);
-  /** 連続: room kept around the pages for what lies in their 欄外 (aside.ts). */
-  private room: Room = NO_ROOM;
+  /** 連続: room kept around each page for what lies in its 欄外 (aside.ts), by page index. */
+  private rooms: Room[] = [];
   /** コマ割り: what a drag with the panel tool does. */
   panelMode: PanelMode = "cut";
   /** 多角形: the corners placed so far on a page (the panel is made when the outline is closed). */
@@ -468,6 +471,7 @@ export class PageEditor {
     this.tool = tool;
     this.transforming = false;
     if (tool !== "cut") this.cancelPolygon();
+    if (tool === "sticky" && !this.showStickies) this.setStickiesShown(true); // 付箋 put while hidden would not be seen.
     // What the tool taken up does not keep is let go: Delete and the arrows never act on what is not shown as picked.
     if (this.selection && !toolHolds(tool, this.selection.kind)) {
       this.selection = null;
@@ -482,6 +486,7 @@ export class PageEditor {
   select(selection: Selection | null, quiet = false): void {
     // What the tool in hand does not keep is picked with the select tool (from a list, a paste, Ctrl+A).
     if (selection && !toolHolds(this.tool, selection.kind)) this.host.useTool("select");
+    if (selection?.kind === "sticky" && !this.showStickies) this.setStickiesShown(true);
     const same = selection && this.selection && selection.kind === this.selection.kind && selection.id === this.selection.id && selection.pageId === this.selection.pageId;
     if (!same) this.transforming = false;
     this.selection = selection;
@@ -551,7 +556,7 @@ export class PageEditor {
     // 連続, as the stage grows or shrinks (Tab, the strip, the window): fitted to it, fitted again;
     // otherwise what was in the middle stays in the middle.
     const was = this.continuous && project && before?.width && before.height && width && height ? this.layout(project) : null;
-    const fitted = was && project && !project.scroll && before ? fittedTo(was, project.pageFormat.canvasMm[1], before.width, before.height, this.view.zoom, this.room) : null;
+    const fitted = was && project && !project.scroll && before ? fittedTo(was, project.pageFormat.canvasMm[1], before.width, before.height, this.view.zoom, this.rooms) : null;
     const held = was && project && before ? nearestTo(was, project.pageFormat, [before.width / 2, before.height / 2]) : null;
     this.size = { width, height };
     const at = (slots: Slot[]) => (held ? onScreenOf(slots, held) : null);
@@ -582,7 +587,7 @@ export class PageEditor {
 
   private arrangement(): Arrangement {
     const { width, height } = this.stageSize();
-    return { single: this.single, continuous: this.continuous, rows: this.rows, zoom: this.view.zoom, pan: this.view.pan, width, height, gapMm: this.pageGapMm, room: this.room, captionRows: this.captionRows };
+    return { single: this.single, continuous: this.continuous, rows: this.rows, zoom: this.view.zoom, pan: this.view.pan, width, height, gapMm: this.pageGapMm, rooms: this.rooms, captionRows: this.captionRows };
   }
 
   /** How many rows a page's number and memo take under it, as drawn. */
@@ -928,17 +933,18 @@ export class PageEditor {
     this.cacheStale = false;
   }
 
-  /** 連続: room between the pages for what lies in their 欄外, made anew as that changes (the pages slide, the spread worked on stays put). */
+  /** 連続: room between the pages for what lies in their 欄外 (not what is hidden), made anew as that changes (the pages slide, the spread worked on stays put). */
   private keepRoom(project: Project): void {
-    const room = asideRoom(project, project.pageFormat.canvasMm[1] / 2);
-    if (room.every((side, i) => Math.abs(side - this.room[i]) < 0.5)) return;
+    const shown = (kind: string, id: string) => (kind !== "sticky" || this.showStickies) && !this.hidden.has(`${kind}:${id}`);
+    const rooms = asideRooms(project, project.pageFormat.canvasMm[1] / 2, shown);
+    if (sameRooms(rooms, this.rooms)) return;
     if (!this.continuous) {
-      this.room = room;
+      this.rooms = rooms;
       return;
     }
     const from = new Map(this.slots.map((slot): [number, Point] => [slot.index, [slot.x, slot.y]]));
     const before = this.spreadBox(this.layout(project));
-    this.room = room;
+    this.rooms = rooms;
     const after = this.spreadBox(this.layout(project));
     if (before && after) this.view.pan = [this.view.pan[0] + before[0] - after[0], this.view.pan[1] + before[1] - after[1]];
     if (from.size && !matchMedia("(prefers-reduced-motion: reduce)").matches) this.sliding = { from, start: performance.now() };
@@ -972,23 +978,21 @@ export class PageEditor {
     drawSpreadMarks(this.ctx, project, this.slots, this.spreadList(), current, (slot) => this.onCanvas(project, slot), (slots) => this.extent(slots));
   }
 
-  /** The page as shown: without what the レイヤー list hides. */
+  /** 付箋を出す・隠す (on screen only): hidden, none can be picked, and 連続 closes up the room only they took. */
+  setStickiesShown(shown: boolean): void {
+    if (shown === this.showStickies) return;
+    this.showStickies = shown;
+    writeFlag(SHOW_STICKIES_KEY, shown);
+    const box = document.getElementById("show-stickies");
+    if (box instanceof HTMLInputElement) box.checked = shown;
+    this.host.status(shown ? "付箋を出しました" : "付箋を隠しました（画面だけ。紙面の下の付箋のボタンでまた出します）");
+    if (!shown && this.selection?.kind === "sticky") this.select(null);
+    this.draw();
+  }
+
+  /** The page as shown: without what the レイヤー list (or a ラフ線のレイヤー) hides, or the 付箋 hidden all together. */
   private visiblePage(page: Page): Page {
-    // Lines on a hidden ラフ線のレイヤー.
-    const project = this.host.project();
-    const strokes = project ? shownStrokes(project, page.strokes) : page.strokes;
-    if (strokes !== page.strokes) page = { ...page, strokes };
-    if (!this.hidden.size) return page;
-    const shown = <T extends { id: string }>(kind: string, list: T[]) => list.filter((item) => !this.hidden.has(`${kind}:${item.id}`));
-    return {
-      ...page,
-      panels: shown("panel", page.panels),
-      lines: shown("line", page.lines),
-      strokes: shown("stroke", page.strokes),
-      breakouts: shown("breakout", page.breakouts),
-      ...(page.fills ? { fills: shown("fill", page.fills) } : {}),
-      ...(page.stickies ? { stickies: shown("sticky", page.stickies) } : {}),
-    };
+    return withoutHidden(page, this.hidden, this.showStickies, this.host.project() ?? undefined);
   }
 
   /** A page shown small (連続, from afar): too small for its marks and memos. */

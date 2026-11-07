@@ -359,6 +359,13 @@ export class ControlBar {
       writeFlag(SHOW_NOTES_KEY, showNotes.checked);
       this.editor.draw();
     });
+    const showStickies = $<HTMLInputElement>("show-stickies");
+    showStickies.checked = this.editor.showStickies;
+    showStickies.addEventListener("change", () => {
+      this.editor.setStickiesShown(showStickies.checked);
+      // Back to the pages: the keys (Shift+M again, Ctrl+Z) work at once.
+      showStickies.blur();
+    });
     $("spread-mode").addEventListener("click", () => this.setView("spread"));
     $("single-mode").addEventListener("click", () => this.setView("single"));
     $("continuous-mode").addEventListener("click", () => this.setView("continuous"));
