@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { hiddenKeys, moveIntoPanel, pageLayers } from "./layers";
+import { hiddenKeys, moveIntoPanel, pageLayers, withoutHidden } from "./layers";
 import { addLine } from "./dialogue";
 import { bounds, rectShape } from "./geometry";
 import { addPanel } from "./panels";
 import { newProject } from "./project";
+import { addSticky } from "./stickies";
 import { addFill, addStroke } from "./strokes";
 
 function sample() {
@@ -56,5 +57,17 @@ describe("layers like CSP's panel folders", () => {
     expect(cx).toBeLessThanOrEqual(x1);
     expect(cy).toBeGreaterThanOrEqual(y0);
     expect(cy).toBeLessThanOrEqual(y1);
+  });
+
+  it("shows a page without what the eyes hide, and without its 付箋 while they are all hidden", () => {
+    const project = newProject("t", 1);
+    const page = project.pages[0];
+    const a = addSticky(project, page, [10, 10], "a");
+    const b = addSticky(project, page, [10, 60], "b");
+    expect(withoutHidden(page, new Set())).toBe(page);
+    expect(withoutHidden(page, new Set([`sticky:${a.id}`])).stickies?.map((s) => s.id)).toEqual([b.id]);
+    expect(withoutHidden(page, new Set(), false).stickies).toEqual([]);
+    // The page itself keeps them.
+    expect(page.stickies?.length).toBe(2);
   });
 });

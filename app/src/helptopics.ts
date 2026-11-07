@@ -215,6 +215,7 @@ export const TOOL_TOPICS: Record<ToolId, HelpTopic> & Record<string, HelpTopic> 
       { input: "クリック", does: "付箋を貼る（コマやセリフの上ならそれに紐づく）" },
       { input: "ドラッグ（付箋）", does: "動かす" },
       { input: "丸い取っ手をドラッグ", does: "コマ・セリフに紐づける" },
+      { command: "view.stickies", does: "付箋を出す・隠す" },
       ...VIEW_STEPS,
     ],
   },
@@ -296,6 +297,7 @@ export const HOVER_TOPICS: Record<string, HelpTopic> = {
       { input: "ダブルクリック", does: "右の欄で書く" },
       { input: "丸い取っ手をドラッグ", does: "コマ・セリフに紐づける" },
       { command: "delete", does: "消す" },
+      { command: "view.stickies", does: "付箋を全部隠す" },
     ],
   },
   "item.group": {

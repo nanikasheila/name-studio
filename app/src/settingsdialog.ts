@@ -145,6 +145,7 @@ export class SettingsDialog {
       notes.checked = (event.target as HTMLInputElement).checked;
       notes.dispatchEvent(new Event("change"));
     });
+    $<HTMLInputElement>("st-show-stickies").addEventListener("change", (event) => this.host.editor.setStickiesShown((event.target as HTMLInputElement).checked));
     $<HTMLInputElement>("st-help-bar").addEventListener("change", (event) => showHelpBar((event.target as HTMLInputElement).checked));
     $<HTMLSelectElement>("st-strip-order").addEventListener("change", (event) => {
       const order = (event.target as HTMLSelectElement).value === "binding" ? "binding" : "left";
@@ -448,6 +449,7 @@ export class SettingsDialog {
     const gap = $<HTMLInputElement>("st-page-gap");
     if (document.activeElement !== gap) gap.value = String(this.host.editor.pageGapMm);
     $<HTMLInputElement>("st-show-notes").checked = this.host.editor.showNotes;
+    $<HTMLInputElement>("st-show-stickies").checked = this.host.editor.showStickies;
     $<HTMLInputElement>("st-help-bar").checked = helpBarShown();
     $<HTMLSelectElement>("st-strip-order").value = stripOrder();
     $<HTMLInputElement>("st-panel-carries").checked = this.host.editor.panelCarries;

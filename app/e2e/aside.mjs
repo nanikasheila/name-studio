@@ -1,7 +1,8 @@
 // 欄外: the room around the pages, driven with the mouse. A sketch with the
 // pen and a 付箋 beside the page, a panel held into the 欄外 above its page
 // and dragged from there onto the facing page, the eraser in the 欄外, the
-// room 連続 keeps between the rows, and undo back to the start.
+// room 連続 keeps beside the pages with something in their 欄外 (and only
+// there), 付箋 hidden and shown, and undo back to the start.
 // Run: npm run e2e:aside (-- --shots <dir> keeps a picture of each step).
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
@@ -177,9 +178,70 @@ try {
     return e.slots.map((s) => [s.index, s.y, s.scale]);
   });
   await shot("連続 with the 欄外");
-  const room = await page.evaluate(() => window.nameStudio.workbench.editor.room);
-  check(room[1] > 30, `連続 keeps room beside the pages for the sketch and the 付箋 (${room.map((r) => Math.round(r)).join(", ")} mm)`);
+  const rooms = () => page.evaluate(() => window.nameStudio.workbench.editor.rooms.map((room) => room.map((side) => Math.round(side))));
+  const room = await rooms();
+  check(room[1][1] > 30, `連続 keeps room beside page 2 for the sketch and the 付箋 (${room[1].join(", ")} mm)`);
+  check([0, 2, 3].every((i) => room[i].every((side) => side === 0)), `and none around the pages with nothing beside them (${JSON.stringify(room)})`);
   check(tight.length === 4, "every page is laid out");
+
+  // One row: only the gap at page 2's side grows (right binding: [1] [2,3] [4]; page 2 is the right page of its spread).
+  const gaps = () =>
+    page.evaluate(() => {
+      const e = window.nameStudio.workbench.editor;
+      e.rows = 1;
+      e.draw();
+      const x = (i) => e.slots.find((s) => s.index === i);
+      const left = (i) => x(i).x + x(i).shown[0] * x(i).scale;
+      const right = (i) => x(i).x + x(i).shown[1] * x(i).scale;
+      // Between page 1 and page 2, and between page 3 and page 4.
+      return [left(0) - right(1), left(2) - right(3)].map(Math.round);
+    });
+  const [besideTwo, betweenThreeFour] = await gaps();
+  check(besideTwo > betweenThreeFour + 20, `連続 widens the gap beside page 2 (${besideTwo} px) but not the one between pages 3 and 4 (${betweenThreeFour} px)`);
+  await shot("連続 one row");
+
+  // 付箋を出す・隠す: Shift+M hides them (on screen only), and the room only they took closes up.
+  const stickyRoom = async () => (await rooms())[1][1];
+  const withSticky = await stickyRoom();
+  // The 付箋 put farther out than the sketch (put back before undo).
+  const noteAt = await page.evaluate(() => {
+    const p = window.nameStudio.workbench.project;
+    const was = p.pages[1].stickies[0].at;
+    p.pages[1].stickies[0].at = [p.pageFormat.canvasMm[0] + 80, was[1]];
+    window.nameStudio.workbench.editor.draw();
+    return was;
+  });
+  await settle();
+  const farSticky = await stickyRoom();
+  await page.keyboard.press("Shift+M");
+  await settle();
+  const hiddenState = await page.evaluate(() => ({ shown: window.nameStudio.workbench.editor.showStickies, box: document.getElementById("show-stickies").checked, status: document.getElementById("status").textContent }));
+  check(!hiddenState.shown && !hiddenState.box, "Shift+M hides the 付箋 and unticks 付箋 under the pages");
+  check(hiddenState.status.includes("付箋を隠しました"), `and says so (${hiddenState.status})`);
+  const noSticky = await stickyRoom();
+  check(farSticky > withSticky - 1 && noSticky < farSticky - 20 && noSticky > 0, `hidden, the room beside page 2 shrinks to the sketch (${farSticky} → ${noSticky} mm)`);
+  const picked = await page.evaluate(() => {
+    const wb = window.nameStudio.workbench;
+    const p = wb.project;
+    const sticky = p.pages[1].stickies[0];
+    const [x, y] = wb.editor.clientOf(p.pages[1].id, [sticky.at[0] + 20, sticky.at[1] + 5]);
+    return { x, y };
+  });
+  await page.mouse.click(picked.x, picked.y);
+  await settle();
+  check((await page.evaluate(() => window.nameStudio.workbench.editor.selection?.kind)) !== "sticky", "a hidden 付箋 cannot be picked");
+  await shot("付箋 hidden");
+  await page.locator("#show-stickies").click();
+  await settle();
+  check((await page.evaluate(() => window.nameStudio.workbench.editor.showStickies)) && (await stickyRoom()) === farSticky, "ticking 付箋 shows them again, with their room");
+  await page.keyboard.press("Shift+M");
+  await tool("sticky");
+  await settle();
+  check(await page.evaluate(() => window.nameStudio.workbench.editor.showStickies && document.getElementById("show-stickies").checked), "taking up the 付箋 tool shows them again");
+  await page.evaluate((at) => {
+    localStorage.removeItem("namestudio.showStickies");
+    window.nameStudio.workbench.project.pages[1].stickies[0].at = at;
+  }, noteAt);
 
   // Undo to the start.
   for (let i = 0; i < 20; i++) await page.keyboard.press("Control+z");

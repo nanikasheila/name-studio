@@ -94,16 +94,21 @@ export function heldBeside(project: Project, page: Page): HeldPanel[] {
   return (project.held ?? []).filter((held) => held.near === page.id && held.at);
 }
 
-/** The boxes of what lies in or reaches into a page's 欄外 (mm), but `except`. */
-export function asideBoxes(project: Project, page: Page, except?: HeldPanel): BoxMm[] {
+/** What can be left out of the 欄外 the view keeps room for: what is hidden on screen. */
+export type AsideShown = (kind: "stroke" | "reference" | "sticky", id: string) => boolean;
+
+/** The boxes of what lies in or reaches into a page's 欄外 (mm), but `except` and what `shown` leaves out. */
+export function asideBoxes(project: Project, page: Page, except?: HeldPanel, shown?: AsideShown): BoxMm[] {
   const format = project.pageFormat;
   const boxes: BoxMm[] = [];
   for (const stroke of page.strokes) {
+    if (shown && !shown("stroke", stroke.id)) continue;
     const box = strokeBox(stroke);
     if (reachesOff(box, format)) boxes.push(box);
   }
-  for (const reference of page.references ?? []) if (reachesOff(reference.box, format)) boxes.push(reference.box);
+  for (const reference of page.references ?? []) if ((!shown || shown("reference", reference.id)) && reachesOff(reference.box, format)) boxes.push(reference.box);
   for (const sticky of page.stickies ?? []) {
+    if (shown && !shown("sticky", sticky.id)) continue;
     const box = stickyBox(sticky);
     if (reachesOff(box, format)) boxes.push(box);
   }
@@ -115,22 +120,35 @@ export function asideBoxes(project: Project, page: Page, except?: HeldPanel): Bo
 }
 
 /**
- * How far what lies in the 欄外 of any page reaches past its edges (mm), at
- * most `most` on each side: the room 連続 keeps between the pages for it.
+ * How far what lies in the 欄外 of each page reaches past its edges (mm),
+ * at most `most` on each side, by page index: the room 連続 keeps around
+ * that page (and only that one) for it.
  */
-export function asideRoom(project: Project, most: number): Room {
+export function asideRooms(project: Project, most: number, shown?: AsideShown): Room[] {
   const [w, h] = project.pageFormat.canvasMm;
-  const room: Room = [0, 0, 0, 0];
-  for (const page of project.pages) {
-    for (const [x0, y0, x1, y1] of asideBoxes(project, page)) {
+  return project.pages.map((page): Room => {
+    const room: Room = [0, 0, 0, 0];
+    for (const [x0, y0, x1, y1] of asideBoxes(project, page, undefined, shown)) {
       room[0] = Math.max(room[0], -y0);
       room[1] = Math.max(room[1], x1 - w);
       room[2] = Math.max(room[2], y1 - h);
       room[3] = Math.max(room[3], -x0);
     }
-  }
-  // A little air beyond what is there, so it does not touch the next page.
-  return room.map((side) => (side > 0 ? Math.min(side + ASIDE_GAP_MM / 2, most) : 0)) as Room;
+    // A little air beyond what is there, so it does not touch the next page.
+    return room.map((side) => (side > 0 ? Math.min(side + ASIDE_GAP_MM / 2, most) : 0)) as Room;
+  });
+}
+
+/** The most room any of `rooms` keeps on each side. */
+export function widestRoom(rooms: readonly Room[]): Room {
+  const most: Room = [0, 0, 0, 0];
+  for (const room of rooms) for (let i = 0; i < 4; i++) most[i] = Math.max(most[i], room[i]);
+  return most;
+}
+
+/** Whether two lists of rooms are the same (to half a millimetre). */
+export function sameRooms(a: readonly Room[], b: readonly Room[]): boolean {
+  return a.length === b.length && a.every((room, i) => room.every((side, j) => Math.abs(side - b[i][j]) < 0.5));
 }
 
 /** Whether two boxes come closer than `gap`. */

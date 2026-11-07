@@ -4,8 +4,9 @@
 // and dragging a row onto a panel moves it into that panel.
 import { stacked } from "./koma";
 import { bounds, centroid } from "./geometry";
-import type { Page, Panel, Point } from "./model";
+import type { Page, Panel, Point, Project } from "./model";
 import { carryContents } from "./panels";
+import { shownStrokes } from "./roughlayers";
 import { mapFill } from "./strokes";
 
 /** Something a row stands for. Rough lines are listed together, per panel. */
@@ -50,6 +51,28 @@ export function pageLayers(page: Page): PageLayers {
       strokes: page.strokes.filter((s) => !taken.has(s.id)).map((s) => s.id),
       fills: (page.fills ?? []).filter((f) => !taken.has(f.id)).map((f) => f.id),
     },
+  };
+}
+
+/**
+ * The page as shown: without what the rows' eyes hide (keys of hiddenKeys),
+ * the lines on a hidden ラフ線のレイヤー of `project`, nor its 付箋 when they
+ * are all hidden (`stickies` false).
+ */
+export function withoutHidden(page: Page, hidden: ReadonlySet<string>, stickies = true, project?: Pick<Project, "roughLayers">): Page {
+  const strokes = project ? shownStrokes(project, page.strokes) : page.strokes;
+  if (strokes !== page.strokes) page = { ...page, strokes };
+  if (!stickies && page.stickies?.length) page = { ...page, stickies: [] };
+  if (!hidden.size) return page;
+  const shown = <T extends { id: string }>(kind: string, list: T[]) => list.filter((item) => !hidden.has(`${kind}:${item.id}`));
+  return {
+    ...page,
+    panels: shown("panel", page.panels),
+    lines: shown("line", page.lines),
+    strokes: shown("stroke", page.strokes),
+    breakouts: shown("breakout", page.breakouts),
+    ...(page.fills ? { fills: shown("fill", page.fills) } : {}),
+    ...(page.stickies ? { stickies: shown("sticky", page.stickies) } : {}),
   };
 }
 
