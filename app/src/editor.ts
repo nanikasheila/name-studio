@@ -1365,9 +1365,9 @@ export class PageEditor {
     return this.transforming;
   }
 
-  /** A drag (a line, a panel moved, …) under way. */
-  get dragging(): boolean {
-    return this.drag !== null;
+  /** The drag under way (a line, a panel moved, …; "pan", "pinch" and "turn" move the view), or null. */
+  get dragKind(): string | null {
+    return this.drag?.kind ?? null;
   }
 
   /** What the select tool would grab under the pointer, for the help bar: "item.panel", "seam", "tail.tip", "handle". */
@@ -2236,7 +2236,7 @@ export class PageEditor {
     if (!line) return false;
     const size = Math.min(72, Math.max(4, Math.round((line.fontSizePt + step) * 2) / 2));
     if (size === line.fontSizePt) return true;
-    if (this.sizing === undefined) this.host.begin();
+    if (!this.host.inStep()) this.host.begin(); // One step for the turns (an undo in between ends it).
     window.clearTimeout(this.sizing);
     line.fontSizePt = size;
     setLineText(line, line.text);

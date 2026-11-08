@@ -607,6 +607,8 @@ export interface OverlaySpot {
   command?: string;
   /** Where the words go: beside a small part (with a line to it), or inside a large one. */
   side: "right" | "below" | "above" | "inside";
+  /** The part beside it, named on the same words (so that two small buttons do not crowd the bar). */
+  also?: { name: string; command: string };
 }
 
 const tool = (id: string, name: string, text: string): OverlaySpot => ({ target: `#tool-${id}`, name, text, command: `tool.${id}`, side: "right" });
@@ -623,7 +625,7 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
   { target: "#pen-settings", name: "ペン設定", text: "筆圧・タブレット", side: "below" },
   { target: "#save-state", name: "保存の状態", text: "保存済み・未保存・自動保存の写し", side: "below" },
   { target: "#workspace-modes", name: "作業の配置", text: "描く・全体・CSP に渡すで欄と見せ方をまとめて切り替え", command: "workspace.draw", side: "below" },
-  { target: "#undo", name: "元に戻す", text: "", command: "undo", side: "below" },
+  { target: "#undo", name: "元に戻す", text: "", command: "undo", side: "below", also: { name: "・右はやり直す", command: "redo" } },
   { target: "#image-import", name: "取り込む", text: "1 枚にまとめたネーム画像をページに分けて置く", command: "button.image-import", side: "below" },
   { target: "#name-export", name: "書き出す", text: "CSP のページと作品・PDF・ミニネーム・台本", command: "exportAgain", side: "below" },
   { target: "#help", name: "ヘルプ", text: "この画面。もう一度で閉じる", command: "help.overlay", side: "below" },

@@ -742,8 +742,8 @@
   "nextId": 13,
   "selection": {
    "kind": "panel",
-   "pageId": "page2",
-   "id": "panel9"
+   "id": "panel9",
+   "pageId": "page2"
   },
   "tool": "select",
   "undo": 4,
@@ -908,8 +908,8 @@
   "nextId": 13,
   "selection": {
    "kind": "panel",
-   "pageId": "page2",
-   "id": "panel9"
+   "id": "panel9",
+   "pageId": "page2"
   },
   "tool": "select",
   "undo": 5,
@@ -1074,8 +1074,8 @@
   "nextId": 13,
   "selection": {
    "kind": "panel",
-   "pageId": "page2",
-   "id": "panel9"
+   "id": "panel9",
+   "pageId": "page2"
   },
   "tool": "select",
   "undo": 5,
@@ -1240,11 +1240,11 @@
   "nextId": 13,
   "selection": {
    "kind": "panel",
-   "pageId": "page2",
-   "id": "panel9"
+   "id": "panel9",
+   "pageId": "page2"
   },
   "tool": "select",
-  "undo": 6,
+  "undo": 5,
   "status": "間白を動かしました（両側のコマが一緒に）"
  },
  {
@@ -1895,7 +1895,7 @@
    "id": "line13"
   },
   "tool": "text",
-  "undo": 7,
+  "undo": 6,
   "status": "セリフを置きました"
  },
  {
@@ -3066,7 +3066,7 @@
    "id": "line14"
   },
   "tool": "text",
-  "undo": 8,
+  "undo": 7,
   "status": "セリフを置きました"
  },
  {
@@ -4247,7 +4247,7 @@
    "tail": 0
   },
   "tool": "select",
-  "undo": 9,
+  "undo": 8,
   "status": "しっぽを足しました。先をドラッグで向きを、ひし形で曲がりを変えられます"
  },
  {
@@ -5428,7 +5428,7 @@
    "tail": 0
   },
   "tool": "select",
-  "undo": 10,
+  "undo": 9,
   "status": "しっぽを足しました。先をドラッグで向きを、ひし形で曲がりを変えられます"
  },
  {
@@ -6712,7 +6712,7 @@
   "nextId": 16,
   "selection": null,
   "tool": "pen",
-  "undo": 11,
+  "undo": 10,
   "status": "しっぽを足しました。先をドラッグで向きを、ひし形で曲がりを変えられます"
  },
  {
@@ -8713,7 +8713,7 @@
   "nextId": 17,
   "selection": null,
   "tool": "pen",
-  "undo": 12,
+  "undo": 11,
   "status": "しっぽを足しました。先をドラッグで向きを、ひし形で曲がりを変えられます"
  },
  {
@@ -10791,7 +10791,7 @@
   "nextId": 18,
   "selection": null,
   "tool": "pen",
-  "undo": 13,
+  "undo": 12,
   "status": "しっぽを足しました。先をドラッグで向きを、ひし形で曲がりを変えられます"
  },
  {
@@ -12762,7 +12762,7 @@
   "nextId": 18,
   "selection": null,
   "tool": "eraser",
-  "undo": 14,
+  "undo": 13,
   "status": "消し方: 線全体"
  },
  {
@@ -14016,7 +14016,7 @@
   "nextId": 18,
   "selection": null,
   "tool": "eraser",
-  "undo": 15,
+  "undo": 14,
   "status": "囲んだ中の線を消しました（1 本）"
  },
  {
@@ -15270,7 +15270,7 @@
   "nextId": 19,
   "selection": null,
   "tool": "eraser",
-  "undo": 16,
+  "undo": 15,
   "status": "消し方: 触れた部分"
  },
  {
@@ -16631,7 +16631,7 @@
   "nextId": 20,
   "selection": null,
   "tool": "fill",
-  "undo": 17,
+  "undo": 16,
   "status": "消し方: 触れた部分"
  },
  {
@@ -18102,7 +18102,7 @@
    "id": "breakout20"
   },
   "tool": "breakout",
-  "undo": 18,
+  "undo": 17,
   "status": "はみ出しを作りました。中でペンを描き始めると、コマ枠の上に描かれます"
  },
  {
@@ -19591,7 +19591,7 @@
    "id": "sticky21"
   },
   "tool": "sticky",
-  "undo": 19,
+  "undo": 18,
   "status": "付箋を貼りました。クリックした所に紐づいています。付箋は好きな所へ動かせます（丸をドラッグで付け替え）"
  },
  {
@@ -21076,11 +21076,11 @@
   "nextId": 22,
   "selection": {
    "kind": "sticky",
-   "pageId": "page2",
-   "id": "sticky21"
+   "id": "sticky21",
+   "pageId": "page2"
   },
   "tool": "sticky",
-  "undo": 20,
+  "undo": 19,
   "status": "付箋を貼りました。クリックした所に紐づいています。付箋は好きな所へ動かせます（丸をドラッグで付け替え）"
  },
  {
@@ -22565,11 +22565,11 @@
   "nextId": 22,
   "selection": {
    "kind": "sticky",
-   "pageId": "page2",
-   "id": "sticky21"
+   "id": "sticky21",
+   "pageId": "page2"
   },
   "tool": "sticky",
-  "undo": 21,
+  "undo": 20,
   "status": "付箋をセリフに紐づけました"
  },
  {
@@ -24063,7 +24063,7 @@
    "id": "panel9"
   },
   "tool": "select",
-  "undo": 23,
+  "undo": 22,
   "status": "コマのメモを動かしました。線でコマとつながっています（右の欄で元の位置に戻せます）"
  },
  {
@@ -25571,7 +25571,7 @@
    ]
   },
   "tool": "select",
-  "undo": 23,
+  "undo": 22,
   "status": "コマ 1 つ・線 1 本・塗り 1 つを選びました。ドラッグで動かし、枠で変形、Delete で消せます（Shift + クリックで足す・外す）"
  },
  {
@@ -27079,7 +27079,7 @@
    ]
   },
   "tool": "select",
-  "undo": 24,
+  "undo": 23,
   "status": "コマ 1 つ・線 1 本・塗り 1 つを選びました。ドラッグで動かし、枠で変形、Delete で消せます（Shift + クリックで足す・外す）"
  },
  {
@@ -28569,11 +28569,11 @@
   "nextId": 22,
   "selection": {
    "kind": "panel",
-   "pageId": "page2",
-   "id": "panel6"
+   "id": "panel6",
+   "pageId": "page2"
   },
   "tool": "select",
-  "undo": 25,
+  "undo": 24,
   "status": "大きさ 86% × 86%（Shift で縦横別々、Alt で中心から）"
  },
  {
@@ -30063,11 +30063,11 @@
   "nextId": 22,
   "selection": {
    "kind": "panel",
-   "pageId": "page2",
-   "id": "panel6"
+   "id": "panel6",
+   "pageId": "page2"
   },
   "tool": "select",
-  "undo": 26,
+  "undo": 25,
   "status": "22° 回しています（Shift で 15° ずつ）"
  },
  {
@@ -31557,11 +31557,11 @@
   "nextId": 22,
   "selection": {
    "kind": "panel",
-   "pageId": "page2",
-   "id": "panel6"
+   "id": "panel6",
+   "pageId": "page2"
   },
   "tool": "select",
-  "undo": 25,
+  "undo": 24,
   "status": "自由変形: 角をそれぞれ動かしています（Ctrl を押したまま角をドラッグ）"
  },
  {
@@ -33055,7 +33055,7 @@
    "id": "panel6"
   },
   "tool": "select",
-  "undo": 26,
+  "undo": 25,
   "status": "コマ 3 とコマ 1 の中身を入れ替えました（元に戻すは Ctrl+Z）"
  },
  {
