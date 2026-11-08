@@ -52,6 +52,10 @@ pub struct Project {
     /// 保留コマ: panels taken off the pages until it is decided where they go.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub held: Vec<HeldPanel>,
+    /// 保留のページ: pages taken out of the name (a page, a 見開き, a run)
+    /// until it is decided whether and where they go back.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub held_pages: Vec<HeldPages>,
     /// 資料画像: pictures laid under pages ([`Page::references`]), each kept once.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub images: Vec<StoredImage>,
@@ -109,6 +113,24 @@ pub struct HeldPanel {
     /// that page, off the page); none: only in the 保留 list.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub at: Option<Point>,
+}
+
+/// 保留のページ: pages taken out of the name together, with what is kept to
+/// put them back. They are not written out.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
+#[serde(rename_all = "camelCase")]
+pub struct HeldPages {
+    pub id: String,
+    /// The pages, in their order, with everything on them.
+    pub pages: Vec<Page>,
+    /// The page they came after, to put them back where they were; none:
+    /// they were at the front.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after: Option<String>,
+    /// Their emotion values, which come back with them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub emotions: Vec<EmotionPoint>,
 }
 
 /// 別案: versions of the same run of pages (a page, a 見開き, a scene). The
@@ -1157,6 +1179,7 @@ impl Project {
             plan: None,
             line_shapes: None,
             held: Vec::new(),
+            held_pages: Vec::new(),
             images: Vec::new(),
             gutters: None,
             scroll: None,

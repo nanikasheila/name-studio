@@ -25,6 +25,11 @@ lineShapes?: LineShapes,
  */
 held: Array<HeldPanel>, 
 /**
+ * 保留のページ: pages taken out of the name (a page, a 見開き, a run)
+ * until it is decided whether and where they go back.
+ */
+heldPages: Array<HeldPages>, 
+/**
  * 資料画像: pictures laid under pages ([`Page::references`]), each kept once.
  */
 images: Array<StoredImage>, 
@@ -78,6 +83,21 @@ from?: string,
  * that page, off the page); none: only in the 保留 list.
  */
 at?: [number, number], };
+
+export type HeldPages = { id: string, 
+/**
+ * The pages, in their order, with everything on them.
+ */
+pages: Array<Page>, 
+/**
+ * The page they came after, to put them back where they were; none:
+ * they were at the front.
+ */
+after?: string, 
+/**
+ * Their emotion values, which come back with them.
+ */
+emotions: Array<EmotionPoint>, };
 
 export type Alternatives = { id: string, 
 /**

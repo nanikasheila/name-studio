@@ -117,7 +117,7 @@ export function resizeBox(box: BoxMm, corner: number, [x, y]: Point): BoxMm {
   return [ax, ay, bx, by];
 }
 
-/** Pictures some page (or 別案, or 保留) still shows; the rest need not be saved. */
+/** Pictures some page (or 別案, or 保留のページ) still shows; the rest need not be saved. */
 export function usedImages(project: Project): StoredImage[] {
   const used = new Set<string>();
   const visit = (pages: Page[]) => {
@@ -125,6 +125,7 @@ export function usedImages(project: Project): StoredImage[] {
   };
   visit(project.pages);
   for (const alternatives of project.alternatives ?? []) for (const option of alternatives.options) visit(option.pages);
+  for (const held of project.heldPages ?? []) visit(held.pages);
   return (project.images ?? []).filter((image) => used.has(image.id));
 }
 

@@ -52,7 +52,7 @@ try {
 
   // The recent one leads next time; arrows choose.
   await page.keyboard.press("Control+k");
-  check((await palette.locator(".cmdp-item").first().locator(".cmdp-label").textContent()) === "このページの後ろにページを足す", "the last used command comes first");
+  check((await palette.locator(".cmdp-item").first().locator(".cmdp-label").textContent()) === "このページの後ろに白紙のページを足す", "the last used command comes first");
   await input.fill("連続");
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("ArrowUp");

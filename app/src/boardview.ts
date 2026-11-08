@@ -23,6 +23,8 @@ export interface StoryHost {
   inspect(): void;
   /** Say what was done in the status bar. */
   status?(message: string): void;
+  /** The page menu (insert, duplicate, delete…) for page `index` (0-based), at a point in the window. */
+  pageMenu?(index: number, x: number, y: number): void;
 }
 
 /** What the strip itself selects; pages and panels are selected on the canvas. */

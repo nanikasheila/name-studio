@@ -15,6 +15,7 @@ fn declarations() -> String {
     let decls = [
         Project::decl(&cfg),
         HeldPanel::decl(&cfg),
+        HeldPages::decl(&cfg),
         Alternatives::decl(&cfg),
         AlternativeOption::decl(&cfg),
         Binding::decl(&cfg),
