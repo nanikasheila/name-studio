@@ -137,6 +137,10 @@ export class HelpOverlay {
       for (const key of keys(spot.command)) title.append(Object.assign(document.createElement("kbd"), { textContent: key }));
       label.append(title);
       if (spot.text) label.append(Object.assign(document.createElement("div"), { className: "help-label-text", textContent: spot.text }));
+      if (spot.also) {
+        title.append(Object.assign(document.createElement("span"), { className: "help-label-text", textContent: spot.also.name }));
+        for (const key of keys(spot.also.command).slice(0, 1)) title.append(Object.assign(document.createElement("kbd"), { textContent: key }));
+      }
       return label;
     });
     this.labels.replaceChildren(...made);

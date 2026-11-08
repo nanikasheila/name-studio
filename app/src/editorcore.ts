@@ -70,6 +70,8 @@ export interface EditorHost {
   begin(): void;
   /** The change since `begin` is done; `line`: a line drawn with the pen (the pages are drawn already, the rest may follow when the pen rests). */
   commit(line?: boolean): void;
+  /** A step is under way (begun, not yet committed). */
+  inStep(): boolean;
   /** The change since `begin` changed nothing. */
   cancel(): void;
   selectionChanged(selection: Selection | null): void;

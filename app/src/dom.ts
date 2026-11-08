@@ -6,6 +6,17 @@ export function isTyping(event: Event): boolean {
   return !!target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable);
 }
 
+/** Input types that are pressed or slid, not typed in: undo there is the name's, not the field's. */
+const NOT_TYPED = new Set(["checkbox", "radio", "range", "color", "button", "submit", "reset", "file", "image"]);
+
+/** The key goes to text being typed: a text field (not a checkbox, slider or button, nor a list to pick from). */
+export function isTextEntry(event: Event): boolean {
+  const target = event.target as HTMLElement | null;
+  if (!target) return false;
+  if (target instanceof HTMLInputElement) return !NOT_TYPED.has(target.type);
+  return target.tagName === "TEXTAREA" || target.isContentEditable;
+}
+
 /** The element with this id (the app's page always has it). */
 export const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 

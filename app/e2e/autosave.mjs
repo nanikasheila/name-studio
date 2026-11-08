@@ -100,12 +100,12 @@ try {
   await page.waitForTimeout(1500);
   check((await writes()) === 0, "a name just opened is not written (nor while the settings were changed)");
 
-  // A step that changed nothing: unsaved for a moment, then saved again without writing.
+  // A step that changed nothing is no change: still saved, nothing written.
   await step(null);
-  check(await dirty(), "a step that changed nothing still counts as a change at first");
+  check(!(await dirty()), "a step that changed nothing leaves the name saved");
   await page.waitForTimeout(1500);
-  check((await writes()) === 0, `autosave finds the file holds it already and writes nothing (${await writes()} writes)`);
-  check(!(await dirty()) && (await saveState()).startsWith("保存済み"), `and the name is saved (${await saveState()})`);
+  check((await writes()) === 0, `and autosave writes nothing (${await writes()} writes)`);
+  check((await saveState()).startsWith("保存済み"), `the name shows saved (${await saveState()})`);
 
   // A change is written once, a second later.
   await step("A2");

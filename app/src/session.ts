@@ -103,11 +103,19 @@ export class Session {
     if (this.current) this.pending = this.history.snapshot(this.current);
   }
 
-  /** The step is done: one undo brings back what `begin` saw. False when none was begun. */
-  commit(): boolean {
-    if (this.pending === null) return false;
-    this.history.recordSnapshot(this.pending);
+  /**
+   * The step is done: one undo brings back what `begin` saw. False when none
+   * was begun. A step that changed nothing is no step: nothing to undo, and
+   * what can be redone stays (a click that moved nothing after an undo).
+   * `changed` says it surely changed (a line drawn), so it is not compared.
+   */
+  commit(changed = false): boolean {
+    const pending = this.pending;
+    if (pending === null) return false;
     this.pending = null;
+    if (this.current === null) return false;
+    if (!changed && sameSnapshot(pending, this.history.snapshot(this.current))) return true;
+    this.history.recordSnapshot(pending);
     this.markDirty();
     return true;
   }

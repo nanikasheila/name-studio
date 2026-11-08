@@ -6,7 +6,7 @@
 import { call } from "./backend";
 import { useFonts } from "./fonts";
 import { useStyle } from "./style";
-import { $, isTyping } from "./dom";
+import { $, isTextEntry, isTyping } from "./dom";
 import { Inspector } from "./inspector";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { heldNear } from "./hold";
@@ -217,6 +217,7 @@ export class Workbench {
       begin: () => this.begin(),
       commit: (line) => this.commit(line),
       cancel: () => this.session.cancel(),
+      inStep: () => this.session.inStep,
       selectionChanged: () => {
         this.board.deselect();
         this.renderInspector();
@@ -635,7 +636,7 @@ export class Workbench {
   }
 
   private commit(line = false): void {
-    if (!this.session.commit()) return;
+    if (!this.session.commit(line)) return;
     if (line) this.afterLine();
     else this.renderAll();
   }
@@ -653,7 +654,7 @@ export class Workbench {
     clearTimeout(this.resting);
     this.resting = window.setTimeout(() => {
       this.resting = 0;
-      if (this.editor.dragging) this.afterLine();
+      if (this.editor.dragKind) this.afterLine();
       else this.renderAll();
     }, PEN_REST_MS);
   }
@@ -698,11 +699,23 @@ export class Workbench {
   }
 
   undo(): void {
-    if (this.session.undo()) this.restored();
+    if (this.settled() && this.session.undo()) this.restored();
   }
 
   redo(): void {
-    if (this.session.redo()) this.restored();
+    if (this.settled() && this.session.redo()) this.restored();
+  }
+
+  /**
+   * Before an undo or a redo: a step still under way is finished first (the
+   * text size changed with Alt+wheel a moment ago), so it is the one undone.
+   * False while the pen or a drag is down (moving the view is fine): undo waits for it to end.
+   */
+  private settled(): boolean {
+    const drag = this.editor.dragKind;
+    if (drag && drag !== "pan" && drag !== "pinch" && drag !== "turn") return false;
+    if (this.session.inStep) this.commit();
+    return true;
   }
 
   private restored(): void {
@@ -939,6 +952,8 @@ export class Workbench {
       void this.save(action === "saveAs");
       return true;
     }
+    // Undo and redo work from a checkbox or a slider just used, and in the pen editor (its changes are steps too).
+    if ((action === "undo" || action === "redo") && !isTextEntry(event) && undoReaches()) return this.run(action);
     if (isTyping(event) || document.querySelector("dialog[open]")) return false;
     // Arrows move what is selected (資料: the chosen picture; Shift: further) before anything else.
     const step = event.shiftKey ? 5 : 0.5;
@@ -963,6 +978,11 @@ export class Workbench {
   run(action: ActionId): boolean {
     return this.commands.find((command) => command.id === action)?.run() ?? false;
   }
+}
+
+/** Undo can reach the name: no dialog is open but the pen editor (it shows the name as undo leaves it). */
+function undoReaches(): boolean {
+  return [...document.querySelectorAll("dialog[open]")].every((dialog) => dialog.id === "brush-editor");
 }
 
 /** The button with this id when it is on screen and can be pressed, else null. */

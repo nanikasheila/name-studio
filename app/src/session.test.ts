@@ -26,6 +26,46 @@ describe("an editing session", () => {
     expect(session.commit()).toBe(false);
   });
 
+  it("records no step for a change that changed nothing, and keeps what can be redone", () => {
+    let told = 0;
+    const session = new Session(() => told++);
+    session.open(newProject("テスト", 2), null);
+    session.begin();
+    session.project!.title = "変えた";
+    session.commit();
+    expect(session.undo()).toBe(true);
+    told = 0;
+    // A click that moved nothing: no step, nothing unsaved, the redo still there.
+    session.begin();
+    expect(session.commit()).toBe(true);
+    expect([session.historyDepth, told]).toEqual([{ undo: 0, redo: 1 }, 0]);
+    expect(session.redo()).toBe(true);
+    expect(session.project!.title).toBe("変えた");
+    // A change said to be one (a line drawn) is recorded without comparing.
+    session.begin();
+    expect(session.commit(true)).toBe(true);
+    expect(session.historyDepth.undo).toBe(2);
+  });
+
+  it("makes undo and redo of page operations exact", () => {
+    const session = new Session();
+    session.open(newProject("テスト", 3), null);
+    const ids = session.project!.pages.map((p) => p.id);
+    session.begin();
+    session.project!.pages.splice(1, 1);
+    session.commit();
+    session.begin();
+    session.project!.pages.reverse();
+    session.commit();
+    session.undo();
+    session.undo();
+    expect(session.project!.pages.map((p) => p.id)).toEqual(ids);
+    session.redo();
+    session.redo();
+    expect(session.project!.pages.map((p) => p.id)).toEqual([ids[2], ids[0]]);
+    expect(session.canRedo).toBe(false);
+  });
+
   it("rolls back a step under way", () => {
     const session = new Session();
     session.open(newProject("テスト", 2), null);
