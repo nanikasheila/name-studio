@@ -150,6 +150,7 @@ export class Workbench {
     picked: (tool) => (tool ? this.setTool(tool) : undefined, this.renderLayers()),
     change: (change) => this.edits.changeRough(change),
     selectedStrokes: () => pickedStrokes(this.editor.selection).length,
+    liveRange: (field, apply) => this.live.range(field, apply, () => this.renderAll()),
   });
   private readonly seriesPanel = new SeriesPanel({
     project: () => this.session.project,

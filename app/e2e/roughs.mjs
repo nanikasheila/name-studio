@@ -121,6 +121,35 @@ try {
   await dragMm([[80, 70]]);
   check((await state()).selection === null, "a line on a hidden layer is not picked");
   await row(added).locator(".layer-eye").first().click();
+  await settle();
+  // The slider dragged: the page shows each value while the button is still down,
+  // and the whole drag is one undo step.
+  const picture = () => page.evaluate(() => document.getElementById("editor-canvas").toDataURL());
+  const before = await picture();
+  const undoDepth = () => page.evaluate(() => window.nameStudio.workbench.session.history.undoStack.length);
+  const depth = await undoDepth();
+  const slider = await row(added).locator(".rough-opacity").boundingBox();
+  const sliderX = (value) => slider.x + 8 + ((slider.width - 16) * (value - 10)) / 90;
+  await page.mouse.move(sliderX(100), slider.y + slider.height / 2);
+  await page.mouse.down();
+  for (const value of [85, 70, 55, 50]) await page.mouse.move(sliderX(value), slider.y + slider.height / 2, { steps: 3 });
+  await settle();
+  s = await state();
+  const during = s.layers[1].opacity;
+  check(during !== undefined && during < 0.7 && !s.layers[1].hidden, `the opacity follows the drag before letting go (${during})`);
+  check((await picture()) !== before, "the page is drawn again while the slider is dragged");
+  check((await undoDepth()) === depth, "no undo step yet while dragging");
+  await page.mouse.up();
+  await settle();
+  s = await state();
+  check(s.layers[1].opacity === during, `letting go keeps the opacity (${s.layers[1].opacity})`);
+  check((await undoDepth()) === depth + 1, "the drag is one undo step");
+  check((await row(added).locator(".rough-opacity").getAttribute("title")) === `不透明度 ${Math.round(during * 100)}%`, "the slider says its value");
+  await page.keyboard.press("Control+z");
+  await settle();
+  check((await state()).layers[1].opacity === undefined, "undo gives the opacity back");
+  check((await picture()) === before, "undo draws the page as before");
+  // Set from a script (a change with no input before it): still kept, one step.
   await row(added)
     .locator(".rough-opacity")
     .evaluate((input) => {

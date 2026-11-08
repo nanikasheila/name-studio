@@ -6,7 +6,7 @@
 import type { PageEditor, Tool } from "./editor";
 import { ListPicker } from "./listops";
 import type { Project, RoughLayer } from "./model";
-import { layerOf, layerStrokeCount, markColor, markLayersOf, MARK_COLORS, MARK_COLOR_NAMES, opacityOfLayer, roughLayersOf } from "./roughlayers";
+import { layerOf, layerStrokeCount, markColor, markLayersOf, MARK_COLORS, MARK_COLOR_NAMES, opacityOfLayer, roughLayersOf, setRoughLayer } from "./roughlayers";
 import { markPen } from "./toolmark";
 
 export type RoughChange =
@@ -37,6 +37,8 @@ export interface RoughPanelHost {
   change(change: RoughChange): void;
   /** How many lines are selected on the page (to move onto a layer). */
   selectedStrokes(): number;
+  /** A slider that shows on the page while it is dragged; one undo step per drag. */
+  liveRange(field: HTMLInputElement, apply: (value: number) => void): void;
 }
 
 export class RoughPanel {
@@ -220,7 +222,12 @@ export class RoughPanel {
     opacity.title = `不透明度 ${opacity.value}%`;
     opacity.setAttribute("aria-label", `${layer.name}の不透明度`);
     opacity.addEventListener("click", (event) => event.stopPropagation());
-    opacity.addEventListener("change", () => this.host.change({ kind: "look", id: layer.id, change: { opacity: Number(opacity.value) / 100 } }));
+    // The page shows each value while the slider is dragged; letting go is one undo step.
+    this.host.liveRange(opacity, (value) => {
+      const now = this.host.project();
+      if (now) setRoughLayer(now, layer.id, { opacity: value / 100 });
+      opacity.title = `不透明度 ${opacity.value}%`;
+    });
     const menu = element("span", "rough-menu");
     const up = button("↑", "上へ", (event) => {
       event.stopPropagation();
