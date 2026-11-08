@@ -17,6 +17,11 @@ export function isTextEntry(event: Event): boolean {
   return target.tagName === "TEXTAREA" || target.isContentEditable;
 }
 
+/** No dialog is open but the one with this id (or none at all). */
+export function noDialogBut(id: string): boolean {
+  return [...document.querySelectorAll("dialog[open]")].every((dialog) => dialog.id === id);
+}
+
 /** The element with this id (the app's page always has it). */
 export const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 

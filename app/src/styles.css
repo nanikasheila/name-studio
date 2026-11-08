@@ -1247,3 +1247,20 @@ dialog.perf-dialog { width: min(720px, 92vw); }
 .page-item.picked.tinted { box-shadow: inset 3px 0 0 var(--accent), inset 7px 0 0 var(--part); }
 .held-heading { margin: 14px 12px 4px; font-size: calc(13 * var(--px)); }
 .held-page-glyphs { display: flex; gap: 2px; flex: none; }
+
+/* Managed lists (listops.ts): rows picked as in the page list. */
+.managed-list:focus { outline: none; }
+.managed-list .picked { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 3px 0 0 var(--accent); }
+.managed-list:focus-within .picked { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.list-tools { padding: 6px 10px; }
+.list-grip { cursor: grab; color: var(--muted); letter-spacing: -2px; padding: 0 2px; user-select: none; touch-action: none; }
+.note-filters { display: flex; gap: 4px; align-items: center; padding: 4px 10px; }
+.note-filter { width: 22px; height: 18px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: var(--chip, var(--bg)); cursor: pointer; opacity: 0.55; }
+.note-filter.active { opacity: 1; box-shadow: 0 0 0 2px var(--accent); }
+.note-filter.here { width: auto; padding: 0 8px; font-size: calc(11 * var(--px)); opacity: 1; }
+.note-filter.here.active { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+/* The rough layers show the layer drawn on (.selected); the row worked on by keys gets a thin line only. */
+.rough-list.managed-list .picked { background: none; box-shadow: none; }
+.rough-list.managed-list:focus-within .picked { outline: 1px dashed var(--accent); outline-offset: -1px; }
+#side-subtools.managed-list .picked { background: none; box-shadow: none; }
+#side-subtools.managed-list:focus-within .subtool-row.picked { outline: 1px dashed var(--accent); outline-offset: -1px; }

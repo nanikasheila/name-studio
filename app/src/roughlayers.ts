@@ -180,6 +180,26 @@ export function moveStrokesToLayer(project: Project, page: Page, ids: readonly s
   return moved;
 }
 
+/**
+ * 複製: a copy of a layer (its look and every line on it, on every page, with
+ * new ids) right above it. `newId` gives a layer's id, `strokeId` a line's.
+ */
+export function duplicateRoughLayer(project: Project, id: string, newId: () => string, strokeId: () => string): RoughLayer | null {
+  const layers = ownRoughLayers(project);
+  const at = layers.findIndex((l) => l.id === id);
+  if (at < 0) return null;
+  const source = layers[at];
+  const { id: _id, name: _name, ...look } = source;
+  const copy: RoughLayer = { ...structuredClone(look), id: newId(), name: freeLayerName(project, `${source.name}のコピー`) };
+  layers.splice(at + 1, 0, copy);
+  for (const page of project.pages) {
+    const copies = page.strokes.filter((stroke) => layerOf(project, stroke).id === id).map((stroke) => ({ ...structuredClone(stroke), id: strokeId(), layer: copy.id }));
+    // Right above the lines they were copied from.
+    if (copies.length) page.strokes.push(...copies);
+  }
+  return copy;
+}
+
 /** Lines on a layer, over all pages. */
 export function layerStrokeCount(project: Project, id: string): number {
   return project.pages.reduce((sum, page) => sum + page.strokes.filter((stroke) => layerOf(project, stroke).id === id).length, 0);

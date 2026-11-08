@@ -6,7 +6,7 @@
 import { call } from "./backend";
 import { useFonts } from "./fonts";
 import { useStyle } from "./style";
-import { $, isTextEntry, isTyping } from "./dom";
+import { $, isTextEntry, isTyping, noDialogBut } from "./dom";
 import { Inspector } from "./inspector";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { heldNear } from "./hold";
@@ -110,6 +110,8 @@ export class Workbench {
     putHeld: (id, page, point, panel) => this.edits.putHeld(id, page, point, panel),
     layHeld: (id, page) => (page ? this.edits.layHeld(id, page) : this.edits.unlayHeld(id)),
     openScript: () => this.scriptDialog.open(),
+    editLine: (pageId, lineId) => (this.goTo(pageId, "line", lineId), this.editor.editInPlace(pageId, "line", lineId)),
+    openPalette: (id) => this.docks.open(id),
   });
   /** The palettes beside the pages (left or right, several at once). */
   private docks!: Docks;
@@ -136,6 +138,10 @@ export class Workbench {
       return text.length > 14 ? `${text.slice(0, 14)}…` : text || "（空）";
     },
     isMark: (page, id) => isMark(this.session.project ?? {}, page.strokes.find((stroke) => stroke.id === id) ?? {}),
+    selectMany: (refs) => this.edits.selectRefs(refs),
+    act: (what) =>
+      void (what === "duplicate" ? this.edits.duplicateSelection() : what === "paste" ? this.editor.paste() : this.run(({ delete: "delete", copy: "copy", cut: "cut", hold: "panel.hold" } as const)[what])),
+    canPaste: () => this.editor.canPaste,
   });
   private readonly roughPanel = new RoughPanel({
     project: () => this.session.project,
@@ -279,6 +285,7 @@ export class Workbench {
       inspect: () => (this.board.selected && this.editor.select(null, true), this.renderInspector()),
       status: (message) => this.setStatus(message),
       pageMenu: (index, x, y) => this.lists.pageList.menuFor(index, x, y),
+      pageAction: (what, ids) => (what === "pick" && this.docks.open("pages"), this.lists.pageList.act(what, ids)),
     });
     this.inspector = new Inspector({
       editor: this.editor,
@@ -814,7 +821,7 @@ export class Workbench {
       const picked = pickedStrokes(s);
       return picked.length === ref.ids.length && ref.ids.every((id) => picked.includes(id));
     }
-    return s.kind === ref.kind && s.id === ref.id;
+    return (s.kind === ref.kind && s.id === ref.id) || (s.kind === "group" && !!s.items?.some((item) => item.kind === ref.kind && item.id === ref.id));
   }
 
   private selectLayer(ref: LayerRef): void {
@@ -952,8 +959,8 @@ export class Workbench {
       void this.save(action === "saveAs");
       return true;
     }
-    // Undo and redo work from a checkbox or a slider just used, and in the pen editor (its changes are steps too).
-    if ((action === "undo" || action === "redo") && !isTextEntry(event) && undoReaches()) return this.run(action);
+    // Undo and redo work from a checkbox or a slider just used, and in the pen editor (it shows the name as undo leaves it).
+    if ((action === "undo" || action === "redo") && !isTextEntry(event) && noDialogBut("brush-editor")) return this.run(action);
     if (isTyping(event) || document.querySelector("dialog[open]")) return false;
     // Arrows move what is selected (資料: the chosen picture; Shift: further) before anything else.
     const step = event.shiftKey ? 5 : 0.5;
@@ -978,11 +985,6 @@ export class Workbench {
   run(action: ActionId): boolean {
     return this.commands.find((command) => command.id === action)?.run() ?? false;
   }
-}
-
-/** Undo can reach the name: no dialog is open but the pen editor (it shows the name as undo leaves it). */
-function undoReaches(): boolean {
-  return [...document.querySelectorAll("dialog[open]")].every((dialog) => dialog.id === "brush-editor");
 }
 
 /** The button with this id when it is on screen and can be pressed, else null. */

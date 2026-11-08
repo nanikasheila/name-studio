@@ -22,7 +22,7 @@ import {
 } from "./pagedraw";
 import { KIND_LABELS } from "./dialogue";
 import { bounds } from "./geometry";
-import type { BoxMm, Brush, Page, Project, ReferenceImage, RoughImage, RoughLayer, StrokePoint } from "./model";
+import type { BoxMm, Brush, Line, Page, Project, ReferenceImage, RoughImage, RoughLayer, StrokePoint } from "./model";
 import { basicBox, trimBox } from "./pagebox";
 import { wantsSpread } from "./panels";
 import { MM_PER_PT } from "./project";
@@ -1072,6 +1072,29 @@ export function dialogueUpdateSummary(summary: DialogueUpdateSummary): { ok: boo
   return { ok: !problems.length && !missing.length, lines };
 }
 
+/** One line of dialogue as the script writes it (名前「…」, ナレーション：…). */
+function scriptLine(names: ReadonlyMap<string, string>, line: Line): string {
+  const text = line.text.replace(/\s*\n\s*/g, "　").trim();
+  const who = names.get(line.speaker ?? "") ?? "";
+  if (line.kind === "narration") return `${KIND_LABELS.narration}：${text}`;
+  if (line.kind === "sfx") return `${KIND_LABELS.sfx}：${text}`;
+  if (line.kind === "thought") return `${who}（${text}）`;
+  if (line.kind === "aside") return `${who}・${text}`;
+  return `${who}「${text}」`;
+}
+
+/** Some lines (by id) as script text, under the heading of each page they are on (for the clipboard). */
+export function linesText(project: Project, ids: readonly string[]): string {
+  const names = new Map(project.characters.map((character) => [character.id, character.name]));
+  const out: string[] = [];
+  project.pages.forEach((page, index) => {
+    const lines = page.lines.filter((line) => ids.includes(line.id));
+    if (!lines.length) return;
+    out.push(`■ ${index + 1} ページ`, ...lines.map((line) => scriptLine(names, line)), "");
+  });
+  return out.join("\n").trim();
+}
+
 /** The dialogue as a script: page by page, panel by panel, with speakers. */
 export function scriptText(project: Project): string {
   const names = new Map(project.characters.map((character) => [character.id, character.name]));
@@ -1088,19 +1111,7 @@ export function scriptText(project: Project): string {
       const panel = line.panel ? order.get(line.panel) : undefined;
       if (panel !== undefined && panel !== lastPanel) out.push(`  ［${panel}］`);
       lastPanel = panel;
-      const text = line.text.replace(/\s*\n\s*/g, "　").trim();
-      const who = names.get(line.speaker ?? "") ?? "";
-      const said =
-        line.kind === "narration"
-          ? `${KIND_LABELS.narration}：${text}`
-          : line.kind === "sfx"
-            ? `${KIND_LABELS.sfx}：${text}`
-            : line.kind === "thought"
-              ? `${who}（${text}）`
-              : line.kind === "aside"
-                ? `${who}・${text}`
-                : `${who}「${text}」`;
-      out.push(`    ${said}`);
+      out.push(`    ${scriptLine(names, line)}`);
     }
     out.push("");
   });

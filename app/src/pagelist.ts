@@ -404,6 +404,19 @@ export class PageList {
     this.host.status(`${label}を消しました（元に戻すは Ctrl+Z）`);
   }
 
+  /** From elsewhere (a scene's menu): pages `ids` picked, held or deleted. */
+  act(what: "pick" | "hold" | "delete", ids: string[]): void {
+    const project = this.host.project();
+    if (!project || !ids.length) return;
+    if (what === "delete") {
+      void this.remove(ids);
+      return;
+    }
+    this.pick(ids, ids[0]);
+    if (what === "hold") this.hold();
+    else this.host.status(`${pagesLabel(ids.map((id) => pageIndex(project, id)))}を選びました（ページ一覧でコピー・移動・保留などができます）`);
+  }
+
   /** Take the target pages out to the 保留 list. */
   hold(): void {
     const project = this.host.project();

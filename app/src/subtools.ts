@@ -7,6 +7,8 @@ import { subtoolCommandId } from "./commands";
 import { dragSort } from "./dragsort";
 import { element } from "./dom";
 import { keyLabel } from "./helptopics";
+import { ListPicker } from "./listops";
+import { SEPARATOR } from "./popupmenu";
 import { comboOf } from "./shortcuts";
 import type { ToolId } from "./tooldefs";
 
@@ -50,6 +52,13 @@ export interface SubToolSource {
   footer?(box: HTMLElement): void;
   /** What it shows now, in a word: the same one again is not drawn again. */
   signature?(): string;
+  /** 複製 (Ctrl+D): a copy of the kind, under it. */
+  duplicate?(ref: string): void;
+  /** 削除 (Delete); `canRemove` says which can go. */
+  remove?(ref: string): void;
+  canRemove?(ref: string): boolean;
+  /** F2: its name. */
+  rename?(ref: string): void;
 }
 
 export interface SubToolHost {
@@ -71,7 +80,8 @@ export class SubToolPanel {
   private inHand: ToolId | null = null;
   /** The sub tool waiting for a key press. */
   private listening: string | null = null;
-  private menu: HTMLElement | null = null;
+  /** The rows' keys and menu, as the other lists'. */
+  private readonly picker: ListPicker;
   /** What was drawn last (see SubToolSource.signature). */
   private drawn = "";
 
@@ -103,9 +113,56 @@ export class SubToolPanel {
       },
       { capture: true },
     );
-    window.addEventListener("pointerdown", (event) => {
-      if (this.menu && !this.menu.contains(event.target as Node)) this.closeMenu();
+    this.picker = this.bind();
+  }
+
+  private bind(): ListPicker {
+    const source = () => this.source();
+    const movable = () => source()?.list().filter((tool) => tool.movable && !tool.group) ?? [];
+    const step = (ref: string, to: -1 | 1 | "first" | "last"): [number, number] | null => {
+      const list = movable();
+      const at = list.findIndex((tool) => tool.ref === ref);
+      if (at < 0) return null;
+      const target = to === "first" ? 0 : to === "last" ? list.length : to < 0 ? at - 1 : at + 2;
+      return target < 0 || target > list.length || target === at || target === at + 1 ? null : [at, target];
+    };
+    return new ListPicker(this.root, {
+      noun: "サブツール",
+      single: true,
+      ids: () => source()?.list().map((tool) => tool.ref) ?? [],
+      open: (ref) => source()?.pick(ref),
+      duplicate: (ids) => source()?.duplicate?.(ids[0]),
+      remove: (ids) => {
+        const s = source();
+        if (s?.remove && (s.canRemove?.(ids[0]) ?? true)) s.remove(ids[0]);
+        else this.host.status("標準のペン・消しゴムとほかのネームのものは消せません");
+      },
+      rename: (ref) => source()?.rename?.(ref),
+      move: (ids, to) => {
+        const at = step(ids[0], to);
+        if (at) source()?.reorder?.(at[0], at[0], at[1]);
+      },
+      canMove: (ids, to) => !!step(ids[0], to),
+      extra: (ids) => {
+        const ref = ids[0];
+        const keys = this.host.keysOf(subtoolCommandId(ref));
+        const own = source()?.menu?.(ref) ?? [];
+        return [
+          ...own.map((item) => ({ label: item.label, run: item.run })),
+          ...(own.length ? [SEPARATOR] : []),
+          { label: keys.length ? "キーを変える…" : "キーを割り当てる…", run: () => this.listen(ref) },
+          ...(keys.length ? [{ label: `キーを外す（${keys.map(keyLabel).join(" / ")}）`, run: () => this.unbind(ref) }] : []),
+        ];
+      },
     });
+  }
+
+  private unbind(ref: string): void {
+    const command = subtoolCommandId(ref);
+    const keys = this.host.keysOf(command);
+    for (const combo of keys) this.host.unbindKey(command, combo);
+    if (keys.length) this.host.status(`「${this.find(ref)?.name ?? ref}」のキーを外しました`);
+    this.render(true);
   }
 
   add(source: SubToolSource): void {
@@ -187,7 +244,7 @@ export class SubToolPanel {
         group = tool.group;
         if (group) list.append(element("div", { className: "subtool-group", textContent: group }));
       }
-      const row = this.row(source, tool, tool.ref === current);
+      const row = this.row(tool, tool.ref === current);
       if (tool.movable && !tool.group) movable.push(row);
       list.append(row);
     }
@@ -201,7 +258,7 @@ export class SubToolPanel {
     list.querySelector(".current")?.scrollIntoView({ block: "nearest" });
   }
 
-  private row(source: SubToolSource, tool: SubTool, current: boolean): HTMLElement {
+  private row(tool: SubTool, current: boolean): HTMLElement {
     const command = subtoolCommandId(tool.ref);
     const keys = this.host.keysOf(command);
     const waiting = this.listening === tool.ref;
@@ -215,7 +272,7 @@ export class SubToolPanel {
     );
     row.setAttribute("role", "option");
     row.setAttribute("aria-selected", String(current));
-    row.title = `${tool.name}: クリックで持つ${tool.movable ? "・ドラッグで並べ替え" : ""}・右クリックでキーの割り当て`;
+    row.title = `${tool.name}: クリックで持つ${tool.movable ? "・ドラッグで並べ替え" : ""}・右クリックでメニュー（複製・削除・並べ替え・キーの割り当て）`;
     row.dataset.ref = tool.ref;
     const key = element("button", {
       type: "button",
@@ -235,62 +292,11 @@ export class SubToolPanel {
     key.addEventListener("contextmenu", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      for (const combo of keys) this.host.unbindKey(command, combo);
-      if (keys.length) this.host.status(`「${tool.name}」のキーを外しました`);
-      this.render(true);
+      this.unbind(tool.ref);
     });
     row.append(key);
-    row.addEventListener("click", () => source.pick(tool.ref));
-    row.addEventListener("contextmenu", (event) => {
-      event.preventDefault();
-      this.openMenu(source, tool, keys, event.clientX, event.clientY);
-    });
+    this.picker.row(row, tool.ref);
     tool.sample?.(canvas);
     return row;
-  }
-
-  private openMenu(source: SubToolSource, tool: SubTool, keys: string[], x: number, y: number): void {
-    this.closeMenu();
-    const command = subtoolCommandId(tool.ref);
-    const items: SubToolMenuItem[] = [
-      { label: keys.length ? "キーを変える…" : "キーを割り当てる…", run: () => this.listen(tool.ref) },
-      ...(keys.length
-        ? [
-            {
-              label: `キーを外す（${keys.map(keyLabel).join(" / ")}）`,
-              run: () => {
-                for (const combo of keys) this.host.unbindKey(command, combo);
-                this.render(true);
-              },
-            },
-          ]
-        : []),
-      ...(source.menu?.(tool.ref) ?? []),
-    ];
-    const menu = element("div", { className: "subtool-menu" });
-    menu.setAttribute("role", "menu");
-    for (const item of items) {
-      const button = element("button", { type: "button", textContent: item.label });
-      button.setAttribute("role", "menuitem");
-      button.addEventListener("click", () => {
-        this.closeMenu();
-        item.run();
-      });
-      menu.append(button);
-    }
-    menu.style.left = `${x}px`;
-    menu.style.top = `${y}px`;
-    document.body.append(menu);
-    // Kept inside the window.
-    const box = menu.getBoundingClientRect();
-    if (box.right > window.innerWidth) menu.style.left = `${Math.max(0, window.innerWidth - box.width - 4)}px`;
-    if (box.bottom > window.innerHeight) menu.style.top = `${Math.max(0, window.innerHeight - box.height - 4)}px`;
-    this.menu = menu;
-    menu.querySelector("button")?.focus();
-  }
-
-  private closeMenu(): void {
-    this.menu?.remove();
-    this.menu = null;
   }
 }

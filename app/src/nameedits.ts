@@ -10,7 +10,7 @@ import { bounds } from "./geometry";
 import { holdPanel, movePanelToPage, placeHeld } from "./hold";
 import { moveIntoPanel, type LayerRef } from "./layers";
 import type { Alternatives, Page, Panel, Point, Project } from "./model";
-import { swapPanelContents } from "./panels";
+import { panelContents, swapPanelContents } from "./panels";
 import { swapFit } from "./prefs";
 import { panelsToTidy, tidyPanels } from "./tidy";
 import { newId, pageIndex } from "./project";
@@ -18,8 +18,22 @@ import { assignPanels, sortLines } from "./readingorder";
 import { removePicked } from "./removal";
 import { movePagesTo } from "./reorder";
 import type { RoughChange } from "./roughpanel";
-import { addMarkLayer, addRoughLayer, layerOf, markLayersOf, moveRoughLayer, moveStrokesToLayer, removeRoughLayer, renameRoughLayer, roughLayersOf, setRoughLayer } from "./roughlayers";
+import {
+  addMarkLayer,
+  addRoughLayer,
+  allLayersOf,
+  duplicateRoughLayer,
+  layerOf,
+  markLayersOf,
+  moveRoughLayer,
+  moveStrokesToLayer,
+  removeRoughLayer,
+  renameRoughLayer,
+  roughLayersOf,
+  setRoughLayer,
+} from "./roughlayers";
 import { markPen } from "./toolmark";
+import { copySelection, type ItemRef, pasteClip, withContents } from "./transform";
 
 /** The rough lines in a selection. */
 export function pickedStrokes(s: Selection | null): string[] {
@@ -59,6 +73,10 @@ export class NameEdits {
   changeRough(change: RoughChange): void {
     const project = this.host.project();
     if (!project) return;
+    if (change.kind === "selectLines") {
+      this.selectLayerLines(project, change.id);
+      return;
+    }
     let message = "";
     this.edit((p) => {
       switch (change.kind) {
@@ -93,6 +111,24 @@ export class NameEdits {
           message = change.mergeDown ? `「${name}」を下のレイヤーと結合しました（${count} 本）` : `レイヤー「${name}」を消しました（${marks ? "指示" : "ラフ線"} ${count} 本、Ctrl+Z で戻せます）`;
           break;
         }
+        case "duplicate": {
+          const layer = duplicateRoughLayer(p, change.id, () => newId(p, "rough"), () => newId(p, "stroke"));
+          if (!layer) break;
+          if (layer.marks) markPen.layer = layer.id;
+          else this.editor.roughLayer = layer.id;
+          message = `レイヤー「${layer.name}」を作りました（線 ${p.pages.reduce((n, page) => n + page.strokes.filter((st) => st.layer === layer.id).length, 0)} 本）`;
+          break;
+        }
+        case "solo": {
+          // ほかを隠す: the other layers of its kind hidden; again, all shown.
+          const self = layerOf(p, { layer: change.id });
+          const others = allLayersOf(p).filter((layer) => layer.id !== self.id && !!layer.marks === !!self.marks);
+          const alone = !self.hidden && others.every((layer) => layer.hidden);
+          for (const layer of others) setRoughLayer(p, layer.id, { hidden: !alone });
+          setRoughLayer(p, self.id, { hidden: false });
+          message = alone ? "レイヤーを全部出しました" : `「${self.name}」のほかを隠しました（もう一度で全部出します）`;
+          break;
+        }
         case "takeSelected": {
           const pageId = this.editor.selection?.pageId;
           const page = p.pages.find((one) => one.id === pageId);
@@ -112,6 +148,69 @@ export class NameEdits {
     if (message) this.status(message);
     this.editor.draw();
     this.host.layersChanged();
+  }
+
+  /** このレイヤーの線を選ぶ: the lines of the page worked on that lie on the layer. */
+  private selectLayerLines(project: Project, id: string): void {
+    const page = this.editor.focusPage();
+    const layer = layerOf(project, { layer: id });
+    const items: ItemRef[] = (page?.strokes ?? []).filter((stroke) => layerOf(project, stroke).id === layer.id).map((stroke) => ({ kind: "stroke", id: stroke.id }));
+    if (!page || !items.length) {
+      this.status(`このページには「${layer.name}」の線がありません`);
+      return;
+    }
+    if (layer.hidden || layer.locked) {
+      this.status(`「${layer.name}」は${layer.hidden ? "隠して" : "ロックして"}あるので選べません`);
+      return;
+    }
+    this.editor.select(items.length === 1 ? { kind: "stroke", pageId: page.id, id: items[0].id } : { kind: "group", pageId: page.id, id: "group", items });
+    this.status(`「${layer.name}」の線 ${items.length} 本を選びました`);
+    this.host.renderAll();
+  }
+
+  /** Several rows of the レイヤー palette: what of them lies on one page, selected together. */
+  selectRefs(refs: readonly LayerRef[]): void {
+    const pageId = refs[0]?.pageId;
+    if (!pageId) return;
+    const items: ItemRef[] = refs
+      .filter((ref) => ref.pageId === pageId)
+      .flatMap((ref): ItemRef[] => (ref.kind === "strokes" ? ref.ids.map((id) => ({ kind: "stroke" as const, id })) : ref.kind === "sticky" ? [] : [{ kind: ref.kind, id: ref.id }]));
+    if (!items.length) return;
+    this.editor.select(items.length === 1 ? { kind: items[0].kind, pageId, id: items[0].id } : { kind: "group", pageId, id: "group", items });
+    if (refs.some((ref) => ref.pageId !== pageId)) this.status("一緒に選べるのは同じページのものだけです");
+    this.host.renderAll();
+  }
+
+  /** 複製: what is selected on the page, copied onto the same page a little lower right (Ctrl+C, Ctrl+V in one). */
+  duplicateSelection(): boolean {
+    const project = this.host.project();
+    const s = this.editor.selection;
+    const page = project?.pages.find((p) => p.id === s?.pageId);
+    if (!project || !s || !page) return false;
+    const panel = s.kind === "panel" ? page.panels.find((p) => p.id === s.id) : undefined;
+    const source = s.kind === "group" ? { ...s, items: withContents(page, s.items ?? [], this.editor.panelCarries) } : s;
+    const clip = copySelection(page, source, panel ? panelContents(page, panel) : undefined);
+    if (!clip) return false;
+    let items: ItemRef[] = [];
+    this.edit((p) => {
+      const target = p.pages.find((one) => one.id === page.id);
+      if (!target) return;
+      const pasted = pasteClip(p, target, clip, [5, 5]);
+      items = [
+        ...pasted.panels.map((id) => ({ kind: "panel" as const, id })),
+        ...pasted.strokes.map((id) => ({ kind: "stroke" as const, id })),
+        ...pasted.lines.map((id) => ({ kind: "line" as const, id })),
+        ...pasted.fills.map((id) => ({ kind: "fill" as const, id })),
+        ...pasted.breakouts.map((id) => ({ kind: "breakout" as const, id })),
+      ];
+    });
+    const panels = items.filter((item) => item.kind === "panel");
+    if (panels.length === 1 && items.every((item) => item.kind !== "fill" && item.kind !== "breakout")) this.editor.select({ kind: "panel", pageId: page.id, id: panels[0].id });
+    else if (items.length > 1) this.editor.select({ kind: "group", pageId: page.id, id: "group", items });
+    else if (items.length) this.editor.select({ kind: items[0].kind, pageId: page.id, id: items[0].id });
+    this.status("複製しました（元に戻すは Ctrl+Z）");
+    this.host.renderAll();
+    return true;
   }
 
   /** レイヤー: a panel dropped on another swaps their contents; anything else moves into the panel. */
