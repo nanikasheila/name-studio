@@ -558,7 +558,6 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
   { target: "#focus-mode", name: "ページだけ", text: "欄と帯を隠す", command: "view.focus", side: "above" },
   { target: ".lane-toggles", name: "帯に出すもの", text: "型・シーン・時系列・感情・字数", side: "right" },
   { target: "#story", name: "物語の帯", text: "シーン・感情・ページを並びにそろえて見る。クリックでそのページへ", command: "view.board", side: "inside" },
-  { target: "#side-pages .page-tools", name: "ページの操作", text: "選んだページの前後に挿入・複製・保留・削除。ページを右クリックでもっと（コピー・移動・見開き・別案）", command: "page.add", side: "right" },
   { target: "#dock-left", name: "左の欄", text: "サブツール・ページ・台本・人物・付箋・保留・レイヤー・シリーズ。アイコンで出し入れ、見出しのドラッグで反対側へ", side: "inside" },
   { target: "#dock-right", name: "右の欄（詳細）", text: "選んだもの（ページ・コマ・セリフ・付箋・シーン）の設定", side: "inside" },
   { target: "#help-bar", name: "ヘルプの帯", text: "ポインターの下の名前と操作。設定 › 表示で隠せる", side: "above" },
