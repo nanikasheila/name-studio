@@ -63,6 +63,8 @@ try {
   // The strip under the pages at a set height: the pages as big as when the record was made
   // (the steps drag by pixels), whatever the strip's own height becomes.
   await page.addInitScript(() => localStorage.setItem("namestudio.storyHeight", JSON.stringify({ strip: 354 })));
+  // The record is of where the pointer went: the 標準のペン without 手ブレ補正 (which follows the pointer by time).
+  await page.addInitScript(() => localStorage.setItem("namestudio.pen", JSON.stringify({ stabilization: 0 })));
   await page.addInitScript({
     path: fileURLToPath(new URL("tauri-mock.js", import.meta.url)),
   });

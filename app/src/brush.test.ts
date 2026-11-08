@@ -302,6 +302,19 @@ describe("補正", () => {
     expect(followFactor(20, 1, true)).toBeCloseTo(1 / 2.25);
   });
 
+  it("手ブレ補正 holds the line back for the same time whatever the pen's report rate", () => {
+    // Where a line has got after 30 ms of the pen held still 1 mm away: once with 1 report every 5 ms, once with 1 every 1 ms.
+    const after = (every: number) => {
+      let at = 0;
+      for (let t = 0; t < 0.03 - 1e-9; t += every) at += (1 - at) * followFactor(20, 0, false, every);
+      return at;
+    };
+    expect(after(0.001)).toBeCloseTo(after(0.005), 6);
+    // At 200 reports a second, as without the time.
+    expect(followFactor(20, 0, false, 0.005)).toBeCloseTo(followFactor(20));
+    expect(followFactor(0, 0, false, 0.001)).toBe(1);
+  });
+
   it("後補正 smooths the wobble and keeps the ends", () => {
     const zigzag: [number, number, number][] = [0, 1, 2, 3, 4, 5, 6].map((x) => [x, x % 2 ? 1 : -1, 0.5]);
     const smoothed = postCorrect(zigzag, 20);

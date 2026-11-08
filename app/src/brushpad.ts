@@ -110,7 +110,7 @@ export class BrushPad {
       }
       raw[4] = drawing.speed;
       // 手ブレ補正 as the page's pen has it.
-      const follow = followFactor(this.brush.stabilization, drawing.speed, this.brush.stabilizationBySpeed);
+      const follow = followFactor(this.brush.stabilization, drawing.speed, this.brush.stabilizationBySpeed, seconds);
       const previous = drawing.stroke.points[drawing.stroke.points.length - 1];
       drawing.stroke.points.push(previous.map((value, i) => value + (raw[i] - value) * follow) as StrokePoint);
       drawing.last = raw;

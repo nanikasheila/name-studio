@@ -32,7 +32,12 @@ export interface PenSettings {
   predict: boolean;
   /** 低遅延: draw the pen's input as soon as it comes, not at the next frame. */
   lowLatency: boolean;
+  /** 手ブレ補正 of the 標準のペン, 0..100 as CSP's (a brush of its own has its own). */
+  stabilization: number;
 }
+
+/** The 標準のペン's 手ブレ補正 to begin with: as a new pen (newBrush) and CSP's pens. */
+export const PLAIN_STABILIZATION = 6;
 
 export const SIDE_BUTTON_LABELS: Record<SideButton, string> = {
   none: "何もしない",
@@ -72,6 +77,7 @@ export function defaultPenSettings(): PenSettings {
     cursor: "brush",
     predict: true,
     lowLatency: true,
+    stabilization: PLAIN_STABILIZATION,
   };
 }
 
@@ -95,6 +101,7 @@ export function parsePenSettings(text: string | null): PenSettings {
   if (stored.sideButton && stored.sideButton in SIDE_BUTTON_LABELS) settings.sideButton = stored.sideButton;
   if (stored.touch && stored.touch in TOUCH_LABELS) settings.touch = stored.touch;
   if (stored.cursor && stored.cursor in CURSOR_LABELS) settings.cursor = stored.cursor;
+  if (typeof stored.stabilization === "number" && Number.isFinite(stored.stabilization)) settings.stabilization = Math.round(Math.min(100, Math.max(0, stored.stabilization)));
   return settings;
 }
 
