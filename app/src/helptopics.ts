@@ -355,6 +355,11 @@ export const HOVER_TOPICS: Record<string, HelpTopic> = {
   },
 };
 
+/** What every managing list does alike (listops.ts), as its help reads. */
+const LIST_STEPS: HelpStep[] = [
+  { input: "Ctrl+クリック・Shift+クリック", does: "複数選ぶ（Shift+↑↓・Ctrl+A でも）" },
+];
+
 /** Parts of the screen with no words of their own (by element id), and the larger areas around them. */
 export const AREA_TOPICS: Record<string, HelpTopic> = {
   "dock-left": {
@@ -387,8 +392,11 @@ export const AREA_TOPICS: Record<string, HelpTopic> = {
     what: "ペン・消しゴムの種類と太さ・不透明度・手ブレ補正（CSP のように）",
     steps: [
       { input: "行をクリック", does: "そのペン・消しゴムを持つ" },
-      { input: "行の ⌨・右クリック", does: "キーを割り当てる（押すとそのペンを持つ）" },
-      { input: "行をドラッグ", does: "並べ替え" },
+      { input: "行の ⌨", does: "キーを割り当てる（押すとそのペンを持つ）" },
+      { input: "右クリック", does: "複製・削除・並べ替え・キー・設定" },
+      { input: "行をドラッグ・Alt+↑↓", does: "並べ替え" },
+      { input: "↑↓", does: "前後のペンに持ち替え（一覧を押したあと）" },
+      { input: "Ctrl+D / Delete", does: "複製・削除" },
       { input: "丸いボタン", does: "その太さに（右クリックで候補から外す）" },
       { input: "＋", does: "今の太さを候補に足す" },
       { command: "brush.bigger", does: "太く" },
@@ -418,8 +426,83 @@ export const AREA_TOPICS: Record<string, HelpTopic> = {
     what: "置き場所の決まらないコマと、外して取っておいたページ",
     steps: [
       { input: "コマをページへドラッグ", does: "置く（コマの上なら中身をそのコマへ）" },
-      { input: "保留のページ「元の場所に戻す」", does: "外した場所へ戻す" },
-      { input: "保留のページ「今のページの後ろに戻す」", does: "開いているページの後ろへ" },
+      ...LIST_STEPS,
+      { input: "右クリック", does: "置く・選んだコマへ・欄外・このあたりを今のページに・戻す・削除" },
+      { input: "Ctrl+D", does: "保留のコマを複製" },
+      { input: "Alt+↑ / Alt+↓", does: "一覧の中で並べ替え" },
+      { input: "Delete", does: "捨てる（元に戻すで戻せる）" },
+    ],
+  },
+  "side-script": {
+    name: "台本",
+    what: "全ページのセリフ。探す・まとめて話者や種類を変える・コピー",
+    steps: [
+      { input: "クリック", does: "そのセリフへ" },
+      ...LIST_STEPS,
+      { input: "右クリック", does: "話者・種類をまとめて変える・コピー・削除" },
+      { input: "F2・ダブルクリック", does: "ページの上で直す" },
+      { input: "Ctrl+C", does: "台本の形でコピー（ほかのアプリへ）" },
+      { input: "Delete", does: "削除（元に戻すで戻せる）" },
+    ],
+  },
+  "side-cast": {
+    name: "人物",
+    what: "登場人物の名前・色・口調。足す・複製・並べ替え・まとめる",
+    steps: [
+      { input: "⋮⋮ をクリック", does: "選ぶ" },
+      ...LIST_STEPS,
+      { input: "右クリック", does: "足す・複製・コピー・並べ替え・1 人にまとめる・削除" },
+      { input: "⋮⋮ をドラッグ・Alt+↑↓", does: "並べ替え" },
+      { input: "Insert / Ctrl+D", does: "足す・複製" },
+      { input: "F2", does: "名前を直す" },
+      { input: "Ctrl+C / Ctrl+V", does: "コピー・貼り付け（ほかのネームにも）" },
+      { input: "Delete", does: "削除（セリフの話者は空に）" },
+    ],
+  },
+  "side-notes": {
+    name: "付箋の一覧",
+    what: "全ページの付箋（未決のこと）。色・今のページで絞り込み",
+    steps: [
+      { input: "クリック", does: "その付箋へ" },
+      ...LIST_STEPS,
+      { input: "右クリック", does: "色を変える・コピー・済み" },
+      { input: "Insert", does: "今のページに付箋を足す" },
+      { input: "F2", does: "文を書く（右の欄）" },
+      { input: "Delete", does: "済み（外す）" },
+    ],
+  },
+  "rough-layers": {
+    name: "ラフ線・指示のレイヤー",
+    what: "ペン・指示ツールが描くレイヤー（CSP のレイヤーのように）",
+    steps: [
+      { input: "クリック・↑↓", does: "描くレイヤーを選ぶ" },
+      { input: "右クリック", does: "複製・名前・隠す・ロック・結合・線を選ぶ・削除" },
+      { input: "Insert / Ctrl+D", does: "足す・複製" },
+      { input: "Alt+↑ / Alt+↓", does: "上・下へ" },
+      { input: "Ctrl+E", does: "下のレイヤーと結合" },
+      { input: "F2・ダブルクリック", does: "名前を変える" },
+      { input: "Delete", does: "線ごと削除" },
+    ],
+  },
+  "layer-rows": {
+    name: "コマと中身",
+    what: "画面のページのコマと、その中のセリフ・ラフ線・塗り",
+    steps: [
+      { input: "クリック", does: "ページで選ぶ" },
+      { input: "Ctrl+クリック・Shift+クリック", does: "同じページのものを一緒に選ぶ" },
+      { input: "右クリック", does: "隠す・ほかを隠す・複製・コピー・保留・削除" },
+      { input: "行をコマの行へドラッグ", does: "そのコマへ移す（コマ同士は中身を入れ替え）" },
+      { input: "Ctrl+D / Delete", does: "複製・削除" },
+    ],
+  },
+  "side-series": {
+    name: "シリーズ",
+    what: "何話ものネームで人物・設定を共有。話から話へ移る",
+    steps: [
+      { input: "クリック・Enter", does: "その話を開く" },
+      { input: "↑↓", does: "話を選ぶ" },
+      { input: "右クリック", does: "開く・場所をコピー・シリーズから外す" },
+      { input: "Delete", does: "シリーズから外す（ファイルは残る）" },
     ],
   },
   "tool-options": { name: "道具の設定", what: "持っている道具の設定とひと言の説明" },

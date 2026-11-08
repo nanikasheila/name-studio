@@ -110,6 +110,8 @@ export class Workbench {
     putHeld: (id, page, point, panel) => this.edits.putHeld(id, page, point, panel),
     layHeld: (id, page) => (page ? this.edits.layHeld(id, page) : this.edits.unlayHeld(id)),
     openScript: () => this.scriptDialog.open(),
+    editLine: (pageId, lineId) => (this.goTo(pageId, "line", lineId), this.editor.editInPlace(pageId, "line", lineId)),
+    openPalette: (id) => this.docks.open(id),
   });
   /** The palettes beside the pages (left or right, several at once). */
   private docks!: Docks;
@@ -136,6 +138,10 @@ export class Workbench {
       return text.length > 14 ? `${text.slice(0, 14)}…` : text || "（空）";
     },
     isMark: (page, id) => isMark(this.session.project ?? {}, page.strokes.find((stroke) => stroke.id === id) ?? {}),
+    selectMany: (refs) => this.edits.selectRefs(refs),
+    act: (what) =>
+      void (what === "duplicate" ? this.edits.duplicateSelection() : what === "paste" ? this.editor.paste() : this.run(({ delete: "delete", copy: "copy", cut: "cut", hold: "panel.hold" } as const)[what])),
+    canPaste: () => this.editor.canPaste,
   });
   private readonly roughPanel = new RoughPanel({
     project: () => this.session.project,
@@ -278,6 +284,7 @@ export class Workbench {
       inspect: () => (this.board.selected && this.editor.select(null, true), this.renderInspector()),
       status: (message) => this.setStatus(message),
       pageMenu: (index, x, y) => this.lists.pageList.menuFor(index, x, y),
+      pageAction: (what, ids) => (what === "pick" && this.docks.open("pages"), this.lists.pageList.act(what, ids)),
     });
     this.inspector = new Inspector({
       editor: this.editor,
@@ -801,7 +808,7 @@ export class Workbench {
       const picked = pickedStrokes(s);
       return picked.length === ref.ids.length && ref.ids.every((id) => picked.includes(id));
     }
-    return s.kind === ref.kind && s.id === ref.id;
+    return (s.kind === ref.kind && s.id === ref.id) || (s.kind === "group" && !!s.items?.some((item) => item.kind === ref.kind && item.id === ref.id));
   }
 
   private selectLayer(ref: LayerRef): void {

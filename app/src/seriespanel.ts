@@ -4,6 +4,7 @@
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import { call } from "./backend";
 import { element, plainButton } from "./dom";
+import { copyText, ListPicker } from "./listops";
 import type { Project, Series } from "./model";
 import { nameKind, newProject } from "./project";
 import {
@@ -53,6 +54,8 @@ export class SeriesPanel {
   private nextPages: number | null = null;
   /** The series file last looked for and not read (not looked for again at each render). */
   private missing: string | null = null;
+  /** The list of 話: its keys and menu (as the other lists'). */
+  private picker: ListPicker | null = null;
 
   constructor(private readonly host: SeriesHost) {}
 
@@ -149,12 +152,48 @@ export class SeriesPanel {
     }
   }
 
+  private bind(container: HTMLElement): ListPicker {
+    const fileOf = (entry: string) => (this.current ? resolvePath(folderOf(this.current.path), entry) : entry);
+    const mine = (entry: string) => {
+      const here = this.host.path();
+      return !!here && samePath(fileOf(entry), here);
+    };
+    return new ListPicker(container, {
+      noun: "話",
+      single: true,
+      arrowsOpen: false,
+      ids: () => this.current?.data.episodes.map((episode) => episode.path) ?? [],
+      open: (entry) => {
+        if (!mine(entry)) void this.host.open(fileOf(entry));
+      },
+      copy: (ids) =>
+        void copyText(fileOf(ids[0])).then((ok) => this.host.status(ok ? `ファイルの場所をコピーしました: ${fileOf(ids[0])}` : "クリップボードに入れられませんでした")),
+      remove: (ids) => void (mine(ids[0]) ? this.leave() : this.drop(ids[0])),
+      removeLabel: "シリーズから外す（ファイルは残します）",
+      extra: (ids) => [{ label: mine(ids[0]) ? "開いているネームです" : "開く", keys: "Enter", disabled: mine(ids[0]), run: () => void this.host.open(fileOf(ids[0])) }],
+      empty: () => [{ label: "次の話を作る…", run: () => void this.createNext() }],
+    });
+  }
+
+  /** Another 話 out of the series list (its file stays as it is). */
+  private async drop(entry: string): Promise<void> {
+    const current = this.current;
+    const episode = current?.data.episodes.find((one) => one.path === entry);
+    if (!current || !episode) return;
+    if (!(await ask(`「${episode.title}」をシリーズ「${current.data.title}」の一覧から外しますか？（ネームのファイルはそのまま残ります。そのネームを開いて保存すると、また一覧に入ります）`, { title: "Name Studio", kind: "info" })))
+      return;
+    const problem = await this.write(current, withoutEpisode(current.data, entry));
+    this.host.status(problem ?? `「${episode.title}」をシリーズの一覧から外しました`);
+    this.host.refresh();
+  }
+
   render(container: HTMLElement): void {
     const project = this.host.project();
     if (!project) {
       container.replaceChildren();
       return;
     }
+    this.picker ??= this.bind(container);
     // Undo can take the link away or bring it back.
     if (project.series && !this.current) this.follow(project, this.host.path());
     const current = project.series ? this.current : null;
@@ -189,8 +228,7 @@ export class SeriesPanel {
         element("span", { className: "layer-detail", textContent: `${episode.pages} ページ` }),
       );
       row.dataset.episode = episode.path;
-      if (!mine) row.addEventListener("click", () => void this.host.open(file));
-      list.append(row);
+      list.append(this.picker.row(row, episode.path));
     }
     const pages = element("input", { type: "number", id: "series-next-pages", min: "1", max: "400", value: String(this.nextPages ?? project.plan?.targetPages ?? project.pages.length) });
     pages.addEventListener("change", () => (this.nextPages = Math.max(1, Math.min(400, Math.round(Number(pages.value)) || 1))));

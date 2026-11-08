@@ -7,6 +7,7 @@ import { addBeat, adoptShape, beatPage, currentShape, editableShape, isBuiltinSh
 import { textAmount } from "./dialogue";
 import { planAdvice, sceneSpans } from "./story";
 import { clip, diamond, icon, type LaneView, SHAPE, track } from "./boardview";
+import { beatMenu, partMenu } from "./boardmenus";
 
 export function shapeLane(view: LaneView, project: Project, top: number): SVGGElement {
   const group = svg("g", { class: "lane shape-lane" });
@@ -31,6 +32,11 @@ export function shapeLane(view: LaneView, project: Project, top: number): SVGGEl
     part.addEventListener("click", () => view.select({ kind: "shape" }));
     part.addEventListener("mousemove", (event) => view.tip.show(event, [span.name, `${span.first + 1}〜${span.last + 1} ページ（${span.last - span.first + 1} ページ）`, "クリックで型を直す"]));
     part.addEventListener("mouseleave", () => view.tip.hide());
+    part.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      view.tip.hide();
+      partMenu(view, project, span.index, spans.length, view.at(event).index, event.clientX, event.clientY);
+    });
     group.append(part, svg("text", { x: x + 7, y: top + 17, class: "part-label" }, clip(span.name, Math.floor((w - 10) / 12))));
   }
   // Boundaries between parts: drag to change how many pages each gets.
@@ -75,6 +81,11 @@ export function shapeLane(view: LaneView, project: Project, top: number): SVGGEl
     const label = view.column >= 60 || (shape.beats?.length ?? 0) <= count / 3 ? svg("text", { x: cx + 9, y: top + 36, class: "beat-label" }, clip(beat.name, Math.max(2, Math.floor((view.column * 2.2) / 11)))) : null;
     marker.addEventListener("mousemove", (event) => view.tip.show(event, [beat.name, `${page + 1} ページあたり`, "ドラッグで動かす"]));
     marker.addEventListener("mouseleave", () => view.tip.hide());
+    marker.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      view.tip.hide();
+      beatMenu(view, index, beat.name, event.clientX, event.clientY);
+    });
     marker.addEventListener("pointerdown", (down) => {
       if (down.button !== 0) return;
       down.preventDefault();

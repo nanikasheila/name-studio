@@ -5,6 +5,7 @@
 import { stacked } from "./koma";
 import { bounds, centroid } from "./geometry";
 import type { Page, Panel, Point, Project } from "./model";
+import { ListPicker } from "./listops";
 import { carryContents } from "./panels";
 import { shownStrokes } from "./roughlayers";
 import { mapFill } from "./strokes";
@@ -179,6 +180,18 @@ export interface LayerViewHost {
   lineLabel(page: Page, id: string): string;
   /** Whether a line is a 指示 (listed apart from the rough lines). */
   isMark(page: Page, strokeId: string): boolean;
+  /** Several rows picked (Ctrl / Shift): what is on one page of them selected together. */
+  selectMany(refs: LayerRef[]): void;
+  /** What is selected: deleted, copied, … as the page's own keys do. */
+  act(what: LayerAct): void;
+  canPaste(): boolean;
+}
+
+export type LayerAct = "delete" | "duplicate" | "copy" | "cut" | "paste" | "hold";
+
+/** A row's id in the list. */
+function refKey(ref: LayerRef): string {
+  return ref.kind === "strokes" ? `strokes:${ref.pageId}:${ref.ids.join(",")}` : `${ref.kind}:${ref.pageId}:${ref.id}`;
 }
 
 const TONE_NAMES: Record<string, string> = { black: "黒", gray: "グレー", white: "白" };
@@ -187,14 +200,75 @@ const DRAG_START = 6;
 export class LayerView {
   /** Panels folded shut (their contents not listed). */
   private readonly folded = new Set<string>();
+  /** The rows listed now, by id, in order. */
+  private refs = new Map<string, LayerRef>();
+  /** The pages listed now (the keys to hide). */
+  private listed: PageLayers[] = [];
+  private picker: ListPicker | null = null;
 
   constructor(private readonly host: LayerViewHost) {}
 
+  private bind(container: HTMLElement): ListPicker {
+    const refs = (ids: string[]) => ids.map((id) => this.refs.get(id)).filter((ref): ref is LayerRef => !!ref);
+    const keysOf = (list: LayerRef[]) => list.flatMap((ref) => this.listed.flatMap((layers) => (layers.page.id === ref.pageId ? hiddenKeys(layers, ref) : [])));
+    return new ListPicker(container, {
+      noun: "レイヤー",
+      ids: () => [...this.refs.keys()],
+      open: (id) => {
+        const ref = this.refs.get(id);
+        if (ref) this.host.select(ref);
+      },
+      duplicate: () => this.host.act("duplicate"),
+      remove: () => this.host.act("delete"),
+      copy: () => this.host.act("copy"),
+      cut: () => this.host.act("cut"),
+      paste: () => this.host.act("paste"),
+      canPaste: () => this.host.canPaste(),
+      extra: (ids) => {
+        const picked = refs(ids);
+        const keys = keysOf(picked);
+        const hidden = keys.length > 0 && keys.every((key) => this.host.hidden().has(key));
+        const page = picked[0]?.pageId;
+        const others = this.listed
+          .filter((layers) => layers.page.id === page)
+          .flatMap((layers) => [...this.refs.values()].filter((ref) => ref.pageId === page && !ids.includes(refKey(ref))).flatMap((ref) => hiddenKeys(layers, ref)))
+          .filter((key) => !keys.includes(key));
+        const panel = picked.length === 1 && picked[0].kind === "panel";
+        return [
+          { label: hidden ? "画面に出す" : "画面から隠す（書き出しには入ります）", run: () => this.host.setHidden(keys, !hidden) },
+          {
+            label: "ほかを隠す",
+            title: "このページの、選んだもののほかを画面から隠す",
+            disabled: !others.length,
+            run: () => {
+              this.host.setHidden(keys, false);
+              this.host.setHidden(others, true);
+            },
+          },
+          { label: "すべて出す", disabled: !this.host.hidden().size, run: () => this.host.setHidden([...this.host.hidden()], false) },
+          ...(panel ? [{ label: "コマを中身ごと保留にする", run: () => this.host.act("hold") }] : []),
+        ];
+      },
+      empty: () => [
+        { label: "貼り付け", keys: "Ctrl+V", disabled: !this.host.canPaste(), run: () => this.host.act("paste") },
+        { label: "すべて出す", disabled: !this.host.hidden().size, run: () => this.host.setHidden([...this.host.hidden()], false) },
+      ],
+      changed: () => {
+        const picked = refs(this.picker?.targets() ?? []);
+        if (picked.length > 1) this.host.selectMany(picked);
+      },
+    });
+  }
+
   /** List the pages given (with their page numbers, 1-based). */
   render(container: HTMLElement, pages: { page: Page; number: number }[]): void {
+    this.picker ??= this.bind(container);
+    this.refs = new Map();
+    this.listed = [];
     const rows: HTMLElement[] = [];
     for (const { page, number } of pages) {
       const layers = pageLayers(page);
+      this.listed.push(layers);
       rows.push(Object.assign(document.createElement("div"), { className: "layer-page", textContent: `${number} ページ` }));
       for (const held of layers.panels) {
         const ref: LayerRef = { kind: "panel", pageId: page.id, id: held.panel.id };
@@ -237,10 +311,14 @@ export class LayerView {
     rows.push(
       Object.assign(document.createElement("p"), {
         className: "hint layer-hint",
-        textContent: "行を押すと選び、目で画面から隠します（書き出しには入ります）。セリフ・ラフ線・塗りの行をコマの行へドラッグするとそのコマへ移し、コマをコマへドラッグすると中身を入れ替えます。",
+        textContent: "行を押すと選び（Ctrl・Shift で複数）、目で画面から隠します（書き出しには入ります）。右クリックで複製・コピー・ほかを隠す・削除。セリフ・ラフ線・塗りの行をコマの行へドラッグするとそのコマへ移し、コマをコマへドラッグすると中身を入れ替えます。",
       }),
     );
     container.replaceChildren(...rows);
+    // The rows picked are what is selected on the page.
+    const selected = [...this.refs.entries()].filter(([, ref]) => this.host.selected(ref)).map(([id]) => id);
+    this.picker.pick(selected, false);
+    for (const row of container.querySelectorAll<HTMLElement>("[data-list-id]")) row.classList.toggle("picked", selected.includes(row.dataset.listId ?? ""));
   }
 
   private contents(layers: PageLayers, page: Page, held: { lines: string[]; strokes: string[]; fills: string[] }, depth: number): HTMLElement[] {
@@ -280,7 +358,9 @@ export class LayerView {
     const name = Object.assign(document.createElement("span"), { className: "layer-name", textContent: label });
     const more = Object.assign(document.createElement("span"), { className: "layer-detail", textContent: detail });
     row.append(eye, ...(lead ? [lead] : [Object.assign(document.createElement("span"), { className: "layer-fold" })]), name, more);
-    row.addEventListener("click", () => this.host.select(ref));
+    const id = refKey(ref);
+    this.refs.set(id, ref);
+    this.picker?.row(row, id);
     this.draggable(row, ref);
     return row;
   }
