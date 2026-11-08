@@ -1,6 +1,6 @@
 // Fields in the palettes that show on the page as they change: a text field
 // is one undo step from focus to change, a number one step a moment after the
-// last turn of the wheel or the arrows.
+// last turn of the wheel or the arrows, a slider one step per drag.
 import type { Session } from "./session";
 
 /** What live fields need from the editor around them. */
@@ -76,5 +76,33 @@ export class LiveFields {
       },
       { passive: false },
     );
+  }
+
+  /**
+   * A slider dragged live: each value on the way shows at once on the page,
+   * and the drag (from the first move to letting go) is one undo step. The
+   * arrow keys make a step each, as they fire `change` each time.
+   */
+  range(field: HTMLInputElement, apply: (value: number) => void, done?: () => void): void {
+    const session = this.host.session;
+    let snapshot: ReturnType<Session["snapshot"]> = null;
+    const show = () => {
+      const value = Number(field.value);
+      if (!Number.isFinite(value)) return;
+      snapshot ??= session.snapshot();
+      apply(value);
+      session.markDirty();
+      this.host.changed();
+    };
+    field.addEventListener("input", show);
+    field.addEventListener("change", () => {
+      // A change with no input before it (set from a script) is still shown and kept.
+      if (snapshot === null) show();
+      if (snapshot === null) return;
+      session.recordSince(snapshot);
+      snapshot = null;
+      this.host.recorded();
+      done?.();
+    });
   }
 }
