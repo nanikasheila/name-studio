@@ -4,6 +4,7 @@
 // 指示のレイヤー, each in its colour: the row picked is what the 指示 tool
 // draws on.
 import type { PageEditor, Tool } from "./editor";
+import { ListPicker } from "./listops";
 import type { Project, RoughLayer } from "./model";
 import { layerOf, layerStrokeCount, markColor, markLayersOf, MARK_COLORS, MARK_COLOR_NAMES, opacityOfLayer, roughLayersOf } from "./roughlayers";
 import { markPen } from "./toolmark";
@@ -19,7 +20,13 @@ export type RoughChange =
   | { kind: "move"; id: string; step: 1 | -1 }
   | { kind: "remove"; id: string; mergeDown: boolean }
   /** The lines selected on the page onto this layer. */
-  | { kind: "takeSelected"; id: string };
+  | { kind: "takeSelected"; id: string }
+  /** A copy of the layer with its lines, above it. */
+  | { kind: "duplicate"; id: string }
+  /** The other layers of its kind hidden (again: all shown). */
+  | { kind: "solo"; id: string }
+  /** The page's lines on the layer selected (not a change to the name). */
+  | { kind: "selectLines"; id: string };
 
 export interface RoughPanelHost {
   project(): Project | null;
@@ -33,7 +40,86 @@ export interface RoughPanelHost {
 }
 
 export class RoughPanel {
+  /** The rows' keys and menu (as the other lists'); one layer at a time. */
+  private picker: ListPicker | null = null;
+
   constructor(private readonly host: RoughPanelHost) {}
+
+  /** The layers in the order the rows show them: 指示 top to bottom, then the rough's. */
+  private shownLayers(project: Project): RoughLayer[] {
+    return [...[...markLayersOf(project)].reverse(), ...[...roughLayersOf(project)].reverse()];
+  }
+
+  private layer(id: string): RoughLayer | undefined {
+    const project = this.host.project();
+    return project ? this.shownLayers(project).find((layer) => layer.id === id) : undefined;
+  }
+
+  /** Whether layer `id` can go a row up (-1) or down (1) among its kind. */
+  private canStep(id: string, to: -1 | 1 | "first" | "last"): boolean {
+    const project = this.host.project();
+    const layer = this.layer(id);
+    if (!project || !layer || typeof to !== "number") return false;
+    const kind = this.shownLayers(project).filter((l) => !!l.marks === !!layer.marks);
+    const at = kind.indexOf(layer);
+    return to < 0 ? at > 0 : at < kind.length - 1;
+  }
+
+  private bind(container: HTMLElement): ListPicker {
+    const one = (ids: string[]) => ids[0];
+    return new ListPicker(container, {
+      noun: "レイヤー",
+      single: true,
+      ids: () => {
+        const project = this.host.project();
+        return project ? this.shownLayers(project).map((layer) => layer.id) : [];
+      },
+      open: (id) => {
+        const layer = this.layer(id);
+        if (layer) this.pick(layer);
+      },
+      insert: (_after, ids) => {
+        const layer = this.layer(one(ids));
+        this.host.change({ kind: layer?.marks ? "addMarks" : "add" });
+      },
+      duplicate: (ids) => this.host.change({ kind: "duplicate", id: one(ids) }),
+      remove: (ids) => this.host.change({ kind: "remove", id: one(ids), mergeDown: false }),
+      move: (ids, to) => {
+        if (typeof to === "number" && this.canStep(one(ids), to)) this.host.change({ kind: "move", id: one(ids), step: to < 0 ? 1 : -1 });
+      },
+      canMove: (ids, to) => this.canStep(one(ids), to),
+      rename: (id) => {
+        const layer = this.layer(id);
+        const name = container.querySelector<HTMLElement>(`[data-rough="${CSS.escape(id)}"] .layer-name`);
+        if (layer && name) this.rename(name, layer);
+      },
+      extra: (ids) => {
+        const layer = this.layer(one(ids));
+        if (!layer) return [];
+        const picked = this.host.selectedStrokes();
+        return [
+          { label: layer.hidden ? "画面に出す" : "画面から隠す", run: () => this.host.change({ kind: "look", id: layer.id, change: { hidden: !layer.hidden } }) },
+          { label: "ほかのレイヤーを隠す（もう一度で全部出す）", run: () => this.host.change({ kind: "solo", id: layer.id }) },
+          { label: layer.locked ? "ロックを外す" : "ロックする", run: () => this.host.change({ kind: "look", id: layer.id, change: { locked: !layer.locked } }) },
+          { label: "下のレイヤーと結合", keys: "Ctrl+E", disabled: !this.canStep(layer.id, 1), run: () => this.host.change({ kind: "remove", id: layer.id, mergeDown: true }) },
+          { label: "このページの、このレイヤーの線を選ぶ", run: () => this.host.change({ kind: "selectLines", id: layer.id }) },
+          ...(picked && !layer.marks ? [{ label: `選んだラフ線 ${picked} 本をこのレイヤーへ`, run: () => this.host.change({ kind: "takeSelected", id: layer.id }) }] : []),
+        ];
+      },
+      empty: () => [
+        { label: "ラフ線のレイヤーを足す", run: () => this.host.change({ kind: "add" }) },
+        { label: "指示のレイヤーを足す", run: () => this.host.change({ kind: "addMarks" }) },
+      ],
+      key: (event, ids) => {
+        // CSP's 下のレイヤーと結合.
+        if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "e" && ids[0] && this.canStep(ids[0], 1)) {
+          this.host.change({ kind: "remove", id: ids[0], mergeDown: true });
+          return true;
+        }
+        return false;
+      },
+    });
+  }
 
   render(container: HTMLElement): void {
     const project = this.host.project();
@@ -41,6 +127,7 @@ export class RoughPanel {
       container.replaceChildren();
       return;
     }
+    this.picker ??= this.bind(container);
     const layers = roughLayersOf(project);
     const active = layerOf(project, { layer: this.host.editor().roughLayer }).id;
     const marks = markLayersOf(project);
@@ -50,6 +137,9 @@ export class RoughPanel {
     const addMarks = button("＋", marks.length ? "別の色の指示のレイヤーを足す" : "指示のレイヤーを作る（指示ツール R で描いても作られます）", () => this.host.change({ kind: "addMarks" }));
     addMarks.id = "marks-add";
     markHead.append(addMarks);
+    // The row worked on follows the layer drawn on.
+    const working = this.picker?.targets()[0];
+    if (!working || !this.layer(working)) this.picker?.pick([this.host.editor().tool === "mark" && activeMark ? activeMark : active], false);
     const markRows = [...marks].reverse().map((layer, fromTop) => this.row(project, layer, layer.id === activeMark, fromTop, marks.length));
     const head = element("div", "rough-head");
     head.append(element("span", "layer-page", "ラフ線のレイヤー"));
@@ -83,7 +173,7 @@ export class RoughPanel {
     const row = element("div", `rough-row${active ? " selected" : ""}${layer.hidden ? " hidden-layer" : ""}`);
     row.dataset.rough = layer.id;
     row.title = layer.marks ? "押すと、指示ツールでこのレイヤーに描きます" : "押すと、ペンでこのレイヤーに描きます";
-    row.addEventListener("click", () => this.pick(layer));
+    this.picker?.row(row, layer.id);
     const look = (change: RoughChange & { kind: "look" }) => (event: Event) => {
       event.stopPropagation();
       this.host.change(change);

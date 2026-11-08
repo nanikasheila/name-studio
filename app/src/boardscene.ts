@@ -8,6 +8,7 @@ import { moveScene } from "./reorder";
 import { currentShape, shapeSpans } from "./shapes";
 import { emotionSeries, moveSceneEdge, sceneAtPage, sceneSpans, setStoryRank, timeline, uncoveredRunAt, type SceneSpan } from "./story";
 import { clip, formatValue, icon, type LaneView, ROW, SCENE, track } from "./boardview";
+import { emptySceneMenu, sceneMenu } from "./boardmenus";
 
 export function sceneLane(view: LaneView, project: Project, top: number): SVGGElement {
   const group = svg("g", { class: "lane scene-lane" });
@@ -27,6 +28,11 @@ export function sceneLane(view: LaneView, project: Project, top: number): SVGGEl
     view.tip.show(event, [`${index + 1} ページ`, uncoveredRunAt(project, index) ? "ダブルクリックでここにシーンを足す" : ""].filter(Boolean));
   });
   bg.addEventListener("mouseleave", () => view.tip.hide());
+  bg.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    view.tip.hide();
+    emptySceneMenu(view, project, view.at(event).index, event.clientX, event.clientY);
+  });
   group.append(bg);
   const spans = sceneSpans(project);
   spans.forEach((span, i) => {
@@ -43,6 +49,11 @@ export function sceneLane(view: LaneView, project: Project, top: number): SVGGEl
       ]),
     );
     bar.addEventListener("mouseleave", () => view.tip.hide());
+    bar.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      view.tip.hide();
+      sceneMenu(view, project, span, view.at(event).index, event.clientX, event.clientY);
+    });
     bar.addEventListener("dblclick", () => {
       view.selectScene(span);
       document.querySelector<HTMLInputElement>("#inspector input.scene-title")?.focus();

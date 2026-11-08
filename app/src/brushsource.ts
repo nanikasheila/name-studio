@@ -3,7 +3,10 @@
 // its size (a slider, a box and the round buttons of ブラシサイズ), its
 // opacity and 手ブレ補正, how an eraser erases, and the way to all its
 // settings.
+import { ask } from "@tauri-apps/plugin-dialog";
 import { addBrushes } from "./brush";
+import { freeName } from "./listorder";
+import { newId } from "./project";
 import { brushPicks, brushRef, clampSize, reorderBrushes, sizeLabel, sizeOfSlider, sliderOf, SLIDER_STEPS, withoutPreset, withPreset, type BrushPick } from "./brushpicks";
 import { applyCspSettings, ensureCspSettings, setSetting } from "./cspsettings";
 import { element } from "./dom";
@@ -187,6 +190,67 @@ export class BrushSource implements SubToolSource {
         },
       },
     ];
+  }
+
+  /** The name's own brush behind a ref (not the plain one, nor one of another name). */
+  private own(ref: string): Brush | null {
+    const pick = this.picks().find((p) => p.ref === ref);
+    return pick?.brush && !pick.library ? pick.brush : null;
+  }
+
+  duplicate(ref: string): void {
+    const source = this.picks().find((p) => p.ref === ref)?.brush;
+    if (!source) {
+      this.host.status(`${PLAIN[this.kind]}は複製できません（「設定…」の「新しく作る」で作れます）`);
+      return;
+    }
+    let made: Brush | null = null;
+    this.host.edit((project) => {
+      const copy = structuredClone(source);
+      copy.id = newId(project, "brush");
+      copy.name = freeName(`${source.name} のコピー`, project.brushes.filter((b) => b.kind === source.kind).map((b) => b.name));
+      // Right under the one copied (when it is the name's own).
+      const at = project.brushes.findIndex((b) => b.id === source.id);
+      project.brushes.splice(at >= 0 ? at + 1 : project.brushes.length, 0, copy);
+      made = copy;
+    });
+    if (!made) return;
+    saveToLibrary([made]);
+    this.host.useBrush(made, this.kind);
+    this.host.status(`「${(made as Brush).name}」を作りました（名前・設定は「設定…」で。元に戻すは Ctrl+Z）`);
+  }
+
+  canRemove(ref: string): boolean {
+    return !!this.own(ref);
+  }
+
+  async remove(ref: string): Promise<void> {
+    const brush = this.own(ref);
+    const project = this.host.project();
+    if (!brush || !project) return;
+    const lines = project.pages.reduce((sum, page) => sum + page.strokes.filter((stroke) => stroke.brush === brush.id).length, 0);
+    if (
+      lines &&
+      !(await ask(`「${brush.name}」で描いた線が ${lines} 本あります。削除すると、その線は${PLAIN[this.kind]}で描いた形になります。削除しますか？`, {
+        title: "Name Studio",
+        kind: "warning",
+      }))
+    )
+      return;
+    const inHand = this.inHand()?.id === brush.id;
+    this.host.edit((p) => {
+      p.brushes = p.brushes.filter((b) => b.id !== brush.id);
+    });
+    if (inHand) this.host.useBrush(null, this.kind);
+    this.host.status(`「${brush.name}」を削除しました（元に戻すで戻せます）`);
+  }
+
+  /** F2: the name is changed in the settings, with the brush in hand. */
+  rename(ref: string): void {
+    if (!this.own(ref)) return;
+    if (this.current() !== ref) this.pick(ref);
+    this.host.openEditor(this.kind);
+    requestAnimationFrame(() => document.querySelector<HTMLInputElement>("#be-name")?.select());
   }
 
   footer(box: HTMLElement): void {

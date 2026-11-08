@@ -22,8 +22,8 @@ import { refitRow } from "./rowfit";
 export type { BoardSelection, BoardTip, LaneId, StoryHost } from "./boardview";
 
 const LANES: { id: LaneId; label: string; hint: string }[] = [
-  { id: "shape", label: "型", hint: "話の型: 区切りの線をドラッグで配分を変える（決まった型は自分の型に写してから）。◆はビート。クリックで型を選ぶ・直す" },
-  { id: "scene", label: "シーン", hint: "シーン: 両端のドラッグでページの範囲、真ん中のドラッグでシーンごと移動。空いた所をダブルクリックでシーンを足す" },
+  { id: "shape", label: "型", hint: "話の型: 区切りの線をドラッグで配分を変える（決まった型は自分の型に写してから）。◆はビート。クリックで型を選ぶ・直す。右クリックで区切りを分ける・消す・ビートを足す" },
+  { id: "scene", label: "シーン", hint: "シーン: 両端のドラッグでページの範囲、真ん中のドラッグでシーンごと移動。空いた所をダブルクリックでシーンを足す。右クリックで分ける・つなぐ・複製・前後へ・ページを選ぶ・削除" },
   { id: "time", label: "時系列", hint: "時系列: 上ほど物語の中で早い出来事。上下にドラッグで順を変える（回想など）" },
   { id: "emotion", label: "感情", hint: "感情: 下の帯で人物を選んで、なぞると値が入る。右クリック（Alt＋クリック）で消す" },
   { id: "text", label: "字数", hint: "字数: ページごとのセリフの字数（多いページは色を変える）" },

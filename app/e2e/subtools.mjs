@@ -131,7 +131,7 @@ try {
   await panel.locator(".subtool-tabs button", { hasText: "消しゴム" }).click();
   check((await names()) === "標準の消しゴム/硬め", "the 消しゴム tab lists the erasers");
   await panel.locator(".subtool-row", { hasText: "硬め" }).click({ button: "right" });
-  await page.locator(".subtool-menu button", { hasText: "キーを割り当てる" }).click();
+  await page.locator(".popup-menu button", { hasText: "キーを割り当てる" }).click();
   await page.keyboard.press("2");
   await page.keyboard.press("1");
   check((await inHand()).brush === "brush-1", "keys stay with their pens");

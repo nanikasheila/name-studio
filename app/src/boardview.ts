@@ -25,6 +25,8 @@ export interface StoryHost {
   status?(message: string): void;
   /** The page menu (insert, duplicate, delete…) for page `index` (0-based), at a point in the window. */
   pageMenu?(index: number, x: number, y: number): void;
+  /** Pages (by id) picked in the page list, held (保留) or deleted (asking first) as the page list does. */
+  pageAction?(what: "pick" | "hold" | "delete", ids: string[]): void;
 }
 
 /** What the strip itself selects; pages and panels are selected on the canvas. */
