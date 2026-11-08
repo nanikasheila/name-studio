@@ -278,14 +278,22 @@ export function tiltOf(event: PointerEvent): number {
   return Math.max(0, Math.min(1, Math.atan(Math.hypot(x, y)) / (Math.PI / 2)));
 }
 
+/** The time between a pen's reports that `followFactor` is for (s): a tablet's, as Wacom's, about 200 a second. */
+export const FOLLOW_SAMPLE_S = 1 / 200;
+
 /**
  * 手ブレ補正 while drawing: how far each new point moves towards the pen (1 = all the way).
  * With 速度による手ブレ補正 a fast pen (speed 0–1 of {@link FULL_SPEED_MM}) is held back less,
- * so quick lines keep up while slow ones stay steady.
+ * so quick lines keep up while slow ones stay steady. Given `seconds` since the
+ * point before, the same 手ブレ補正 holds the line back for the same time
+ * whether the pen reports 100 times a second or 1000 (or a mouse 60).
  */
-export function followFactor(stabilization: number, speed = 0, bySpeed = false): number {
+export function followFactor(stabilization: number, speed = 0, bySpeed = false, seconds?: number): number {
   const strength = Math.max(0, stabilization) * (bySpeed ? 1 - 0.75 * Math.min(1, Math.max(0, speed)) : 1);
-  return 1 / (1 + strength / 4);
+  const follow = 1 / (1 + strength / 4);
+  if (seconds === undefined || follow === 1) return follow;
+  const samples = Math.min(0.05, Math.max(0.001, seconds)) / FOLLOW_SAMPLE_S;
+  return 1 - (1 - follow) ** samples;
 }
 
 /**

@@ -36,6 +36,13 @@ try {
   await page.waitForFunction(() => window.nameStudio);
   await openHeavyName(page, { pages: 32, strokes: 200, show: 10 });
   await page.evaluate(() => window.nameStudio.workbench.setTool("pen"));
+  // The checks of the line's points below without 手ブレ補正 (it has a check of its own at the end).
+  const steady = (value) =>
+    page.evaluate(async (value) => {
+      const { penPreferences } = await import("/src/prefs.ts");
+      penPreferences.update({ stabilization: value });
+    }, value);
+  await steady(0);
   await page.waitForTimeout(400);
 
   const cdp = await page.context().newCDPSession(page);
@@ -238,6 +245,32 @@ try {
   } else {
     console.log(`     (先読み not checked: ${predicts ? "this browser predicted nothing for these events" : "no getPredictedEvents"})`);
   }
+  // 手ブレ補正 of the 標準のペン: a shaky line comes out smoother, the same at 100 reports a second as at 500.
+  const [hx, hy] = await at(11, [40, 260]);
+  // The hand shakes 10 times a second (as a hand does) for 0.6 s, whatever the rate it is reported at.
+  const shaky = (t) => [hx + t * 400, hy + 4 * Math.sin(2 * Math.PI * 10 * t)];
+  async function wobble(value, every) {
+    await steady(value);
+    await pen("mouseMoved", shaky(0), 0, 0);
+    await pen("mousePressed", shaky(0), 0.5);
+    const start = performance.now();
+    for (let i = 1; i * every <= 600; i++) {
+      while (performance.now() < start + i * every) await new Promise((resolve) => setImmediate(resolve));
+      await pen("mouseMoved", shaky((i * every) / 1000), 0.5);
+    }
+    await pen("mouseReleased", shaky(0.6), 0, 0);
+    await settle();
+    const points = (await lastStroke()).points;
+    // How far the line swings up and down, in its middle (mm).
+    const middle = points.slice(Math.floor(points.length / 4), Math.floor((points.length * 3) / 4)).map((p) => p[1]);
+    return Math.max(...middle) - Math.min(...middle);
+  }
+  const plain = await wobble(0, 2);
+  const steadied = await wobble(30, 10);
+  const steadiedFast = await wobble(30, 2);
+  console.log(`     a line shaking ${plain.toFixed(2)} mm: 手ブレ補正 30 makes it ${steadied.toFixed(2)} mm at 100 reports a second, ${steadiedFast.toFixed(2)} mm at 500`);
+  check(steadied < plain * 0.5, "手ブレ補正 makes a shaky line steadier");
+  check(Math.abs(steadiedFast - steadied) < steadied * 0.2, "手ブレ補正 works the same whatever the pen's report rate");
   check(errors.length === 0, `no errors (${errors.join(" / ")})`);
 } finally {
   await browser.close();

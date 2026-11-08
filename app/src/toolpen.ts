@@ -75,7 +75,7 @@ const pen: DragHandler<DragOf<"pen">> = {
       }
       const pressure = pressureOf(drag, e);
       const raw: StrokePoint = drag.motion ? [x, y, pressure, tiltOf(e), drag.speed] : [x, y, pressure];
-      const follow = followFactor(brush?.stabilization ?? 0, drag.speed, brush?.stabilizationBySpeed);
+      const follow = followFactor(steadiness(drag, brush), drag.speed, brush?.stabilizationBySpeed, seconds);
       const previous = drag.points[drag.points.length - 1];
       drag.points.push(previous.map((value, i) => value + (raw[i] - value) * follow) as StrokePoint);
       drag.last = raw;
@@ -165,6 +165,11 @@ function pressureOf(drag: DragOf<"pen">, event: PointerEvent): number {
   return pressure;
 }
 
+/** 手ブレ補正: the brush's own; the 標準のペン's from the pen settings; none for a 指示. */
+function steadiness(drag: DragOf<"pen">, brush: ReturnType<EditorCore["brush"]>): number {
+  return drag.mark ? 0 : (brush?.stabilization ?? penPreferences.settings.stabilization);
+}
+
 /** The most of the browser's prediction shown: a few events, this far on screen (px) at most. */
 const AHEAD_EVENTS = 3;
 const AHEAD_PX = 24;
@@ -175,12 +180,14 @@ function ahead(editor: EditorCore, drag: DragOf<"pen">, event: PointerEvent, bru
   if (!predicted.length) return undefined;
   const points: StrokePoint[] = [];
   let previous = drag.points[drag.points.length - 1];
+  let time = drag.time;
   const pressure = usedPressure(drag.pressure);
   for (const e of predicted.slice(0, AHEAD_EVENTS)) {
     const [x, y] = toPage(drag.slot, ...editor.at(e));
     if (Math.hypot(x - drag.last[0], y - drag.last[1]) * drag.slot.scale > AHEAD_PX) break;
     const raw: StrokePoint = drag.motion ? [x, y, pressure, tiltOf(e), drag.speed] : [x, y, pressure];
-    const follow = followFactor(brush?.stabilization ?? 0, drag.speed, brush?.stabilizationBySpeed);
+    const follow = followFactor(steadiness(drag, brush), drag.speed, brush?.stabilizationBySpeed, (e.timeStamp - time) / 1000);
+    time = e.timeStamp;
     previous = previous.map((value, i) => value + (raw[i] - value) * follow) as StrokePoint;
     points.push(previous);
   }

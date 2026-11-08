@@ -10,7 +10,7 @@ import { element } from "./dom";
 import { ERASE_MODE_LABELS, type EditorEraseMode, type PageEditor } from "./editor";
 import type { Brush, BrushKind, Project, Stroke, StrokePoint } from "./model";
 import { drawStroke, INK, loadTips } from "./pagedraw";
-import { loadLibrary, loadSizePresets, saveSizePresets, saveToLibrary } from "./prefs";
+import { loadLibrary, loadSizePresets, penPreferences, saveSizePresets, saveToLibrary } from "./prefs";
 import type { SubTool, SubToolMenuItem, SubToolSource } from "./subtools";
 
 export interface BrushSourceHost {
@@ -211,8 +211,17 @@ export class BrushSource implements SubToolSource {
         this.percentRow("不透明度", Math.round(brush.opacity * 100), 1, 100, (value) => this.setCsp(brush, "Opacity", value, `不透明度 ${value}%`)),
         this.percentRow("手ブレ補正", Math.round(brush.stabilization), 0, 100, (value) => this.setCsp(brush, "FlickerReduction", value, `手ブレ補正 ${value}`)),
       );
+    } else if (kind === "pen") {
+      // The 標準のペン keeps its 手ブレ補正 in the pen settings (all names alike).
+      box.append(
+        this.percentRow("手ブレ補正", penPreferences.settings.stabilization, 0, 100, (value) => {
+          penPreferences.update({ stabilization: value });
+          this.host.status(`${PLAIN.pen}: 手ブレ補正 ${value}`);
+        }),
+        element("p", { className: "subtool-note", textContent: "標準のペンは太さと手ブレ補正だけ変えられます。ほかの項目は「設定…」で作ったペンか、取り込んだペンで。" }),
+      );
     } else {
-      box.append(element("p", { className: "subtool-note", textContent: kind === "pen" ? "標準のペンは太さだけ変えられます。ほかの項目は「設定…」で作ったペンか、取り込んだペンで。" : "標準の消しゴムは画面の上で決まった大きさです。" }));
+      box.append(element("p", { className: "subtool-note", textContent: "標準の消しゴムは画面の上で決まった大きさです。" }));
     }
     if (kind === "eraser") box.append(this.eraseRow());
     if (brush?.tip) {
@@ -334,6 +343,6 @@ export class BrushSource implements SubToolSource {
     const brush = this.inHand();
     const rows = this.list().map((tool) => [tool.ref, tool.name, tool.detail, tool.group]);
     const own = this.host.project()?.brushes.map((b) => [b.id, b.sizeMm, b.opacity, b.stabilization, b.tip?.enabled]);
-    return JSON.stringify([rows, own, this.current(), this.sizeInHand(), this.host.editor.eraseMode, brush?.id, loadSizePresets()[this.kind]]);
+    return JSON.stringify([rows, own, this.current(), this.sizeInHand(), this.host.editor.eraseMode, brush?.id, loadSizePresets()[this.kind], penPreferences.settings.stabilization]);
   }
 }
