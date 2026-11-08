@@ -503,6 +503,14 @@ dialog.brushes { width: min(720px, calc(100vw - 32px)); }
 .subtool-menu { position: fixed; z-index: 50; display: flex; flex-direction: column; min-width: 12em; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 14px rgb(0 0 0 / 0.18); }
 .subtool-menu button { text-align: left; border: none; background: none; padding: 4px 8px; border-radius: 4px; }
 .subtool-menu button:hover, .subtool-menu button:focus { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+/* ページ一覧などの右クリックのメニュー */
+.popup-menu { position: fixed; z-index: 60; display: flex; flex-direction: column; min-width: 15em; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 14px rgb(0 0 0 / 0.22); }
+.popup-menu button { display: flex; justify-content: space-between; gap: 18px; text-align: left; border: none; background: none; color: var(--text); padding: 4px 8px; border-radius: 4px; font: inherit; font-size: calc(13 * var(--px)); }
+.popup-menu button:hover:not(:disabled), .popup-menu button:focus { background: color-mix(in srgb, var(--accent) 14%, transparent); outline: none; }
+.popup-menu button:disabled { color: var(--muted); opacity: 0.6; }
+.popup-menu button.danger:not(:disabled) { color: var(--danger, #c33); }
+.popup-menu .popup-keys { color: var(--muted); font-size: calc(11 * var(--px)); white-space: nowrap; }
+.popup-separator { height: 1px; margin: 4px 6px; background: var(--line); }
 /* ペン・消しゴムの設定: the brushes on the left, the chosen one's pad and settings on the right. */
 dialog.brush-editor { width: min(980px, calc(100vw - 32px)); height: min(760px, calc(100vh - 32px)); }
 .brush-editor > form { display: flex; flex-direction: column; height: 100%; }
@@ -1228,3 +1236,14 @@ dialog.perf-dialog { width: min(720px, 92vw); }
 }
 .look-trial-text { font-size: calc(13 * var(--px)); }
 .look-trial button { white-space: nowrap; flex: none; }
+
+/* ページ管理: the page list's buttons, picked pages, 保留のページ */
+#side-pages:focus { outline: none; }
+#side-pages:focus-visible { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }
+.page-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px 12px; border-bottom: 1px solid var(--line); }
+.page-tools button { padding: 2px 8px; }
+.page-tools .page-tools-note { margin-left: auto; color: var(--muted); font-size: calc(11 * var(--px)); white-space: nowrap; }
+.page-item.picked { background: color-mix(in srgb, var(--accent) 22%, transparent); box-shadow: inset 3px 0 0 var(--accent); }
+.page-item.picked.tinted { box-shadow: inset 3px 0 0 var(--accent), inset 7px 0 0 var(--part); }
+.held-heading { margin: 14px 12px 4px; font-size: calc(13 * var(--px)); }
+.held-page-glyphs { display: flex; gap: 2px; flex: none; }

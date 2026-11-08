@@ -41,6 +41,7 @@ type Agrees<R, A> = [Missing<R, A>] extends [never] ? ([R] extends [Loosen<R, A>
 interface Pairs {
   Project: [Rust.Project, App.Project];
   HeldPanel: [Rust.HeldPanel, App.HeldPanel];
+  HeldPages: [Rust.HeldPages, App.HeldPages];
   Alternatives: [Rust.Alternatives, App.Alternatives];
   AlternativeOption: [Rust.AlternativeOption, App.AlternativeOption];
   Binding: [Rust.Binding, App.Binding];
@@ -98,7 +99,7 @@ interface Pairs {
 }
 
 const agreed: { [K in keyof Pairs]: Agrees<Pairs[K][0], Pairs[K][1]> } = {
-  Project: true, HeldPanel: true, Alternatives: true, AlternativeOption: true, Binding: true, PageFormat: true, Page: true, ReferenceImage: true,
+  Project: true, HeldPanel: true, HeldPages: true, Alternatives: true, AlternativeOption: true, Binding: true, PageFormat: true, Page: true, ReferenceImage: true,
   StoredImage: true, Fill: true, Sticky: true, StickyLink: true, Gutters: true, LineFonts: true, NameStyle: true, KindSizes: true, CspPage: true,
   StoryPosition: true, CspStory: true, StoryPageNumber: true, NombrePlace: true, ShownNombre: true, Plan: true, StoryShape: true, ShapePart: true,
   ShapeBeat: true, Panel: true, PanelBorder: true, PanelFill: true, PanelEffect: true, Breakout: true, LineKind: true, LineShapes: true, BalloonShape: true,

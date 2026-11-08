@@ -885,6 +885,255 @@
       ]
     }
   ],
+  "heldPages": [
+    {
+      "id": "heldpages1",
+      "pages": [
+        {
+          "id": "page8",
+          "memo": "ページのメモ",
+          "panels": [
+            {
+              "id": "page8-panel1",
+              "shape": [
+                [
+                  10,
+                  10
+                ],
+                [
+                  100,
+                  10
+                ],
+                [
+                  100,
+                  80
+                ],
+                [
+                  10,
+                  80
+                ]
+              ],
+              "order": 1,
+              "border": "thick",
+              "openEdges": [
+                2
+              ],
+              "fill": "black",
+              "effect": "speed",
+              "z": 1,
+              "note": "引き",
+              "noteAt": [
+                2.5,
+                3.5
+              ],
+              "spread": "spread1",
+              "lineMm": 0.8,
+              "draft": true
+            }
+          ],
+          "lines": [
+            {
+              "id": "page8-line1",
+              "text": "セリフ\n二行目",
+              "kind": "thought",
+              "speaker": "char1",
+              "panel": "page8-panel1",
+              "box": [
+                20,
+                20,
+                40,
+                60
+              ],
+              "fontSizePt": 9.5,
+              "vertical": true,
+              "balloon": [
+                [
+                  18,
+                  18
+                ],
+                [
+                  42,
+                  18
+                ],
+                [
+                  42,
+                  62
+                ]
+              ],
+              "balloonShape": "cloud",
+              "tails": [
+                {
+                  "tip": [
+                    50,
+                    70
+                  ],
+                  "style": "bubbles",
+                  "bend": -1.5,
+                  "root": 1.25
+                }
+              ],
+              "linkTo": "page8-line2",
+              "inverted": true,
+              "emphasis": true,
+              "balloonScale": [
+                0.8,
+                1.2
+              ],
+              "font": "I-OTFアンチックStd B",
+              "mask": true
+            }
+          ],
+          "strokes": [
+            {
+              "id": "page8-stroke1",
+              "points": [
+                [
+                  1.25,
+                  2.5,
+                  0.5
+                ],
+                [
+                  3.5,
+                  4.75,
+                  0.625,
+                  0.125,
+                  0.875
+                ]
+              ],
+              "widthMm": 0.4,
+              "closed": true,
+              "over": true,
+              "brush": "brush1",
+              "cut": [
+                true,
+                false
+              ],
+              "layer": "rough2"
+            }
+          ],
+          "roughs": [
+            {
+              "id": "page8-rough1",
+              "layerId": 12,
+              "layerName": "ラフ",
+              "sheetCrop": [
+                1,
+                2,
+                300,
+                400
+              ],
+              "box": [
+                0,
+                0,
+                182,
+                257
+              ]
+            }
+          ],
+          "breakouts": [
+            {
+              "id": "page8-breakout1",
+              "shape": [
+                [
+                  5,
+                  5
+                ],
+                [
+                  15,
+                  5
+                ],
+                [
+                  15,
+                  15
+                ]
+              ],
+              "note": "はみ出し"
+            }
+          ],
+          "joinNext": true,
+          "stickies": [
+            {
+              "id": "page8-sticky1",
+              "text": "付箋",
+              "at": [
+                30,
+                40
+              ],
+              "color": "pink",
+              "link": {
+                "kind": "line",
+                "id": "page8-line1",
+                "at": [
+                  1,
+                  2
+                ]
+              }
+            }
+          ],
+          "fills": [
+            {
+              "id": "page8-fill1",
+              "shape": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  10,
+                  0
+                ],
+                [
+                  10,
+                  10
+                ]
+              ],
+              "holes": [
+                [
+                  [
+                    4,
+                    3
+                  ],
+                  [
+                    6,
+                    3
+                  ],
+                  [
+                    6,
+                    5
+                  ]
+                ]
+              ],
+              "tone": "gray",
+              "under": true
+            }
+          ],
+          "references": [
+            {
+              "id": "page8-reference1",
+              "image": "image1",
+              "box": [
+                10,
+                20,
+                110,
+                95
+              ],
+              "opacity": 0.35,
+              "kind": "name"
+            }
+          ]
+        }
+      ],
+      "after": "page1",
+      "emotions": [
+        {
+          "character": "char1",
+          "page": "page8",
+          "value": -0.25,
+          "note": "迷い"
+        }
+      ]
+    }
+  ],
   "images": [
     {
       "id": "image1",

@@ -42,6 +42,7 @@ export function copyPages(project: Project, pages: Page[]): Page[] {
     for (const rough of copy.roughs) rough.id = fresh(rough.id, "rough");
     for (const reference of copy.references ?? []) reference.id = fresh(reference.id, "reference");
     for (const sticky of copy.stickies ?? []) sticky.id = fresh(sticky.id, "sticky");
+    for (const fill of copy.fills ?? []) fill.id = fresh(fill.id, "fill");
     return copy;
   });
   for (const copy of copies) {
@@ -49,6 +50,8 @@ export function copyPages(project: Project, pages: Page[]): Page[] {
       if (line.panel) line.panel = ids.get(line.panel) ?? line.panel;
       if (line.linkTo) line.linkTo = ids.get(line.linkTo) ?? line.linkTo;
     }
+    // A 付箋 about a panel or a line points at its copy.
+    for (const sticky of copy.stickies ?? []) if (sticky.link) sticky.link.id = ids.get(sticky.link.id) ?? sticky.link.id;
   }
   return copies;
 }

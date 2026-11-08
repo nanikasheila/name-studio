@@ -14,6 +14,7 @@ import type {
   BrushKind,
   EraseMode,
   HeldPanel,
+  HeldPages,
   LineKind,
   NombrePlace,
   PanelBorder,
@@ -148,6 +149,12 @@ const held: Full<HeldPanel> = {
   from: "page2",
   at: [20, -90],
 };
+const heldPages: Full<HeldPages> = {
+  id: "heldpages1",
+  pages: [fullPage("page8")],
+  after: "page1",
+  emotions: [{ character: "char1", page: "page8", value: -0.25, note: "迷い" }],
+};
 
 export const FULL_PROJECT: Full<Project> = {
   formatVersion: 2,
@@ -222,6 +229,7 @@ export const FULL_PROJECT: Full<Project> = {
   },
   lineShapes: { speech: "rounded", thought: "polygon", narration: "box", sfx: "none", aside: "dashed" },
   held: [held],
+  heldPages: [heldPages],
   images: [{ id: "image1", name: "駅.jpg", mime: "image/jpeg", dataBase64: "/9j/4AAQ", widthPx: 400, heightPx: 300 }],
   gutters: { across: 3, down: 7.5 },
   scroll: true,

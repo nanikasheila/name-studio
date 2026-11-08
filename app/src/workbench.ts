@@ -85,6 +85,7 @@ export class Workbench {
   });
   /** The lists beside the pages: ページ, 台本, 人物, 付箋, 保留. */
   private readonly lists = new SideLists({
+    project: () => this.session.project,
     edit: (change) => this.edit(change),
     currentPages: () => this.editor.currentPages(),
     selection: () => this.editor.selection,
@@ -102,6 +103,10 @@ export class Workbench {
     },
     goTo: (pageId, kind, id) => this.goTo(pageId, kind, id),
     movePages: (first, last, target) => this.edits.movePages(first, last, target),
+    makeOption: (first, last) => this.edits.makeOption(first, last),
+    status: (message) => this.setStatus(message),
+    firstAlone: () => this.editor.firstAlone,
+    keysOf: (command) => this.shortcuts.keys(command as ActionId),
     putHeld: (id, page, point, panel) => this.edits.putHeld(id, page, point, panel),
     layHeld: (id, page) => (page ? this.edits.layHeld(id, page) : this.edits.unlayHeld(id)),
     openScript: () => this.scriptDialog.open(),
@@ -272,6 +277,7 @@ export class Workbench {
       // What is picked in the strip is the one selection: the page's lets go.
       inspect: () => (this.board.selected && this.editor.select(null, true), this.renderInspector()),
       status: (message) => this.setStatus(message),
+      pageMenu: (index, x, y) => this.lists.pageList.menuFor(index, x, y),
     });
     this.inspector = new Inspector({
       editor: this.editor,
@@ -340,7 +346,7 @@ export class Workbench {
       useWorkspace: (id) => this.useWorkspace(id),
       arrange: (pageId) => this.edits.arrange(pageId),
       addTails: (pageId) => this.edits.addTails(pageId),
-      addPageAfter: (page) => this.edits.addPageAfter(page),
+      pages: this.lists.pageList,
       openPalette: (id) => this.docks.open(id),
       openCommandPalette: () => this.palette.open(),
       openPerfReport: () => this.perfDialog.open(),

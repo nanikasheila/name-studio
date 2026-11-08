@@ -7,9 +7,19 @@ import type { PaletteId } from "./dock";
 import { ERASE_MODE_LABELS, type EditorEraseMode, type PageEditor, type PanelMode, type Tool } from "./editor";
 import type { FillWay } from "./fillsettings";
 import type { HelpKind } from "./helptopics";
-import type { Page } from "./model";
 import { TOOL_IDS, TOOLS } from "./tooldefs";
 import { WORKSPACES, type WorkspaceId } from "./workspaces";
+
+/** What the page commands do (pagelist.ts). */
+export interface PageCommands {
+  targets(): number[];
+  insert(after: boolean, count?: number): void;
+  duplicate(): void;
+  remove(): Promise<void>;
+  hold(): void;
+  move(step: -1 | 1): void;
+  copy(): void;
+}
 
 /** What the commands need from the workbench. */
 export interface CommandHost {
@@ -51,7 +61,8 @@ export interface CommandHost {
   useWorkspace(id: WorkspaceId | "reset"): void;
   arrange(pageId: string): void;
   addTails(pageId?: string): number;
-  addPageAfter(page: Page): void;
+  /** ページ管理: the page list's commands, on the pages picked there (else the page worked on). */
+  readonly pages: PageCommands;
   openPalette(id: PaletteId): void;
   openCommandPalette(): void;
   /** 動作の記録: how quickly the pen and the screen keep up on this computer. */
@@ -258,19 +269,7 @@ export function buildCommands(host: CommandHost): Command[] {
       },
     },
     { id: "name.tails", label: "全ページのしっぽのないセリフにしっぽを付ける", group: "ページ", keys: [], words: "しっぽ 話者 全部", available: named, run: always(() => host.addTails()) },
-    {
-      id: "page.add",
-      label: "このページの後ろにページを足す",
-      group: "ページ",
-      keys: [],
-      words: "追加 挿入",
-      available: () => page() !== null,
-      run: () => {
-        const p = page();
-        if (p) host.addPageAfter(p);
-        return p !== null;
-      },
-    },
+    ...pageCommands(host.pages, named),
     {
       id: "option.make",
       label: "このページの別案を作る",
@@ -363,5 +362,38 @@ export function buildCommands(host: CommandHost): Command[] {
     { id: "help.tour", label: "使い方の案内を始める", group: "ヘルプ", keys: [], words: "ヘルプ はじめて 初めて チュートリアル ツアー 使い方", run: always(() => host.help("tour")) },
     { id: "help.bar", label: "下のヘルプの帯を出す・隠す", group: "ヘルプ", keys: [], words: "ヘルプ 説明 ステータス 帯", run: always(() => host.help("bar")) },
     { id: "help.perf", label: "動作の記録（ペンが画面に出るまでの時間・止まった時間・メモリ）", group: "ヘルプ", keys: [], words: "速さ 遅い 重い 遅延 カクつく 止まる 描き心地 ペンタブ メモリ 計測", run: always(() => host.openPerfReport()) },
+  ];
+}
+
+/**
+ * ページ管理: insert, duplicate, delete, hold and move pages (the page list's
+ * buttons and menu do the same). "このページ" is the page worked on, or the
+ * pages picked in the page list.
+ */
+function pageCommands(pages: PageCommands, named: () => boolean): Command[] {
+  const some = () => named() && pages.targets().length > 0;
+  const page = (id: string, label: string, keys: string[], words: string, run: () => void): Command => ({
+    id,
+    label,
+    group: "ページ",
+    keys,
+    words,
+    available: some,
+    run: () => {
+      if (!some()) return false;
+      run();
+      return true;
+    },
+  });
+  return [
+    page("page.add", "このページの後ろに白紙のページを足す", ["Ctrl+Shift+N"], "挿入 追加 入れる ページ管理 ページ一覧で選んだページ", () => pages.insert(true)),
+    page("page.insertBefore", "このページの前に白紙のページを足す", [], "挿入 追加 入れる ページ管理 ページ一覧で選んだページ", () => pages.insert(false)),
+    page("page.addSpread", "このページの後ろに見開き（2 ページ）を足す", [], "挿入 追加 足す 2ページ ページ管理", () => pages.insert(true, 2)),
+    page("page.duplicate", "このページを複製して後ろに入れる（見開きは 2 ページ一緒に）", ["Ctrl+Shift+D"], "コピー 複写 ページ管理", () => pages.duplicate()),
+    page("page.delete", "このページを削除（元に戻すで戻せます）", ["Ctrl+Shift+Delete"], "消す 減らす ページ管理", () => void pages.remove()),
+    page("page.hold", "このページを保留にする（外して「保留」の欄に取っておく）", [], "ストック 取っておく 外す ページ管理", () => pages.hold()),
+    page("page.moveEarlier", "このページを 1 つ前へ（見開きは 2 ページ一緒に）", [], "移動 並べ替え ページ管理", () => pages.move(-1)),
+    page("page.moveLater", "このページを 1 つ後ろへ（見開きは 2 ページ一緒に）", [], "移動 並べ替え ページ管理", () => pages.move(1)),
+    page("page.copy", "このページをコピー（ページ一覧で Ctrl+V で貼り付け。ほかのネームにも）", [], "複写 ページ管理", () => pages.copy()),
   ];
 }

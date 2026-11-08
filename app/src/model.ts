@@ -414,6 +414,8 @@ export interface Project {
   lineShapes?: Partial<Record<LineKind, BalloonShape>>;
   /** 保留コマ: panels taken off the pages until it is decided where they go. */
   held?: HeldPanel[];
+  /** 保留のページ: pages taken out of the name (a page, a 見開き, a run) until it is decided whether and where they go back. */
+  heldPages?: HeldPages[];
   /** Pictures the pages' 資料画像 show. */
   images?: StoredImage[];
   /** コマ間: the gaps new panels get (cuts, panel patterns); none is DEFAULT_GUTTERS. */
@@ -581,4 +583,15 @@ export interface HeldPanel {
   from?: string;
   /** 欄外: laid beside page `near` (the top left of its panel's box, mm on that page, off the page); none: only in the 保留 list. */
   at?: Point;
+}
+
+/** 保留のページ: pages taken out of the name together, with what is kept to put them back (see pageops.ts). */
+export interface HeldPages {
+  id: string;
+  /** The pages, in their order, with everything on them. */
+  pages: Page[];
+  /** The page they came after, to put them back where they were; none: they were at the front. */
+  after?: string;
+  /** Their emotion values, which come back with them. */
+  emotions?: EmotionPoint[];
 }

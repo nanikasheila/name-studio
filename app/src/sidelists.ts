@@ -1,18 +1,13 @@
 // The lists in the palettes beside the pages: ページ, 台本, 人物, 付箋 and
 // 保留. Each is drawn again from the project when it changes; what a click
 // does goes back to the workbench.
-import { dragSort } from "./dragsort";
 import { $, element, plainButton } from "./dom";
 import type { Selection } from "./editor";
 import { heldThumbnail, pageGlyph } from "./glyph";
-import { heldNear } from "./hold";
-import { alternativesOf } from "./alternatives";
-import { pageParts } from "./shapes";
-import { addCharacter, removeCharacter, sceneOf } from "./cast";
-import { textAmount } from "./dialogue";
+import { addCharacter, removeCharacter } from "./cast";
 import type { Page, Panel, Point, Project } from "./model";
-import { insertPage } from "./project";
-import { pageBlock } from "./reorder";
+import { PageList, type PageListHost } from "./pagelist";
+import { dropHeldPages, restoreHeldPages } from "./pageops";
 import { linkLabel, removeSticky, STICKY_COLORS } from "./stickies";
 
 /** What a held panel is carried as when dragged from the 保留 list. */
@@ -24,19 +19,12 @@ export function draggedHeld(): string | null {
   return heldDragged;
 }
 
-export interface SideListsHost {
+export interface SideListsHost extends PageListHost {
   edit(change: (project: Project) => void): void;
-  /** Page numbers (from 1) on screen now. */
-  currentPages(): number[];
   selection(): Selection | null;
-  /** The page the person is working on. */
-  focusPage(): Page | null;
-  /** Show page `number` with nothing selected. */
-  openPage(number: number): void;
   /** Show page `number` with `selection` picked. */
   showSelected(number: number, selection: Selection): void;
   goTo(pageId: string, kind: "line" | "sticky" | "panel", id: string): void;
-  movePages(first: number, last: number, target: number): void;
   /** Put a held panel on `page`: into `panel`, at `point`, or where it was. */
   putHeld(id: string, page: Page, point?: Point, panel?: Panel): void;
   /** Lay a held panel in the 欄外 above `page`, or (null) take it out of the 欄外. */
@@ -48,81 +36,18 @@ export interface SideListsHost {
 export class SideLists {
   /** Characters whose lines are listed in the 人物 tab. */
   private readonly openCast = new Set<string>();
-  /** ページ: how many pages the button adds. */
-  private addCount = 1;
+  /** ページ管理: the page list. */
+  readonly pageList: PageList;
   /** 台本: the words searched for (kept while the list is drawn again). */
   private scriptQuery = "";
 
-  constructor(private readonly host: SideListsHost) {}
-
-  /** ページ: the work's name and number, and each page with its memo, amount of text and part of the story. */
-  pages(project: Project): void {
-    const title = element("input", { type: "text", value: project.title, placeholder: "作品名" });
-    title.addEventListener("change", () => this.host.edit((p) => (p.title = title.value.trim())));
-    const story = element("input", { type: "number", min: "0", value: project.storyIndex === undefined ? "" : String(project.storyIndex), placeholder: "話数" });
-    story.addEventListener("change", () =>
-      this.host.edit((p) => {
-        const value = parseInt(story.value, 10);
-        if (Number.isInteger(value) && value >= 0) p.storyIndex = value;
-        else delete p.storyIndex;
-      }),
-    );
-    const work = element("div", { className: "cast-item work" }, title, story);
-    const current = new Set(this.host.currentPages());
-    // 話の型の色分け: each page marked with the part it falls in.
-    const parts = pageParts(project);
-    const items = project.pages.map((page, index) => {
-      const scene = sceneOf(project, page.id);
-      const sceneLabel = scene && scene.firstPage === page.id ? element("span", { className: "scene", textContent: scene.title }) : "";
-      const part = parts[index];
-      const item = element(
-        "div",
-        { className: `page-item${current.has(index + 1) ? " current" : ""}${part ? " tinted" : ""}`, title: part ? `${part.name}` : "" },
-        pageGlyph(project, page),
-        element("span", { className: "number", textContent: String(index + 1) }),
-        element("span", { className: "memo" }, sceneLabel, page.memo.split("\n")[0] || ""),
-        ...this.optionTag(project, page),
-        element(
-          "span",
-          {
-            className: "count",
-            title: `コマ ${page.panels.length}・字 ${textAmount(page)}${page.stickies?.length ? `・付箋 ${page.stickies.length}` : ""}（コマの濃さはセリフの量）`,
-          },
-          `${textAmount(page)}字`,
-          ...(page.stickies?.length ? [element("span", { className: "sticky-count", textContent: String(page.stickies.length) })] : []),
-          ...(heldNear(project, index, index).length
-            ? [element("span", { className: "held-count", title: "このあたりに入れたい保留のコマ", textContent: `保${heldNear(project, index, index).length}` })]
-            : []),
-        ),
-      );
-      if (part) item.style.setProperty("--part", part.color);
-      item.addEventListener("click", () => this.host.openPage(index + 1));
-      return item;
-    });
-    // Drag a page (a 見開き moves as a pair) to put it elsewhere.
-    dragSort(items, {
-      axis: "y",
-      block: (index) => pageBlock(project, index),
-      drop: (first, last, target) => this.host.movePages(first, last, target),
-    });
-    // Many at once (one undo step): a name's pages are often added by the spread or more.
-    const count = element("input", { type: "number", id: "add-page-count", min: "1", max: "100", value: String(this.addCount), title: "足すページ数" });
-    count.addEventListener("change", () => (this.addCount = Math.max(1, Math.min(100, Math.round(Number(count.value)) || 1))));
-    const add = element("button", { id: "add-pages", textContent: "ページを最後に足す" });
-    add.addEventListener("click", () => {
-      const n = Math.max(1, Math.min(100, Math.round(Number(count.value)) || 1));
-      this.host.edit((p) => {
-        for (let i = 0; i < n; i++) insertPage(p, p.pages.length);
-      });
-    });
-    $("side-pages").replaceChildren(work, ...items, element("div", { className: "side-actions add-pages" }, count, add));
+  constructor(private readonly host: SideListsHost) {
+    this.pageList = new PageList(host);
   }
 
-  /** The 別案 in use on a page, for the page list. */
-  private optionTag(project: Project, page: Page): HTMLElement[] {
-    const set = alternativesOf(project, page.id);
-    const option = set?.options.find((o) => o.id === set.active);
-    return option ? [element("span", { className: "option-tag", textContent: option.name, title: `別案 ${set!.options.length} つのうち使用中の案` })] : [];
+  /** ページ: the work's name and number, and each page (pagelist.ts). */
+  pages(project: Project): void {
+    this.pageList.render(project);
   }
 
   /** 台本: every line of dialogue, page by page; a search keeps the lines with those words or speaker. */
@@ -321,6 +246,51 @@ export class SideLists {
         ? `保留のコマ ${held.length}。ページへドラッグで置く（コマの上で離すと中身をそのコマへ）。ページの外へドラッグすると欄外に置けます。`
         : "保留のコマはありません。コマを選んで「保留」を押すと、中身ごとページの上の欄外へ移ります（ここにも並びます）。置き場所が決まったら、ページへドラッグして戻します。",
     });
-    $("side-held").replaceChildren(head, ...items);
+    $("side-held").replaceChildren(head, ...items, ...this.heldPages(project));
+  }
+
+  /** 保留のページ: pages taken out of the name, to put back where they were or elsewhere. */
+  private heldPages(project: Project): HTMLElement[] {
+    const list = project.heldPages ?? [];
+    if (!list.length) return [element("p", { className: "hint", textContent: "保留のページはありません。ページ一覧で右クリック ›「保留にする」で、ページを外して取っておけます。" })];
+    const rows = list.map((held) => {
+      const at = held.after ? project.pages.findIndex((p) => p.id === held.after) : -1;
+      const where = held.after ? (at >= 0 ? `${at + 1} ページの後ろにあった` : "元の場所はもうありません") : "先頭にあった";
+      const show = (pages: Page[]) => {
+        const first = pages[0] && project.pages.findIndex((p) => p.id === pages[0].id);
+        if (first !== undefined && first >= 0) this.host.openPage(first + 1);
+      };
+      const putBack = (target: number | "back", what: string) => {
+        let pages: Page[] = [];
+        this.host.edit((p) => (pages = restoreHeldPages(p, held.id, target)));
+        show(pages);
+        if (pages.length) this.host.status(`保留のページ ${pages.length} 枚を${what}に戻しました（元に戻すは Ctrl+Z）`);
+      };
+      const back = plainButton("元の場所に戻す", () => putBack("back", "元の場所"));
+      back.title = where;
+      const focus = this.host.focusPage();
+      const here = plainButton("今のページの後ろに戻す", () => {
+        const index = focus ? project.pages.findIndex((p) => p.id === focus.id) : -1;
+        putBack(index + 1, `${index + 2} ページ`);
+      });
+      here.disabled = !focus;
+      const drop = plainButton("消す", () => this.host.edit((p) => dropHeldPages(p, held.id)));
+      drop.className = "danger small";
+      drop.title = "保留のページを捨てる（元に戻すで戻せます）";
+      const memo = held.pages.map((p) => p.memo.split("\n")[0]).filter(Boolean).join(" / ");
+      return element(
+        "div",
+        { className: "held-item held-pages", title: where },
+        element("div", { className: "held-page-glyphs" }, ...held.pages.map((p) => pageGlyph(project, p, 28))),
+        element(
+          "div",
+          { className: "held-body" },
+          element("div", { className: "held-words", textContent: `${held.pages.length} ページ・${where}` }),
+          ...(memo ? [element("div", { className: "held-note", textContent: memo })] : []),
+          element("div", { className: "held-actions" }, back, here, drop),
+        ),
+      );
+    });
+    return [element("h3", { className: "held-heading", textContent: `保留のページ ${list.length}` }), ...rows];
   }
 }

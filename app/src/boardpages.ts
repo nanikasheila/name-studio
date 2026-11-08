@@ -61,6 +61,10 @@ export function pageLane(view: LaneView, project: Project, thumbWidth: number, t
       if ((event.target as Element).closest("[data-panel]")) return;
       view.host.openPage(index + 1);
     });
+    card.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      view.host.pageMenu?.(index, event.clientX, event.clientY);
+    });
     card.append(head, sheet);
     if (showMemo) card.append(html("div", { className: "board-memo", textContent: page.memo.split("\n")[0] || "", title: page.memo }));
     pageDrag(view, project, index, head);

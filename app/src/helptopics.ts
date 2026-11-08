@@ -395,6 +395,33 @@ export const AREA_TOPICS: Record<string, HelpTopic> = {
       { command: "brush.smaller", does: "細く" },
     ],
   },
+  "side-pages": {
+    name: "ページ一覧",
+    what: "ページの挿入・複製・削除・保留・移動（右クリックのメニュー・上のボタン・キー）",
+    steps: [
+      { input: "クリック", does: "そのページを開く" },
+      { input: "Ctrl+クリック・Shift+クリック", does: "複数のページを選ぶ（Shift+↑↓ でも）" },
+      { input: "右クリック", does: "前後に挿入・複製・コピー/貼り付け・移動・見開き・別案・保留・削除" },
+      { input: "ドラッグ", does: "移動（見開きは 2 ページ一緒に）" },
+      { input: "Insert / Shift+Insert", does: "後ろ・前に白紙のページ" },
+      { input: "Ctrl+D", does: "複製" },
+      { input: "Delete", does: "削除（元に戻すで戻せる）" },
+      { input: "Alt+↑ / Alt+↓", does: "1 つ前・後ろへ" },
+      { input: "Ctrl+C / Ctrl+V", does: "コピー・後ろに貼り付け（ほかのネームにも）" },
+      { command: "page.add", does: "後ろに白紙のページ（どこからでも）" },
+      { command: "page.duplicate", does: "複製（どこからでも）" },
+      { command: "page.delete", does: "削除（どこからでも）" },
+    ],
+  },
+  "side-held": {
+    name: "保留",
+    what: "置き場所の決まらないコマと、外して取っておいたページ",
+    steps: [
+      { input: "コマをページへドラッグ", does: "置く（コマの上なら中身をそのコマへ）" },
+      { input: "保留のページ「元の場所に戻す」", does: "外した場所へ戻す" },
+      { input: "保留のページ「今のページの後ろに戻す」", does: "開いているページの後ろへ" },
+    ],
+  },
   "tool-options": { name: "道具の設定", what: "持っている道具の設定とひと言の説明" },
   "page-nav": {
     name: "ページの見せ方",

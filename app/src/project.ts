@@ -95,7 +95,10 @@ export function normalize(project: Project): Project {
     brush.rotation ??= 0;
   }
   const beforeShapes = (project.formatVersion ?? 1) < 2;
-  const stored = (project.alternatives ?? []).flatMap((set) => set.options.flatMap((option) => (option.pages ??= [])));
+  const stored = [
+    ...(project.alternatives ?? []).flatMap((set) => set.options.flatMap((option) => (option.pages ??= []))),
+    ...(project.heldPages ?? []).flatMap((held) => (held.pages ??= [])),
+  ];
   for (const page of [...project.pages, ...stored]) {
     page.memo ??= "";
     page.panels ??= [];

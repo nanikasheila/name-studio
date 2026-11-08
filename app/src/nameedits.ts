@@ -13,7 +13,7 @@ import type { Alternatives, Page, Panel, Point, Project } from "./model";
 import { swapPanelContents } from "./panels";
 import { swapFit } from "./prefs";
 import { panelsToTidy, tidyPanels } from "./tidy";
-import { insertPage, newId, pageIndex } from "./project";
+import { newId, pageIndex } from "./project";
 import { assignPanels, sortLines } from "./readingorder";
 import { removePicked } from "./removal";
 import { movePagesTo } from "./reorder";
@@ -152,20 +152,6 @@ export class NameEdits {
     const count = last - first + 1;
     this.status(`${count === 1 ? `${first + 1} ページ` : `${first + 1}–${last + 1} ページ`}を動かしました（元に戻すは Ctrl+Z）`);
     this.host.renderAll();
-  }
-
-  /** A blank page after `page`, shown. */
-  addPageAfter(page: Page): void {
-    let at = -1;
-    this.edit((p) => {
-      at = p.pages.findIndex((other) => other.id === page.id) + 1;
-      if (at > 0) insertPage(p, at);
-    });
-    if (at > 0) {
-      this.editor.showPage(at + 1);
-      this.host.renderAll();
-      this.status(`${at + 1} ページを足しました（元に戻すは Ctrl+Z）`);
-    }
   }
 
   /** Put a held panel on `page`: into `panel`, at `point`, or where it was. */
