@@ -13,6 +13,7 @@
 //! the computer); [`ipc`] reads the raw
 //! request bodies they share.
 
+pub mod ai;
 pub mod batch;
 pub mod errorlog;
 mod files;
@@ -146,6 +147,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(AppState::default())
+        .manage(ai::AiRuns::default())
         .setup(|app| {
             if let Ok(root) = app.path().app_local_data_dir() {
                 errorlog::init(&root, app.package_info().version.to_string());
@@ -196,7 +198,15 @@ pub fn run() {
             updates::check_update,
             updates::install_release,
             batch_export_task,
-            end_batch_export
+            end_batch_export,
+            ai::ai_detect,
+            ai::ai_prepare_session,
+            ai::ai_install_skill,
+            ai::ai_turn,
+            ai::ai_stop,
+            ai::ai_save_key,
+            ai::ai_has_key,
+            ai::ai_local_models
         ])
         .run(tauri::generate_context!())
         .expect("error while running Name Studio");

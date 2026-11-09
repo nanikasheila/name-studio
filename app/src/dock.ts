@@ -6,7 +6,7 @@
 // inner edge its width. The arrangement is kept for the next start.
 import { localStore } from "./settings";
 
-export type PaletteId = "subtools" | "pages" | "script" | "cast" | "notes" | "held" | "layers" | "series" | "inspector";
+export type PaletteId = "subtools" | "pages" | "script" | "cast" | "notes" | "held" | "layers" | "series" | "assist" | "inspector";
 export type Side = "left" | "right";
 
 export interface PaletteState {
@@ -44,7 +44,7 @@ export const DOCK_KEY = "namestudio.docks";
 export const MIN_WIDTH = 200;
 export const MAX_WIDTH = 640;
 
-const PALETTE_IDS: PaletteId[] = ["subtools", "pages", "script", "cast", "notes", "held", "layers", "series", "inspector"];
+const PALETTE_IDS: PaletteId[] = ["subtools", "pages", "script", "cast", "notes", "held", "layers", "series", "assist", "inspector"];
 
 export function defaultLayout(leftCollapsed = false): DockLayout {
   const left = (shown: boolean): PaletteState => ({ side: "left", shown, folded: false, weight: 1 });
@@ -59,6 +59,8 @@ export function defaultLayout(leftCollapsed = false): DockLayout {
       held: left(false),
       layers: left(false),
       series: left(false),
+      // AI に相談: in the right column, its icon until it is asked for.
+      assist: { side: "right", shown: false, folded: false, weight: 1 },
       inspector: { side: "right", shown: true, folded: false, weight: 1 },
     },
     width: { left: 280, right: 300 },

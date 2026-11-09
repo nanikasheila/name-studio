@@ -8,7 +8,7 @@ import { $, element } from "./dom";
 import type { Selection } from "./editor";
 import { copyText, ListPicker, toolRow } from "./listops";
 import type { Line, LineKind, Page, Project } from "./model";
-import { linesText, scriptText } from "./nameexport";
+import { linesText, scriptText } from "./scripttext";
 import { SEPARATOR } from "./popupmenu";
 import { removePicked } from "./removal";
 

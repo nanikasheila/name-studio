@@ -136,7 +136,7 @@ fn block_payload(index: usize, filled: (usize, usize, usize, usize)) -> Vec<u8> 
 }
 
 fn container(database: &Connection, externals: &[(&str, Vec<u8>)]) -> Vec<u8> {
-    let image = database.serialize("main").unwrap().to_vec();
+    let image = csp_format::database::serialize(database).unwrap();
     let mut chunks = Vec::new();
     let mut chunk = |tag: &[u8; 8], body: &[u8]| {
         chunks.extend(tag);

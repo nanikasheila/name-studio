@@ -505,6 +505,16 @@ export const AREA_TOPICS: Record<string, HelpTopic> = {
       { input: "Delete", does: "シリーズから外す（ファイルは残る）" },
     ],
   },
+  "side-assist": {
+    name: "相談（AI）",
+    what: "AI にネームを見せて相談。変更の案は確かめてから当てる",
+    steps: [
+      { input: "Ctrl+Enter", does: "送る" },
+      { input: "当てる", does: "変更の案をネームに当てる（Ctrl+Z で戻せる）" },
+      { input: "新しい相談", does: "今の話を終えて始め直す" },
+      { input: "接続…", does: "相手の場所・モデル・ローカル LLM の URL と鍵・スキルを入れる" },
+    ],
+  },
   "tool-options": { name: "道具の設定", what: "持っている道具の設定とひと言の説明" },
   "page-nav": {
     name: "ページの見せ方",
@@ -644,7 +654,7 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
   { target: ".lane-toggles", name: "帯に出すもの", text: "型・シーン・時系列・感情・字数", side: "right" },
   { target: "#story", name: "物語の帯", text: "シーン・感情・ページを並びにそろえて見る。クリックでそのページへ", command: "view.board", side: "inside" },
   { target: "#dock-left", name: "左の欄", text: "サブツール・ページ・台本・人物・付箋・保留・レイヤー・シリーズ。アイコンで出し入れ、見出しのドラッグで反対側へ", side: "inside" },
-  { target: "#dock-right", name: "右の欄（詳細）", text: "選んだもの（ページ・コマ・セリフ・付箋・シーン）の設定", side: "inside" },
+  { target: "#dock-right", name: "右の欄（詳細・相談）", text: "選んだもの（ページ・コマ・セリフ・付箋・シーン）の設定と、AI に相談", side: "inside" },
   { target: "#help-bar", name: "ヘルプの帯", text: "ポインターの下の名前と操作。設定 › 表示で隠せる", side: "above" },
   // The start screen.
   { target: "#start-open", name: "開く", text: "ネームデータか CSP のネーム用紙", command: "button.open", side: "below" },

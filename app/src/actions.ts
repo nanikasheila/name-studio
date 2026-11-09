@@ -354,6 +354,7 @@ export function buildCommands(host: CommandHost): Command[] {
     palette("held", "保留", "置き場所"),
     palette("layers", "レイヤー", "コマ枠 フォルダ"),
     palette("series", "シリーズ", "話 次の話"),
+    palette("assist", "相談", "AI 相談 Claude Codex LLM 行き詰まり アシスタント"),
     palette("inspector", "詳細", "設定 プロパティ"),
     button("settings", "設定…", "設定", [], "コマ間 フォント 吸着 読む向き"),
     button("shortcuts", "キー設定…", "設定", [], "ショートカット キーボード"),

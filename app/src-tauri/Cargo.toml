@@ -21,6 +21,22 @@ tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-process = "2"
 tauri-plugin-updater = "2"
+# AI に相談: a local LLM's OpenAI-compatible API (the same reqwest the updater uses).
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider"] }
+base64 = "0.23"
+
+# The key for an AI's API, in the system's credential store.
+[target.'cfg(windows)'.dependencies.keyring]
+version = "3"
+features = ["windows-native"]
+
+[target.'cfg(target_os = "macos")'.dependencies.keyring]
+version = "3"
+features = ["apple-native"]
+
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies.keyring]
+version = "3"
+features = ["linux-native"]
 
 [target.'cfg(windows)'.dependencies]
 # Whether Shift is held as the app starts (to start with the screen's look as it comes).

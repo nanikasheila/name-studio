@@ -975,7 +975,7 @@ mod tests {
                 rusqlite::params![path, tar(&[("thumbnail/thumbnail.png", &tip_png())])],
             )
             .unwrap();
-        connection.serialize(rusqlite::MAIN_DB).unwrap().to_vec()
+        csp_format::database::serialize(&connection).unwrap()
     }
 
     #[test]

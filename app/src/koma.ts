@@ -720,8 +720,13 @@ export function patternPanels(project: Project, patternId: string, gaps = gutter
  * last), with the panels' memos.
  */
 export function applyPattern(project: Project, page: Page, patternId: string, count?: number): void {
+  replacePanels(project, page, patternPanels(project, patternId, gutters(project), count));
+}
+
+/** Replace the page's panels with `panels`, what was in the old ones going along as `applyPattern` says. */
+export function replacePanels(project: Project, page: Page, panels: Panel[]): void {
   const before = [...page.panels].sort((a, b) => a.order - b.order).map((panel) => ({ note: panel.note, carried: carryContents(page, panel) }));
-  page.panels = patternPanels(project, patternId, gutters(project), count);
+  page.panels = panels;
   orderPanels(page, project.binding);
   const after = [...page.panels].sort((a, b) => a.order - b.order);
   const shared = new Map<Panel, number>();

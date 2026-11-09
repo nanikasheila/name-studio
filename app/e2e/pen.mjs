@@ -48,8 +48,9 @@ try {
   const cdp = await page.context().newCDPSession(page);
   const settle = () => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const at = (n, mm) => page.evaluate(([n, mm]) => window.nameStudio.workbench.editor.clientOf(window.nameStudio.workbench.project.pages[n - 1].id, mm), [n, mm]);
-  const pen = (type, [x, y], pressure, buttons = 1) =>
-    cdp.send("Input.dispatchMouseEvent", { type, x, y, button: type === "mouseMoved" && !buttons ? "none" : "left", buttons, clickCount: type === "mouseMoved" ? 0 : 1, pointerType: "pen", force: pressure, tiltX: 10, tiltY: 5 });
+  // `timestamp` (seconds since 1970): when the pen reported it, for the event's timeStamp.
+  const pen = (type, [x, y], pressure, buttons = 1, timestamp = undefined) =>
+    cdp.send("Input.dispatchMouseEvent", { type, x, y, button: type === "mouseMoved" && !buttons ? "none" : "left", buttons, clickCount: type === "mouseMoved" ? 0 : 1, pointerType: "pen", force: pressure, tiltX: 10, tiltY: 5, ...(timestamp === undefined ? {} : { timestamp }) });
   /** A line with the pen through screen points, each with its pressure. */
   async function line(points, pressures, { during } = {}) {
     await pen("mouseMoved", points[0], 0, 0);
@@ -249,16 +250,21 @@ try {
   const [hx, hy] = await at(11, [40, 260]);
   // The hand shakes 10 times a second (as a hand does) for 0.6 s, whatever the rate it is reported at.
   const shaky = (t) => [hx + t * 400, hy + 4 * Math.sin(2 * Math.PI * 10 * t)];
+  // Each report carries the time the pen made it, as a real pen's does: on a slow
+  // machine the events can reach the page bunched up (a busy CI runner reached
+  // 531 of 500 a second in bursts), and the line has to be steadied by when the
+  // pen was there, not by when the page heard of it.
   async function wobble(value, every) {
     await steady(value);
-    await pen("mouseMoved", shaky(0), 0, 0);
-    await pen("mousePressed", shaky(0), 0.5);
-    const start = performance.now();
+    const start = Date.now() / 1000;
+    await pen("mouseMoved", shaky(0), 0, 0, start);
+    await pen("mousePressed", shaky(0), 0.5, 1, start);
+    const begun = performance.now();
     for (let i = 1; i * every <= 600; i++) {
-      while (performance.now() < start + i * every) await new Promise((resolve) => setImmediate(resolve));
-      await pen("mouseMoved", shaky((i * every) / 1000), 0.5);
+      while (performance.now() < begun + i * every) await new Promise((resolve) => setImmediate(resolve));
+      await pen("mouseMoved", shaky((i * every) / 1000), 0.5, 1, start + (i * every) / 1000);
     }
-    await pen("mouseReleased", shaky(0.6), 0, 0);
+    await pen("mouseReleased", shaky(0.6), 0, 0, start + 0.6);
     await settle();
     const points = (await lastStroke()).points;
     // How far the line swings up and down, in its middle (mm).

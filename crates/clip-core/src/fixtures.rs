@@ -312,7 +312,7 @@ pub fn block_payload(blocks: &[FixtureBlock], count: usize) -> Vec<u8> {
 
 /// Wrap a database and external chunks in a CSF container.
 pub fn container(database: &Connection, externals: &[(String, Vec<u8>)]) -> Vec<u8> {
-    let image = database.serialize("main").expect("serialize").to_vec();
+    let image = csp_format::database::serialize(database).expect("serialize");
     let mut chunks = Vec::new();
     let mut chunk = |tag: &[u8; 8], body: &[u8]| {
         chunks.extend(tag);

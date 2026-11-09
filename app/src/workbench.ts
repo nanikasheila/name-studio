@@ -112,6 +112,8 @@ export class Workbench {
     openScript: () => this.scriptDialog.open(),
     editLine: (pageId, lineId) => (this.goTo(pageId, "line", lineId), this.editor.editInPlace(pageId, "line", lineId)),
     openPalette: (id) => this.docks.open(id),
+    path: () => this.session.path,
+    rough: (rough) => this.roughs.load(rough),
   });
   /** The palettes beside the pages (left or right, several at once). */
   private docks!: Docks;
@@ -193,11 +195,7 @@ export class Workbench {
   private readonly shortcutDialog: ShortcutDialog;
   private readonly palette: CommandPalette;
   private readonly penDialog = new PenDialog(penPreferences);
-  private readonly perfDialog = new PerfDialog(
-    () => perfMeter.report(),
-    () => perfMeter.reset(),
-    (message) => this.setStatus(message),
-  );
+  private readonly perfDialog = new PerfDialog(() => perfMeter.report(), () => perfMeter.reset(), (message) => this.setStatus(message));
   private readonly brushDialog: BrushDialog;
   private readonly brushEditor: BrushEditor;
   private readonly settingsDialog: SettingsDialog;
@@ -799,6 +797,7 @@ export class Workbench {
     if (open("held")) this.lists.held(project);
     if (open("layers")) this.renderLayers();
     if (open("series")) this.seriesPanel.render($("side-series"));
+    if (open("assist")) this.lists.assist();
   }
 
   // --- レイヤー（コマ枠フォルダ） ----------------------------------------------------------

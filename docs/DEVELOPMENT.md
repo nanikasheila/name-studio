@@ -13,6 +13,7 @@ CSP のファイル形式の解析結果は csp-name-splitter の
 | `crates/name-model` | ネームデータ（正本、.namestudio）。ページ・コマ・セリフ・ラフ線・シーン・登場人物・感情の値。CSP の形式もアプリも知らない（いちばん遅く変わる層。`clip-core/tests/layering.rs` が確かめる） |
 | `crates/name-cli` | コマンドライン（`inspect` / `cells` / `import` / `split` / `decode-time`） |
 | `app/` | 画面（Tauri 2 + TypeScript）。`app/src-tauri` が Rust 側 |
+| `skills/name-studio` | AI（Claude Code / Codex）用のスキル。`SKILL.md` と、.namestudio を読み書きする `scripts/namestudio.mjs`（`app/src/skill/cli.ts` と画面の計算の層 `assist.ts` などから `npm run build:skill` で作る。生成物だがスキルとして配るのでコミットし、CI が最新か確かめる）。アプリにも同じものを `include_str!` で入れている |
 | `tools/compare_with_python.py` | Python 版（csp-name-splitter の `name_splitter/csp`）と出力を突き合わせる |
 
 Rust 版は Python 版の移植で、Python 版を正解として同じ結果になることを確かめながら進めます。
@@ -68,6 +69,10 @@ cargo run -p clip-core --features fixtures --example fixture_page -- /tmp/app-ch
 (cd app && node e2e/realapp.mjs /tmp/app-check)
 # 実アプリの画面の見た目（Windows の WebView2：配色・カスタム CSS が残るか、Shift を押しての起動、Ctrl+Shift+Alt+R。撮った画面を指定のフォルダーに）
 (cd app && npx tauri build --no-bundle --config '{"identifier":"com.nanikasheila.namestudio.look"}' && node e2e/lookapp.mjs ../look-shots)
+# AI 用スキルの CLI を作り直して試す（app/src の計算の層を変えたら。CI は差分があると落ちる）
+(cd app && npm run build:skill)
+# 相談の欄（Claude Code / Codex / ローカル LLM は Rust 側を差し替えて）
+(cd app && npm run e2e:assist)
 # Python 版との突き合わせ（実ファイルを引数に足せる）
 CSP_NAME_SPLITTER=../csp-name-splitter python tools/compare_with_python.py [作品のファイル...]
 ```
