@@ -512,7 +512,7 @@ export const AREA_TOPICS: Record<string, HelpTopic> = {
       { input: "Ctrl+Enter", does: "送る" },
       { input: "当てる", does: "変更の案をネームに当てる（Ctrl+Z で戻せる）" },
       { input: "新しい相談", does: "今の話を終えて始め直す" },
-      { input: "接続…", does: "相手の場所・モデル・ローカル LLM の URL と鍵・スキルを入れる" },
+      { input: "接続…", does: "相手の場所・ローカル LLM の URL と鍵・スキルを入れる。モデルと effort は相手が返す一覧から選ぶ（「取り直す」で聞き直す）" },
     ],
   },
   "tool-options": { name: "道具の設定", what: "持っている道具の設定とひと言の説明" },

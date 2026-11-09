@@ -359,6 +359,9 @@ pub struct AiTurn {
     pub resume: Option<String>,
     #[serde(default)]
     pub model: Option<String>,
+    /// How hard it thinks (Claude Code `--effort`, Codex `model_reasoning_effort`), one its model offers.
+    #[serde(default)]
+    pub effort: Option<String>,
     /// The program, when the settings name one.
     #[serde(default)]
     pub program: Option<String>,
@@ -406,7 +409,21 @@ pub fn claude_args(turn: &AiTurn) -> Vec<String> {
         args.push("--model".to_owned());
         args.push(model.to_owned());
     }
+    if let Some(effort) = effort_of(turn) {
+        args.push("--effort".to_owned());
+        args.push(effort.to_owned());
+    }
     args
+}
+
+/// The turn's effort, when it is one word (it goes into a command line and a TOML value).
+fn effort_of(turn: &AiTurn) -> Option<&str> {
+    turn.effort.as_deref().filter(|effort| {
+        !effort.is_empty()
+            && effort
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    })
 }
 
 /// The arguments for a turn with Codex (exec mode, read-only, events as JSON lines).
@@ -422,6 +439,10 @@ pub fn codex_args(turn: &AiTurn) -> Vec<String> {
         args.push("read-only".to_owned());
         args.push("--cd".to_owned());
         args.push(turn.dir.clone());
+    }
+    if let Some(effort) = effort_of(turn) {
+        args.push("-c".to_owned());
+        args.push(format!("model_reasoning_effort=\"{effort}\""));
     }
     args.push("--json".to_owned());
     args.push("--skip-git-repo-check".to_owned());
@@ -772,6 +793,235 @@ async fn chat(run: u64, turn: AiTurn, stop: Arc<AtomicBool>, emit: impl Fn(AiEve
     Ok(())
 }
 
+/// A model to choose, as the AI tool itself lists it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiModel {
+    /// What goes to `--model` ("": the tool's own default).
+    pub value: String,
+    pub label: String,
+    pub description: String,
+    /// The efforts it takes (none: it takes no effort).
+    pub efforts: Vec<String>,
+    pub default_effort: Option<String>,
+    /// The one used when none is chosen.
+    pub is_default: bool,
+}
+
+/// The models in Claude Code's answer to `initialize` (its own list, with the efforts each takes).
+pub fn claude_models(response: &Value) -> Vec<AiModel> {
+    response["models"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|model| {
+            let value = model["value"].as_str()?;
+            let default = value == "default";
+            let efforts = if model["supportsEffort"].as_bool() == Some(false) {
+                Vec::new()
+            } else {
+                strings(&model["supportedEffortLevels"])
+            };
+            Some(AiModel {
+                value: if default { String::new() } else { value.to_owned() },
+                label: model["displayName"].as_str().unwrap_or(value).to_owned(),
+                description: model["description"].as_str().unwrap_or_default().to_owned(),
+                efforts,
+                default_effort: None,
+                is_default: default,
+            })
+        })
+        .collect()
+}
+
+/// The models in Codex's answer to `model/list` (hidden ones left out).
+pub fn codex_models(result: &Value) -> Vec<AiModel> {
+    result["data"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|model| model["hidden"].as_bool() != Some(true))
+        .filter_map(|model| {
+            let value = model["model"].as_str().or_else(|| model["id"].as_str())?;
+            Some(AiModel {
+                value: value.to_owned(),
+                label: model["displayName"].as_str().unwrap_or(value).to_owned(),
+                description: model["description"].as_str().unwrap_or_default().to_owned(),
+                efforts: model["supportedReasoningEfforts"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|effort| effort["reasoningEffort"].as_str().map(str::to_owned))
+                    .collect(),
+                default_effort: model["defaultReasoningEffort"].as_str().map(str::to_owned),
+                is_default: model["isDefault"].as_bool() == Some(true),
+            })
+        })
+        .collect()
+}
+
+fn strings(value: &Value) -> Vec<String> {
+    value
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|item| item.as_str().map(str::to_owned))
+        .collect()
+}
+
+/// Run `program args`, write `lines` to it, and give back the first line of its
+/// output that `wanted` takes, then stop it (within `wait`).
+fn ask_program(
+    program: &Path,
+    args: &[&str],
+    lines: &[String],
+    wait: Duration,
+    mut wanted: impl FnMut(&Value) -> Option<Value>,
+) -> Result<Value, String> {
+    let mut child = command(program)
+        .args(args)
+        .current_dir(std::env::temp_dir())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("{} を起動できません: {error}", program.display()))?;
+    let mut stdin = child.stdin.take().ok_or("入力を渡せません")?;
+    for line in lines {
+        stdin
+            .write_all(format!("{line}\n").as_bytes())
+            .map_err(|error| format!("入力を渡せません: {error}"))?;
+    }
+    let stdout = child.stdout.take().ok_or("出力を読めません")?;
+    let stderr = child.stderr.take().ok_or("出力を読めません")?;
+    let (send, heard) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines() {
+            let Ok(line) = line else { break };
+            if send.send(line).is_err() {
+                break;
+            }
+        }
+    });
+    let errors = std::thread::spawn(move || {
+        let mut text = String::new();
+        let _ = BufReader::new(stderr).take(16 * 1024).read_to_string(&mut text);
+        text
+    });
+    let until = std::time::Instant::now() + wait;
+    let found = loop {
+        let left = until.saturating_duration_since(std::time::Instant::now());
+        match heard.recv_timeout(left) {
+            Ok(line) => {
+                if let Some(found) = serde_json::from_str::<Value>(&line).ok().as_ref().and_then(&mut wanted) {
+                    break Ok(found);
+                }
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => break Err("答えが来ません".to_owned()),
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break Err(String::new()),
+        }
+    };
+    drop(stdin);
+    let _ = child.kill();
+    let _ = child.wait();
+    found.map_err(|why| {
+        let errors = errors.join().unwrap_or_default();
+        let errors = errors.trim();
+        match (why.is_empty(), errors.is_empty()) {
+            (_, false) => errors.chars().take(1000).collect(),
+            (false, true) => why,
+            (true, true) => "一覧を返さずに終わりました".to_owned(),
+        }
+    })
+}
+
+/// Claude Code's own list of models (what its /model shows), without starting a conversation.
+fn list_claude_models(program: &Path) -> Result<Vec<AiModel>, String> {
+    let initialize = r#"{"type":"control_request","request_id":"models","request":{"subtype":"initialize"}}"#;
+    let response = ask_program(
+        program,
+        &[
+            "-p",
+            "--input-format",
+            "stream-json",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+        ],
+        &[initialize.to_owned()],
+        Duration::from_secs(40),
+        |value| {
+            (value["type"] == "control_response" && value["response"]["request_id"] == "models").then(|| {
+                if value["response"]["subtype"] == "error" {
+                    Value::String(value["response"]["error"].as_str().unwrap_or("失敗しました").to_owned())
+                } else {
+                    value["response"]["response"].clone()
+                }
+            })
+        },
+    )?;
+    if let Some(why) = response.as_str() {
+        return Err(why.to_owned());
+    }
+    Ok(claude_models(&response))
+}
+
+/// Codex's own list of models, from its app server (`model/list`).
+fn list_codex_models(program: &Path) -> Result<Vec<AiModel>, String> {
+    let lines = [
+        r#"{"method":"initialize","id":1,"params":{"clientInfo":{"name":"name_studio","title":"Name Studio","version":"1"}}}"#,
+        r#"{"method":"initialized"}"#,
+        r#"{"method":"model/list","id":2,"params":{}}"#,
+    ]
+    .map(str::to_owned);
+    let response = ask_program(program, &["app-server"], &lines, Duration::from_secs(40), |value| {
+        (value["id"] == 2).then(|| value.clone())
+    })?;
+    if let Some(why) = response["error"]["message"].as_str() {
+        return Err(why.to_owned());
+    }
+    Ok(codex_models(&response["result"]))
+}
+
+/// The models Claude Code, Codex or a local LLM offers, as each lists them
+/// itself, so that a model or an effort cannot be mistyped.
+#[tauri::command]
+pub async fn ai_models(
+    kind: AiKind,
+    program: Option<String>,
+    endpoint: Option<String>,
+) -> Result<Vec<AiModel>, String> {
+    if kind == AiKind::Local {
+        let found = ai_local_models(endpoint.unwrap_or_default()).await?;
+        return Ok(found
+            .into_iter()
+            .map(|id| AiModel {
+                value: id.clone(),
+                label: id,
+                description: String::new(),
+                efforts: Vec::new(),
+                default_effort: None,
+                is_default: false,
+            })
+            .collect());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let name = if kind == AiKind::Claude { "claude" } else { "codex" };
+        let path = crate::ai::program(name, program.as_deref())?;
+        let models = if kind == AiKind::Claude {
+            list_claude_models(&path)
+        } else {
+            list_codex_models(&path)
+        }?;
+        if models.is_empty() {
+            return Err("モデルの一覧が空でした".to_owned());
+        }
+        Ok(models)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
 /// The models a local LLM's API offers (also tells whether it is there).
 #[tauri::command]
 pub async fn ai_local_models(endpoint: String) -> Result<Vec<String>, String> {
@@ -869,11 +1119,76 @@ mod tests {
             prompt: "こんにちは".to_owned(),
             resume: None,
             model: None,
+            effort: None,
             program: None,
             images: vec!["pages/p001.png".to_owned()],
             endpoint: None,
             messages: Vec::new(),
         }
+    }
+
+    #[test]
+    fn an_effort_goes_to_either_tool_and_only_as_one_word() {
+        let mut claude = turn(AiKind::Claude);
+        claude.effort = Some("high".to_owned());
+        let args = claude_args(&claude);
+        assert!(args.windows(2).any(|pair| pair == ["--effort", "high"]));
+        let mut codex = turn(AiKind::Codex);
+        codex.effort = Some("xhigh".to_owned());
+        let args = codex_args(&codex);
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["-c", "model_reasoning_effort=\"xhigh\""])
+        );
+        codex.resume = Some("019c".to_owned());
+        assert!(
+            codex_args(&codex)
+                .iter()
+                .any(|arg| arg == "model_reasoning_effort=\"xhigh\"")
+        );
+        codex.effort = Some("high\" sandbox_mode=\"danger".to_owned());
+        assert!(!codex_args(&codex).iter().any(|arg| arg.contains("danger")));
+        codex.effort = Some(String::new());
+        assert!(!codex_args(&codex).iter().any(|arg| arg.contains("effort")));
+    }
+
+    #[test]
+    fn models_as_each_tool_lists_them() {
+        let claude: Value = serde_json::from_str(
+            r#"{"models":[
+                {"value":"default","displayName":"Default (recommended)","description":"Sonnet","supportsEffort":true,"supportedEffortLevels":["low","high"]},
+                {"value":"opus","displayName":"Opus","description":"Opus 5.5","supportsEffort":true,"supportedEffortLevels":["low","medium","high","xhigh","max"]},
+                {"value":"old","displayName":"Old","supportsEffort":false}
+            ]}"#,
+        )
+        .unwrap();
+        let models = claude_models(&claude);
+        assert_eq!(models.len(), 3);
+        assert_eq!((models[0].value.as_str(), models[0].is_default), ("", true));
+        assert_eq!(models[1].value, "opus");
+        assert_eq!(models[1].efforts, ["low", "medium", "high", "xhigh", "max"]);
+        assert!(models[2].efforts.is_empty());
+        let codex: Value = serde_json::from_str(
+            r#"{"data":[
+                {"id":"a","model":"gpt-a","displayName":"GPT-A","description":"d","hidden":false,"isDefault":true,"defaultReasoningEffort":"low",
+                 "supportedReasoningEfforts":[{"reasoningEffort":"low","description":""},{"reasoningEffort":"high","description":""}]},
+                {"id":"h","model":"gpt-hidden","hidden":true,"supportedReasoningEfforts":[]}
+            ],"nextCursor":null}"#,
+        )
+        .unwrap();
+        let models = codex_models(&codex);
+        assert_eq!(models.len(), 1);
+        assert_eq!(
+            models[0],
+            AiModel {
+                value: "gpt-a".to_owned(),
+                label: "GPT-A".to_owned(),
+                description: "d".to_owned(),
+                efforts: vec!["low".to_owned(), "high".to_owned()],
+                default_effort: Some("low".to_owned()),
+                is_default: true,
+            }
+        );
     }
 
     #[test]
@@ -1094,6 +1409,28 @@ mod tests {
             }))
             .collect();
         let dir = prepare_session(root.path(), None, &files, SystemTime::now()).unwrap();
+        // The models as the tool lists them; the one named in NAME_STUDIO_AI_MODEL must be among them.
+        let path = program(if kind == AiKind::Claude { "claude" } else { "codex" }, None).unwrap();
+        let models = if kind == AiKind::Claude {
+            list_claude_models(&path)
+        } else {
+            list_codex_models(&path)
+        }
+        .unwrap();
+        for model in &models {
+            println!(
+                "model: {:?} {} {:?} {:?}",
+                model.value, model.label, model.efforts, model.default_effort
+            );
+        }
+        assert!(models.iter().any(|model| model.is_default), "no default model");
+        let model = std::env::var("NAME_STUDIO_AI_MODEL").ok();
+        let chosen = models
+            .iter()
+            .find(|found| Some(&found.value) == model.as_ref() || (model.is_none() && found.is_default))
+            .expect("NAME_STUDIO_AI_MODEL is not in the list");
+        // The lightest effort it takes, to show an effort goes through.
+        let effort = chosen.efforts.first().cloned();
         let mut session = None;
         for (number, prompt) in [
             "ネーム.md を読んで、line9 のセリフを少し寂しげにする変更の案を 1 つだけ出してください。",
@@ -1107,7 +1444,8 @@ mod tests {
                 dir: dir.display().to_string(),
                 prompt: prompt.to_owned(),
                 resume: session.clone(),
-                model: std::env::var("NAME_STUDIO_AI_MODEL").ok(),
+                model: model.clone(),
+                effort: effort.clone(),
                 program: None,
                 images: Vec::new(),
                 endpoint: None,

@@ -30,6 +30,9 @@ export interface AssistSettings {
   /** Models to ask for (empty: their own default). */
   claudeModel: string;
   codexModel: string;
+  /** How hard they think (empty: the model's own default), one the model offers. */
+  claudeEffort: string;
+  codexEffort: string;
   /** A local LLM's OpenAI-compatible API (Ollama, LM Studio, llama.cpp…). */
   endpoint: string;
   localModel: string;
@@ -43,6 +46,8 @@ export const DEFAULT_ASSIST: AssistSettings = {
   codexPath: "",
   claudeModel: "",
   codexModel: "",
+  claudeEffort: "",
+  codexEffort: "",
   endpoint: "http://localhost:11434/v1",
   localModel: "",
   pictures: true,
@@ -54,11 +59,36 @@ export function readAssistSettings(kept: unknown): AssistSettings {
   if (typeof kept !== "object" || kept === null) return out;
   const from = kept as Record<string, unknown>;
   if (from.kind === "claude" || from.kind === "codex" || from.kind === "local") out.kind = from.kind;
-  for (const key of ["claudePath", "codexPath", "claudeModel", "codexModel", "endpoint", "localModel"] as const) {
+  for (const key of ["claudePath", "codexPath", "claudeModel", "codexModel", "claudeEffort", "codexEffort", "endpoint", "localModel"] as const) {
     if (typeof from[key] === "string") out[key] = from[key];
   }
   if (typeof from.pictures === "boolean") out.pictures = from.pictures;
   return out;
+}
+
+/** A model as Claude Code, Codex or the local LLM lists it (ai.rs `AiModel`). */
+export interface AiModel {
+  /** What is asked for ("": the tool's own default). */
+  value: string;
+  label: string;
+  description: string;
+  /** The efforts it takes (none: no choice). */
+  efforts: string[];
+  defaultEffort: string | null;
+  isDefault: boolean;
+}
+
+/** The model a choice means: the one named, or for "" the tool's default. */
+export function modelFor(models: AiModel[], value: string): AiModel | undefined {
+  return models.find((model) => model.value === value) ?? (value === "" ? models.find((model) => model.isDefault) : undefined);
+}
+
+/** What is wrong with a model and an effort, against the list the tool gave (null: nothing). */
+export function choiceProblem(models: AiModel[], value: string, effort: string): string | null {
+  const model = modelFor(models, value);
+  if (!model) return value ? `モデル「${value}」は一覧にありません。「接続…」で選び直してください。` : null;
+  if (effort && !model.efforts.includes(effort)) return `${model.label} は effort「${effort}」を選べません（${model.efforts.join("・") || "選べるものなし"}）。`;
+  return null;
 }
 
 /** The file names in a conversation's folder. */
