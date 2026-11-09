@@ -532,13 +532,9 @@ pub fn codex_events(run: u64, line: &str) -> Vec<AiEvent> {
                 format!("command: {}", item["command"].as_str().unwrap_or_default()),
             )]
         }
-        Some("item.completed") if item["type"] == "error" => {
-            vec![AiEvent::new(
-                run,
-                "tool",
-                format!("注意: {}", item["message"].as_str().unwrap_or_default()),
-            )]
-        }
+        // An "error" item is a warning that does not stop the turn (such as a
+        // setting in ~/.codex/config.toml it does not know), said on every
+        // turn: not shown. What stops it comes as turn.failed or error.
         Some("turn.completed") => vec![AiEvent::new(run, "done", "")],
         Some("turn.failed") => vec![AiEvent::new(
             run,
@@ -576,8 +572,11 @@ fn run_process(
             AiKind::Claude => claude_events(run, &line, &mut streamed),
             _ => codex_events(run, &line),
         };
-        for event in events {
+        for mut event in events {
             ended |= event.kind == "done" || event.kind == "error";
+            if event.kind == "error" {
+                event.text = with_hint(turn.kind, &event.text);
+            }
             emit(event);
         }
     }
@@ -593,7 +592,38 @@ fn run_process(
         } else {
             why.chars().take(2000).collect()
         };
-        emit(AiEvent::new(run, "error", why));
+        emit(AiEvent::new(run, "error", with_hint(turn.kind, &why)));
+    }
+}
+
+/// What failed, with what to do when it is the sign-in (it expires, and the
+/// app cannot sign in for the user).
+pub fn with_hint(kind: AiKind, why: &str) -> String {
+    let lower = why.to_lowercase();
+    let signed_out = [
+        "authenticat",
+        "login",
+        "logged in",
+        "log in",
+        "sign in",
+        "oauth",
+        "api key",
+        "401",
+    ]
+    .iter()
+    .any(|word| lower.contains(word));
+    match kind {
+        AiKind::Claude if signed_out => {
+            format!(
+                "{why}\n\nClaude Code のサインインが切れているようです。ターミナルで claude を開いて /login してから、もう一度送ってください。"
+            )
+        }
+        AiKind::Codex if signed_out => {
+            format!(
+                "{why}\n\nCodex のサインインが切れているようです。ターミナルで codex login をしてから、もう一度送ってください。"
+            )
+        }
+        _ => why.to_owned(),
     }
 }
 
@@ -922,6 +952,9 @@ mod tests {
             (failed[0].kind.as_str(), failed[0].text.as_str()),
             ("error", "Not logged in")
         );
+        assert!(with_hint(AiKind::Claude, "Failed to authenticate: OAuth session expired").contains("/login"));
+        assert!(with_hint(AiKind::Codex, "401 Unauthorized").contains("codex login"));
+        assert_eq!(with_hint(AiKind::Claude, "quota"), "quota");
     }
 
     #[test]
@@ -931,6 +964,7 @@ mod tests {
             r#"{"type":"turn.started"}"#,
             r#"{"type":"item.started","item":{"id":"item_0","type":"command_execution","command":"bash -lc ls","status":"in_progress"}}"#,
             r#"{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"案です"}}"#,
+            r#"{"type":"item.completed","item":{"id":"item_2","type":"error","message":"ignoring unknown config key"}}"#,
             r#"{"type":"turn.completed","usage":{}}"#,
             r#"{"type":"turn.failed","error":{"message":"quota"}}"#,
         ]
@@ -1043,14 +1077,22 @@ mod tests {
         };
         let root = tempfile::tempdir().unwrap();
         let brief = "# ネーム「屋上」\n\n## ページ\n### p1\n- コマ1\n  - [line9] ミカ「星、見えないね」\n";
-        let files = vec![
-            SessionFile { path: "ネーム.md".to_owned(), text: Some(brief.to_owned()), base64: None },
-            SessionFile {
-                path: "SYSTEM.md".to_owned(),
-                text: Some("あなたは漫画のネームの相談相手です。変更の案は ```namestudio-ops のブロックに JSON 配列で書きます。".to_owned()),
+        let files = vec![SessionFile {
+            path: "ネーム.md".to_owned(),
+            text: Some(brief.to_owned()),
+            base64: None,
+        }];
+        // The same instructions under the names each reads, as the app writes them.
+        let rule =
+            "あなたは漫画のネームの相談相手です。変更の案は ```namestudio-ops のブロックに JSON 配列で書きます。";
+        let files: Vec<SessionFile> = files
+            .into_iter()
+            .chain(["SYSTEM.md", "CLAUDE.md", "AGENTS.md"].map(|path| SessionFile {
+                path: path.to_owned(),
+                text: Some(rule.to_owned()),
                 base64: None,
-            },
-        ];
+            }))
+            .collect();
         let dir = prepare_session(root.path(), None, &files, SystemTime::now()).unwrap();
         let mut session = None;
         for (number, prompt) in [
