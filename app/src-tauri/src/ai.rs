@@ -1028,4 +1028,83 @@ mod tests {
         assert!(!dir.exists());
         assert!(newer.exists());
     }
+
+    /// One real turn and its follow-up with the AI named by `NAME_STUDIO_AI_LIVE`
+    /// ("claude" or "codex", installed and signed in), through the same
+    /// folder, arguments and reading of its output as the app. Not run by
+    /// default: `NAME_STUDIO_AI_LIVE=codex cargo test -p name-studio-app --lib ai::tests::live -- --ignored --nocapture`
+    #[test]
+    #[ignore = "talks to a real Claude Code / Codex"]
+    fn live() {
+        let kind = match std::env::var("NAME_STUDIO_AI_LIVE").as_deref() {
+            Ok("claude") => AiKind::Claude,
+            Ok("codex") => AiKind::Codex,
+            _ => panic!("NAME_STUDIO_AI_LIVE=claude か codex"),
+        };
+        let root = tempfile::tempdir().unwrap();
+        let brief = "# ネーム「屋上」\n\n## ページ\n### p1\n- コマ1\n  - [line9] ミカ「星、見えないね」\n";
+        let files = vec![
+            SessionFile { path: "ネーム.md".to_owned(), text: Some(brief.to_owned()), base64: None },
+            SessionFile {
+                path: "SYSTEM.md".to_owned(),
+                text: Some("あなたは漫画のネームの相談相手です。変更の案は ```namestudio-ops のブロックに JSON 配列で書きます。".to_owned()),
+                base64: None,
+            },
+        ];
+        let dir = prepare_session(root.path(), None, &files, SystemTime::now()).unwrap();
+        let mut session = None;
+        for (number, prompt) in [
+            "ネーム.md を読んで、line9 のセリフを少し寂しげにする変更の案を 1 つだけ出してください。",
+            "いまの案の文だけを、もう一度ひとことで。",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let turn = AiTurn {
+                kind,
+                dir: dir.display().to_string(),
+                prompt: prompt.to_owned(),
+                resume: session.clone(),
+                model: std::env::var("NAME_STUDIO_AI_MODEL").ok(),
+                program: None,
+                images: Vec::new(),
+                endpoint: None,
+                messages: Vec::new(),
+            };
+            let mut child = start_process(&turn).unwrap();
+            let stdout = child.stdout.take().unwrap();
+            let stderr = child.stderr.take().unwrap();
+            let events = Mutex::new(Vec::new());
+            run_process(1, &turn, Arc::new(Mutex::new(child)), stdout, stderr, &|event| {
+                println!("{}: {}", event.kind, event.text);
+                events.lock().unwrap().push(event);
+            });
+            let events = events.into_inner().unwrap();
+            let said: String = events
+                .iter()
+                .filter(|event| event.kind == "delta" || event.kind == "text")
+                .map(|event| event.text.as_str())
+                .collect();
+            assert_eq!(
+                events.last().map(|event| event.kind.as_str()),
+                Some("done"),
+                "turn {number}"
+            );
+            assert!(!said.trim().is_empty(), "turn {number} said nothing");
+            if number == 0 {
+                assert!(said.contains("namestudio-ops"), "no 変更の案: {said}");
+                session = events
+                    .iter()
+                    .find(|event| event.kind == "session")
+                    .map(|event| event.text.clone());
+                assert!(session.is_some(), "no session id");
+            }
+        }
+        assert!(!dir.join("ネーム.md").metadata().unwrap().permissions().readonly());
+        assert_eq!(
+            std::fs::read_to_string(dir.join("ネーム.md")).unwrap(),
+            brief,
+            "the AI wrote a file"
+        );
+    }
 }
