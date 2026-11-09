@@ -27,6 +27,7 @@ try {
   await page.addInitScript(() => {
     window.__turns = [];
     window.__sessions = [];
+    window.__talks = {};
     window.__listeners = [];
     window.__answer = (command, args) => {
       if (command === "plugin:event|listen" && args.event === "ai-event") {
@@ -55,6 +56,22 @@ try {
         return window.__turns.length;
       }
       if (command === "ai_stop") return null;
+      if (command === "ai_history_save") {
+        window.__talks[args.talk.id] = JSON.parse(JSON.stringify(args.talk));
+        return null;
+      }
+      if (command === "ai_history_list")
+        return Object.values(window.__talks)
+          .map((talk) => ({ id: talk.id, kind: talk.kind, name: talk.name, title: talk.title, created: talk.created, updated: talk.updated, count: talk.entries.filter((entry) => entry.role === "user").length }))
+          .sort((a, b) => b.updated - a.updated);
+      if (command === "ai_history_load") {
+        if (!window.__talks[args.id]) throw "その相談は見つかりません";
+        return window.__talks[args.id];
+      }
+      if (command === "ai_history_delete") {
+        delete window.__talks[args.id];
+        return null;
+      }
       return undefined;
     };
     // What the AI says: an event of turn `run`, as the Rust side would emit it.
@@ -102,8 +119,8 @@ try {
   await page.evaluate(() => {
     window.__say(1, "session", "sess-1");
     window.__say(1, "tool", "Read: ネーム.md");
-    window.__say(1, "delta", "2コマ目の前に、間のコマを足す案です。\n\n```namestudio-ops\n");
-    window.__say(1, "delta", '[{"op":"addPages","after":1,"count":1,"memos":["間"]},{"op":"addSticky","page":1,"panel":2,"text":"ここで一拍"}]\n```\nどうでしょう。');
+    window.__say(1, "delta", "2コマ目の前に、**間**のコマを足す案です。\n\n```namestudio-ops\n");
+    window.__say(1, "delta", '[{"op":"addPages","after":1,"count":1,"memos":["間"]},{"op":"addSticky","page":1,"panel":2,"text":"ここで一拍"}]\n```\nどうでしょう。\n\n- 案A\n- 案B');
   });
   await settle();
   if (process.env.ASSIST_SHOT) await page.screenshot({ path: process.env.ASSIST_SHOT });
@@ -116,6 +133,8 @@ try {
   if (process.env.ASSIST_SHOT) await page.screenshot({ path: process.env.ASSIST_SHOT.replace(".png", "-card.png") });
   check(card.includes("2 ページを足しました") && card.includes("1 ページに付箋「ここで一拍」"), `the card says what it would do (${card})`);
   check((await page.textContent(".assist-entry.assistant")).includes("どうでしょう。"), "the words around it stay");
+  check((await page.textContent(".assist-entry.assistant .assist-text strong")) === "間" && (await page.locator(".assist-entry.assistant .assist-text li").count()) === 2, "and show as the Markdown they are written in (bold, a list)");
+  check(!(await page.textContent(".assist-entry.assistant")).includes("**"), "with no marks left over");
   check((await project()).pages.length === 4, "nothing changes before 当てる");
   await page.click(".assist-ops button.primary");
   await settle();
@@ -204,6 +223,47 @@ try {
   check(local.kind === "local" && local.messages[0].role === "system" && local.messages[0].content.includes("# ネーム「屋上の約束」"), "a local LLM is told the name in its instructions");
   check(local.messages.at(-1).content === "こんにちは" && local.messages.at(-1).images.includes("pages/p001.png"), "with the pages on screen as pictures");
   check(local.messages.length === 2, "a new conversation forgets the old one");
+
+  // What was said is kept: the list of past conversations opens one to go on with.
+  await page.evaluate(() => {
+    window.__say(4, "text", "こんにちは。\n\n| 案 | ページ |\n|---|--:|\n| A | 1 |");
+    window.__say(4, "done", "");
+  });
+  await settle();
+  check((await page.locator(".assist-entry.assistant table td").count()) === 2, "a table shows as a table");
+  const talks = await page.evaluate(() => Object.values(window.__talks));
+  const claudeTalk = talks.find((talk) => talk.kind === "claude");
+  check(talks.length === 2 && claudeTalk?.session === "sess-1" && claudeTalk.dir.endsWith("session-1") && claudeTalk.entries.filter((entry) => entry.role === "user").length === 3, `each conversation is kept with its session and folder (${talks.length})`);
+  check(claudeTalk.title === "1ページの間をどう取るか相談したい", "named by its first question");
+  await page.click(".assist-head button:has-text('履歴')");
+  await page.waitForSelector(".assist-history .assist-talk");
+  const listed = await page.$$eval(".assist-history .assist-talk-title", (all) => all.map((title) => title.textContent));
+  check(listed.join("|") === "こんにちは|1ページの間をどう取るか相談したい", `the list shows them newest first (${listed.join("|")})`);
+  check((await page.textContent(".assist-history li.now")).includes("こんにちは"), "with the one open now marked");
+  await page.click(".assist-history .assist-talk:has-text('1ページの間')");
+  await settle();
+  check((await page.inputValue(".assist-head select")) === "claude" && (await page.locator(".assist-entry.user").first().textContent()) === "1ページの間をどう取るか相談したい", "opening one brings back its AI and what was said");
+  check(!(await page.isVisible(".assist-history")), "and closes the list");
+  check((await page.textContent(".assist-entry.assistant .assist-text strong")) === "間", "its replies still as Markdown");
+  await page.fill(".assist textarea", "続きです");
+  await page.click(".assist-actions button.primary");
+  await page.waitForFunction(() => window.__turns.length === 5);
+  const goOn = await page.evaluate(() => ({ turn: window.__turns[4], dir: window.__sessions.at(-1).dir }));
+  check(goOn.turn.kind === "claude" && goOn.turn.resume === "sess-1" && goOn.turn.dir.endsWith("session-1") && goOn.dir.endsWith("session-1"), "the next question goes on with that session, in its folder");
+  check(goOn.turn.prompt.startsWith("（ネームの要約を付けます。") && goOn.turn.prompt.endsWith("続きです"), "with the name as it is now");
+  await page.evaluate(() => window.__say(5, "done", ""));
+  await settle();
+  check((await page.evaluate(() => Object.keys(window.__talks).length)) === 2, "kept as the same conversation, not a new one");
+  await page.click(".assist-head button:has-text('履歴')");
+  await page.waitForSelector(".assist-history .assist-talk");
+  const remove = page.locator(".assist-history li:has-text('こんにちは') button:has-text('消す')");
+  await remove.click();
+  check((await page.evaluate(() => Object.keys(window.__talks).length)) === 2 && (await remove.textContent()) === "消す？", "消す asks once more");
+  await remove.click();
+  await settle();
+  check((await page.evaluate(() => Object.keys(window.__talks).length)) === 1 && (await page.locator(".assist-history .assist-talk").count()) === 1, "and then takes it off the list");
+  if (process.env.ASSIST_SHOT) await page.locator("#dock-right").screenshot({ path: process.env.ASSIST_SHOT.replace(".png", "-history.png") });
+  await page.click(".assist-head button:has-text('履歴')");
 
   // A short palette (its column shared with 詳細 and サブツール): the box to write in and 送る stay whole.
   for (const height of [260, 160]) {

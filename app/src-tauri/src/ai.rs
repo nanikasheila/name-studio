@@ -315,6 +315,114 @@ pub async fn ai_prepare_session(
     .map_err(|error| error.to_string())?
 }
 
+/// How many past conversations are kept (the oldest go first).
+const KEEP_TALKS: usize = 300;
+
+fn history_root(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(app
+        .path()
+        .app_local_data_dir()
+        .map_err(|error| error.to_string())?
+        .join("ai-history"))
+}
+
+/// A past conversation's file: its id is letters, digits, - and _ only.
+fn talk_file(root: &Path, id: &str) -> Result<PathBuf, String> {
+    if id.is_empty() || id.len() > 80 || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        return Err(format!("相談の id {id} は使えません"));
+    }
+    Ok(root.join(format!("{id}.json")))
+}
+
+/// Keep a conversation (as the palette has it, with its "id") for going on with it later.
+pub fn save_talk(root: &Path, talk: &Value) -> Result<(), String> {
+    let path = talk_file(root, talk["id"].as_str().unwrap_or_default())?;
+    let text = serde_json::to_vec(talk).map_err(|error| error.to_string())?;
+    // Written whole beside it, then moved in: a crash leaves the old one, not half of it.
+    let part = path.with_extension("json.part");
+    write_file(&part, &text)?;
+    std::fs::rename(&part, &path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let mut all = list_talks(root);
+    if all.len() > KEEP_TALKS {
+        for old in all.split_off(KEEP_TALKS) {
+            if let Ok(path) = talk_file(root, old["id"].as_str().unwrap_or_default()) {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The kept conversations, newest first, each without what was said (only its title and size).
+pub fn list_talks(root: &Path) -> Vec<Value> {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return Vec::new();
+    };
+    let mut out: Vec<Value> = entries
+        .flatten()
+        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
+        .filter_map(|entry| {
+            let talk: Value = serde_json::from_slice(&std::fs::read(entry.path()).ok()?).ok()?;
+            let id = talk["id"].as_str()?;
+            Some(serde_json::json!({
+                "id": id,
+                "kind": talk["kind"],
+                "name": talk["name"],
+                "title": talk["title"],
+                "created": talk["created"],
+                "updated": talk["updated"],
+                "count": talk["entries"].as_array().map_or(0, |entries| entries.iter().filter(|entry| entry["role"] == "user").count()),
+            }))
+        })
+        .collect();
+    out.sort_by(|a, b| {
+        b["updated"]
+            .as_f64()
+            .unwrap_or(0.0)
+            .total_cmp(&a["updated"].as_f64().unwrap_or(0.0))
+    });
+    out
+}
+
+pub fn load_talk(root: &Path, id: &str) -> Result<Value, String> {
+    let path = talk_file(root, id)?;
+    let bytes = std::fs::read(&path).map_err(|_| "その相談は見つかりません（消されたかもしれません）".to_owned())?;
+    serde_json::from_slice(&bytes).map_err(|error| format!("{}: {error}", path.display()))
+}
+
+#[tauri::command]
+pub async fn ai_history_save(app: AppHandle, talk: Value) -> Result<(), String> {
+    let root = history_root(&app)?;
+    tauri::async_runtime::spawn_blocking(move || save_talk(&root, &talk))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn ai_history_list(app: AppHandle) -> Result<Vec<Value>, String> {
+    let root = history_root(&app)?;
+    tauri::async_runtime::spawn_blocking(move || list_talks(&root))
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn ai_history_load(app: AppHandle, id: String) -> Result<Value, String> {
+    let root = history_root(&app)?;
+    tauri::async_runtime::spawn_blocking(move || load_talk(&root, &id))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub fn ai_history_delete(app: AppHandle, id: String) -> Result<(), String> {
+    let path = talk_file(&history_root(&app)?, &id)?;
+    match std::fs::remove_file(&path) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(format!("{}: {error}", path.display())),
+        _ => Ok(()),
+    }
+}
+
 /// Put the Skill where Claude Code ("claude": ~/.claude/skills) or Codex
 /// ("codex": ~/.agents/skills) finds it for every folder, or into `folder`.
 #[tauri::command]
@@ -1257,6 +1365,34 @@ mod tests {
         let args = claude_args(&first);
         assert!(args.windows(2).any(|pair| pair == ["--resume", "abc"]));
         assert!(args.windows(2).any(|pair| pair == ["--model", "sonnet"]));
+    }
+
+    #[test]
+    fn past_conversations_are_kept_listed_newest_first_and_only_by_their_id() {
+        let root = std::env::temp_dir().join(format!("ns-history-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let talk = |id: &str, updated: f64| serde_json::json!({"id": id, "kind": "codex", "name": "C:\\a.namestudio", "title": "詰まった", "created": 1.0, "updated": updated, "session": "019c", "entries": [{"role": "user", "text": "詰まった"}, {"role": "assistant", "text": "**案**"}, {"role": "user", "text": "次"}]});
+        save_talk(&root, &talk("t-1", 10.0)).unwrap();
+        save_talk(&root, &talk("t-2", 20.0)).unwrap();
+        let listed = list_talks(&root);
+        assert_eq!(
+            listed
+                .iter()
+                .map(|talk| talk["id"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            ["t-2", "t-1"]
+        );
+        assert_eq!(listed[0]["count"], 2);
+        assert!(listed[0].get("entries").is_none());
+        assert_eq!(load_talk(&root, "t-1").unwrap()["entries"][1]["text"], "**案**");
+        // Saved again: replaced, not added.
+        save_talk(&root, &talk("t-1", 30.0)).unwrap();
+        assert_eq!(list_talks(&root)[0]["id"], "t-1");
+        assert_eq!(list_talks(&root).len(), 2);
+        assert!(save_talk(&root, &talk("../x", 1.0)).is_err());
+        assert!(load_talk(&root, "..\\x").is_err());
+        assert!(load_talk(&root, "nope").is_err());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

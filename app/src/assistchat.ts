@@ -177,6 +177,80 @@ export interface ChatEntry {
   text: string;
 }
 
+/** A conversation kept to go on with later (ai.rs keeps it as JSON in ai-history/). */
+export interface SavedTalk {
+  id: string;
+  kind: AiKind;
+  /** The name it is about (its file; empty when not saved). */
+  name: string;
+  /** Its first question, short. */
+  title: string;
+  created: number;
+  updated: number;
+  /** The AI's id for it (Claude Code's session, Codex's thread). */
+  session: string | null;
+  /** Its folder (Claude Code goes on with a session only in the folder it began in). */
+  dir: string | null;
+  entries: ChatEntry[];
+  /** 変更の案 applied, by where they are in it. */
+  applied: string[];
+}
+
+/** A kept conversation as the list shows it. */
+export interface TalkSummary {
+  id: string;
+  kind: AiKind;
+  name: string;
+  title: string;
+  created: number;
+  updated: number;
+  /** How many questions. */
+  count: number;
+}
+
+/** What a conversation is called in the list: its first question, on one line. */
+export function talkTitle(entries: ChatEntry[]): string {
+  const first = entries.find((entry) => entry.role === "user")?.text.replace(/\s+/g, " ").trim() ?? "";
+  return first.length > 40 ? `${first.slice(0, 39)}…` : first || "（質問なし）";
+}
+
+export function newTalkId(now: number): string {
+  return `talk-${now}-${Math.floor(Math.random() * 1e9).toString(36)}`;
+}
+
+const KINDS: AiKind[] = ["claude", "codex", "local"];
+const ROLES: EntryRole[] = ["user", "assistant", "tool", "error"];
+const text = (value: unknown): string => (typeof value === "string" ? value : "");
+const time = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) ? value : 0);
+
+/** A kept conversation as read back, or null when it is not one. */
+export function readSavedTalk(value: unknown): SavedTalk | null {
+  if (typeof value !== "object" || value === null) return null;
+  const from = value as Record<string, unknown>;
+  if (!text(from.id) || !KINDS.includes(from.kind as AiKind) || !Array.isArray(from.entries)) return null;
+  const entries = from.entries.flatMap((entry): ChatEntry[] => {
+    const read = (entry ?? {}) as Record<string, unknown>;
+    return ROLES.includes(read.role as EntryRole) && typeof read.text === "string" ? [{ role: read.role as EntryRole, text: read.text }] : [];
+  });
+  return {
+    id: text(from.id),
+    kind: from.kind as AiKind,
+    name: text(from.name),
+    title: text(from.title) || talkTitle(entries),
+    created: time(from.created),
+    updated: time(from.updated),
+    session: text(from.session) || null,
+    dir: text(from.dir) || null,
+    entries,
+    applied: Array.isArray(from.applied) ? from.applied.filter((key): key is string => typeof key === "string") : [],
+  };
+}
+
+/** The kept conversations of the name `name` first, then the rest; each group newest first. */
+export function orderTalks(talks: TalkSummary[], name: string): TalkSummary[] {
+  return [...talks].sort((a, b) => Number(b.name === name) - Number(a.name === name) || b.updated - a.updated);
+}
+
 /** A conversation as the palette shows it, put together from the turns' events. */
 export class Conversation {
   entries: ChatEntry[] = [];
@@ -186,6 +260,14 @@ export class Conversation {
   running: number | null = null;
 
   constructor(readonly kind: AiKind) {}
+
+  /** A kept conversation, to go on with. */
+  static restore(talk: SavedTalk): Conversation {
+    const conversation = new Conversation(talk.kind);
+    conversation.entries = talk.entries.map((entry) => ({ ...entry }));
+    conversation.session = talk.session;
+    return conversation;
+  }
 
   ask(text: string, run: number): void {
     this.entries.push({ role: "user", text });
