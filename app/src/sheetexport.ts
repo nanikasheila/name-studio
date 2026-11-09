@@ -1,7 +1,7 @@
 // Writing the pages of an open name sheet out as CLIP STUDIO PAINT pages (and
 // a work), from the viewer: the template, the folder and how the name layers
 // fit the page, chosen in a dialog.
-import { open } from "@tauri-apps/plugin-dialog";
+import { open } from "./dialogs";
 import { call } from "./backend";
 import { $ } from "./dom";
 import { buildRequest, folderOf, summarize, type ExportForm, type Fit } from "./export";

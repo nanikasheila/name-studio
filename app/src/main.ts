@@ -4,7 +4,7 @@
 // first workspace; name data is edited in the second (workbench.ts).
 import { call } from "./backend";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open } from "./dialogs";
 import { setInstalledFonts } from "./fonts";
 import { batchExportTask, runBatchExport } from "./batch";
 import { appVersion, checkForUpdate } from "./updater";

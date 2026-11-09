@@ -1,6 +1,6 @@
 // The dialog that writes the name data out (CSP pages and work, PDF, script).
 import { call } from "./backend";
-import { ask, message, open, save } from "@tauri-apps/plugin-dialog";
+import { ask, message, open, placeChosen, save } from "./dialogs";
 import { buildRequest, folderOf, overwriteWarning, type ExportForm, type OverwriteCheck } from "./export";
 import {
   checkSummary,
@@ -911,8 +911,9 @@ export class ExportDialog {
         const last = kept?.replace(/\.[^.\\/]+$/, `.${extension}`);
         const suffix = this.kind === "text" ? "_台本" : this.kind === "mini" ? "_ミニネーム" : "";
         const filter = this.kind === "pdf" || extension === "pdf" ? "PDF" : this.kind === "mini" ? "画像" : "テキスト";
+        // Written again without asking only where it was picked before (the Rust side takes no other place).
         const path =
-          again && last
+          again && last && (await placeChosen(last))
             ? last
             : await save({
                 defaultPath: last ?? `${base}${suffix}.${extension}`,

@@ -8,7 +8,7 @@ import type { Project } from "./model";
 /** Who is talked to. */
 export type AiKind = "claude" | "codex" | "local";
 
-/** What a turn says, as it says it (ai.rs `AiEvent`). */
+/** What a turn says, as it says it (ai/mod.rs `AiEvent`). */
 export interface AiEvent {
   run: number;
   kind: "session" | "delta" | "text" | "tool" | "done" | "error";
@@ -69,7 +69,7 @@ export function readAssistSettings(kept: unknown): AssistSettings {
   return out;
 }
 
-/** A model as Claude Code, Codex or the local LLM lists it (ai.rs `AiModel`). */
+/** A model as Claude Code, Codex or the local LLM lists it (ai/models.rs `AiModel`). */
 export interface AiModel {
   /** What is asked for ("": the tool's own default). */
   value: string;
@@ -177,7 +177,7 @@ export interface ChatEntry {
   text: string;
 }
 
-/** A conversation kept to go on with later (ai.rs keeps it as JSON in ai-history/). */
+/** A conversation kept to go on with later (ai/history.rs keeps it as JSON in ai-history/). */
 export interface SavedTalk {
   id: string;
   kind: AiKind;

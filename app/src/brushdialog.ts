@@ -1,7 +1,7 @@
 // The dialog that takes pens and erasers over from CLIP STUDIO PAINT: from an
 // exported sub tool (.sut) or from CSP's own tool list on this computer.
 import { call, type CspToolLocations } from "./backend";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open } from "./dialogs";
 import { DEFAULT_BRUSH_DPI, addBrushes, brushFromSubTool, lengthMm, type CspSubTool } from "./brush";
 import { saveToLibrary } from "./prefs";
 import type { Brush, Project } from "./model";

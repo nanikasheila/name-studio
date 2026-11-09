@@ -3,7 +3,7 @@
 // name, and asking before the name is closed with changes not saved. The
 // workbench shows what this keeps (the save state beside the name's title).
 import { call } from "./backend";
-import { message, save } from "@tauri-apps/plugin-dialog";
+import { message, save } from "./dialogs";
 import { Autosaver, Written, autosaveToFile } from "./autosave";
 import { clearAlert, showAlert } from "./alerts";
 import { logError } from "./errorlog";

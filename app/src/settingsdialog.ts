@@ -2,7 +2,7 @@
 // kept in its file) and this computer's (画面の見た目, 表示, 操作, 吸着, 保存, ペン・キー),
 // one kind at a time from the list on the left, or all that match what is
 // typed in the search box. Changes apply at once.
-import { ask } from "@tauri-apps/plugin-dialog";
+import { ask } from "./dialogs";
 import { AUTOSAVE_DELAY_MS, AUTOSAVE_MAX_WAIT_MS, autosaveTiming, autosaveToFile, setAutosaveTiming, setAutosaveToFile } from "./autosave";
 import { call } from "./backend";
 import { SHAPE_LABELS } from "./balloon";

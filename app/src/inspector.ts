@@ -1,7 +1,7 @@
 // The right panel (the inspector) and the bar of actions beside the
 // selection: what can be changed about the selected panel, line, sticky,
 // fill, line drawing or the page in view.
-import { ask } from "@tauri-apps/plugin-dialog";
+import { ask } from "./dialogs";
 import { alternativesOf } from "./alternatives";
 import { wantsTail } from "./autotail";
 import { SHAPE_LABELS, TAIL_LABELS, defaultTailStyle, resolvedShape } from "./balloon";

@@ -8,7 +8,7 @@ import { useFonts } from "./fonts";
 import { useStyle } from "./style";
 import { $, isTextEntry, isTyping, noDialogBut } from "./dom";
 import { Inspector } from "./inspector";
-import { ask } from "@tauri-apps/plugin-dialog";
+import { ask } from "./dialogs";
 import { heldNear } from "./hold";
 import { formatTime } from "./autosave";
 import { penPreferences, rememberName } from "./prefs";

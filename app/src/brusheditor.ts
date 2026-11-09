@@ -2,7 +2,7 @@
 // on the brush's own CSP rows (Brush.csp, see cspsettings.ts), tried on a
 // pad that redraws as they change, and written back to CSP as a .sut that
 // サブツールの読み込み takes in.
-import { save } from "@tauri-apps/plugin-dialog";
+import { save } from "./dialogs";
 import { call, type CspToolLocations } from "./backend";
 import { DEFAULT_BRUSH_DPI } from "./brush";
 import { BrushPad, GraphBox } from "./brushpad";
@@ -274,7 +274,7 @@ export class BrushEditor {
     if (!brush || !project) return;
     const lines = project.pages.reduce((sum, page) => sum + page.strokes.filter((stroke) => stroke.brush === brush.id).length, 0);
     if (lines) {
-      const { ask } = await import("@tauri-apps/plugin-dialog");
+      const { ask } = await import("./dialogs");
       const sure = await ask(`「${brush.name}」で描いた線が ${lines} 本あります。削除すると、その線は標準の${brush.kind === "pen" ? "ペン" : "消しゴム"}で描いた形になります。削除しますか？`, {
         title: "Name Studio",
         kind: "warning",

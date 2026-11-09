@@ -3,7 +3,7 @@
 // its size (a slider, a box and the round buttons of ブラシサイズ), its
 // opacity and 手ブレ補正, how an eraser erases, and the way to all its
 // settings.
-import { ask } from "@tauri-apps/plugin-dialog";
+import { ask } from "./dialogs";
 import { addBrushes } from "./brush";
 import { freeName } from "./listorder";
 import { newId } from "./project";

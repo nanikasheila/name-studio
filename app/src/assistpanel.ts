@@ -4,7 +4,7 @@
 // 変更の案, shown with what each would do, and applied with 当てる as one
 // undoable change. The palette's ⚙ holds where the programs are, the models,
 // the local LLM's address and key, and puts the Skill where the AI tools find it.
-import { open } from "@tauri-apps/plugin-dialog";
+import { open } from "./dialogs";
 import { applyOps, nameBrief, parseOps, previewOps, type AssistOp } from "./assist";
 import {
   agentInstructions,
@@ -378,7 +378,7 @@ export class AssistPanel {
         void this.loadModels(kind);
       });
       rows.push(...this.modelRows(kind));
-      more.push(field("場所", pathKey, "空なら自動で探す", browse));
+      more.push(field("場所", pathKey, "空なら自動で探す（指定は「参照…」で選ぶ）", browse));
       if (kind === "codex" && WINDOWS) {
         const sandbox = element("select", { "aria-label": "サンドボックス（Windows）", "data-part": "sandbox" });
         for (const [value, label] of [

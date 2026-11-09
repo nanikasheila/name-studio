@@ -10,16 +10,19 @@
 //! Commands by what they are for: [`viewer`] (the open sheet), [`project_io`]
 //! (loading, saving, autosave and versions), [`name_export`] (CSP pages and
 //! works), [`files`] (CSP's tools, PDF and script), [`fonts`] (the fonts on
-//! the computer); [`ipc`] reads the raw
-//! request bodies they share.
+//! the computer), [`dialogs`] (the file dialogs); [`ipc`] reads the raw
+//! request bodies they share, and [`paths`] says where a file may be written.
 
 pub mod ai;
 pub mod batch;
+mod dialogs;
 pub mod errorlog;
 mod files;
 mod fonts;
 mod ipc;
 mod name_export;
+pub mod paths;
+pub mod proctree;
 mod project_io;
 pub mod sheet;
 mod updates;
@@ -152,6 +155,15 @@ pub fn run() {
             if let Ok(root) = app.path().app_local_data_dir() {
                 errorlog::init(&root, app.package_info().version.to_string());
             }
+            // The places picked in dialogs in earlier runs, and the command line's report for this one.
+            let chosen = match app.path().app_local_data_dir() {
+                Ok(root) => paths::Chosen::load(root.join("chosen-places.json")),
+                Err(_) => paths::Chosen::default(),
+            };
+            if let Ok(Some(task)) = &app.state::<AppState>().batch {
+                chosen.file_once(Path::new(&task.report));
+            }
+            app.manage(chosen);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -199,20 +211,29 @@ pub fn run() {
             updates::install_release,
             batch_export_task,
             end_batch_export,
-            ai::ai_detect,
-            ai::ai_prepare_session,
-            ai::ai_install_skill,
+            ai::programs::ai_detect,
+            ai::session::ai_prepare_session,
+            ai::session::ai_install_skill,
             ai::ai_turn,
             ai::ai_stop,
-            ai::ai_save_key,
-            ai::ai_has_key,
-            ai::ai_local_models,
-            ai::ai_models,
-            ai::ai_history_save,
-            ai::ai_history_list,
-            ai::ai_history_load,
-            ai::ai_history_delete
+            ai::local::ai_save_key,
+            ai::local::ai_has_key,
+            ai::local::ai_local_models,
+            ai::models::ai_models,
+            ai::history::ai_history_save,
+            ai::history::ai_history_list,
+            ai::history::ai_history_load,
+            ai::history::ai_history_delete,
+            dialogs::choose_open,
+            dialogs::choose_save,
+            dialogs::place_chosen
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Name Studio");
+        .build(tauri::generate_context!())
+        .expect("error while running Name Studio")
+        .run(|app, event| {
+            // An AI still answering is stopped with the app, not left running unseen.
+            if matches!(event, tauri::RunEvent::Exit) {
+                ai::stop_all(&app.state::<ai::AiRuns>());
+            }
+        });
 }

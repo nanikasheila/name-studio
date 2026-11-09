@@ -3,7 +3,7 @@
 // click) or by the arrows; inserted, duplicated, deleted, held (保留), copied
 // and moved by its buttons, its right-click menu or keys. The changes
 // themselves are in pageops.ts.
-import { ask } from "@tauri-apps/plugin-dialog";
+import { ask } from "./dialogs";
 import { alternativesOf } from "./alternatives";
 import { sceneOf } from "./cast";
 import { textAmount } from "./dialogue";

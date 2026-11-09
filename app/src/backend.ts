@@ -193,6 +193,31 @@ export type UpdateChannel = "stable" | "beta";
 /** A newer version found by `check_update`, as `new Update(…)` takes it. */
 export type FoundUpdate = ConstructorParameters<typeof Update>[0];
 
+/** Which files a file dialog shows: a name for the kind and its extensions (no dot). */
+export interface FileFilter {
+  name: string;
+  extensions: string[];
+}
+
+/** A dialog to pick a file to open (dialogs.rs `OpenOptions`). */
+export interface OpenOptions {
+  title?: string;
+  filters?: FileFilter[];
+  /** Start here: in this folder, or in this file's folder with its name filled in. */
+  defaultPath?: string;
+  /** Pick a folder, not a file. */
+  directory?: boolean;
+  /** Pick several files. */
+  multiple?: boolean;
+}
+
+/** A dialog to pick where a file is saved (dialogs.rs `SaveOptions`). */
+export interface SaveOptions {
+  title?: string;
+  filters?: FileFilter[];
+  defaultPath?: string;
+}
+
 /** Each command: its arguments (`void`: none) and its result. */
 export interface Commands {
   // The open name sheet (viewer.rs)
@@ -235,6 +260,10 @@ export interface Commands {
   csp_tool_locations: [void, CspToolLocations];
   read_csp_sub_tools: [{ path: string; materials: string | null }, CspSubTool[]];
   write_csp_sub_tool: [{ path: string; tool: CspToolData; name: string; materials: string | null }, { missingMaterials: string[] }];
+  // The file dialogs, and which places were picked in them (dialogs.rs; dialogs.ts asks)
+  choose_open: [{ options: OpenOptions }, string | string[] | null];
+  choose_save: [{ options: SaveOptions }, string | null];
+  place_chosen: [{ path: string }, boolean];
   // The fonts on the computer (fonts.rs)
   list_fonts: [void, FontFace[]];
   // The app (lib.rs)
@@ -248,7 +277,7 @@ export interface Commands {
   install_release: [{ version: string }, void];
   batch_export_task: [void, BatchExport | null];
   end_batch_export: [{ code: number; message?: string | null }, void];
-  // AI に相談 (ai.rs)
+  // AI に相談 (ai/)
   ai_detect: [{ claude: string | null; codex: string | null }, AiTools];
   ai_prepare_session: [{ dir: string | null; files: SessionFile[] }, string];
   ai_install_skill: [{ target: "claude" | "codex" | "folder"; folder: string | null }, string];
@@ -292,7 +321,7 @@ export interface ChatMessage {
   images?: string[];
 }
 
-/** One turn of a conversation (ai.rs `AiTurn`). */
+/** One turn of a conversation (ai/mod.rs `AiTurn`). */
 export interface AiTurn {
   kind: AiKind;
   dir: string;

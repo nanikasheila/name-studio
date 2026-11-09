@@ -40,7 +40,7 @@ try {
           const custom = args.buttons?.OkCancelCustom;
           return custom ? custom[window.__decline ? 1 : 0] : "Ok";
         }
-        case "plugin:dialog|open":
+        case "choose_open":
           window.__opened = args.options;
           return window.__sheetPicked ?? null;
         case "rough_image": {
@@ -54,7 +54,7 @@ try {
         case "write_binary_file":
         case "write_pdf":
           return null;
-        case "plugin:dialog|save":
+        case "choose_save":
           return window.__dialogs.shift() ?? null;
         default:
           return undefined;

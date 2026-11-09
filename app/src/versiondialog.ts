@@ -1,7 +1,7 @@
 // The dialog of earlier versions (版の履歴) and the autosave setting.
 import { call, type VersionInfo, type VersionKind } from "./backend";
 export type { VersionInfo, VersionKind } from "./backend";
-import { ask } from "@tauri-apps/plugin-dialog";
+import { ask } from "./dialogs";
 import { autosaveToFile, formatTime, setAutosaveToFile } from "./autosave";
 import { $ } from "./dom";
 
