@@ -146,7 +146,7 @@ SQLite（rusqlite に同梱）はパブリックドメインです。SQLite (bun
 | keyboard-types | 0.8.3 | MIT OR Apache-2.0 | https://github.com/rust-windowing/keyboard-types |
 | keyring | 3.6.3 | MIT OR Apache-2.0 | https://github.com/hwchen/keyring-rs.git |
 | libc | 0.2.191 | MIT OR Apache-2.0 | https://github.com/rust-lang/libc |
-| libsqlite3-sys | 0.38.2 | MIT | https://github.com/rusqlite/rusqlite |
+| libsqlite3-sys | 0.39.1 | MIT | https://github.com/rusqlite/rusqlite |
 | libz-sys | 1.1.31 | MIT OR Apache-2.0 | https://github.com/rust-lang/libz-sys |
 | litemap | 0.8.3 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | lock_api | 0.4.14 | MIT OR Apache-2.0 | https://github.com/Amanieu/parking_lot |
@@ -195,7 +195,7 @@ SQLite（rusqlite に同梱）はパブリックドメインです。SQLite (bun
 | reqwest | 0.13.5 | MIT OR Apache-2.0 | https://github.com/seanmonstar/reqwest |
 | rfd | 0.17.2 | MIT | https://github.com/PolyMeilex/rfd |
 | ring | 0.17.14 | Apache-2.0 AND ISC | https://github.com/briansmith/ring |
-| rusqlite | 0.40.2 | MIT | https://github.com/rusqlite/rusqlite |
+| rusqlite | 0.41.1 | MIT | https://github.com/rusqlite/rusqlite |
 | rustc-hash | 2.1.3 | Apache-2.0 OR MIT | https://github.com/rust-lang/rustc-hash |
 | rustc_version | 0.4.1 | MIT OR Apache-2.0 | https://github.com/djc/rustc-version-rs |
 | rustls | 0.23.46 | Apache-2.0 OR ISC OR MIT | https://github.com/rustls/rustls |

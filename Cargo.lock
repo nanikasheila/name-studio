@@ -492,7 +492,7 @@ dependencies = [
 [[package]]
 name = "csp-assets"
 version = "0.1.0"
-source = "git+https://github.com/nanikasheila/csp-format?rev=3bf718cdbd59b3edaadbccf85504d0ec78d19908#3bf718cdbd59b3edaadbccf85504d0ec78d19908"
+source = "git+https://github.com/nanikasheila/csp-format?rev=e91e5a4ea4f22f2439e761151695bcaeaabb5614#e91e5a4ea4f22f2439e761151695bcaeaabb5614"
 dependencies = [
  "csp-format",
  "encoding_rs",
@@ -505,7 +505,7 @@ dependencies = [
 [[package]]
 name = "csp-format"
 version = "0.1.0"
-source = "git+https://github.com/nanikasheila/csp-format?rev=3bf718cdbd59b3edaadbccf85504d0ec78d19908#3bf718cdbd59b3edaadbccf85504d0ec78d19908"
+source = "git+https://github.com/nanikasheila/csp-format?rev=e91e5a4ea4f22f2439e761151695bcaeaabb5614#e91e5a4ea4f22f2439e761151695bcaeaabb5614"
 dependencies = [
  "flate2",
  "libc",
@@ -1940,9 +1940,9 @@ dependencies = [
 
 [[package]]
 name = "libsqlite3-sys"
-version = "0.38.2"
+version = "0.39.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1d20bef17f513b9b3004532233187769cd072d790971f4e4da0e346eb6401e8"
+checksum = "14a5f01b87b92705d07b433c06f96cbc764637d81a0bffb5734ce17cf0f9a2b3"
 dependencies = [
  "cc",
  "pkg-config",
@@ -2928,9 +2928,9 @@ dependencies = [
 
 [[package]]
 name = "rusqlite"
-version = "0.40.2"
+version = "0.41.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23f2a97da3e3873c73cb2a2e71b35c40ff95e0b1eefa8d72d8499a6928c3b5b3"
+checksum = "da9bba6f3506135e120a6586df05be18b48d18896600646a4bec8f993d91a594"
 dependencies = [
  "bitflags 2.13.2",
  "fallible-iterator",
