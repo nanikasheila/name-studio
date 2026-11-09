@@ -175,6 +175,17 @@ try {
   check(effortOptions.join(",") === ",low,medium,high,xhigh,max", `the efforts are the ones Opus takes (${effortOptions.join(",")})`);
   check((await page.textContent(".assist-state")).includes("Opus・effort xhigh"), "and the line says which");
   if (process.env.ASSIST_SHOT) await page.locator("#dock-right").screenshot({ path: process.env.ASSIST_SHOT.replace(".png", "-models.png") });
+  const compact = await page.evaluate(() => {
+    const box = document.querySelector(".assist-settings");
+    const model = box.querySelector("select[data-part='model']").getBoundingClientRect();
+    const effort = box.querySelector("select[data-part='effort']").getBoundingClientRect();
+    return { height: box.getBoundingClientRect().height, oneLine: Math.abs(model.top - effort.top) < 2 };
+  });
+  check(compact.oneLine && compact.height < 90, `the settings take little room: model and effort on one line (${Math.round(compact.height)}px)`);
+  check(!(await page.isVisible(".assist-settings input[aria-label='場所']")), "where the program is and the Skill fold away under 詳しく");
+  await page.click(".assist-more > summary");
+  check(await page.isVisible(".assist-settings input[aria-label='場所']"), "and show when it is opened");
+  await page.click(".assist-more > summary");
   await page.selectOption(".assist-settings select[aria-label='モデル']", "old");
   check((await page.inputValue(".assist-settings select[aria-label='effort']")) === "", "an effort the next model does not take goes back to its default");
   await page.selectOption(".assist-settings select[aria-label='モデル']", "opus");

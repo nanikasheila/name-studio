@@ -103,6 +103,8 @@ export class AssistPanel {
   private preparing = false;
   /** The list of kept conversations shows other names' too. */
   private allTalks = false;
+  /** The settings' 詳しく is open. */
+  private moreOpen = false;
   /** Each tool's own list of models, fetched when the settings are opened. */
   private readonly models: Partial<Record<AiKind, ModelList>> = {};
 
@@ -289,8 +291,9 @@ export class AssistPanel {
     const effortKey = kind === "claude" ? "claudeEffort" : "codexEffort";
     const model = element("select", { "aria-label": "モデル", "data-part": "model" });
     const effort = element("select", { "aria-label": "effort", "data-part": "effort" });
-    const again = plainButton(known?.list || known?.error ? "取り直す" : "一覧を取得", () => void this.loadModels(kind, true));
+    const again = plainButton("↻", () => void this.loadModels(kind, true));
     again.title = `${AI_LABELS[kind]} にモデルの一覧を聞き直す（新しいモデルが出たとき・ログインし直したとき）`;
+    again.setAttribute("aria-label", "モデルの一覧を取り直す");
     const rows: HTMLElement[] = [];
     const list = known?.list;
     if (!known) {
@@ -306,7 +309,7 @@ export class AssistPanel {
       const fallback = models.find((found) => found.isDefault);
       if (kind !== "local" && !models.some((found) => found.value === "")) model.append(element("option", { value: "" }, `既定（${fallback?.label ?? `${AI_LABELS[kind]} が決める`}）`));
       if (kind === "local" && !models.length) model.append(element("option", { value: "" }, "（モデルがありません）"));
-      for (const found of models) model.append(element("option", { value: found.value, title: found.description }, found.description ? `${found.label} — ${found.description}` : found.label));
+      for (const found of models) model.append(element("option", { value: found.value, title: found.description }, found.label));
       if (!modelFor(models, chosen) && (chosen || kind === "local")) model.append(element("option", { value: chosen }, `${chosen || "（なし）"}（一覧にありません）`));
       model.value = chosen;
     }
@@ -321,7 +324,9 @@ export class AssistPanel {
       this.renderSettings();
       this.renderState();
     });
-    rows.push(element("label", { class: "assist-field" }, element("span", {}, "モデル"), model, again));
+    // The model, its effort and ↻ on one line.
+    const line = element("div", { class: "assist-field assist-model" }, element("span", {}, "モデル"), model);
+    rows.push(line);
     if (kind !== "local") {
       const efforts = list ? (modelFor(list, chosen)?.efforts ?? []) : effortNow ? [effortNow] : [];
       const preset = list && modelFor(list, chosen)?.defaultEffort;
@@ -335,8 +340,9 @@ export class AssistPanel {
         this.save({ [effortKey]: effort.value } as Partial<AssistSettings>);
         this.renderState();
       });
-      rows.push(element("label", { class: "assist-field" }, element("span", {}, "effort"), effort));
+      line.append(effort);
     }
+    line.append(again);
     if (known?.error) rows.push(element("p", { class: "hint assist-warn" }, `一覧を取れません: ${known.error}`));
     const problem = list ? choiceProblem(list, chosen, kind === "local" ? "" : effortNow) : null;
     if (problem) rows.push(element("p", { class: "hint assist-warn" }, problem));
@@ -359,6 +365,8 @@ export class AssistPanel {
       return element("label", { class: "assist-field" }, element("span", {}, label), box, ...(extra ? [extra] : []));
     };
     const rows: HTMLElement[] = [];
+    // What is set once (where the program is, the key, the Skill) folds away under 詳しく.
+    const more: HTMLElement[] = [];
     if (kind === "claude" || kind === "codex") {
       const pathKey = kind === "claude" ? "claudePath" : "codexPath";
       const browse = plainButton("参照…", async () => {
@@ -369,8 +377,8 @@ export class AssistPanel {
         void this.detect();
         void this.loadModels(kind);
       });
-      rows.push(field("場所", pathKey, "空なら自動で探す", browse));
       rows.push(...this.modelRows(kind));
+      more.push(field("場所", pathKey, "空なら自動で探す", browse));
       if (kind === "codex" && WINDOWS) {
         const sandbox = element("select", { "aria-label": "サンドボックス（Windows）", "data-part": "sandbox" });
         for (const [value, label] of [
@@ -383,9 +391,9 @@ export class AssistPanel {
         sandbox.value = this.settings.codexSandbox;
         sandbox.title = "Codex がコマンドを動かす囲い。elevated は Codex アプリを開いていると準備に失敗し、ファイルを読めないことがあります";
         sandbox.addEventListener("change", () => this.save({ codexSandbox: sandbox.value }));
-        rows.push(element("label", { class: "assist-field" }, element("span", {}, "サンドボックス（Windows）"), sandbox));
+        more.push(element("label", { class: "assist-field" }, element("span", {}, "サンドボックス"), sandbox));
       }
-      rows.push(
+      more.push(
         element(
           "p",
           { class: "hint" },
@@ -411,8 +419,8 @@ export class AssistPanel {
       });
       keep.title = "入れたキーを保存する（空のまま押すと消す）。キーはファイルに書かず、システムの資格情報の保管庫に入れます";
       rows.push(...this.modelRows(kind));
-      rows.push(element("label", { class: "assist-field" }, element("span", {}, "API キー"), key, keep));
-      rows.push(element("p", { class: "hint" }, "Ollama・LM Studio・llama.cpp など、OpenAI と同じ形の API なら使えます。絵を見られるモデル（llava・gemma3 など）なら、ページの絵も見せられます。"));
+      more.push(element("label", { class: "assist-field" }, element("span", {}, "API キー"), key, keep));
+      more.push(element("p", { class: "hint" }, "Ollama・LM Studio・llama.cpp など、OpenAI と同じ形の API なら使えます。絵を見られるモデル（llava・gemma3 など）なら、ページの絵も見せられます。"));
     }
     const install = (target: "claude" | "codex" | "folder") =>
       plainButton({ claude: "Claude Code に入れる", codex: "Codex に入れる", folder: "フォルダーに書き出す…" }[target], async () => {
@@ -429,7 +437,7 @@ export class AssistPanel {
           this.host.status(`スキルを入れられません: ${error}`);
         }
       });
-    rows.push(
+    more.push(
       element(
         "div",
         { class: "assist-skill" },
@@ -437,7 +445,12 @@ export class AssistPanel {
         element("div", { class: "assist-row" }, install("claude"), install("codex"), install("folder")),
       ),
     );
-    form.replaceChildren(...rows);
+    const details = element("details", { class: "assist-more" }, element("summary", {}, kind === "local" ? "詳しく（API キー・スキル）" : "詳しく（場所・スキル）"), ...more);
+    details.open = this.moreOpen;
+    details.addEventListener("toggle", () => {
+      this.moreOpen = details.open;
+    });
+    form.replaceChildren(...rows, details);
   }
 
   /** The conversation, with each 変更の案 as a card. */

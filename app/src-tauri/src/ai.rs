@@ -685,7 +685,7 @@ pub fn codex_events(run: u64, line: &str) -> Vec<AiEvent> {
             vec![AiEvent::new(
                 run,
                 "tool",
-                "Codex のサンドボックスがコマンドを動かせません（setup refresh had errors など）。ネームの要約は相談に付けてあるので話は続けられます。ファイルも読ませたいときは、「接続…」の「サンドボックス（Windows）」を変えてみてください。",
+                "Codex のサンドボックスがコマンドを動かせません（setup refresh had errors など）。ネームの要約は相談に付けてあるので話は続けられます。ファイルも読ませたいときは、「接続…」の「詳しく」でサンドボックスを変えてみてください。",
             )]
         }
         Some("item.started") if item["type"] == "command_execution" => {
@@ -1421,7 +1421,7 @@ mod tests {
         let line = r#"{"type":"item.completed","item":{"type":"command_execution","command":"pwsh","aggregated_output":"exec_command failed: CreateProcess { message: \"Rejected(\\\"Failed to create unified exec process: helper_unknown_error: setup refresh had errors\\\")\" }","status":"failed"}}"#;
         let events = codex_events(1, line);
         assert_eq!(events.len(), 1);
-        assert!(events[0].text.contains("サンドボックス（Windows）"));
+        assert!(events[0].text.contains("「詳しく」でサンドボックス"));
         let fine = r#"{"type":"item.completed","item":{"type":"command_execution","command":"pwsh","aggregated_output":"ok","status":"completed"}}"#;
         assert!(codex_events(1, fine).is_empty());
     }
