@@ -8,10 +8,16 @@ const MADE: &str = include_str!("fixtures/assist-made.json");
 
 #[test]
 fn a_name_changed_by_the_operations_opens() {
-    let project = Project::from_json(MADE).unwrap_or_else(|error| panic!("the operations made a name Rust refuses: {error}"));
+    let project =
+        Project::from_json(MADE).unwrap_or_else(|error| panic!("the operations made a name Rust refuses: {error}"));
     assert!(project.pages.len() >= 5);
     assert!(project.characters.iter().any(|character| character.name == "先生"));
-    assert!(project.pages.iter().any(|page| page.stickies.iter().any(|sticky| sticky.link.is_some())));
+    assert!(
+        project
+            .pages
+            .iter()
+            .any(|page| page.stickies.iter().any(|sticky| sticky.link.is_some()))
+    );
 }
 
 #[test]

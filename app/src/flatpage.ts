@@ -117,6 +117,40 @@ export async function exportPdf(project: Project, path: string, options: PdfOpti
   await call("write_pdf", packBody(meta, images));
 }
 
+/**
+ * Pictures of pages (PNG, base64) for an AI to look at: each page as its
+ * reader sees it, with the 指示, the 仕上がり area at `dpi`. Pages by number (from 1).
+ */
+export async function pagePictures(project: Project, numbers: readonly number[], rough: RoughLoader, dpi = 50): Promise<{ number: number; base64: string }[]> {
+  useFonts(project.fonts);
+  useStyle(project.style);
+  const area = trimBox(project.pageFormat);
+  const scale = dpi / 25.4;
+  const m: MmToPx = { scale, x: -area[0] * scale, y: -area[1] * scale };
+  await loadTips(project.brushes);
+  const drawing = document.createElement("canvas");
+  drawing.width = Math.round((area[2] - area[0]) * scale);
+  drawing.height = Math.round((area[3] - area[1]) * scale);
+  const ctx = drawing.getContext("2d")!;
+  const out: { number: number; base64: string }[] = [];
+  for (const number of numbers) {
+    const page = project.pages[number - 1];
+    if (!page) continue;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, drawing.width, drawing.height);
+    const pictures = await flatPictures(project, [page], rough);
+    drawFlatPage(ctx, project, page, m, pictures);
+    drawMarks(ctx, project, onPageOnly(page, project.pageFormat), m);
+    releasePictures(pictures);
+    const bytes = await encode(drawing, "image/png");
+    let text = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    out.push({ number, base64: btoa(text) });
+  }
+  drawing.width = 0;
+  return out;
+}
+
 const MINI_FONT = '"Yu Gothic UI", "Yu Gothic", "Hiragino Sans", Meiryo, sans-serif';
 
 /**

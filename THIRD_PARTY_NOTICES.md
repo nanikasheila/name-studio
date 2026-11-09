@@ -144,6 +144,7 @@ SQLite（rusqlite に同梱）はパブリックドメインです。SQLite (bun
 | json-patch | 4.2.0 | MIT/Apache-2.0 | https://github.com/idubrov/json-patch |
 | jsonptr | 0.7.1 | MIT OR Apache-2.0 | https://github.com/chanced/jsonptr |
 | keyboard-types | 0.8.3 | MIT OR Apache-2.0 | https://github.com/rust-windowing/keyboard-types |
+| keyring | 3.6.3 | MIT OR Apache-2.0 | https://github.com/hwchen/keyring-rs.git |
 | libc | 0.2.191 | MIT OR Apache-2.0 | https://github.com/rust-lang/libc |
 | libsqlite3-sys | 0.38.2 | MIT | https://github.com/rusqlite/rusqlite |
 | libz-sys | 1.1.31 | MIT OR Apache-2.0 | https://github.com/rust-lang/libz-sys |
@@ -315,9 +316,12 @@ SQLite（rusqlite に同梱）はパブリックドメインです。SQLite (bun
 | windows-registry | 0.6.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows-result | 0.4.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows-strings | 0.5.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
+| windows-sys | 0.60.2 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows-sys | 0.61.2 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
+| windows-targets | 0.53.5 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows-threading | 0.2.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows-version | 0.1.7 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
+| windows_x86_64_msvc | 0.53.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | winnow | 1.0.4 | MIT | https://github.com/winnow-rs/winnow |
 | winreg | 0.56.0 | MIT | https://github.com/gentoo90/winreg-rs |
 | writeable | 0.6.4 | Unicode-3.0 | https://github.com/unicode-org/icu4x |

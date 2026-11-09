@@ -3,11 +3,13 @@
 // misspelt command or a wrong argument is a type error, and the shapes the
 // Rust side sends are written down once, here.
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import type { Update } from "@tauri-apps/plugin-updater";
 import type { CspSubTool } from "./brush";
 import type { ExportReport, ExportRequest, OverwriteCheck } from "./export";
 import type { BuiltTemplate, PageSetup } from "./csppage";
 import type { FontFace } from "./fonts";
+import type { AiEvent, AiKind } from "./assistchat";
 import type { CspToolData, Project, Series } from "./model";
 import type { SheetView } from "./types";
 
@@ -246,6 +248,62 @@ export interface Commands {
   install_release: [{ version: string }, void];
   batch_export_task: [void, BatchExport | null];
   end_batch_export: [{ code: number; message?: string | null }, void];
+  // AI に相談 (ai.rs)
+  ai_detect: [{ claude: string | null; codex: string | null }, AiTools];
+  ai_prepare_session: [{ dir: string | null; files: SessionFile[] }, string];
+  ai_install_skill: [{ target: "claude" | "codex" | "folder"; folder: string | null }, string];
+  ai_turn: [{ turn: AiTurn }, number];
+  ai_stop: [{ run: number }, void];
+  ai_save_key: [{ key: string | null }, void];
+  ai_has_key: [void, boolean];
+  ai_local_models: [{ endpoint: string }, string[]];
+}
+
+/** A program found on this computer (`ai_detect`). */
+export interface FoundTool {
+  path: string;
+  version: string;
+}
+
+export interface AiTools {
+  claude: FoundTool | null;
+  codex: FoundTool | null;
+  node: FoundTool | null;
+}
+
+/** A file of a conversation's folder: text, or bytes in base64. */
+export interface SessionFile {
+  path: string;
+  text?: string;
+  base64?: string;
+}
+
+/** One message of a conversation with a local LLM. */
+export interface ChatMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+  /** Pictures (files in the conversation's folder) shown with it. */
+  images?: string[];
+}
+
+/** One turn of a conversation (ai.rs `AiTurn`). */
+export interface AiTurn {
+  kind: AiKind;
+  dir: string;
+  prompt: string;
+  resume: string | null;
+  model: string | null;
+  program: string | null;
+  images: string[];
+  endpoint: string | null;
+  messages: ChatMessage[];
+}
+
+export type { AiEvent, AiKind };
+
+/** Hear what AI turns say; returns how to stop hearing. */
+export function onAiEvent(heard: (event: AiEvent) => void): Promise<() => void> {
+  return listen<AiEvent>("ai-event", (event) => heard(event.payload));
 }
 
 export type Command = keyof Commands;

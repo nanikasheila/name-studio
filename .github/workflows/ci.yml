@@ -53,6 +53,13 @@ jobs:
           npx playwright install --with-deps chromium
           npm run e2e
 
+      - name: The name-studio skill (its script is built from the app's code and up to date, and works)
+        if: runner.os == 'Linux'
+        working-directory: app
+        run: |
+          npm run build:skill
+          git diff --exit-code -- ../skills || { echo "::error::skills/name-studio/scripts/namestudio.mjs is out of date: run npm run build:skill in app/ and commit it"; exit 1; }
+
       - name: Speed with a heavy name (each operation within 50 ms)
         if: runner.os == 'Linux'
         working-directory: app

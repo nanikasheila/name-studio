@@ -4,8 +4,10 @@
 // and menu as the page list (listops.ts).
 import { CastList } from "./castlist";
 import type { Selection } from "./editor";
+import { AssistPanel } from "./assistpanel";
+import { $ } from "./dom";
 import { HeldList } from "./heldlist";
-import type { Page, Panel, Point, Project } from "./model";
+import type { Page, Panel, Point, Project, RoughImage } from "./model";
 import { NoteList } from "./notelist";
 import { PageList, type PageListHost } from "./pagelist";
 import { ScriptList } from "./scriptlist";
@@ -28,6 +30,9 @@ export interface SideListsHost extends PageListHost {
   editLine(pageId: string, lineId: string): void;
   /** Bring a palette on screen. */
   openPalette(id: "script"): void;
+  /** The open name's file (null: not saved yet). */
+  path(): string | null;
+  rough(rough: RoughImage): Promise<CanvasImageSource | null>;
 }
 
 export class SideLists {
@@ -37,6 +42,8 @@ export class SideLists {
   readonly castList: CastList;
   readonly noteList: NoteList;
   readonly heldList: HeldList;
+  /** 相談: AI に相談 (assistpanel.ts). */
+  readonly assistPanel: AssistPanel;
 
   constructor(host: SideListsHost) {
     this.pageList = new PageList(host);
@@ -53,6 +60,12 @@ export class SideLists {
     });
     this.noteList = new NoteList(host);
     this.heldList = new HeldList(host);
+    this.assistPanel = new AssistPanel(host);
+  }
+
+  /** 相談: talk the name over with an AI (assistpanel.ts). */
+  assist(): void {
+    this.assistPanel.render($("side-assist"));
   }
 
   /** ページ: the work's name and number, and each page (pagelist.ts). */
