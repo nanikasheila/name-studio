@@ -66,6 +66,23 @@ function within(box: Box, view: { width: number; height: number }): boolean {
 
 const clamp = (value: number, low: number, high: number) => Math.max(low, Math.min(high, value));
 
+/** The place nearest to `start` on the whole screen that is free, if any. */
+function nearestFree(start: Box, view: { width: number; height: number }, free: (box: Box) => boolean): Box | null {
+  let best: Box | null = null;
+  let nearest = Number.POSITIVE_INFINITY;
+  for (let top = MARGIN; top + start.height <= view.height - MARGIN; top += STEP * 2) {
+    for (let left = MARGIN; left + start.width <= view.width - MARGIN; left += STEP * 2) {
+      const distance = Math.hypot(left - start.left, top - start.top);
+      if (distance >= nearest) continue;
+      const tried = { ...start, left, top };
+      if (!free(tried)) continue;
+      best = tried;
+      nearest = distance;
+    }
+  }
+  return best;
+}
+
 /**
  * Places the words of each request in turn (earlier ones keep their place),
  * clear of `blocked` (the header, say), of the words placed before and of the
@@ -88,14 +105,16 @@ export function placeCallouts(requests: readonly CalloutRequest[], view: { width
     start.left = clamp(start.left, MARGIN, Math.max(MARGIN, view.width - width - MARGIN));
     start.top = clamp(start.top, MARGIN, Math.max(MARGIN, view.height - height - MARGIN));
     // Nearest first: across a little before further away (beside a part: only away from it).
-    let label = start;
+    const free = (tried: Box) => within(tried, view) && !taken.some((box) => box !== anchor && overlaps(tried, box));
+    let label: Box | null = null;
     for (const [dx, dy] of MOVES[side]) {
       const tried = { ...start, left: start.left + dx, top: start.top + dy };
-      if (!within(tried, view)) continue;
-      if (taken.some((box) => box !== anchor && overlaps(tried, box))) continue;
+      if (!free(tried)) continue;
       label = tried;
       break;
     }
+    // No room near the part (a small window): the nearest clear place anywhere, rather than over other words.
+    label ??= nearestFree(start, view, free) ?? start;
     taken.push(label);
     let line: Callout["line"] = null;
     if (side === "right") line = [anchor.left + anchor.width, cy, label.left, label.top + label.height / 2];

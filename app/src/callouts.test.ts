@@ -45,3 +45,16 @@ describe("画面のヘルプの言葉の置き場所", () => {
     for (const p of placed.slice(9, 17)) expect(p.label.top).toBeGreaterThan(36);
   });
 });
+
+describe("the help's words in a small window", () => {
+  it("go to the nearest clear place when there is no room beside the part", () => {
+    // A part inside a wall of words to its right: nothing free within reach across (160 px).
+    const view = { width: 900, height: 300 };
+    const wall = { left: 40, top: 0, width: 400, height: 300 };
+    const [placed] = placeCallouts([{ anchor: { left: 0, top: 100, width: 30, height: 30 }, side: "inside", width: 120, height: 40 }], view, [wall]);
+    const { label } = placed;
+    const apart = label.left >= wall.left + wall.width || label.left + label.width <= wall.left;
+    expect(apart).toBe(true);
+    expect(label.left + label.width).toBeLessThanOrEqual(view.width);
+  });
+});

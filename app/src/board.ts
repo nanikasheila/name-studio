@@ -18,6 +18,7 @@ import { shapeInspector, shapeLane } from "./boardshape";
 import { type BoardSelection, type BoardTip, icon, type LaneId, type LaneView, ROW, RULER, SCENE, SHAPE, type StoryHost, TEXT } from "./boardview";
 import { boundaryX, cellX, type PageAxis, pageAt, spanX } from "./pageaxis";
 import { refitRow } from "./rowfit";
+import { inkOn } from "./inkon";
 
 export type { BoardSelection, BoardTip, LaneId, StoryHost } from "./boardview";
 
@@ -330,6 +331,7 @@ export class Board {
       for (const character of project.characters) {
         const chip = html("button", { className: `cast-dot${character.id === this.character ? " active" : ""}`, title: `${character.name} の感情をなぞる`, textContent: [...character.name][0] ?? "？" });
         chip.style.setProperty("--who", character.color ?? "#2a78d6");
+        chip.style.setProperty("--on-who", inkOn(character.color ?? "#2a78d6"));
         chip.addEventListener("click", () => {
           this.character = character.id;
           this.render();

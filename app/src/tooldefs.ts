@@ -48,7 +48,7 @@ export const TOOLS: Record<ToolId, ToolDefinition> = {
     words: "コマ 割る 枠",
     title: "コマを割る。コマの外をドラッグすると新しいコマ",
     icon: '<rect x="2.5" y="2.5" width="15" height="15" rx="1"/><path d="M2.5 8.5l15 2.5M10 9.8V17.5"/>',
-    hint: "コマを横切るように引くと割れる（Alt で斜め）。Shift + コマの外のドラッグで新しいコマ",
+    hint: "コマを横切るように引くと割れる（Alt で斜め）。白紙のページは基本枠を横切るか、囲んでコマに。Shift + コマの外のドラッグで新しいコマ",
     overlay: "引いて割る・なぐり描き・四角・多角形",
     cursor: "crosshair",
   },

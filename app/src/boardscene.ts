@@ -9,6 +9,7 @@ import { currentShape, shapeSpans } from "./shapes";
 import { emotionSeries, moveSceneEdge, sceneAtPage, sceneSpans, setStoryRank, timeline, uncoveredRunAt, type SceneSpan } from "./story";
 import { clip, formatValue, icon, type LaneView, ROW, SCENE, track } from "./boardview";
 import { emptySceneMenu, sceneMenu } from "./boardmenus";
+import { inkOn } from "./inkon";
 
 export function sceneLane(view: LaneView, project: Project, top: number): SVGGElement {
   const group = svg("g", { class: "lane scene-lane" });
@@ -251,6 +252,7 @@ export function pageStory(view: LaneView, project: Project, pageId: string): HTM
   if (part) {
     const tag = html("button", { className: "story-tag part", textContent: part.name, title: "話の型（クリックで直す）" });
     tag.style.setProperty("--part", part.color);
+    tag.style.setProperty("--on-part", inkOn(part.color));
     tag.addEventListener("click", () => view.select({ kind: "shape" }));
     tags.append(tag);
   }

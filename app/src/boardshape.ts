@@ -8,6 +8,7 @@ import { textAmount } from "./dialogue";
 import { planAdvice, sceneSpans } from "./story";
 import { clip, diamond, icon, type LaneView, SHAPE, track } from "./boardview";
 import { beatMenu, partMenu } from "./boardmenus";
+import { inkOn } from "./inkon";
 
 export function shapeLane(view: LaneView, project: Project, top: number): SVGGElement {
   const group = svg("g", { class: "lane shape-lane" });
@@ -37,7 +38,9 @@ export function shapeLane(view: LaneView, project: Project, top: number): SVGGEl
       view.tip.hide();
       partMenu(view, project, span.index, spans.length, view.at(event).index, event.clientX, event.clientY);
     });
-    group.append(part, svg("text", { x: x + 7, y: top + 17, class: "part-label" }, clip(span.name, Math.floor((w - 10) / 12))));
+    const label = svg("text", { x: x + 7, y: top + 17, class: "part-label" }, clip(span.name, Math.floor((w - 10) / 12)));
+    label.style.fill = inkOn(span.color);
+    group.append(part, label);
   }
   // Boundaries between parts: drag to change how many pages each gets.
   spans.slice(0, -1).forEach((span) => {

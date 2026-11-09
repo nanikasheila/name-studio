@@ -12,6 +12,7 @@ import { fingerprint } from "./snapshot";
 import { currentShape, shapeSpans } from "./shapes";
 import { sceneSpans } from "./story";
 import { type LaneView, track } from "./boardview";
+import { inkOn } from "./inkon";
 
 /** A page's picture, drawn again only when the page (or its size) changed: drawing every line of every page on each change is slow. */
 function thumb(view: LaneView, project: Project, page: Project["pages"][number], thumbWidth: number, thumbHeight: number, ratio: number): HTMLCanvasElement {
@@ -48,6 +49,7 @@ export function pageLane(view: LaneView, project: Project, thumbWidth: number, t
     const head = html("div", { className: "board-page-head", title: "ドラッグでページを移動（見開きは 2 ページ一緒に）" }, html("span", { textContent: String(index + 1) }));
     if (part) {
       head.style.background = part.color;
+      head.style.color = inkOn(part.color);
       head.classList.add("tinted");
       head.title = `${part.name}・${head.title}`;
     }
