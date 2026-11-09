@@ -11,8 +11,8 @@
   --text: light-dark(#22201c, #ece9e3);
   --muted: light-dark(#6d6a63, #a19d95);
   --accent: light-dark(#2f6fdb, #6b9cf0);
-  /* Words on the accent (a chosen button, the current item). */
-  --on-accent: #ffffff;
+  /* Words on the accent (a chosen button, the current item): dark on the dark theme's light blue. */
+  --on-accent: light-dark(#ffffff, #0d1b33);
   /* Around the pages, and words written on it. */
   --stage: light-dark(#8d8a84, #141312);
   --on-stage: #f4f3f0;
@@ -225,7 +225,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   position: absolute; max-width: 230px; padding: 4px 8px; border-radius: 6px; font-size: calc(12 * var(--px)); line-height: 1.45;
   background: rgba(20, 20, 24, 0.86); box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
 }
-.help-label.inside { max-width: 320px; padding: 8px 12px; text-align: center; background: rgba(20, 20, 24, 0.78); }
+.help-label.inside { max-width: min(320px, 26vw); padding: 8px 12px; text-align: center; background: rgba(20, 20, 24, 0.78); }
 .help-label.inside b { font-size: calc(14 * var(--px)); }
 .help-label-title { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
 .help-label.inside .help-label-title { justify-content: center; }
@@ -767,7 +767,8 @@ body.focus-mode #editor > .dock, body.focus-mode #story, body.focus-mode #story-
   display: flex; align-items: center; gap: 4px; height: 16px; padding: 0 4px; border-radius: 4px 4px 0 0;
   background: color-mix(in srgb, var(--muted) 22%, var(--panel)); font-size: calc(11 * var(--px)); cursor: grab; overflow: hidden; white-space: nowrap;
 }
-.board-page-head.tinted { color: #fff; font-weight: 600; }
+/* Its words are dark or white by the part's colour (inkon.ts), set on the element. */
+.board-page-head.tinted { font-weight: 600; }
 .board-page-head .head-scene { font-weight: normal; opacity: 0.9; overflow: hidden; text-overflow: ellipsis; }
 .board-page-head .spread-tag { font-size: calc(9 * var(--px)); border: 1px solid currentColor; border-radius: 3px; padding: 0 2px; }
 .board-page.dragging { opacity: 0.5; }
@@ -899,10 +900,18 @@ button.with-icon, .page-nav .segmented button, .workspace-modes button { display
   button.with-icon span { display: none; }
   .toolbar button.labelled span { display: inline; }
 }
+/* 履歴・設定・キー設定・ペン設定 give way before the rest (icons, their names in the tips and for
+   screen readers): at 1280 px wide (a 1920 px notebook shown at 150%) the bar was wider than
+   the window, the help button cut off and no room left for the file name. */
+@media (max-width: 1680px) {
+  .toolbar #versions span, .toolbar #settings span, .toolbar #shortcuts span, .toolbar #pen-settings span {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+}
 /* The undo and export buttons never give way: they stay on screen at the smallest window. */
 .toolbar .app-bar { flex-shrink: 0; }
 /* A narrow window keeps the top buttons as icons (the names stay for screen readers and tips). */
-@media (max-width: 1180px) {
+@media (max-width: 1240px) {
   .toolbar button.labelled span, .toolbar #name-export span, .workspace-modes button span {
     position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
   }
@@ -985,7 +994,7 @@ body.focus-mode .story-controls { display: none; }
 .story-lanes[hidden] { display: none; }
 .cast-dot {
   width: 24px; height: 24px; padding: 0; border-radius: 50%; display: inline-grid; place-items: center; font-size: calc(12 * var(--px)); font-weight: 700;
-  color: #fff; background: var(--who); border: 2px solid transparent; opacity: 0.55;
+  color: var(--on-who, #fff); background: var(--who); border: 2px solid transparent; opacity: 0.55;
 }
 .cast-dot.active { opacity: 1; border-color: var(--panel); box-shadow: 0 0 0 2px var(--who); }
 .board-cast .chip.speaks-mark { font-size: calc(11 * var(--px)); color: var(--muted); }
@@ -1019,7 +1028,7 @@ body.focus-mode .story-controls { display: none; }
 .story-tag { display: inline-flex; align-items: center; gap: 4px; font-size: calc(12 * var(--px)); padding: 2px 8px; border-radius: 12px; max-width: 100%; }
 .story-tag span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .story-tag .icon { width: 14px; height: 14px; color: var(--accent); }
-.story-tag.part { background: var(--part); border-color: var(--part); color: #fff; font-weight: 600; }
+.story-tag.part { background: var(--part); border-color: var(--part); color: var(--on-part, #fff); font-weight: 600; }
 .emotion-fold { font-size: calc(12 * var(--px)); color: var(--muted); }
 .emotion-fold summary { cursor: pointer; }
 .emotion-fold .insp-row { margin-top: 4px; }
@@ -1274,7 +1283,8 @@ dialog.perf-dialog { width: min(720px, 92vw); }
 .assist > .assist-top { flex: 1 1 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
 .assist-top > * { flex: none; }
 .assist-head, .assist-row, .assist-actions, .assist-starters { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
-.assist-head select { flex: 1; min-width: 0; }
+/* The name of who is asked stays readable: the buttons beside it go to the next row first. */
+.assist-head select { flex: 1; min-width: 9em; }
 .assist-actions .check { margin-right: auto; }
 .assist-state { margin: 0; }
 .assist-state[data-tone="warn"] { color: var(--caution); }

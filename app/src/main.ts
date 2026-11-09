@@ -29,6 +29,7 @@ import { SheetViewer } from "./viewer";
 import { PROJECT_EXTENSION } from "./namesaver";
 import { Workbench } from "./workbench";
 import { $, isTyping } from "./dom";
+import { installDialogEnter } from "./dialogkeys";
 import { ImageImportDialog } from "./imageimport";
 import { panelAt, panelBadge } from "./hittest";
 import { perfMeter } from "./perfmeter";
@@ -51,6 +52,8 @@ const workbench = new Workbench(
   setStatus,
   (title) => {
     $("file-name").textContent = title;
+    // The bar gives the name little room in a narrow window: the whole of it on hover.
+    $("file-name").title = title;
     document.title = `${title} — Name Studio`;
   },
   (kind) => askHelp(kind),
@@ -95,6 +98,7 @@ function showWorkspace(next: "viewer" | "editor"): void {
     if (firstRun) requestAnimationFrame(() => tour.offer("editor"));
   } else {
     $("file-name").textContent = viewer.sheet?.fileName ?? "ファイルが開かれていません";
+    $("file-name").title = viewer.sheet?.fileName ?? "";
     document.title = "Name Studio";
     startScreen.render();
     viewer.resize();
@@ -235,6 +239,8 @@ const startPalette = new CommandPalette(
   },
   "start-palette",
 );
+
+installDialogEnter();
 
 window.addEventListener("keydown", (event) => {
   if (workspace === "editor") {

@@ -4,7 +4,7 @@ import { bounds, boxCenter, inheritOpenEdges, insidePolygon, rectShape } from ".
 import { addLine } from "./dialogue";
 import type { Panel, Point } from "./model";
 import { basicBox, trimBox } from "./pagebox";
-import { cutPanels } from "./panels";
+import { cutBlankPage, cutPanels } from "./panels";
 import { emptyPage, gutters, newProject, setGutters } from "./project";
 import { addStroke } from "./strokes";
 
@@ -378,5 +378,38 @@ describe("コマ間の設定", () => {
     setGutters(project, { across: -3, down: 90 });
     expect(project.gutters).toEqual({ across: 0, down: 40 });
     expect(gutters(project)).toEqual({ across: 0, down: 40 });
+  });
+});
+
+describe("the first cut on a blank page", () => {
+  it("makes the 基本枠 a panel and cuts it by the line", () => {
+    const project = newProject("t", 1);
+    const page = project.pages[0];
+    const [x0, y0, x1, y1] = basicBox(project.pageFormat);
+    const y = (y0 + y1) / 2;
+    expect(cutBlankPage(project, page, [x0 - 10, y], [x1 + 10, y])).toHaveLength(1);
+    expect(page.panels).toHaveLength(2);
+    expect(page.panels.map((panel) => panel.order).sort()).toEqual([1, 2]);
+  });
+
+  it("works for a line drawn inside the frame or from edge to edge", () => {
+    for (const inset of [0, 20]) {
+      const project = newProject("t", 1);
+      const page = project.pages[0];
+      const [x0, y0, x1, y1] = basicBox(project.pageFormat);
+      const y = (y0 + y1) / 2;
+      expect(cutBlankPage(project, page, [x0 + inset, y], [x1 - inset, y]), `inset ${inset}`).toHaveLength(1);
+    }
+  });
+
+  it("changes nothing when the line misses the frame or the page has panels", () => {
+    const project = newProject("t", 2);
+    const [blank, drawn] = project.pages;
+    const [x0, y0, x1] = basicBox(project.pageFormat);
+    expect(cutBlankPage(project, blank, [x0, y0 - 30], [x1, y0 - 30])).toEqual([]);
+    expect(blank.panels).toHaveLength(0);
+    drawn.panels.push({ id: "panel9", shape: rectShape([x0, y0, x1, y0 + 60]), order: 1 });
+    expect(cutBlankPage(project, drawn, [(x0 + x1) / 2, -5], [(x0 + x1) / 2, 400])).toEqual([]);
+    expect(drawn.panels).toHaveLength(1);
   });
 });

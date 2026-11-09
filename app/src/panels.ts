@@ -1,11 +1,11 @@
 // Panels (コマ): adding, cutting and removing them, what moves with a panel
 // (its dialogue, rough lines, fills and notes), and panels across a spread.
 
-import { bounds, boxCenter, centroid, inheritOpenEdges, insidePolygon } from "./geometry";
+import { bounds, boxCenter, centroid, inheritOpenEdges, insidePolygon, rectShape } from "./geometry";
 import type { Binding, BoxMm, Page, Panel, Point, Project, StrokePoint } from "./model";
 import { gutters, newId } from "./project";
 import { assignPanels, orderPanels, sortLines } from "./readingorder";
-import { gutterFor, segmentTouches, splitShape } from "./pagebox";
+import { basicBox, gutterFor, segmentTouches, splitShape } from "./pagebox";
 import { fillShape, mapFill, type FillShape } from "./strokes";
 
 export function addPanel(project: Project, page: Page, shape: Point[]): Panel {
@@ -52,6 +52,20 @@ export function cutPanels(project: Project, page: Page, a: Point, b: Point, gaps
   orderPanels(page, project.binding);
   assignPanels(page);
   return created;
+}
+
+/**
+ * A page with no panels yet, and a line drawn across its 基本枠: the frame
+ * becomes a panel and the line cuts it, so the first cut on a blank page works
+ * as on any other. Returns the ids of the new panels; nothing changes (and
+ * none is returned) when the page has panels or the line does not cut the frame.
+ */
+export function cutBlankPage(project: Project, page: Page, a: Point, b: Point): string[] {
+  if (page.panels.length) return [];
+  const frame = rectShape(basicBox(project.pageFormat));
+  if (!segmentTouches(frame, a, b) || !splitShape(frame, a, b, gutterFor(a, b, gutters(project)))) return [];
+  addPanel(project, page, frame);
+  return cutPanels(project, page, a, b);
 }
 
 export function removePanel(page: Page, panelId: string, binding: Binding = "right"): void {

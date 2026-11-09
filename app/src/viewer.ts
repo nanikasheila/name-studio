@@ -80,6 +80,7 @@ export class SheetViewer {
       // A power of two: the overview halves the stored blocks (1/2, 1/4, ...).
       this.overviewFactor = 2 ** Math.ceil(Math.log2(Math.max(1, sheet.canvas.widthPx / OVERVIEW_MAX_WIDTH)));
       $("file-name").textContent = sheet.fileName;
+      $("file-name").title = sheet.fileName;
       $("empty").hidden = true;
       // The start screen gives way to the sheet and its layer list.
       $("viewer").classList.remove("start");

@@ -4,7 +4,7 @@
 import type { DragHandler, DragOf, EditorCore, Press } from "./editorcore";
 import { bounds, insidePolygon, rectShape } from "./geometry";
 import { snapCut } from "./pagebox";
-import { cutPanels } from "./panels";
+import { cutBlankPage, cutPanels } from "./panels";
 import { applySketch } from "./sketchpanels";
 import { sortLines } from "./readingorder";
 
@@ -63,6 +63,19 @@ const frame: DragHandler<DragOf<"frame">> = {
   end(editor, drag, project) {
     const box = bounds([drag.a, drag.b]);
     if (box[2] - box[0] < 5 || box[3] - box[1] < 5) {
+      // A line, not a box: on a page with no panels it cuts the 基本枠 (which becomes the first panel).
+      if (!drag.slot.page.panels.length && Math.hypot(drag.b[0] - drag.a[0], drag.b[1] - drag.a[1]) >= 3) {
+        editor.host.begin();
+        const created = cutBlankPage(project, drag.slot.page, drag.a, snapCut(drag.a, drag.b));
+        if (created.length) {
+          editor.host.commit();
+          editor.host.status("基本枠をコマにして、線で分けました");
+          return;
+        }
+        editor.host.cancel();
+        editor.host.status("コマにするには囲んでください。基本枠を横切るように線を引くと、基本枠をコマにして割ります");
+        return;
+      }
       editor.host.status("コマにするには、もう少し大きく囲んでください");
       return;
     }
