@@ -1,9 +1,11 @@
 //! Read and write CLIP STUDIO PAINT files (.clip / .cmc) for the name tool.
 //!
-//! Ported from the Python reference implementation in
-//! `name_splitter/csp` of csp-name-splitter; the format notes live in
-//! `docs/formats/csp-file-format.md` there. Input files are only read: CSP
-//! itself is never touched; pages and works are written as new files.
+//! The format itself (container, database, pixel blocks, text, vectors) is
+//! csp-format's, whose `docs/spec` is where it is written down; this crate
+//! holds the name tool's own rules on top of it (which layers a page gets,
+//! page frames, spreads, the self-check). It began as a port of the Python
+//! reference (`name_splitter/csp` of csp-name-splitter). Input files are only
+//! read: CSP itself is never touched; pages and works are written as new files.
 
 pub mod clip;
 pub mod cmc;

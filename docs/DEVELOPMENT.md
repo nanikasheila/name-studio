@@ -2,8 +2,9 @@
 
 Name Studio を直したり、自分でビルドしたりする人向けの説明です。使い方は [README](../README.md) と [使い方のくわしい説明](guide.md) にあります。
 
-CSP のファイル形式の解析結果は csp-name-splitter の
-[docs/formats/csp-file-format.md](https://github.com/nanikasheila/csp-name-splitter/blob/main/docs/formats/csp-file-format.md) を参照してください。
+全体の組み立て（どこに何があるか、層の決まり、守り）は [ARCHITECTURE.md](ARCHITECTURE.md) にまとめてあります。
+CSP のファイル形式の仕様は [csp-format の docs/spec](https://github.com/nanikasheila/csp-format/tree/main/docs/spec) が正本です
+（このリポジトリの `docs/csp-*.md` は、Name Studio がその形式をどう使うかの覚え書き）。
 
 ## 構成
 
@@ -14,9 +15,11 @@ CSP のファイル形式の解析結果は csp-name-splitter の
 | `crates/name-cli` | コマンドライン（`inspect` / `cells` / `import` / `split` / `decode-time`） |
 | `app/` | 画面（Tauri 2 + TypeScript）。`app/src-tauri` が Rust 側 |
 | `skills/name-studio` | AI（Claude Code / Codex）用のスキル。`SKILL.md` と、.namestudio を読み書きする `scripts/namestudio.mjs`（`app/src/skill/cli.ts` と画面の計算の層 `assist.ts` などから `npm run build:skill` で作る。生成物だがスキルとして配るのでコミットし、CI が最新か確かめる）。アプリにも同じものを `include_str!` で入れている |
-| `tools/compare_with_python.py` | Python 版（csp-name-splitter の `name_splitter/csp`）と出力を突き合わせる |
+| `tools/compare_with_python.py` | もとになった Python 版（csp-name-splitter の `name_splitter/csp`）と `inspect`・分割の結果を突き合わせる |
 
-Rust 版は Python 版の移植で、Python 版を正解として同じ結果になることを確かめながら進めます。
+Rust 版は Python 版の移植から始まりました。今の正解は csp-format の仕様と CSP 自身で、Python 版は参照用です。
+CI の突き合わせは、決めたコミットの Python 版（`.github/workflows/ci.yml` の `REFERENCE_REF`）とだけ行います
+（読み方が食い違ったら、どちらが正しいかを csp-format の仕様と CSP で確かめてから、合わせるほうを決めます）。
 
 ## ビルドと起動
 
@@ -37,7 +40,7 @@ cargo build --release -p name-cli
 ./target/release/name-studio-cli cells ネーム.clip
 ```
 
-`inspect` の出力は Python 版の `csp-name-splitter inspect` と同じ JSON です。
+`inspect` の出力は Python 版の `csp-name-splitter inspect` と同じ形の JSON です（突き合わせのため）。
 
 ## 画面を操作せずに書き出す
 
