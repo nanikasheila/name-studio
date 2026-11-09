@@ -33,6 +33,8 @@ export interface AssistSettings {
   /** How hard they think (empty: the model's own default), one the model offers. */
   claudeEffort: string;
   codexEffort: string;
+  /** Codex's sandbox on Windows: "" for mxc, "config" for its own config.toml, or a mode by name. */
+  codexSandbox: string;
   /** A local LLM's OpenAI-compatible API (Ollama, LM Studio, llama.cpp…). */
   endpoint: string;
   localModel: string;
@@ -48,6 +50,7 @@ export const DEFAULT_ASSIST: AssistSettings = {
   codexModel: "",
   claudeEffort: "",
   codexEffort: "",
+  codexSandbox: "",
   endpoint: "http://localhost:11434/v1",
   localModel: "",
   pictures: true,
@@ -59,7 +62,7 @@ export function readAssistSettings(kept: unknown): AssistSettings {
   if (typeof kept !== "object" || kept === null) return out;
   const from = kept as Record<string, unknown>;
   if (from.kind === "claude" || from.kind === "codex" || from.kind === "local") out.kind = from.kind;
-  for (const key of ["claudePath", "codexPath", "claudeModel", "codexModel", "claudeEffort", "codexEffort", "endpoint", "localModel"] as const) {
+  for (const key of ["claudePath", "codexPath", "claudeModel", "codexModel", "claudeEffort", "codexEffort", "codexSandbox", "endpoint", "localModel"] as const) {
     if (typeof from[key] === "string") out[key] = from[key];
   }
   if (typeof from.pictures === "boolean") out.pictures = from.pictures;
@@ -141,16 +144,21 @@ ${proposing()}
 ${nameBrief(project, { current })}`;
 }
 
-/** The first question as it is sent to Claude Code or Codex: where to start reading, and the pages the user is on. */
-export function firstPrompt(question: string, current: number[]): string {
+/** The name's brief, in the message itself: the AI has it even when it cannot read files (a sandbox that turns every command away). */
+function withBrief(note: string, brief: string, question: string): string {
+  return `（${note}）\n\n<ネームの要約>\n${brief.trim()}\n</ネームの要約>\n\n作者の相談:\n${question}`;
+}
+
+/** The first question as it is sent to Claude Code or Codex: the name in brief, and the pages the user is on. */
+export function firstPrompt(question: string, current: number[], brief: string): string {
   const pages = current.length ? `作者はいま p${current.join("・p")} を開いています。` : "";
-  return `（${BRIEF_FILE} を読んでから答えてください。${pages}）\n\n${question}`;
+  return withBrief(`ネームの要約を付けます。同じものが ${BRIEF_FILE} に、写しとページの絵もフォルダーにあります。${pages}`, brief, question);
 }
 
 /** A later question, when the name was changed since the last one. */
-export function changedPrompt(question: string, current: number[]): string {
+export function changedPrompt(question: string, current: number[], brief: string): string {
   const pages = current.length ? `いまは p${current.join("・p")} を開いています。` : "";
-  return `（ネームが変わったので、${BRIEF_FILE} とページの絵を新しくしました。読み直してから答えてください。${pages}）\n\n${question}`;
+  return withBrief(`ネームが変わったので、新しい要約を付けます（${BRIEF_FILE} とページの絵も新しくしました）。${pages}`, brief, question);
 }
 
 /** Ready-made questions for when the user does not know what to ask. */

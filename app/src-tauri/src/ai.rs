@@ -365,6 +365,10 @@ pub struct AiTurn {
     /// The program, when the settings name one.
     #[serde(default)]
     pub program: Option<String>,
+    /// Codex's Windows sandbox (`windows.sandbox`): none for "mxc", "config"
+    /// for what ~/.codex/config.toml says, or a mode by name.
+    #[serde(default)]
+    pub sandbox: Option<String>,
     /// Pictures (in the folder) to show Codex with the prompt.
     #[serde(default)]
     pub images: Vec<String>,
@@ -428,6 +432,22 @@ fn effort_of(turn: &AiTurn) -> Option<&str> {
 
 /// The arguments for a turn with Codex (exec mode, read-only, events as JSON lines).
 pub fn codex_args(turn: &AiTurn) -> Vec<String> {
+    codex_args_on(turn, cfg!(windows))
+}
+
+/// Which Windows sandbox Codex runs its commands in. "mxc" unless the settings
+/// say otherwise: the "elevated" one fails to set itself up while the Codex
+/// app runs (it cannot change the rights of a file that app holds open), and
+/// then every command, even reading a file, is turned away.
+fn windows_sandbox(turn: &AiTurn) -> Option<&str> {
+    match turn.sandbox.as_deref().map(str::trim) {
+        None | Some("") => Some("mxc"),
+        Some("config") => None,
+        Some(mode) => Some(mode).filter(|mode| mode.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')),
+    }
+}
+
+fn codex_args_on(turn: &AiTurn, windows: bool) -> Vec<String> {
     let mut args: Vec<String> = vec!["exec".to_owned()];
     if let Some(id) = turn.resume.as_deref().filter(|id| !id.is_empty()) {
         args.push("resume".to_owned());
@@ -444,6 +464,10 @@ pub fn codex_args(turn: &AiTurn) -> Vec<String> {
         args.push("-c".to_owned());
         args.push(format!("model_reasoning_effort=\"{effort}\""));
     }
+    if let Some(mode) = windows_sandbox(turn).filter(|_| windows) {
+        args.push("-c".to_owned());
+        args.push(format!("windows.sandbox=\"{mode}\""));
+    }
     args.push("--json".to_owned());
     args.push("--skip-git-repo-check".to_owned());
     if let Some(model) = turn.model.as_deref().filter(|model| !model.is_empty()) {
@@ -454,6 +478,9 @@ pub fn codex_args(turn: &AiTurn) -> Vec<String> {
         args.push("--image".to_owned());
         args.push(Path::new(&turn.dir).join(image).display().to_string());
     }
+    // `--image` takes any number of files: without `--` the prompt's `-`
+    // would be one more picture (and the prompt never read from stdin).
+    args.push("--".to_owned());
     args.push("-".to_owned());
     args
 }
@@ -546,6 +573,13 @@ pub fn codex_events(run: u64, line: &str) -> Vec<AiEvent> {
         Some("item.completed") if item["type"] == "agent_message" => {
             vec![AiEvent::new(run, "text", item["text"].as_str().unwrap_or_default())]
         }
+        Some("item.completed") if item["type"] == "command_execution" && sandbox_failed(&item.to_string()) => {
+            vec![AiEvent::new(
+                run,
+                "tool",
+                "Codex のサンドボックスがコマンドを動かせません（setup refresh had errors など）。ネームの要約は相談に付けてあるので話は続けられます。ファイルも読ませたいときは、「接続…」の「サンドボックス（Windows）」を変えてみてください。",
+            )]
+        }
         Some("item.started") if item["type"] == "command_execution" => {
             vec![AiEvent::new(
                 run,
@@ -569,6 +603,17 @@ pub fn codex_events(run: u64, line: &str) -> Vec<AiEvent> {
         )],
         _ => Vec::new(),
     }
+}
+
+/// Whether Codex said its sandbox turned a command away before it ran.
+fn sandbox_failed(text: &str) -> bool {
+    [
+        "setup refresh had errors",
+        "Failed to create unified exec process",
+        "CreateProcessAsUserW failed",
+    ]
+    .iter()
+    .any(|needle| text.contains(needle))
 }
 
 /// Run Claude Code or Codex for one turn, saying what it says through `emit`.
@@ -1121,6 +1166,7 @@ mod tests {
             model: None,
             effort: None,
             program: None,
+            sandbox: None,
             images: vec!["pages/p001.png".to_owned()],
             endpoint: None,
             messages: Vec::new(),
@@ -1214,6 +1260,37 @@ mod tests {
     }
 
     #[test]
+    fn codex_on_windows_runs_in_the_mxc_sandbox_unless_told_otherwise() {
+        let mut codex = turn(AiKind::Codex);
+        let on = |codex: &AiTurn| codex_args_on(codex, true);
+        assert!(
+            on(&codex)
+                .windows(2)
+                .any(|pair| pair == ["-c", "windows.sandbox=\"mxc\""])
+        );
+        assert!(
+            !codex_args_on(&codex, false)
+                .iter()
+                .any(|arg| arg.contains("windows.sandbox"))
+        );
+        codex.resume = Some("019c".to_owned());
+        assert!(on(&codex).iter().any(|arg| arg == "windows.sandbox=\"mxc\""));
+        codex.sandbox = Some("config".to_owned());
+        assert!(!on(&codex).iter().any(|arg| arg.contains("windows.sandbox")));
+        codex.sandbox = Some("elevated".to_owned());
+        assert!(on(&codex).iter().any(|arg| arg == "windows.sandbox=\"elevated\""));
+        codex.sandbox = Some("x\" sandbox_mode=\"danger".to_owned());
+        assert!(!on(&codex).iter().any(|arg| arg.contains("danger")));
+        // A command the sandbox turned away says what to do.
+        let line = r#"{"type":"item.completed","item":{"type":"command_execution","command":"pwsh","aggregated_output":"exec_command failed: CreateProcess { message: \"Rejected(\\\"Failed to create unified exec process: helper_unknown_error: setup refresh had errors\\\")\" }","status":"failed"}}"#;
+        let events = codex_events(1, line);
+        assert_eq!(events.len(), 1);
+        assert!(events[0].text.contains("サンドボックス（Windows）"));
+        let fine = r#"{"type":"item.completed","item":{"type":"command_execution","command":"pwsh","aggregated_output":"ok","status":"completed"}}"#;
+        assert!(codex_events(1, fine).is_empty());
+    }
+
+    #[test]
     fn codex_runs_read_only_and_goes_on_with_its_thread() {
         let mut first = turn(AiKind::Codex);
         let args = codex_args(&first);
@@ -1223,7 +1300,7 @@ mod tests {
             args.windows(2)
                 .any(|pair| pair[0] == "--image" && pair[1].ends_with("p001.png"))
         );
-        assert_eq!(args.last().unwrap(), "-");
+        assert_eq!(&args[args.len() - 2..], ["--", "-"]);
         first.resume = Some("019c".to_owned());
         let args = codex_args(&first);
         assert_eq!(&args[..5], ["exec", "resume", "019c", "-c", "sandbox_mode=read-only"]);
@@ -1447,6 +1524,7 @@ mod tests {
                 model: model.clone(),
                 effort: effort.clone(),
                 program: None,
+                sandbox: None,
                 images: Vec::new(),
                 endpoint: None,
                 messages: Vec::new(),

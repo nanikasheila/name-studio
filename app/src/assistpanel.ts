@@ -31,6 +31,9 @@ import { pagePictures } from "./flatpage";
 import type { Project, RoughImage } from "./model";
 import { readJson, writeText } from "./settings";
 
+/** Codex's sandbox can be chosen only where it has more than one (Windows). */
+const WINDOWS = typeof navigator !== "undefined" && navigator.userAgent.includes("Windows");
+
 export interface AssistHost {
   project(): Project | null;
   /** The open name's file (null: not saved yet). */
@@ -349,6 +352,20 @@ export class AssistPanel {
       });
       rows.push(field("場所", pathKey, "空なら自動で探す", browse));
       rows.push(...this.modelRows(kind));
+      if (kind === "codex" && WINDOWS) {
+        const sandbox = element("select", { "aria-label": "サンドボックス（Windows）", "data-part": "sandbox" });
+        for (const [value, label] of [
+          ["", "mxc（おすすめ）"],
+          ["config", "Codex の設定（config.toml）のまま"],
+          ["elevated", "elevated"],
+          ["unelevated", "unelevated"],
+        ])
+          sandbox.append(element("option", { value }, label));
+        sandbox.value = this.settings.codexSandbox;
+        sandbox.title = "Codex がコマンドを動かす囲い。elevated は Codex アプリを開いていると準備に失敗し、ファイルを読めないことがあります";
+        sandbox.addEventListener("change", () => this.save({ codexSandbox: sandbox.value }));
+        rows.push(element("label", { class: "assist-field" }, element("span", {}, "サンドボックス（Windows）"), sandbox));
+      }
       rows.push(
         element(
           "p",
@@ -498,9 +515,9 @@ export class AssistPanel {
   }
 
   /** The files of the conversation's folder for the name as it is now. */
-  private async files(project: Project, pictures: number[]): Promise<SessionFile[]> {
+  private async files(project: Project, brief: string, pictures: number[]): Promise<SessionFile[]> {
     const files: SessionFile[] = [
-      { path: BRIEF_FILE, text: nameBrief(project, { current: this.host.currentPages() }) },
+      { path: BRIEF_FILE, text: brief },
       { path: COPY_FILE, text: JSON.stringify(project) },
     ];
     const instructions = agentInstructions(pictures.length > 0);
@@ -540,8 +557,9 @@ export class AssistPanel {
     this.renderState();
     try {
       const pictures = this.settings.pictures ? (kind === "local" ? current : project.pages.map((_, i) => i + 1)) : [];
+      const brief = first || changed ? nameBrief(project, { current }) : "";
       if (first || changed) {
-        talk.dir = await call("ai_prepare_session", { dir: talk.dir, files: await this.files(project, pictures) });
+        talk.dir = await call("ai_prepare_session", { dir: talk.dir, files: await this.files(project, brief, pictures) });
         talk.seen = now;
       }
       const turnPictures = this.settings.pictures && (first || changed) ? current.filter((n) => n <= project.pages.length).map(pictureFile) : [];
@@ -553,7 +571,7 @@ export class AssistPanel {
               { role: "user", content: question, images: turnPictures },
             ]
           : [];
-      const prompt = first ? firstPrompt(question, current) : changed ? changedPrompt(question, current) : question;
+      const prompt = first ? firstPrompt(question, current, brief) : changed ? changedPrompt(question, current, brief) : question;
       const run = await call("ai_turn", {
         turn: {
           kind,
@@ -562,6 +580,7 @@ export class AssistPanel {
           resume: talk.conversation.session,
           model: this.chosenModel(kind) || null,
           effort: this.chosenEffort(kind) || null,
+          sandbox: kind === "codex" ? this.settings.codexSandbox || null : null,
           program: (kind === "claude" ? this.settings.claudePath : kind === "codex" ? this.settings.codexPath : "") || null,
           images: kind === "codex" ? turnPictures : [],
           endpoint: kind === "local" ? this.settings.endpoint : null,
