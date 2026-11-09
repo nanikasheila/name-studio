@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use rusqlite::{Connection, params};
+use csp_format::rusqlite::{Connection, params};
 
 use crate::text::build_tlv;
 

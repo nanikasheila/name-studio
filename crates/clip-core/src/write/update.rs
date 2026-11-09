@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use csp_format::ClipFile;
-use rusqlite::types::Value;
+use csp_format::rusqlite::types::Value;
 use serde::Serialize;
 
 use super::layers::{csp_image, place_above, raster_like, save};
@@ -138,11 +138,8 @@ fn named_layer<'a>(document: &'a ClipDocument, name: &str) -> Option<&'a ClipLay
 
 /// Hide a layer and mark it as the old one.
 fn retire(file: &mut ClipFile, id: i64, name: &str) -> Result<()> {
-    file.database().execute(
-        "UPDATE Layer SET LayerVisibility = LayerVisibility & ~1, LayerName = ?1 WHERE MainId = ?2",
-        (format!("{RETIRED_PREFIX}{name}"), id),
-    )?;
-    file.reload()?;
+    file.set_layer_visible(id, false)?;
+    file.set_layer_name(id, &format!("{RETIRED_PREFIX}{name}"))?;
     Ok(())
 }
 

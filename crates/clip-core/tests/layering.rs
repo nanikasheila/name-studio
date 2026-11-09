@@ -80,3 +80,40 @@ fn csp_files_know_nothing_of_the_app() {
         );
     }
 }
+
+/// CSP's files are SQLite inside, and what their tables and columns mean is
+/// csp-format's to know: this crate reads and changes them through its
+/// functions, not with SQL of its own. (The builders of synthetic test files
+/// in fixtures.rs and the tests' own modules write the tables they need.)
+#[test]
+fn csp_files_are_changed_only_through_csp_format() {
+    for manifest in [
+        manifest("clip-core"),
+        manifest("name-cli"),
+        manifest("../app/src-tauri"),
+    ] {
+        assert!(
+            !dependencies(&manifest).iter().any(|dep| dep == "rusqlite"),
+            "SQLite comes through csp_format::rusqlite, so there is one copy of it"
+        );
+    }
+    let mut files = Vec::new();
+    for dir in ["../clip-core/src", "../name-cli/src", "../../app/src-tauri/src"] {
+        sources(&Path::new(env!("CARGO_MANIFEST_DIR")).join(dir), &mut files);
+    }
+    for (path, text) in files {
+        if path.ends_with("fixtures.rs") {
+            continue;
+        }
+        let code = text.split("#[cfg(test)]").next().unwrap_or_default();
+        for call in [
+            ".execute(",
+            ".execute_batch(",
+            ".query_row(",
+            ".prepare(",
+            ".query_map(",
+        ] {
+            assert!(!code.contains(call), "{path} has SQL of its own ({call})");
+        }
+    }
+}

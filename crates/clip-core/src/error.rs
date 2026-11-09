@@ -10,7 +10,7 @@ pub enum CspError {
     /// Reading the file from disk failed.
     Io(std::io::Error),
     /// The embedded SQLite database could not be read.
-    Sqlite(rusqlite::Error),
+    Sqlite(csp_format::rusqlite::Error),
 }
 
 pub type Result<T> = std::result::Result<T, CspError>;
@@ -45,8 +45,8 @@ impl From<csp_format::Error> for CspError {
     }
 }
 
-impl From<rusqlite::Error> for CspError {
-    fn from(error: rusqlite::Error) -> Self {
+impl From<csp_format::rusqlite::Error> for CspError {
+    fn from(error: csp_format::rusqlite::Error) -> Self {
         CspError::Sqlite(error)
     }
 }

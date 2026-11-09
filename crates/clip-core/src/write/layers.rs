@@ -7,19 +7,15 @@ use std::path::Path;
 use csp_format::copy::{CopyLayer, DROPPED_LAYER_LINKS, RowCopier, column_infos, external_columns};
 use csp_format::database::Row;
 use csp_format::edit::NewLayer;
+use csp_format::model::{LAYER_MASK_ENABLED, LAYER_TYPE_MASKED};
 use csp_format::offscreen::{Attribute, Parameter, PixelKind, encode};
+use csp_format::rusqlite::types::Value;
 use csp_format::{ClipFile, GrayImage};
-use rusqlite::types::Value;
 
 use crate::RgbaImage;
 use crate::error::{CspError, Result};
 use crate::raster::{Filter, resize};
 
-/// `LayerType` bit of a layer with a layer mask (CSP: 2 on a folder or
-/// vector layer, 3 on a raster layer).
-const LAYER_TYPE_MASKED: i64 = 2;
-/// `LayerVisibility` bit: the layer mask is in use (bit 0 shows the layer).
-const VISIBILITY_MASK_ON: i64 = 2;
 /// Values after the size and block grid in a layer mask's `Parameter`
 /// section (one 8-bit plane), as CSP writes them.
 const MASK_PARAMETERS: [u32; 12] = [1, 1, 0, 1, 0, 0, 0, 1, 256, 0, 256, 256];
@@ -50,7 +46,7 @@ const OWN_COLUMNS: [&str; 10] = [
 ];
 
 /// The column names of `table`.
-pub(crate) fn column_names(db: &rusqlite::Connection, table: &str) -> Result<Vec<String>> {
+pub(crate) fn column_names(db: &csp_format::rusqlite::Connection, table: &str) -> Result<Vec<String>> {
     Ok(csp_format::database::columns(db, table)?
         .into_iter()
         .map(|(name, _)| name)
@@ -135,7 +131,7 @@ pub(crate) fn raster_like(
         }
         let value = match column {
             // Without a mask, the mask's bit goes.
-            "LayerVisibility" => Value::Integer(row.int(column) & !VISIBILITY_MASK_ON),
+            "LayerVisibility" => Value::Integer(row.int(column) & !LAYER_MASK_ENABLED),
             _ => value.clone(),
         };
         values.push((column.to_owned(), value));
@@ -225,24 +221,23 @@ pub(crate) fn set_layer_mask(file: &mut ClipFile, layer_id: i64, mask: &RgbaImag
         };
         let data = encode(&parameter, None, Some(&alpha))?;
         attribute.set_block_sizes(&data.record_sizes());
-        let external = csp_format::edit::new_external_id();
-        file.set_external(&external, data.to_bytes());
-        file.database().execute(
-            "UPDATE Offscreen SET Attribute = ?1, BlockData = ?2 WHERE MainId = ?3",
-            (
-                attribute.to_bytes(),
-                Value::Blob(external.into_bytes()),
-                level.offscreen,
-            ),
-        )?;
+        file.set_offscreen(level.offscreen, &attribute, Some(&data))?;
     }
-    let db = file.database();
-    db.execute(
-        "UPDATE Layer SET LayerType = LayerType | ?1, LayerVisibility = LayerVisibility | ?2, \
-         LayerLayerMaskMipmap = ?3, LayerLayerMaskThumbnail = ?4 WHERE MainId = ?5",
-        (LAYER_TYPE_MASKED, VISIBILITY_MASK_ON, mipmap, mask_thumbnail, layer_id),
+    file.set_layer_values(
+        layer_id,
+        [
+            (
+                "LayerType",
+                Value::Integer(layer.row.int("LayerType") | LAYER_TYPE_MASKED),
+            ),
+            (
+                "LayerVisibility",
+                Value::Integer(layer.row.int("LayerVisibility") | LAYER_MASK_ENABLED),
+            ),
+            ("LayerLayerMaskMipmap", Value::Integer(mipmap)),
+            ("LayerLayerMaskThumbnail", Value::Integer(mask_thumbnail)),
+        ],
     )?;
-    file.reload()?;
     Ok(())
 }
 

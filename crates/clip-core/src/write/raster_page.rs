@@ -16,8 +16,9 @@ use std::path::{Path, PathBuf};
 use csp_format::ClipFile;
 use csp_format::database::{Row, select};
 use csp_format::edit::NewLayer;
+use csp_format::rusqlite::types::Value;
+use csp_format::story::canvas_value;
 use csp_format::vector::VectorData;
-use rusqlite::types::Value;
 use serde::{Deserialize, Serialize};
 
 use super::Values;
@@ -795,13 +796,11 @@ impl Drop for RasterWorkWriter {
 
 /// Whether page index 0 is a left page, from a page's own index and side.
 fn first_page_left(template: &ClipDocument) -> Option<bool> {
-    let row = template
-        .database()
-        .query_row("SELECT ComicPageIndex, ComicIsLeftPage FROM Canvas", [], |row| {
-            Ok((row.get::<_, Option<i64>>(0)?, row.get::<_, Option<i64>>(1)?))
-        })
-        .ok()?;
-    let (Some(index), Some(left)) = row else { return None };
+    let int = |column: &str| match canvas_value(template.database(), column) {
+        Ok(Some(Value::Integer(number))) => Some(number),
+        _ => None,
+    };
+    let (index, left) = (int("ComicPageIndex")?, int("ComicIsLeftPage")?);
     Some((left != 0) == (index.rem_euclid(2) == 0))
 }
 

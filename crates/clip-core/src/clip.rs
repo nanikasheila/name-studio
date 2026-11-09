@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use rusqlite::Connection;
+use csp_format::rusqlite::Connection;
 
 use csp_format::ClipFile;
 use csp_format::offscreen::Offscreen;
@@ -523,7 +523,7 @@ fn classify(row: &Row, vector_ids: &HashSet<i64>) -> LayerKind {
         }
         _ if row
             .get("TextLayerString")
-            .is_some_and(|value| *value != rusqlite::types::Value::Null) =>
+            .is_some_and(|value| *value != csp_format::rusqlite::types::Value::Null) =>
         {
             LayerKind::Text
         }

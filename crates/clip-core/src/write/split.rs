@@ -8,7 +8,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use rusqlite::types::Value;
+use csp_format::rusqlite::types::Value;
 use serde::Serialize;
 
 use super::Values;
