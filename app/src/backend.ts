@@ -296,6 +296,8 @@ export interface AiTurn {
   model: string | null;
   /** One the model offers (empty or null: its default). */
   effort?: string | null;
+  /** Codex's Windows sandbox (null: mxc; "config": its config.toml). */
+  sandbox?: string | null;
   program: string | null;
   images: string[];
   endpoint: string | null;

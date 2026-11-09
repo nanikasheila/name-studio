@@ -96,7 +96,7 @@ try {
   check(["pages/p001.png", "pages/p004.png"].every((path) => files[path]?.base64?.length > 100), "and every page as a picture");
   const [turn] = await page.evaluate(() => window.__turns);
   check(turn.kind === "claude" && turn.resume === null && turn.dir.endsWith("session-1"), "the turn goes to Claude Code in that folder");
-  check(turn.prompt.startsWith("（ネーム.md を読んでから答えてください。作者はいま p1") && turn.prompt.endsWith("1ページの間をどう取るか相談したい"), `the question says where to start (${turn.prompt.slice(0, 60)})`);
+  check(turn.prompt.startsWith("（ネームの要約を付けます。") && turn.prompt.includes("作者はいま p1") && /<ネームの要約>\n[\s\S]*\[line\d+\][\s\S]*<\/ネームの要約>/.test(turn.prompt) && turn.prompt.endsWith("作者の相談:\n1ページの間をどう取るか相談したい"), `the question carries the name's brief and the pages open (${turn.prompt.slice(0, 60)})`);
   check(await page.locator(".assist-actions button.primary").isDisabled(), "no second question while one is answered");
 
   await page.evaluate(() => {

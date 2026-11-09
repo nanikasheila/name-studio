@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type AiModel, choiceProblem, modelFor, readAssistSettings } from "./assistchat";
+import { type AiModel, changedPrompt, choiceProblem, firstPrompt, modelFor, readAssistSettings } from "./assistchat";
 
 const model = (value: string, efforts: string[], isDefault = false): AiModel => ({ value, label: value || "Default", description: "", efforts, defaultEffort: null, isDefault });
 const claude = [model("", ["low", "high", "max"], true), model("opus", ["low", "medium", "high", "xhigh", "max"]), model("legacy", [])];
@@ -27,5 +27,22 @@ describe("choosing a model and its effort from the tool's own list", () => {
     const kept = readAssistSettings({ claudeEffort: "high", codexEffort: 3 });
     expect(kept.claudeEffort).toBe("high");
     expect(kept.codexEffort).toBe("");
+  });
+});
+
+describe("the question as Claude Code and Codex get it", () => {
+  it("carries the name's brief, so they have it even when they cannot read files", () => {
+    const first = firstPrompt("ここで詰まった", [3], "# ネーム\n[line9] 星");
+    expect(first).toContain("<ネームの要約>\n# ネーム\n[line9] 星\n</ネームの要約>");
+    expect(first).toContain("p3");
+    expect(first.endsWith("作者の相談:\nここで詰まった")).toBe(true);
+    const changed = changedPrompt("次は？", [], "# 新しいネーム");
+    expect(changed).toContain("新しい要約");
+    expect(changed).toContain("# 新しいネーム");
+  });
+
+  it("keeps the chosen Codex sandbox", () => {
+    expect(readAssistSettings({ codexSandbox: "config" }).codexSandbox).toBe("config");
+    expect(readAssistSettings({}).codexSandbox).toBe("");
   });
 });
