@@ -16,7 +16,8 @@ const workflows = readdirSync(join(root, "workflows"))
   .filter((name) => name.endsWith(".yml"))
   .map((name) => join("workflows", name));
 const actions = readdirSync(join(root, "actions")).map((name) => join("actions", name, "action.yml"));
-const read = (file) => readFileSync(join(root, file), "utf8");
+// Line ends as on Linux, whatever the checkout made of them (CRLF on Windows).
+const read = (file) => readFileSync(join(root, file), "utf8").replace(/\r\n/g, "\n");
 
 test("every Action is named by its commit, with its version beside it", () => {
   const loose = [];
