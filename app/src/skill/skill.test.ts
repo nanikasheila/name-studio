@@ -11,6 +11,6 @@ describe("SKILL.md", () => {
   });
 
   it("starts with the name and the description the AI tools read", () => {
-    expect(SKILL).toMatch(/^---\nname: name-studio\ndescription: .+\n---\n/);
+    expect(SKILL.replace(/\r\n/g, "\n")).toMatch(/^---\nname: name-studio\ndescription: .+\n---\n/);
   });
 });

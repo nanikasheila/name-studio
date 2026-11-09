@@ -2,3 +2,6 @@
 crates/name-model/tests/fixtures/*.json text eol=lf
 # Names saved by earlier versions: compared with the current sample byte for byte.
 crates/name-model/tests/fixtures/past/* text eol=lf
+# The AI skill: copied as is into Claude Code / Codex (and into the app with include_str!),
+# so the same bytes on every OS (SKILL.md's frontmatter, the script's #! line).
+skills/** text eol=lf
