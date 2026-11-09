@@ -6,14 +6,16 @@
 // each panel as a folder with a layer mask (--panel-masks), with two
 // ラフ線のレイヤー, with 指示 (and --no-marks, then added by セリフだけ反映), a name saved by
 // a newer version (its report says what this one leaves out), and a 縦スクロール
-// whose pieces are joined into one tall page. Needs the
+// whose pieces are joined into one tall page. The exports run side by side
+// (one after another on Windows), each the app started on its own. Needs the
 // release build and a template page:
 //   npx tauri build --no-bundle
 //   cargo run -p clip-core --features fixtures --example fixture_page -- <dir>/page.clip
 //   node e2e/realapp.mjs <dir>
 // (on Linux under xvfb-run).
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { availableParallelism } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
@@ -85,69 +87,144 @@ const check = (ok, what) => {
   if (!ok) failures.push(what);
 };
 
-/** Export with `args`; the report, after checking the app and its pages. */
-function exportWith(label, args, { file = name, pages = 3 } = {}) {
+// Each export is the app started on its own. They run side by side, as many
+// at once as the machine has cores (on Windows one after another: the app
+// keeps its built-in template in the one local data folder Windows gives it,
+// which no environment variable moves). On Linux each gets its own data
+// folders, so two never write the same built-in template at once.
+const parallel = process.platform === "win32" ? 1 : Math.max(1, availableParallelism());
+let running = 0;
+const waiting = [];
+async function slot(work) {
+  while (running >= parallel) await new Promise((resolve) => waiting.push(resolve));
+  running++;
+  try {
+    return await work();
+  } finally {
+    running--;
+    waiting.shift()?.();
+  }
+}
+
+/** Run the app with `args`: its exit code, stderr and how long it took. */
+function runApp(label, args) {
+  return slot(
+    () =>
+      new Promise((resolve) => {
+        const home = join(dir, ".data", label);
+        const env =
+          process.platform === "linux"
+            ? { ...process.env, XDG_DATA_HOME: join(home, "data"), XDG_CONFIG_HOME: join(home, "config"), XDG_CACHE_HOME: join(home, "cache") }
+            : process.env;
+        const started = Date.now();
+        const child = spawn(app, args, { env, stdio: ["ignore", "ignore", "pipe"] });
+        let stderr = "";
+        child.stderr.setEncoding("utf8");
+        child.stderr.on("data", (text) => {
+          stderr += text;
+        });
+        const timer = setTimeout(() => child.kill(), 180000);
+        const done = (status, error) => {
+          clearTimeout(timer);
+          console.log(`     ${label}: ${((Date.now() - started) / 1000).toFixed(1)} s`);
+          resolve({ status, error, stderr });
+        };
+        child.on("error", (error) => done(null, error));
+        child.on("close", (status) => done(status));
+      }),
+  );
+}
+
+const readReport = (out) => {
+  const reportPath = join(out, "name-studio-export.json");
+  return existsSync(reportPath) ? JSON.parse(readFileSync(reportPath, "utf8").replace(/^\uFEFF/, "")) : null;
+};
+
+/** Export with `args` into a folder of its own: the run and its report. */
+async function exportTo(label, args, file = name) {
   const out = join(dir, label);
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out);
-  const run = spawnSync(app, ["--export-csp", file, ...args, "--out", out], { timeout: 180000, encoding: "utf8" });
-  const reportPath = join(out, "name-studio-export.json");
-  const report = existsSync(reportPath) ? JSON.parse(readFileSync(reportPath, "utf8").replace(/^\uFEFF/, "")) : null;
+  const run = await runApp(label, ["--export-csp", file, ...args, "--out", out]);
+  return { run, report: readReport(out) };
+}
+
+/** Check the app and the pages of an export; its report. */
+function checked(label, { run, report }, pages = 3) {
   check(run.status === 0, `${label}: the app exits cleanly (${run.status ?? run.error?.message})`);
   check(report?.ok === true, `${label}: the export reports success (${report?.error ?? report?.summary?.join(" / ") ?? "no report"})`);
   check(report?.pages?.length === pages && report.pages.every((path) => existsSync(path)), `${label}: it wrote ${pages} page(s)`);
   check(report?.checks?.every((c) => c.problems.length === 0) ?? false, `${label}: each page reads back as sent`);
-  if (failures.length) console.error(run.stderr);
+  if (failures.length && run.stderr) console.error(run.stderr);
   return report;
 }
 
-exportWith("out", ["--template", join(dir, "page.clip")]);
-const builtin = exportWith("builtin", ["--builtin", "--work-name", "通しテスト", "--story-index", "1"]);
+const started = Date.now();
+// 指示 drawn after the export: セリフだけ反映 adds them to those pages as a layer,
+// and leaves them be the next time. Two runs on that folder, one after the other.
+async function unmarkedThenUpdated() {
+  const unmarked = await exportTo("unmarked", ["--builtin", "--no-marks"], markedName);
+  const updates = [];
+  for (const round of ["first", "again"]) {
+    const run = await runApp(`update-${round}`, ["--export-csp", markedName, "--builtin", "--update-dialogue", "--out", join(dir, "unmarked")]);
+    const record = join(dir, "unmarked", "name-studio-反映の記録.txt");
+    updates.push({ round, run, report: readReport(join(dir, "unmarked")), record: existsSync(record) ? readFileSync(record, "utf8").replace(/^\uFEFF/, "") : "" });
+  }
+  return { unmarked, updates };
+}
+const [out, builtinRun, masksRun, layeredRun, markedRun, unmarkedRuns, picturedRun, spoiltRun, newerRun, tallRun] = await Promise.all([
+  exportTo("out", ["--template", join(dir, "page.clip")]),
+  exportTo("builtin", ["--builtin", "--work-name", "通しテスト", "--story-index", "1"]),
+  exportTo("masks", ["--builtin", "--panel-masks"]),
+  exportTo("layered", ["--builtin"], layeredName),
+  exportTo("marked", ["--builtin"], markedName),
+  unmarkedThenUpdated(),
+  exportTo("pictured", ["--builtin"], picturedName),
+  exportTo("spoilt", ["--builtin"], spoiltName),
+  exportTo("newer", ["--builtin"], newerName),
+  exportTo("tall", ["--builtin", "--work-name", "縦スクロール"], scrollName),
+]);
+console.log(`     all exports: ${((Date.now() - started) / 1000).toFixed(1)} s, ${parallel} at once`);
+
+checked("out", out);
+const builtin = checked("builtin", builtinRun);
 check(!!builtin?.work && existsSync(builtin.work), "builtin: it wrote the work (.cmc)");
 check(builtin?.workCheck?.problems?.length === 0, "builtin: the work reads back as sent");
 check(builtin?.vectorLayers === true && builtin?.textLayers === true, "builtin: the panels and dialogue are editable layers");
 // Each panel as a folder with a layer mask: the pages read back with the folder, its mask and the rough in it.
-const masks = exportWith("masks", ["--builtin", "--panel-masks"]);
+const masks = checked("masks", masksRun);
 check((masks?.checks?.[0]?.layers ?? 0) > (builtin?.checks?.[0]?.layers ?? 0), "masks: the first page has the panel's folder and its layers");
-const layers = exportWith("layered", ["--builtin"], { file: layeredName });
+const layers = checked("layered", layeredRun);
 check((layers?.checks?.[0]?.layers ?? 0) === (builtin?.checks?.[0]?.layers ?? 0) + 1, "layered: the rough layer 人物 is a layer of its own");
-const withMarks = exportWith("marked", ["--builtin"], { file: markedName });
+const withMarks = checked("marked", markedRun);
 check((withMarks?.checks?.[0]?.layers ?? 0) === (builtin?.checks?.[0]?.layers ?? 0) + 1, "marked: the 指示 are a layer of their own");
-const noMarks = exportWith("unmarked", ["--builtin", "--no-marks"], { file: markedName });
+const noMarks = checked("unmarked", unmarkedRuns.unmarked);
 check((noMarks?.checks?.[0]?.layers ?? 0) === (builtin?.checks?.[0]?.layers ?? 0), "unmarked: --no-marks leaves them out");
-// 指示 drawn after the export: セリフだけ反映 adds them to those pages as a layer, and leaves them be the next time.
-for (const [round, want] of [["first", ["指示"]], ["again", []]]) {
-  const run = spawnSync(app, ["--export-csp", markedName, "--builtin", "--update-dialogue", "--out", join(dir, "unmarked")], {
-    timeout: 180000,
-    encoding: "utf8",
-  });
-  const reportPath = join(dir, "unmarked", "name-studio-export.json");
-  const report = existsSync(reportPath) ? JSON.parse(readFileSync(reportPath, "utf8").replace(/^\uFEFF/, "")) : null;
+for (const { round, run, report, record } of unmarkedRuns.updates) {
+  const want = round === "first" ? ["指示"] : [];
   check(run.status === 0 && report?.ok === true, `update (${round}): セリフだけ反映 succeeds (${report?.summary?.join(" / ") ?? run.stderr})`);
   const drawn = report?.pages?.[0]?.marks ?? [];
   check(JSON.stringify(drawn) === JSON.stringify(want), `update (${round}): the 指示 redrawn on the first page are ${JSON.stringify(want)} (${JSON.stringify(drawn)})`);
   // The record kept with the pages: one entry for the run that changed a page, none for the one that did not.
-  const recordPath = join(dir, "unmarked", "name-studio-反映の記録.txt");
-  const record = existsSync(recordPath) ? readFileSync(recordPath, "utf8").replace(/^\uFEFF/, "") : "";
   const entries = record.split(/\r\n/).filter((line) => line.startsWith("■ "));
   check(
     entries.length === 1 && entries[0].endsWith("「通しテスト」セリフだけ反映") && record.includes("・1 ページ: 指示を描き直した"),
     `update (${round}): the record in the export folder has the one run that changed a page (${entries.length} entries)`,
   );
 }
-const withPictures = exportWith("pictured", ["--builtin"], { file: picturedName });
+const withPictures = checked("pictured", picturedRun);
 check((withPictures?.checks?.[0]?.layers ?? 0) === (builtin?.checks?.[0]?.layers ?? 0) + 2, "pictured: the 資料 and the picture of the name are a layer each");
 // A picture that cannot be read: the pages go out without it, and the report says which, on which page.
-const withSpoilt = exportWith("spoilt", ["--builtin"], { file: spoiltName });
+const withSpoilt = checked("spoilt", spoiltRun);
 check(
   (withSpoilt?.summary ?? []).includes("注意: 読めない画像 1 枚は書き出していません: 1 ページ「資料」"),
   `spoilt: the report names the picture left out (${(withSpoilt?.summary ?? []).find((line) => line.includes("画像")) ?? "nothing"})`,
 );
 check(!(withPictures?.summary ?? []).some((line) => line.includes("読めない画像")), "pictured: pictures that read say nothing of the kind");
 // A name saved by a newer version: it still goes out, and the report says first what this one leaves out.
-const fromNewer = exportWith("newer", ["--builtin"], { file: newerName });
+const fromNewer = checked("newer", newerRun);
 check(/^注意: このネームには、この版が知らない項目があります.*pages\.strokes\.wobble/.test(fromNewer?.summary?.[0] ?? ""), `newer: the report says first what this version does not know (${fromNewer?.summary?.[0]})`);
 check(!(builtin?.summary ?? []).some((line) => line.includes("知らない項目")), "builtin: a name of this version says nothing of the kind");
-const tall = exportWith("tall", ["--builtin", "--work-name", "縦スクロール"], { file: scrollName, pages: 1 });
+const tall = checked("tall", tallRun, 1);
 check(tall?.textLayers === true && (tall?.checks?.[0]?.layers ?? 0) > 0, "tall: the joined page has its layers");
 if (failures.length) process.exit(1);

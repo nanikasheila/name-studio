@@ -1,10 +1,12 @@
 # リリースと自動更新
 
-main にマージして CI（`.github/workflows/ci.yml`）が通るたび、GitHub Actions の「Release Windows app」
-（`.github/workflows/build-app.yml`）が CI の確かめたそのコミットから Windows のインストーラーを作り、
-`v0.2.<実行番号>` の**試験版**（GitHub の pre-release）として公開します。CI が失敗したコミットは配られません。
+main にマージするたび、GitHub Actions の「Release Windows app」（`.github/workflows/build-app.yml`）が
+そのコミットから Windows のインストーラーを作り、`v0.2.<実行番号>` の**試験版**（GitHub の pre-release）として公開します。
+インストーラーのビルドと確認は CI（`.github/workflows/ci.yml`）と同時に走り、公開は同じコミットで CI が通ってからです。
+CI が失敗したコミットは配られません。マージから試験版まではおよそ CI の長さで済みます（前は CI のあとで一からビルドしていました）。
+続けてマージして、あとのマージの版が先に出たときは、前のマージの版は公開しません（試験版の更新先が古い版に戻らないように）。
 
-Actions の「Release Windows app」→ Run workflow で手で流すこともできます。main で流すと公開しますが、
+Actions の「Release Windows app」→ Run workflow で手で流すこともできます。main で流すと（その版の CI が通っていれば）公開しますが、
 ほかのブランチで流したときはインストーラーを作って確かめ、実行結果の Artifacts（`name-studio-windows-installer`）に
 置くだけで公開しません（レビュー前のビルドが自動更新で配られないように）。
 

@@ -7,7 +7,8 @@ import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 const number = (tag) => tag.slice(1).split(".").map(Number);
-const newer = (a, b) => {
+/** Whether tag `a` (v1.2.3) is a newer version than tag `b`. */
+export const newer = (a, b) => {
   const [x, y] = [number(a), number(b)];
   for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i];
   return false;

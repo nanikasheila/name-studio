@@ -1,0 +1,28 @@
+name: Chromium for Playwright
+description: Playwright's Chromium (kept between runs for the version in app/package-lock.json) and the system libraries it needs.
+runs:
+  using: composite
+  steps:
+    - name: Playwright's version
+      id: version
+      shell: bash
+      working-directory: app
+      run: echo "version=$(node -p 'require("playwright/package.json").version')" >> "$GITHUB_OUTPUT"
+
+    - uses: actions/cache@v6
+      id: cache
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ steps.version.outputs.version }}
+
+    - name: Chromium and its system libraries
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: app
+      run: npx playwright install --with-deps chromium
+
+    - name: Chromium's system libraries
+      if: steps.cache.outputs.cache-hit == 'true'
+      shell: bash
+      working-directory: app
+      run: npx playwright install-deps chromium
