@@ -511,7 +511,8 @@ export const AREA_TOPICS: Record<string, HelpTopic> = {
     steps: [
       { input: "Ctrl+Enter", does: "送る" },
       { input: "当てる", does: "変更の案をネームに当てる（Ctrl+Z で戻せる）" },
-      { input: "新しい相談", does: "今の話を終えて始め直す" },
+      { input: "履歴", does: "前の相談の一覧。開くと続きを話せる（相談は自動で残る）" },
+      { input: "新しい相談", does: "今の話を終えて始め直す（今の話は履歴に残る）" },
       { input: "接続…", does: "相手の場所・ローカル LLM の URL と鍵・スキルを入れる。モデルと effort は相手が返す一覧から選ぶ（「取り直す」で聞き直す）" },
     ],
   },

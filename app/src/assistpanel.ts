@@ -18,16 +18,23 @@ import {
   firstPrompt,
   localInstructions,
   modelFor,
+  newTalkId,
+  orderTalks,
   pictureFile,
   readAssistSettings,
+  readSavedTalk,
   replyParts,
   STARTERS,
+  talkTitle,
   type AiModel,
   type AssistSettings,
+  type SavedTalk,
+  type TalkSummary,
 } from "./assistchat";
 import { call, onAiEvent, type AiEvent, type AiKind, type AiTools, type ChatMessage, type SessionFile } from "./backend";
 import { plainButton } from "./dom";
 import { pagePictures } from "./flatpage";
+import { markdownView } from "./mdview";
 import type { Project, RoughImage } from "./model";
 import { readJson, writeText } from "./settings";
 
@@ -71,6 +78,9 @@ interface ModelList {
 }
 
 interface Talk {
+  /** Its id in the kept conversations (ai-history). */
+  id: string;
+  created: number;
   conversation: Conversation;
   /** The conversation's folder. */
   dir: string | null;
@@ -91,6 +101,8 @@ export class AssistPanel {
   /** 変更の案 applied, by where they are in the conversation. */
   private readonly applied = new Set<string>();
   private preparing = false;
+  /** The list of kept conversations shows other names' too. */
+  private allTalks = false;
   /** Each tool's own list of models, fetched when the settings are opened. */
   private readonly models: Partial<Record<AiKind, ModelList>> = {};
 
@@ -135,6 +147,12 @@ export class AssistPanel {
       if (!form.hidden) this.renderSettings();
     });
     gear.title = "相手の場所・モデル、ローカル LLM の URL と鍵、スキルを入れる";
+    const past = plainButton("履歴", () => {
+      const box = this.part("history");
+      box.hidden = !box.hidden;
+      if (!box.hidden) void this.renderHistory();
+    });
+    past.title = "前の相談の一覧。開くと続きを話せる";
     const fresh = plainButton("新しい相談", () => this.reset());
     fresh.title = "今の相談を終えて、新しく始める（相手は前の話を忘れます）";
     const input = element("textarea", { "data-part": "input", rows: "3", placeholder: "相談したいこと（Ctrl+Enter で送る）", "aria-label": "相談したいこと" });
@@ -169,9 +187,10 @@ export class AssistPanel {
       element(
         "div",
         { class: "assist-top" },
-        element("div", { class: "assist-head" }, kind, gear, fresh),
+        element("div", { class: "assist-head" }, kind, gear, past, fresh),
         element("p", { class: "hint assist-state", "data-part": "state" }),
         element("div", { class: "assist-settings", "data-part": "settings", hidden: "" }),
+        element("div", { class: "assist-history", "data-part": "history", hidden: "" }),
         element("div", { class: "assist-log", "data-part": "log", "aria-live": "polite" }),
         starters,
       ),
@@ -438,11 +457,18 @@ export class AssistPanel {
         return element(
           "div",
           { class: "assist-entry assistant" },
-          ...replyParts(entry.text).map((part, k) => (part.kind === "text" ? element("div", { class: "assist-text" }, part.text) : this.opsCard(part.json, `${index}:${k}`, settled))),
+          ...replyParts(entry.text).map((part, k) => (part.kind === "text" ? this.markdown(part.text) : this.opsCard(part.json, `${index}:${k}`, settled))),
         );
       }),
     );
     log.scrollTop = log.scrollHeight;
+  }
+
+  /** What the AI says, as the Markdown it writes it in. */
+  private markdown(text: string): HTMLElement {
+    const view = markdownView(text, (href) => void navigator.clipboard?.writeText(href).then(() => this.host.status(`リンクをコピーしました: ${href}`)));
+    view.classList.add("assist-text");
+    return view;
   }
 
   private opsCard(json: string, key: string, settled: boolean): HTMLElement {
@@ -483,8 +509,107 @@ export class AssistPanel {
     });
     const done = (result as ReturnType<typeof applyOps> | null)?.done.length ?? 0;
     this.applied.add(key);
+    if (this.talk) void this.keep(this.talk);
     this.host.status(`変更の案を当てました（${done} 件）。Ctrl+Z で元に戻せます`);
     this.renderLog();
+  }
+
+  /** Keep the conversation (with what was applied) to go on with later. */
+  private async keep(talk: Talk): Promise<void> {
+    const entries = talk.conversation.entries;
+    if (!entries.some((entry) => entry.role === "user")) return;
+    const saved: SavedTalk = {
+      id: talk.id,
+      kind: talk.conversation.kind,
+      name: talk.name,
+      title: talkTitle(entries),
+      created: talk.created,
+      updated: Date.now(),
+      session: talk.conversation.session,
+      dir: talk.dir,
+      entries,
+      applied: talk === this.talk ? [...this.applied] : [],
+    };
+    try {
+      await call("ai_history_save", { talk: saved });
+    } catch (error) {
+      this.host.status(`相談を残せません: ${error}`);
+    }
+    if (!this.part("history").hidden) void this.renderHistory();
+  }
+
+  /** The kept conversations: this name's (or all), to open one and go on. */
+  private async renderHistory(): Promise<void> {
+    const box = this.part("history");
+    let talks: TalkSummary[];
+    try {
+      talks = await call("ai_history_list");
+    } catch (error) {
+      box.replaceChildren(element("p", { class: "hint assist-warn" }, `前の相談を読めません: ${error}`));
+      return;
+    }
+    const name = this.host.path() ?? "";
+    const others = talks.filter((talk) => talk.name !== name).length;
+    const shown = orderTalks(this.allTalks ? talks : talks.filter((talk) => talk.name === name), name);
+    const all = element("input", { type: "checkbox" });
+    all.checked = this.allTalks;
+    all.addEventListener("change", () => {
+      this.allTalks = all.checked;
+      void this.renderHistory();
+    });
+    const rows = shown.map((talk) => {
+      const when = new Date(talk.updated).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      const where = talk.name === name ? "" : `・${talk.name ? (talk.name.split(/[\\/]/).pop() ?? talk.name) : "保存前のネーム"}`;
+      const now = this.talk?.id === talk.id;
+      const open = element("button", { type: "button", class: "assist-talk", title: `この相談を開いて続きを話す（${AI_LABELS[talk.kind]}）` }, element("span", { class: "assist-talk-title" }, talk.title), element("span", { class: "assist-talk-meta" }, `${AI_LABELS[talk.kind]}・${talk.count} 問・${when}${where}${now ? "・いまの相談" : ""}`));
+      open.addEventListener("click", () => void this.reopen(talk.id));
+      const remove = plainButton("消す", () => {
+        if (remove.dataset.sure !== "1") {
+          remove.dataset.sure = "1";
+          remove.textContent = "消す？";
+          return;
+        }
+        void call("ai_history_delete", { id: talk.id })
+          .then(() => this.renderHistory())
+          .catch((error) => this.host.status(`相談を消せません: ${error}`));
+      });
+      remove.title = "この相談を一覧から消す（もう一度押して確かめる）";
+      return element("li", { class: now ? "now" : "" }, open, remove);
+    });
+    box.replaceChildren(
+      element("div", { class: "assist-row" }, element("strong", {}, "前の相談"), element("label", { class: "check", title: "ほかのネームで話した相談も出す" }, all, ` ほかのネームも（${others}）`)),
+      rows.length ? element("ul", { class: "assist-talks" }, ...rows) : element("p", { class: "hint" }, this.allTalks ? "残っている相談はありません。" : "このネームの相談はまだありません。"),
+    );
+  }
+
+  /** Open a kept conversation and go on with it (with this name as it is now). */
+  private async reopen(id: string): Promise<void> {
+    if (this.talk?.conversation.running != null || this.preparing) {
+      this.host.status("答えが終わってから開いてください");
+      return;
+    }
+    let talk: SavedTalk | null;
+    try {
+      talk = readSavedTalk(await call("ai_history_load", { id }));
+    } catch (error) {
+      this.host.status(`相談を開けません: ${error}`);
+      return;
+    }
+    if (!talk) {
+      this.host.status("相談を読めません（壊れているかもしれません）");
+      return;
+    }
+    this.save({ kind: talk.kind });
+    this.part<HTMLSelectElement>("kind").value = talk.kind;
+    // Seen as never: the next question brings the name as it is now (and its folder up to date).
+    this.talk = { id: talk.id, created: talk.created, conversation: Conversation.restore(talk), dir: talk.dir, name: this.host.path() ?? "", seen: "" };
+    this.applied.clear();
+    for (const key of talk.applied) this.applied.add(key);
+    this.part("history").hidden = true;
+    this.renderSettings();
+    this.renderLog();
+    this.renderState();
+    this.host.status(`前の相談を開きました。続けて書くと${AI_LABELS[talk.kind]}はその話の続きとして答えます`);
   }
 
   private reset(): void {
@@ -509,6 +634,7 @@ export class AssistPanel {
       return;
     }
     if (!conversation.hear(event)) return;
+    if ((event.kind === "done" || event.kind === "error" || event.kind === "session") && this.talk) void this.keep(this.talk);
     if (event.kind === "error") this.host.status(`${AI_LABELS[conversation.kind]}: ${event.text.split("\n")[0]}`);
     this.renderLog();
     this.renderState();
@@ -545,7 +671,7 @@ export class AssistPanel {
     // By its file: a new title is the same name. One not saved yet goes on until another is saved or 新しい相談.
     const name = this.host.path() ?? "";
     if (!this.talk || this.talk.conversation.kind !== kind || this.talk.name !== name) {
-      this.talk = { conversation: new Conversation(kind), dir: null, name, seen: "" };
+      this.talk = { id: newTalkId(Date.now()), created: Date.now(), conversation: new Conversation(kind), dir: null, name, seen: "" };
       this.applied.clear();
     }
     const talk = this.talk;
@@ -559,7 +685,12 @@ export class AssistPanel {
       const pictures = this.settings.pictures ? (kind === "local" ? current : project.pages.map((_, i) => i + 1)) : [];
       const brief = first || changed ? nameBrief(project, { current }) : "";
       if (first || changed) {
-        talk.dir = await call("ai_prepare_session", { dir: talk.dir, files: await this.files(project, brief, pictures) });
+        const files = await this.files(project, brief, pictures);
+        // A kept conversation's folder that is not one of ours (another computer's): a new one.
+        talk.dir = await call("ai_prepare_session", { dir: talk.dir, files }).catch((error) => {
+          if (!talk.dir) throw error;
+          return call("ai_prepare_session", { dir: null, files });
+        });
         talk.seen = now;
       }
       const turnPictures = this.settings.pictures && (first || changed) ? current.filter((n) => n <= project.pages.length).map(pictureFile) : [];
@@ -588,11 +719,13 @@ export class AssistPanel {
         },
       });
       talk.conversation.ask(question, run);
+      void this.keep(talk);
       this.part<HTMLTextAreaElement>("input").value = "";
       this.host.status(`${AI_LABELS[kind]} に聞いています…`);
       for (const event of this.early.splice(0)) talk.conversation.hear(event);
     } catch (error) {
       talk.conversation.entries.push({ role: "user", text: question }, { role: "error", text: String(error) });
+      void this.keep(talk);
       this.host.status(`相談を始められません: ${error}`);
     } finally {
       this.preparing = false;

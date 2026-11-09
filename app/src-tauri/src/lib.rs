@@ -207,7 +207,11 @@ pub fn run() {
             ai::ai_save_key,
             ai::ai_has_key,
             ai::ai_local_models,
-            ai::ai_models
+            ai::ai_models,
+            ai::ai_history_save,
+            ai::ai_history_list,
+            ai::ai_history_load,
+            ai::ai_history_delete
         ])
         .run(tauri::generate_context!())
         .expect("error while running Name Studio");

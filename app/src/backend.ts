@@ -9,7 +9,7 @@ import type { CspSubTool } from "./brush";
 import type { ExportReport, ExportRequest, OverwriteCheck } from "./export";
 import type { BuiltTemplate, PageSetup } from "./csppage";
 import type { FontFace } from "./fonts";
-import type { AiEvent, AiKind, AiModel } from "./assistchat";
+import type { AiEvent, AiKind, AiModel, SavedTalk, TalkSummary } from "./assistchat";
 import type { CspToolData, Project, Series } from "./model";
 import type { SheetView } from "./types";
 
@@ -258,6 +258,11 @@ export interface Commands {
   ai_has_key: [void, boolean];
   ai_local_models: [{ endpoint: string }, string[]];
   ai_models: [{ kind: AiKind; program: string | null; endpoint: string | null }, AiModel[]];
+  /** Past conversations (app data ai-history/), to go on with one. */
+  ai_history_save: [{ talk: SavedTalk }, void];
+  ai_history_list: [void, TalkSummary[]];
+  ai_history_load: [{ id: string }, unknown];
+  ai_history_delete: [{ id: string }, void];
 }
 
 /** A program found on this computer (`ai_detect`). */
@@ -304,7 +309,7 @@ export interface AiTurn {
   messages: ChatMessage[];
 }
 
-export type { AiEvent, AiKind, AiModel };
+export type { AiEvent, AiKind, AiModel, SavedTalk, TalkSummary };
 
 /** Hear what AI turns say; returns how to stop hearing. */
 export function onAiEvent(heard: (event: AiEvent) => void): Promise<() => void> {
