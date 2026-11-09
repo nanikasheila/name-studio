@@ -11,15 +11,18 @@ import {
   AI_LABELS,
   BRIEF_FILE,
   changedPrompt,
+  choiceProblem,
   Conversation,
   COPY_FILE,
   DEFAULT_ASSIST,
   firstPrompt,
   localInstructions,
+  modelFor,
   pictureFile,
   readAssistSettings,
   replyParts,
   STARTERS,
+  type AiModel,
   type AssistSettings,
 } from "./assistchat";
 import { call, onAiEvent, type AiEvent, type AiKind, type AiTools, type ChatMessage, type SessionFile } from "./backend";
@@ -57,6 +60,13 @@ function fingerprint(text: string): string {
   return `${text.length}:${hash >>> 0}`;
 }
 
+/** The models a tool listed (or why it could not), for the program or address asked. */
+interface ModelList {
+  from: string;
+  list?: AiModel[];
+  error?: string;
+}
+
 interface Talk {
   conversation: Conversation;
   /** The conversation's folder. */
@@ -78,6 +88,8 @@ export class AssistPanel {
   /** 変更の案 applied, by where they are in the conversation. */
   private readonly applied = new Set<string>();
   private preparing = false;
+  /** Each tool's own list of models, fetched when the settings are opened. */
+  private readonly models: Partial<Record<AiKind, ModelList>> = {};
 
   constructor(private readonly host: AssistHost) {
     void onAiEvent((event) => this.hear(event)).catch(() => {});
@@ -178,6 +190,45 @@ export class AssistPanel {
     this.renderState();
   }
 
+  /** Where the list of `kind`'s models comes from (a different program or address means a different list). */
+  private modelSource(kind: AiKind): string {
+    return kind === "claude" ? this.settings.claudePath : kind === "codex" ? this.settings.codexPath : this.settings.endpoint;
+  }
+
+  private chosenModel(kind: AiKind): string {
+    return kind === "claude" ? this.settings.claudeModel : kind === "codex" ? this.settings.codexModel : this.settings.localModel;
+  }
+
+  private chosenEffort(kind: AiKind): string {
+    return kind === "claude" ? this.settings.claudeEffort : kind === "codex" ? this.settings.codexEffort : "";
+  }
+
+  /** The list for `kind`, if fetched from where it now comes from. */
+  private listed(kind: AiKind): ModelList | undefined {
+    const known = this.models[kind];
+    return known && known.from === this.modelSource(kind) ? known : undefined;
+  }
+
+  /** Ask the tool for its models (it lists them itself, so none is mistyped). */
+  private async loadModels(kind: AiKind, again = false): Promise<void> {
+    if (!again && this.listed(kind)) return;
+    const from = this.modelSource(kind);
+    this.models[kind] = { from };
+    this.renderSettings();
+    let fetched: ModelList;
+    try {
+      const list = await call("ai_models", { kind, program: kind === "local" ? null : from || null, endpoint: kind === "local" ? from : null });
+      fetched = { from, list };
+    } catch (error) {
+      fetched = { from, error: String(error) };
+    }
+    if (this.modelSource(kind) !== from) return;
+    this.models[kind] = fetched;
+    if (kind === "local" && fetched.list && !this.settings.localModel && fetched.list.length) this.save({ localModel: fetched.list[0].value });
+    this.renderSettings();
+    this.renderState();
+  }
+
   /** The line under the header: who will answer, and whether they are there. */
   private renderState(): void {
     if (!this.built) return;
@@ -186,8 +237,11 @@ export class AssistPanel {
     const running = this.talk?.conversation.running != null || this.preparing;
     this.part<HTMLButtonElement>("send").disabled = running;
     this.part<HTMLButtonElement>("stop").hidden = !running;
+    const listed = this.listed(kind)?.list;
+    const problem = listed ? choiceProblem(listed, this.chosenModel(kind), this.chosenEffort(kind)) : null;
     if (kind === "local") {
-      state.textContent = `${this.settings.endpoint || "（URL がありません）"}${this.settings.localModel ? ` の ${this.settings.localModel}` : ""} に聞きます。`;
+      state.textContent = problem ?? `${this.settings.endpoint || "（URL がありません）"}${this.settings.localModel ? ` の ${this.settings.localModel}` : ""} に聞きます。`;
+      state.dataset.tone = problem ? "warn" : "";
       return;
     }
     if (!this.tools) {
@@ -195,10 +249,76 @@ export class AssistPanel {
       return;
     }
     const found = this.tools[kind];
-    state.textContent = found
-      ? `${AI_LABELS[kind]}（${found.version}）に聞きます。${this.tools.node ? "" : "Node.js がないので、ネームの写しはスキルのコマンドで読めません（要約と絵は見られます）。"}`
-      : `${AI_LABELS[kind]} が見つかりません。入れてログインしてから、「接続…」で場所を指定してください。`;
-    state.dataset.tone = found ? "" : "warn";
+    const model = listed ? modelFor(listed, this.chosenModel(kind))?.label : this.chosenModel(kind);
+    const effort = this.chosenEffort(kind);
+    const which = [model, effort && `effort ${effort}`].filter(Boolean).join("・");
+    state.textContent = !found
+      ? `${AI_LABELS[kind]} が見つかりません。入れてログインしてから、「接続…」で場所を指定してください。`
+      : (problem ?? `${AI_LABELS[kind]}（${found.version}）${which ? `の ${which} ` : ""}に聞きます。${this.tools.node ? "" : "Node.js がないので、ネームの写しはスキルのコマンドで読めません（要約と絵は見られます）。"}`);
+    state.dataset.tone = found && !problem ? "" : "warn";
+  }
+
+  /** The model and its effort, chosen from what the tool itself lists. */
+  private modelRows(kind: AiKind): HTMLElement[] {
+    const known = this.listed(kind);
+    const chosen = this.chosenModel(kind);
+    const effortNow = this.chosenEffort(kind);
+    const modelKey = kind === "claude" ? "claudeModel" : kind === "codex" ? "codexModel" : "localModel";
+    const effortKey = kind === "claude" ? "claudeEffort" : "codexEffort";
+    const model = element("select", { "aria-label": "モデル", "data-part": "model" });
+    const effort = element("select", { "aria-label": "effort", "data-part": "effort" });
+    const again = plainButton(known?.list || known?.error ? "取り直す" : "一覧を取得", () => void this.loadModels(kind, true));
+    again.title = `${AI_LABELS[kind]} にモデルの一覧を聞き直す（新しいモデルが出たとき・ログインし直したとき）`;
+    const rows: HTMLElement[] = [];
+    const list = known?.list;
+    if (!known) {
+      model.append(element("option", { value: chosen }, chosen || "既定"));
+      model.disabled = true;
+      void this.loadModels(kind);
+    } else if (!list && !known.error) {
+      model.append(element("option", { value: chosen }, "一覧を取得しています…"));
+      model.disabled = true;
+    } else {
+      const models = list ?? [];
+      // Codex has no "default" entry of its own: offer one (its isDefault model).
+      const fallback = models.find((found) => found.isDefault);
+      if (kind !== "local" && !models.some((found) => found.value === "")) model.append(element("option", { value: "" }, `既定（${fallback?.label ?? `${AI_LABELS[kind]} が決める`}）`));
+      if (kind === "local" && !models.length) model.append(element("option", { value: "" }, "（モデルがありません）"));
+      for (const found of models) model.append(element("option", { value: found.value, title: found.description }, found.description ? `${found.label} — ${found.description}` : found.label));
+      if (!modelFor(models, chosen) && (chosen || kind === "local")) model.append(element("option", { value: chosen }, `${chosen || "（なし）"}（一覧にありません）`));
+      model.value = chosen;
+    }
+    model.addEventListener("change", () => {
+      const change: Partial<AssistSettings> = { [modelKey]: model.value };
+      // An effort the new model does not take goes back to its default.
+      // (Read it now: it may have changed since these rows were built.)
+      const effortThen = this.chosenEffort(kind);
+      const picked = list && modelFor(list, model.value);
+      if (kind !== "local" && effortThen && picked && !picked.efforts.includes(effortThen)) Object.assign(change, { [effortKey]: "" });
+      this.save(change);
+      this.renderSettings();
+      this.renderState();
+    });
+    rows.push(element("label", { class: "assist-field" }, element("span", {}, "モデル"), model, again));
+    if (kind !== "local") {
+      const efforts = list ? (modelFor(list, chosen)?.efforts ?? []) : effortNow ? [effortNow] : [];
+      const preset = list && modelFor(list, chosen)?.defaultEffort;
+      effort.append(element("option", { value: "" }, preset ? `既定（${preset}）` : "既定"));
+      for (const level of efforts) effort.append(element("option", { value: level }, level));
+      if (effortNow && !efforts.includes(effortNow)) effort.append(element("option", { value: effortNow }, `${effortNow}（このモデルでは選べません）`));
+      effort.value = effortNow;
+      effort.disabled = !list || (!efforts.length && !effortNow);
+      effort.title = "考える深さ。深いほど答えはよくなるが、時間と使用量が増える";
+      effort.addEventListener("change", () => {
+        this.save({ [effortKey]: effort.value } as Partial<AssistSettings>);
+        this.renderState();
+      });
+      rows.push(element("label", { class: "assist-field" }, element("span", {}, "effort"), effort));
+    }
+    if (known?.error) rows.push(element("p", { class: "hint assist-warn" }, `一覧を取れません: ${known.error}`));
+    const problem = list ? choiceProblem(list, chosen, kind === "local" ? "" : effortNow) : null;
+    if (problem) rows.push(element("p", { class: "hint assist-warn" }, problem));
+    return rows;
   }
 
   private renderSettings(): void {
@@ -210,6 +330,7 @@ export class AssistPanel {
       box.addEventListener("change", () => {
         this.save({ [key]: box.value.trim() } as Partial<AssistSettings>);
         if (key === "claudePath" || key === "codexPath") void this.detect();
+        if (key === "claudePath" || key === "codexPath" || key === "endpoint") void this.loadModels(this.settings.kind);
         this.renderState();
       });
       box.addEventListener("keydown", (event) => event.stopPropagation());
@@ -224,9 +345,10 @@ export class AssistPanel {
         this.save({ [pathKey]: chosen } as Partial<AssistSettings>);
         this.renderSettings();
         void this.detect();
+        void this.loadModels(kind);
       });
       rows.push(field("場所", pathKey, "空なら自動で探す", browse));
-      rows.push(field("モデル", kind === "claude" ? "claudeModel" : "codexModel", kind === "claude" ? "空なら既定（例: sonnet・opus）" : "空なら既定"));
+      rows.push(...this.modelRows(kind));
       rows.push(
         element(
           "p",
@@ -238,18 +360,6 @@ export class AssistPanel {
       );
     } else {
       rows.push(field("URL", "endpoint", DEFAULT_ASSIST.endpoint));
-      const models = element("datalist", { id: "assist-models" });
-      const model = field("モデル", "localModel", "例: llama3.2 ・ qwen2.5");
-      model.querySelector("input")!.setAttribute("list", "assist-models");
-      const check = plainButton("つながるか確かめる", async () => {
-        try {
-          const found = await call("ai_local_models", { endpoint: this.settings.endpoint });
-          models.replaceChildren(...found.map((id) => element("option", { value: id })));
-          this.host.status(found.length ? `つながりました。モデル: ${found.slice(0, 8).join("・")}${found.length > 8 ? " ほか" : ""}` : "つながりましたが、モデルがありません");
-        } catch (error) {
-          this.host.status(`つながりません: ${error}`);
-        }
-      });
       const key = element("input", { type: "password", placeholder: this.hasKey ? "保存してあります（変えるときだけ入れる）" : "要るときだけ（Ollama・LM Studio は不要）", "aria-label": "API キー", autocomplete: "off" });
       key.addEventListener("keydown", (event) => event.stopPropagation());
       const keep = plainButton("保存", async () => {
@@ -264,7 +374,7 @@ export class AssistPanel {
         }
       });
       keep.title = "入れたキーを保存する（空のまま押すと消す）。キーはファイルに書かず、システムの資格情報の保管庫に入れます";
-      rows.push(model, models, element("div", { class: "assist-row" }, check));
+      rows.push(...this.modelRows(kind));
       rows.push(element("label", { class: "assist-field" }, element("span", {}, "API キー"), key, keep));
       rows.push(element("p", { class: "hint" }, "Ollama・LM Studio・llama.cpp など、OpenAI と同じ形の API なら使えます。絵を見られるモデル（llava・gemma3 など）なら、ページの絵も見せられます。"));
     }
@@ -407,6 +517,14 @@ export class AssistPanel {
     const project = this.host.project();
     if (!question || !project || this.preparing || this.talk?.conversation.running != null) return;
     const kind = this.settings.kind;
+    // A model or an effort the tool does not list is not sent (the question stays in the box).
+    const listed = this.listed(kind)?.list;
+    const problem = listed ? choiceProblem(listed, this.chosenModel(kind), this.chosenEffort(kind)) : null;
+    if (problem) {
+      this.host.status(problem);
+      this.renderState();
+      return;
+    }
     // By its file: a new title is the same name. One not saved yet goes on until another is saved or 新しい相談.
     const name = this.host.path() ?? "";
     if (!this.talk || this.talk.conversation.kind !== kind || this.talk.name !== name) {
@@ -442,7 +560,8 @@ export class AssistPanel {
           dir: talk.dir!,
           prompt,
           resume: talk.conversation.session,
-          model: (kind === "claude" ? this.settings.claudeModel : kind === "codex" ? this.settings.codexModel : this.settings.localModel) || null,
+          model: this.chosenModel(kind) || null,
+          effort: this.chosenEffort(kind) || null,
           program: (kind === "claude" ? this.settings.claudePath : kind === "codex" ? this.settings.codexPath : "") || null,
           images: kind === "codex" ? turnPictures : [],
           endpoint: kind === "local" ? this.settings.endpoint : null,

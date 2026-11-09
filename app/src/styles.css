@@ -1278,12 +1278,13 @@ dialog.perf-dialog { width: min(720px, 92vw); }
 .assist-actions .check { margin-right: auto; }
 .assist-state { margin: 0; }
 .assist-state[data-tone="warn"] { color: var(--caution); }
-.assist-top > .assist-settings { flex: 0 1 auto; min-height: calc(48 * var(--px)); overflow-y: auto; }
+.assist-top > .assist-settings { flex: 0 1 auto; min-height: calc(112 * var(--px)); overflow-y: auto; }
 .assist-settings[hidden] { display: none; }
 .assist-settings { display: flex; flex-direction: column; gap: 6px; padding: 6px; border: 1px solid var(--line); border-radius: 4px; }
 .assist-field { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .assist-field > span { min-width: 4.5em; color: var(--muted); }
-.assist-field input { flex: 1; min-width: 8em; }
+.assist-field input, .assist-field select { flex: 1; min-width: 8em; }
+.assist-warn { color: var(--caution); margin: 0; }
 .assist-skill { display: flex; flex-direction: column; gap: 4px; padding-top: 4px; border-top: 1px solid var(--line); color: var(--muted); font-size: calc(12 * var(--px)); }
 .assist-top > .assist-log { flex: 1 1 0; }
 .assist-log { min-height: calc(32 * var(--px)); overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
