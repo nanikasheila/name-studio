@@ -9,7 +9,7 @@ import { holdPanel } from "./hold";
 import { duplicateHeld, moveHeld, removeHeld, setHeldNear } from "./heldops";
 import { canMove, freeName, moveIds, moveRange } from "./listorder";
 import type { Project } from "./model";
-import { linesText } from "./nameexport";
+import { linesText } from "./scripttext";
 import { holdPages } from "./pageops";
 import { addPanel } from "./panels";
 import { newProject } from "./project";

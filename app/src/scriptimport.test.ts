@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { scriptText } from "./nameexport";
+import { scriptText } from "./scripttext";
 import { faces } from "./arrange";
 import { balloonExtent } from "./balloon";
 import { addCharacter, addScene } from "./cast";

@@ -423,13 +423,36 @@ function pairLines(old: readonly Line[], said: readonly ScriptLine[], speakerOf:
 }
 
 /** New text for a line, broken again to fit its panel, where reading starts kept where it was (the top right of vertical text, the top left of horizontal). */
-function retext(project: Project, line: Line, text: string, panel: Panel | undefined): void {
+export function retext(project: Project, line: Line, text: string, panel: Panel | undefined): void {
   const [left, top, right] = line.box;
   line.text = text;
   const box = placingBox(project, panel);
   wrapToFit(line, box[3] - box[1] - 6);
   fitLine(line);
   moveLine(line, line.vertical ? right - line.box[2] : left - line.box[0], top - line.box[1]);
+}
+
+/**
+ * Put a line just added to a page where it is read next: just after
+ * `previous` (to its left in a manga), or where the panel's reading starts,
+ * then as little off the faces in the rough and the panel's other balloons
+ * (but those in `gone`) as it takes.
+ */
+export function placeAfter(project: Project, page: Page, panel: Panel | undefined, line: Line, previous: Line | undefined, gone: ReadonlySet<Line> = new Set()): void {
+  const box = placingBox(project, panel);
+  wrapToFit(line, box[3] - box[1] - 6);
+  fitLine(line);
+  inReadingDirection(project.binding, previous ? [line, previous] : [line], (flip) => {
+    const area = flip.box(box);
+    const [right, top] = previous ? [balloonExtent(previous)[0] - 2, balloonExtent(previous)[1]] : [area[2] - 3, area[1] + 3];
+    const [x0, y0, x1] = balloonExtent(line);
+    moveLine(line, Math.max(area[0] + 3 - x0, right - x1), top - y0);
+  });
+  if (panel) {
+    const avoid = [...faces(page, panel), ...page.lines.filter((other) => other !== line && other.panel === panel.id && !gone.has(other)).map(balloonExtent)];
+    inReadingDirection(project.binding, [line], (flip) => moveClear(line, flip.box(box), avoid.map(flip.box)));
+    line.panel = panel.id;
+  }
 }
 
 /** Bring a page's dialogue in line with the script's panels (see `ScriptImportOptions.update`). */
@@ -497,22 +520,7 @@ function updatePage(project: Project, page: Page, used: ScriptPanel[], speakers:
       const speaker = speakerOf(s);
       if (speaker) line.speaker = speaker;
       if (s.shape) line.balloonShape = s.shape;
-      const box = placingBox(project, panel);
-      wrapToFit(line, box[3] - box[1] - 6);
-      fitLine(line);
-      const before = previous;
-      inReadingDirection(project.binding, before ? [line, before] : [line], (flip) => {
-        const area = flip.box(box);
-        const [right, top] = before ? [balloonExtent(before)[0] - 2, balloonExtent(before)[1]] : [area[2] - 3, area[1] + 3];
-        const [x0, y0, x1] = balloonExtent(line);
-        moveLine(line, Math.max(area[0] + 3 - x0, right - x1), top - y0);
-      });
-      if (panel) {
-        // Off the faces in the rough and the panel's other balloons, as little as it takes.
-        const avoid = [...faces(page, panel), ...page.lines.filter((other) => other !== line && other.panel === panel.id && !gone.has(other)).map(balloonExtent)];
-        inReadingDirection(project.binding, [line], (flip) => moveClear(line, flip.box(box), avoid.map(flip.box)));
-        line.panel = panel.id;
-      }
+      placeAfter(project, page, panel, line, previous, gone);
       previous = line;
       report.added++;
     });

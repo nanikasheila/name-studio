@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { LAYER_ORDER, canBeVector, layerForm, placeStacked, placeUnit, checkSummary, clipLines, dialogueUpdateSummary, imagesNote, missingEditable, exportUnits, frameMetas, hasNotes, mapBox, packBody, partCount, projectToTemplate, scriptText, textLayers, unreadWarning, vectorLines, type DialogueUpdateReport, type LayerMeta } from "./nameexport";
+import { LAYER_ORDER, canBeVector, layerForm, placeStacked, placeUnit, checkSummary, clipLines, dialogueUpdateSummary, imagesNote, missingEditable, exportUnits, frameMetas, hasNotes, mapBox, packBody, partCount, projectToTemplate, textLayers, unreadWarning, vectorLines, type DialogueUpdateReport, type LayerMeta } from "./nameexport";
+import { scriptText } from "./scripttext";
 import { addCharacter, addScene } from "./cast";
 import { addLine } from "./dialogue";
 import { rectShape } from "./geometry";

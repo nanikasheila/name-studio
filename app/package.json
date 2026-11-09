@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:skill": "vite build -c vite.skill.config.ts && node e2e/skill.mjs",
     "test": "vitest run",
     "lint": "biome lint .",
     "tauri": "tauri",

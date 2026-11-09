@@ -11,9 +11,9 @@ import {
   missingEditable,
   readCspDialogue,
   ROUGH_LAYERS,
-  scriptText,
   updateCspDialogue,
 } from "./nameexport";
+import { scriptText } from "./scripttext";
 import { exportMiniName, exportPdf } from "./flatpage";
 import { MINI_DEFAULTS, type MiniFormat, type MiniOptions } from "./mininame";
 import { applyTakeBack, planTakeBack, takeBackSummary } from "./readback";

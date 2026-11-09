@@ -31,10 +31,10 @@ const LAYERS = {
    * storage, no Rust side, and nothing of the editor's screen.
    */
   domain: [
-    "alternatives", "arrange", "aside", "autotail", "balloon", "brush", "carry", "cast", "castops", "heldops", "listorder", "sceneops", "csppage", "cspsettings", "dialogue", "export", "exportmemory", "fillregion", "fonts", "hold", "koma",
+    "alternatives", "arrange", "aside", "assist", "autotail", "balloon", "brush", "carry", "cast", "castops", "heldops", "listorder", "sceneops", "csppage", "cspsettings", "dialogue", "export", "exportmemory", "fillregion", "fonts", "hold", "koma",
     "komaedit", "mask", "mininame", "minisplit", "namecheck", "namedefaults", "pagebox", "pages", "panelfolders", "panels", "plotimport", "project", "projectjson",
-    "readback", "readingorder", "references", "pageops", "removal", "reorder", "repair", "roughlayers", "scriptimport", "series", "shapes", "sketchpanels", "snapping", "stickies",
-    "story", "strokes", "structures", "style", "tidy", "transform", "wrap",
+    "readback", "readingorder", "references", "scripttext", "pageops", "removal", "reorder", "repair", "roughlayers", "scriptimport", "series", "shapes", "sketchpanels", "snapping", "stickies",
+    "story", "strokes", "structures", "style", "tidy", "transform", "validate", "wrap",
   ],
   /**
    * The editor's own computation, still pure: where pages lie on screen and
