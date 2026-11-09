@@ -1,47 +1,46 @@
 name: Release Windows app
 
-# Every merge to main whose CI passed becomes a GitHub release with the
-# Windows installer, built from the very commit CI checked (a commit whose
-# tests failed is never shipped to the copies that update themselves). It is
-# a 試験版 first; promote.yml makes it the 正式版 that every copy takes.
+# Every merge to main becomes a GitHub release with the Windows installer.
+# The installer is built and checked side by side with CI on the same commit,
+# and published only once CI passed on it (a commit whose tests failed is
+# never shipped to the copies that update themselves). It is a 試験版 first;
+# promote.yml makes it the 正式版 that every copy takes.
 # With the updater key set up (docs/release.md), the release also carries
 # latest.json and the installer's signature, and installed copies update
 # themselves when they start. The installer itself is not code-signed, so
 # Windows shows a SmartScreen warning on the first install.
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
+  push:
     branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: write
+  actions: read
 
-concurrency:
-  group: release
-  cancel-in-progress: false
+env:
+  VERSION: 0.2.${{ github.run_number }}
+  # Only main is released: by hand from another branch the installer is
+  # built and checked but only kept as the run's artifact, so a build
+  # nobody reviewed never reaches the copies that update themselves.
+  PUBLISH: ${{ github.ref == 'refs/heads/main' }}
 
 jobs:
   windows:
-    # By hand, or after CI passed on a push to main (not on a pull request's run).
-    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    name: Build and check the installer
     runs-on: windows-latest
-    env:
-      VERSION: 0.2.${{ github.run_number }}
-      # The commit CI checked (by hand: the branch's head).
-      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-      # Only main is released: by hand from another branch the installer is
-      # built and checked but only kept as the run's artifact, so a build
-      # nobody reviewed never reaches the copies that update themselves.
-      PUBLISH: ${{ github.event_name == 'workflow_run' || github.ref == 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.SHA }}
 
       - name: Rust (the version in rust-toolchain.toml)
         run: rustup toolchain install
+
+      # What the last release built (and the CI's app check on pull requests
+      # starts from): only this repository's own crates are compiled again.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: app-release
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - uses: actions/setup-node@v7
         with:
@@ -81,38 +80,95 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node .github/scripts/release-notes.mjs "$SHA" > "$RUNNER_TEMP/notes.md"
+        run: node .github/scripts/release-notes.mjs "$GITHUB_SHA" > "$RUNNER_TEMP/notes.md"
 
       - name: Collect release files
         shell: bash
         run: |
           NOTES="$(cat "$RUNNER_TEMP/notes.md")" node .github/scripts/release-files.mjs "$VERSION" release
-
-      # Every release starts as a 試験版 (a prerelease): copies set to take
-      # 試験版 get it from the channel-beta release's latest.json; everyone
-      # else once it is promoted to 正式版 (promote.yml) after the CSP check.
-      - name: Publish release (試験版)
-        if: env.PUBLISH == 'true'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "v$VERSION" release/* \
-            --title "Name Studio v$VERSION" \
-            --notes-file release-notes.md \
-            --target "$SHA" \
-            --prerelease
-          if [ -f release/latest.json ]; then
-            gh release view channel-beta > /dev/null 2>&1 || gh release create channel-beta \
-              --title "試験版の更新先" \
-              --notes "試験版を受け取る設定のアプリが読む latest.json です（いちばん新しい試験版を指します）。版はここではなく v0.2.* の各リリースから入れてください。" \
-              --target "$SHA" \
-              --prerelease
-            gh release upload channel-beta release/latest.json --clobber
-          fi
+          mv release-notes.md release/release-notes.md
 
       - uses: actions/upload-artifact@v7
         with:
           name: name-studio-windows-installer
           path: release/*.exe
           if-no-files-found: error
+
+      - uses: actions/upload-artifact@v7
+        if: env.PUBLISH == 'true'
+        with:
+          name: release
+          path: release/
+          if-no-files-found: error
+
+  ci:
+    name: CI passed on this commit
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      # CI (ci.yml) runs on the same push at the same time; this waits for its
+      # result, so the installer is built meanwhile instead of after it.
+      - name: Wait for CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for _ in $(seq 1 240); do
+            run="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&event=push&per_page=1" \
+              --jq '.workflow_runs[0] | "\(.status) \(.conclusion) \(.html_url)"' 2>/dev/null || true)"
+            case "$run" in
+              "completed success "*) echo "CI passed: ${run##* }"; exit 0 ;;
+              completed*) echo "::error::CI did not pass on this commit, so it is not released: ${run##* }"; exit 1 ;;
+            esac
+            sleep 15
+          done
+          echo "::error::CI did not finish on this commit within an hour"
+          exit 1
+
+  publish:
+    name: Publish (試験版)
+    needs: [windows, ci]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # One release at a time (and not while promote.yml changes one).
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: release
+          path: release
+
+      # Every release starts as a 試験版 (a prerelease): copies set to take
+      # 試験版 get it from the channel-beta release's latest.json; everyone
+      # else once it is promoted to 正式版 (promote.yml) after the CSP check.
+      # A merge that came later but was published first stays the newest: this
+      # one then is not published (channel-beta never goes back to it).
+      - name: Publish release (試験版)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list --limit 100 --json tagName,isPrerelease,isDraft,isLatest > "$RUNNER_TEMP/releases.json"
+          newer="$(node .github/scripts/newer-release.mjs "$RUNNER_TEMP/releases.json" "$VERSION")"
+          if [ -n "$newer" ]; then
+            echo "### v$VERSION は公開しません: もっと新しい $newer がもう出ています" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          mv release/release-notes.md "$RUNNER_TEMP/release-notes.md"
+          gh release create "v$VERSION" release/* \
+            --title "Name Studio v$VERSION" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --target "$GITHUB_SHA" \
+            --prerelease
+          if [ -f release/latest.json ]; then
+            gh release view channel-beta > /dev/null 2>&1 || gh release create channel-beta \
+              --title "試験版の更新先" \
+              --notes "試験版を受け取る設定のアプリが読む latest.json です（いちばん新しい試験版を指します）。版はここではなく v0.2.* の各リリースから入れてください。" \
+              --target "$GITHUB_SHA" \
+              --prerelease
+            gh release upload channel-beta release/latest.json --clobber
+          fi
+          echo "### v$VERSION を試験版として公開しました" >> "$GITHUB_STEP_SUMMARY"

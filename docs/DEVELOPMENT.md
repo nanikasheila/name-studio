@@ -106,7 +106,7 @@ README と使い方の画像（`docs/images`）は、作り物のネーム（`ap
 
 ## リリース
 
-main にマージすると CI のあとで試験版が公開され、Actions の「Promote to 正式版」で正式版にします。手順・署名鍵・リリースノートの書き方は [release.md](release.md) にあります。
+main にマージすると、CI と同時にインストーラーを作り、CI が通ったところで試験版が公開され、Actions の「Promote to 正式版」で正式版にします。手順・署名鍵・リリースノートの書き方は [release.md](release.md) にあります。
 
 ## ライセンス
 
