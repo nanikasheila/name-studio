@@ -21,7 +21,7 @@ try {
   await page.addInitScript({ path: fileURLToPath(new URL("tauri-mock.js", import.meta.url)) });
   await page.addInitScript(() => {
     window.__answer = (command) => {
-      if (command === "plugin:dialog|save") return "C:\\\\ネーム\\\\読む.pdf";
+      if (command === "choose_save") return "C:\\\\ネーム\\\\読む.pdf";
       if (command === "write_pdf") return null;
       return undefined;
     };

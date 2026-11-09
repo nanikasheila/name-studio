@@ -51,7 +51,7 @@ try {
     window.__opened = [];
     const answer = window.__answer;
     window.__answer = (command, args) => {
-      if (command !== "plugin:dialog|open") return answer(command, args);
+      if (command !== "choose_open") return answer(command, args);
       window.__opened.push(args.options);
       return null;
     };
@@ -132,7 +132,7 @@ try {
     const { newProject } = await import("/src/project.ts");
     window.__answer = (command, args) => {
       if (command === "unknown_project_fields") return [];
-      if (command === "plugin:dialog|open") return "E:\\移した\\消えた.namestudio";
+      if (command === "choose_open") return "E:\\移した\\消えた.namestudio";
       if (command !== "load_project") return undefined;
       if (args.path.startsWith("E:")) return newProject("消えたネーム", 16);
       throw new Error("ファイルが見つかりません");

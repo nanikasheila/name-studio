@@ -1,7 +1,7 @@
 // The シリーズ palette: the names (話) of the series the open name is in, to
 // open the next one or make it, and the series file kept up to date as the
 // name is saved (what is shared, and the list of its names).
-import { ask, open, save } from "@tauri-apps/plugin-dialog";
+import { ask, open, save } from "./dialogs";
 import { call } from "./backend";
 import { element, plainButton } from "./dom";
 import { copyText, ListPicker } from "./listops";

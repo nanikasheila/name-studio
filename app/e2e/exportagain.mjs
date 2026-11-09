@@ -23,13 +23,20 @@ try {
   await page.addInitScript({ path: fileURLToPath(new URL("tauri-mock.js", import.meta.url)) });
   await page.addInitScript(() => {
     window.__dialogs = [];
-    window.__answer = (command) => {
+    // As the app does: what a dialog gave is a place picked, and stays one.
+    window.__picked = [];
+    window.__answer = (command, args) => {
       switch (command) {
         case "write_text_file":
           return null;
-        case "plugin:dialog|save":
-        case "plugin:dialog|open":
-          return window.__dialogs.shift() ?? null;
+        case "choose_save":
+        case "choose_open": {
+          const picked = window.__dialogs.shift() ?? null;
+          if (picked) window.__picked.push(picked);
+          return picked;
+        }
+        case "place_chosen":
+          return window.__picked.includes(args.path);
         default:
           return undefined;
       }
@@ -69,13 +76,26 @@ try {
   check(mine?.kind === "text" && mine.files.text === "C:\\out\\第4話_台本.txt", "how the name was written out is kept for it");
   await page.keyboard.press("Escape");
 
-  const asked = (await calls("plugin:dialog|save")).length;
+  const asked = (await calls("choose_save")).length;
   await page.keyboard.press("Control+Shift+E");
   await settle();
   check((await calls("write_text_file")).length === 2, "Ctrl+Shift+E writes it out again");
-  check((await calls("plugin:dialog|save")).length === asked, "without asking where");
+  check((await calls("choose_save")).length === asked, "without asking where");
   check((await message()).startsWith("書き出しました"), "and the dialog shows it was done");
   check((await page.locator("#status").textContent()).includes("書き出しました"), "and so does the status");
+  await page.keyboard.press("Escape");
+
+  // A place only remembered (never picked in a dialog: kept by an older version, or
+  // the list of picked places was lost) is asked for again, not written to unasked.
+  await page.evaluate(() => {
+    window.__picked = [];
+    window.__dialogs.push("C:\\out\\選び直した_台本.txt");
+  });
+  await page.keyboard.press("Control+Shift+E");
+  await settle();
+  check((await calls("choose_save")).length === asked + 1, "a place not picked in a dialog is asked for again");
+  check((await calls("choose_save")).at(-1)?.options.defaultPath === "C:\\out\\第4話_台本.txt", "starting from where it was written last");
+  check((await calls("write_text_file")).at(-1)?.path === "C:\\out\\選び直した_台本.txt", "and written where it was picked");
   await page.keyboard.press("Escape");
 
   // Another name starts from its own last export, never from this one's folder.

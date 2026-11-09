@@ -42,5 +42,9 @@ features = ["linux-native"]
 # Whether Shift is held as the app starts (to start with the screen's look as it comes).
 windows-sys = { version = "0.61", features = ["Win32_UI_Input_KeyboardAndMouse"] }
 
+[target.'cfg(unix)'.dependencies]
+# Stopping a program with all it started (proctree.rs).
+libc = "0.2"
+
 [dev-dependencies]
 tempfile = "3"

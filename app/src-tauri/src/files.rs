@@ -5,6 +5,11 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::ipc::{raw_body, split_body};
+use crate::paths::Chosen;
+
+/// The kinds of file each command writes: a picture of the name, and the script or a report.
+const PICTURES: &[&str] = &["png", "jpg", "jpeg"];
+const TEXTS: &[&str] = &["txt", "json"];
 
 /// Where CSP keeps its tools and materials on this computer, when found.
 #[derive(Serialize)]
@@ -51,14 +56,16 @@ pub(crate) struct WrittenSubTool {
 /// the tips and papers it uses are packed from.
 #[tauri::command]
 pub(crate) async fn write_csp_sub_tool(
+    chosen: tauri::State<'_, Chosen>,
     path: String,
     tool: name_model::CspToolData,
     name: String,
     materials: Option<String>,
 ) -> Result<WrittenSubTool, String> {
+    let path = chosen.writable(&path, &["sut"])?;
     let file = clip_core::subtool::sub_tool_file(&tool, &name, materials.as_deref().map(Path::new))
         .map_err(|error| error.to_string())?;
-    name_model::atomic::write(Path::new(&path), &file.bytes).map_err(|error| error.to_string())?;
+    name_model::atomic::write(&path, &file.bytes).map_err(|error| error.to_string())?;
     Ok(WrittenSubTool {
         missing_materials: file.missing_materials,
     })
@@ -88,8 +95,12 @@ pub(crate) struct PdfPageMeta {
 
 /// Write a PDF of page images (raw body: JSON, then the JPEGs in page order).
 #[tauri::command]
-pub(crate) async fn write_pdf(request: tauri::ipc::Request<'_>) -> Result<(), String> {
+pub(crate) async fn write_pdf(
+    chosen: tauri::State<'_, Chosen>,
+    request: tauri::ipc::Request<'_>,
+) -> Result<(), String> {
     let body = raw_body(&request)?;
+    let path = chosen.writable(&split_body::<PdfMeta>(&body)?.0.path, &["pdf"])?;
     tauri::async_runtime::spawn_blocking(move || {
         let (meta, mut rest) = split_body::<PdfMeta>(&body)?;
         let mut pages = Vec::new();
@@ -112,7 +123,7 @@ pub(crate) async fn write_pdf(request: tauri::ipc::Request<'_>) -> Result<(), St
             name_model::pdf::PdfLayout::LeftToRight
         };
         let pdf = name_model::pdf::image_pdf(&meta.title, &pages, layout);
-        write_through_temporary(Path::new(&meta.path), &pdf)
+        write_through_temporary(&path, &pdf)
     })
     .await
     .map_err(|error| error.to_string())?
@@ -126,14 +137,18 @@ pub(crate) struct BinaryMeta {
 /// Write a file the page made (the ミニネーム picture; raw body: JSON with
 /// the path, then the bytes).
 #[tauri::command]
-pub(crate) async fn write_binary_file(request: tauri::ipc::Request<'_>) -> Result<(), String> {
+pub(crate) async fn write_binary_file(
+    chosen: tauri::State<'_, Chosen>,
+    request: tauri::ipc::Request<'_>,
+) -> Result<(), String> {
     let body = raw_body(&request)?;
+    let path = chosen.writable(&split_body::<BinaryMeta>(&body)?.0.path, PICTURES)?;
     tauri::async_runtime::spawn_blocking(move || {
-        let (meta, bytes) = split_body::<BinaryMeta>(&body)?;
+        let (_, bytes) = split_body::<BinaryMeta>(&body)?;
         if bytes.is_empty() {
             return Err("書き出す中身がありません".to_owned());
         }
-        write_through_temporary(Path::new(&meta.path), bytes)
+        write_through_temporary(&path, bytes)
     })
     .await
     .map_err(|error| error.to_string())?
@@ -142,10 +157,15 @@ pub(crate) async fn write_binary_file(request: tauri::ipc::Request<'_>) -> Resul
 /// Write a text file (the script) as UTF-8 with a byte order mark, which
 /// Windows' Notepad and Excel read as UTF-8.
 #[tauri::command]
-pub(crate) async fn write_text_file(path: String, text: String) -> Result<(), String> {
+pub(crate) async fn write_text_file(
+    chosen: tauri::State<'_, Chosen>,
+    path: String,
+    text: String,
+) -> Result<(), String> {
+    let path = chosen.writable(&path, TEXTS)?;
     let mut bytes = "\u{FEFF}".as_bytes().to_vec();
     bytes.extend_from_slice(text.replace('\n', "\r\n").as_bytes());
-    write_through_temporary(Path::new(&path), &bytes)
+    write_through_temporary(&path, &bytes)
 }
 
 /// The record of セリフだけ反映 kept with the CSP pages, one entry per run.
@@ -156,6 +176,13 @@ pub(crate) const UPDATE_RECORD: &str = "name-studio-反映の記録.txt";
 /// from this app or with Notepad.
 #[tauri::command]
 pub(crate) async fn record_dialogue_update(out_dir: String, entry: String) -> Result<(), String> {
+    // Only in a folder this app wrote CSP pages to (it holds their list): not a file of that name anywhere.
+    if !Path::new(&out_dir)
+        .join(clip_core::write::manifest::MANIFEST_NAME)
+        .is_file()
+    {
+        return Err(format!("書き出し先ではないので、記録を残せません: {out_dir}"));
+    }
     tauri::async_runtime::spawn_blocking(move || add_record(&Path::new(&out_dir).join(UPDATE_RECORD), &entry))
         .await
         .map_err(|error| error.to_string())?

@@ -1,15 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window: core features, file dialogs, asking before unsaved changes are lost, and updating itself",
+  "description": "Main window: core features, asking before unsaved changes are lost, and updating itself (file dialogs are the app's own commands, which remember what was picked)",
   "windows": [
     "main"
   ],
   "permissions": [
     "core:default",
     "core:window:allow-destroy",
-    "dialog:allow-open",
-    "dialog:allow-save",
     "dialog:allow-ask",
     "dialog:allow-message",
     "updater:default",

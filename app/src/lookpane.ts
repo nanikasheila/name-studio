@@ -7,7 +7,7 @@
 // are fixed, not in キー設定): the theme, font and size as they come, the CSS
 // off but kept. Holding Shift as the app starts (or --safe-look) starts it
 // without the CSS, that time only.
-import { message } from "@tauri-apps/plugin-dialog";
+import { message } from "./dialogs";
 import { showAlert } from "./alerts";
 import { call } from "./backend";
 import { $, element } from "./dom";

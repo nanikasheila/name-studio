@@ -28,7 +28,7 @@ try {
         window.__setups.push(args.setup);
         return { page: "/t/page.clip", parts: "/t/parts.clip", work: "/t/work.cmc" };
       }
-      if (command === "plugin:dialog|open") return "C:\\out";
+      if (command === "choose_open") return "C:\\out";
       if (command === "check_export_target") {
         // A folder that cannot be looked into (no permission, a drive gone).
         if (window.__targetFails) throw "書き出し先 C:\\out の中を確かめられません: アクセスが拒否されました。 (os error 5)";

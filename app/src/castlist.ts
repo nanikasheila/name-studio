@@ -2,7 +2,7 @@
 // managing them as the page list manages pages — put in, copied, moved (and
 // dragged), copied to another name, merged into one, removed — by the
 // buttons over the list, its right-click menu or keys (listops.ts).
-import { ask } from "@tauri-apps/plugin-dialog";
+import { ask } from "./dialogs";
 import { clipCharacters, type CharacterClip, duplicateCharacters, insertCharacter, linesOf, mergeCharacters, moveCharacters, pasteCharacters, removeCharacters } from "./castops";
 import { $, element } from "./dom";
 import { dragSort } from "./dragsort";

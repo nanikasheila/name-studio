@@ -43,8 +43,8 @@ try {
           return null;
         case "discard_recovery":
           return null;
-        case "plugin:dialog|save":
-        case "plugin:dialog|open":
+        case "choose_save":
+        case "choose_open":
           return window.__dialogs.shift() ?? null;
         case "plugin:dialog|message":
           return "Yes";

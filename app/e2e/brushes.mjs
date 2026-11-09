@@ -33,7 +33,7 @@ try {
     window.__dialogs = [];
     window.__answer = (command) => {
       switch (command) {
-        case "plugin:dialog|save":
+        case "choose_save":
           return window.__dialogs.shift() ?? null;
         case "csp_tool_locations":
           return { tools: null, materials: null };

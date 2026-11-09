@@ -46,7 +46,7 @@ const LAYERS = {
     "assistchat", "brushpicks", "inkon", "markdown", "callouts", "commands", "fillsettings", "helptopics", "history", "hittest", "layout", "pageaxis", "pen", "recent", "savestate", "session", "shortcuts", "snapshot", "springtool", "tooldefs", "viewport",
   ],
   /** This computer and the Rust side: storage, settings, commands, the page's elements. */
-  platform: ["backend", "dom", "errorlog", "look", "perfmeter", "prefs", "settings"],
+  platform: ["backend", "dialogs", "dom", "errorlog", "look", "perfmeter", "prefs", "settings"],
   /** Drawing a name on a canvas (the screen and the export share it). */
   render: ["asidedraw", "glyph", "notedraw", "pagedraw", "pagethumb", "pictures", "render", "screendraw", "strokecache"],
   /** Work done for the screens: saving in the background, writing out. */
@@ -79,6 +79,14 @@ describe("module structure", () => {
       .filter(([, source]) => source.includes('"@tauri-apps/api/core"'))
       .map(([path]) => path.slice(2));
     expect(callers).toEqual(["backend.ts"]);
+  });
+
+  it("opens the system's dialogs only through dialogs.ts", () => {
+    // A file is picked on the Rust side, which remembers the place (the commands that write take no other).
+    const callers = Object.entries(sources)
+      .filter(([, source]) => source.includes('"@tauri-apps/plugin-dialog"'))
+      .map(([path]) => path.slice(2));
+    expect(callers).toEqual(["dialogs.ts"]);
   });
 
   it("keeps the editor around the pages to putting its parts together", () => {

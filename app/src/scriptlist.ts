@@ -2,7 +2,7 @@
 // words or speaker; lines picked one or several (listops.ts) to go to, to
 // write again in place (F2), to copy as script text, to give another
 // speaker or kind all at once, or to remove.
-import { ask } from "@tauri-apps/plugin-dialog";
+import { ask } from "./dialogs";
 import { KIND_LABELS, setLineKind } from "./dialogue";
 import { $, element } from "./dom";
 import type { Selection } from "./editor";

@@ -1,7 +1,7 @@
 // At start: the names autosave kept that were never saved, all of them (the
 // ones that cannot be read too, with why), each to bring back, keep for
 // later (as closing does) or remove for good.
-import { ask } from "@tauri-apps/plugin-dialog";
+import { ask } from "./dialogs";
 import { formatTime } from "./autosave";
 import type { KeptRecovery, Recovery } from "./backend";
 import { $, element } from "./dom";
