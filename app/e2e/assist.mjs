@@ -69,6 +69,7 @@ try {
   await page.waitForSelector(".assist");
   await settle();
   check((await page.textContent(".assist-state")).includes("Claude Code（2.1.0 (Claude Code)）に聞きます"), "says which AI will answer, as found");
+  check(!(await page.isVisible(".assist-settings")), "the connection settings are closed until 接続… is pressed");
 
   await page.click(".assist-starters button:first-child");
   check((await page.inputValue(".assist textarea")).includes("行き詰まって"), "a ready-made question goes into the box");
@@ -151,6 +152,25 @@ try {
   check(local.messages.at(-1).content === "こんにちは" && local.messages.at(-1).images.includes("pages/p001.png"), "with the pages on screen as pictures");
   check(local.messages.length === 2, "a new conversation forgets the old one");
 
+  // A short palette (its column shared with 詳細 and サブツール): the box to write in and 送る stay whole.
+  for (const height of [260, 160]) {
+    const room = await page.evaluate((height) => {
+      const panel = document.getElementById("side-assist");
+      panel.style.flex = "none";
+      panel.style.height = `${height}px`;
+      const inside = (element) => {
+        const box = element.getBoundingClientRect();
+        const outer = panel.querySelector(".assist").getBoundingClientRect();
+        return { height: box.height, shown: box.top >= outer.top - 1 && box.bottom <= outer.bottom + 1 };
+      };
+      return { input: inside(panel.querySelector("textarea")), send: inside(panel.querySelector(".assist-actions button.primary")) };
+    }, height);
+    check(room.input.height >= 40 && room.input.shown && room.send.shown, `in a palette ${height}px high the box (${Math.round(room.input.height)}px) and 送る show`);
+  }
+  await page.click(".assist-head button:has-text('接続')");
+  const withSettings = await page.evaluate(() => document.querySelector("#side-assist textarea").getBoundingClientRect().height);
+  check(withSettings >= 40, `and with the settings open too (${Math.round(withSettings)}px)`);
+  if (process.env.ASSIST_SHOT) await page.locator("#dock-right").screenshot({ path: process.env.ASSIST_SHOT.replace(".png", "-short.png") });
   check(errors.length === 0, `no page errors (${errors.join(" / ")})`);
 } finally {
   await browser.close();

@@ -150,11 +150,16 @@ export class AssistPanel {
     this.built = element(
       "div",
       { class: "assist" },
-      element("div", { class: "assist-head" }, kind, gear, fresh),
-      element("p", { class: "hint assist-state", "data-part": "state" }),
-      element("div", { class: "assist-settings", "data-part": "settings", hidden: "" }),
-      element("div", { class: "assist-log", "data-part": "log", "aria-live": "polite" }),
-      starters,
+      // What may shrink and scroll when the palette is short; the box to write in and 送る stay below it.
+      element(
+        "div",
+        { class: "assist-top" },
+        element("div", { class: "assist-head" }, kind, gear, fresh),
+        element("p", { class: "hint assist-state", "data-part": "state" }),
+        element("div", { class: "assist-settings", "data-part": "settings", hidden: "" }),
+        element("div", { class: "assist-log", "data-part": "log", "aria-live": "polite" }),
+        starters,
+      ),
       input,
       element("div", { class: "assist-actions" }, element("label", { class: "check", title: "ページの絵（ラフ・コマ・フキダシ）も見せる。言葉だけより的確になるが、少し時間がかかる" }, pictures, " ページの絵も見せる"), send, stop),
     );

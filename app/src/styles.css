@@ -1266,18 +1266,27 @@ dialog.perf-dialog { width: min(720px, 92vw); }
 #side-subtools.managed-list:focus-within .subtool-row.picked { outline: 1px dashed var(--accent); outline-offset: -1px; }
 
 /* 相談（AI に相談）: the conversation, its 変更の案 and the question box. */
-.assist { display: flex; flex-direction: column; gap: 6px; height: 100%; min-height: 0; padding: 6px; box-sizing: border-box; }
+/* A short palette (a column shared with others) gives up the conversation and the
+   settings first (they scroll); the box to write in and 送る always stay. */
+.panel.assist-panel { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.assist { flex: 1 1 auto; display: flex; flex-direction: column; gap: 6px; min-height: 0; padding: 6px; box-sizing: border-box; }
+.assist > * { flex: none; }
+.assist > .assist-top { flex: 1 1 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.assist-top > * { flex: none; }
 .assist-head, .assist-row, .assist-actions, .assist-starters { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .assist-head select { flex: 1; min-width: 0; }
 .assist-actions .check { margin-right: auto; }
 .assist-state { margin: 0; }
 .assist-state[data-tone="warn"] { color: var(--caution); }
+.assist-top > .assist-settings { flex: 0 1 auto; min-height: calc(48 * var(--px)); overflow-y: auto; }
+.assist-settings[hidden] { display: none; }
 .assist-settings { display: flex; flex-direction: column; gap: 6px; padding: 6px; border: 1px solid var(--line); border-radius: 4px; }
 .assist-field { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .assist-field > span { min-width: 4.5em; color: var(--muted); }
 .assist-field input { flex: 1; min-width: 8em; }
 .assist-skill { display: flex; flex-direction: column; gap: 4px; padding-top: 4px; border-top: 1px solid var(--line); color: var(--muted); font-size: calc(12 * var(--px)); }
-.assist-log { flex: 1; min-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.assist-top > .assist-log { flex: 1 1 0; }
+.assist-log { min-height: calc(32 * var(--px)); overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
 .assist-entry { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; padding: 6px 8px; border-radius: 6px; }
 .assist-entry.user { align-self: flex-end; max-width: 90%; background: var(--hover); border: 1px solid var(--line); }
 .assist-entry.assistant { display: flex; flex-direction: column; gap: 6px; padding-left: 0; }
@@ -1286,5 +1295,5 @@ dialog.perf-dialog { width: min(720px, 92vw); }
 .assist-ops { padding: 6px 8px; border: 1px solid var(--accent); border-radius: 6px; white-space: normal; }
 .assist-ops ul { margin: 4px 0; padding-left: 1.2em; }
 .assist-ops .problem { margin: 2px 0; color: var(--danger); }
-.assist textarea { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; }
+.assist textarea { width: 100%; min-height: calc(3 * 1.4em + 8px); box-sizing: border-box; resize: vertical; font: inherit; line-height: 1.4; }
 .assist-starters button { font-size: calc(12 * var(--px)); }
