@@ -30,7 +30,7 @@ try {
   await page.evaluate(async () => {
     localStorage.clear();
     localStorage.setItem("namestudio.tourSeen", JSON.stringify({ editor: true, start: true }));
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     const project = newProject("仮のコマ割りの通しテスト", 2);
     window.nameStudio.show(project);
     const wb = window.nameStudio.workbench;
@@ -112,7 +112,7 @@ try {
   second = await panels(2);
   const boxes = second.map((p) => box(p.shape)).sort((a, b) => a[1] - b[1] || b[0] - a[0]);
   const frame = await page.evaluate(async () => {
-    const { basicBox } = await import("/src/pagebox.ts");
+    const { basicBox } = await import("/src/domain/pagebox.ts");
     return basicBox(window.nameStudio.workbench.project.pageFormat);
   });
   const [right, left, bottom] = boxes;

@@ -29,7 +29,7 @@ try {
   await page.goto(url);
   await page.waitForFunction(() => window.nameStudio);
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     const project = newProject("塗り", 2);
     const line = (id, corners, closed = true) => ({
       id,

@@ -28,8 +28,8 @@ try {
   const settle = () => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const show = (kind) =>
     page.evaluate(async (kind) => {
-      const { newProject } = await import("/src/project.ts");
-      const { addScene } = await import("/src/cast.ts");
+      const { newProject } = await import("/src/domain/project.ts");
+      const { addScene } = await import("/src/domain/cast.ts");
       const project = newProject("並び", 6, kind);
       addScene(project, project.pages[0].id, project.pages[1].id, "はじまり");
       window.nameStudio.show(project);

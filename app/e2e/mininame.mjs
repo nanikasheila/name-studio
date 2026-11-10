@@ -114,7 +114,7 @@ try {
       return out;
     });
   const boxes = () => page.evaluate(async () => {
-    const { trimBox, basicBox } = await import("/src/pagebox.ts");
+    const { trimBox, basicBox } = await import("/src/domain/pagebox.ts");
     const format = window.nameStudio.workbench.project.pageFormat;
     return { trim: trimBox(format), basic: basicBox(format) };
   });
@@ -202,9 +202,9 @@ try {
 
   // --- a name written out as a ミニネーム and taken back in -----------------------------------
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
-    const { trimBox } = await import("/src/pagebox.ts");
-    const { addLine } = await import("/src/dialogue.ts");
+    const { newProject } = await import("/src/domain/project.ts");
+    const { trimBox } = await import("/src/domain/pagebox.ts");
+    const { addLine } = await import("/src/domain/dialogue.ts");
     const project = newProject("ミニネームの往復", 7);
     const [x0, y0, x1, y1] = trimBox(project.pageFormat);
     project.pages.forEach((p, i) => {
@@ -251,7 +251,7 @@ try {
 
   // Back in: onto a name of 3 pages (the rest are added).
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     window.nameStudio.show(newProject("取り込み先", 3));
   });
   await page.locator("#image-import").click();
@@ -265,8 +265,8 @@ try {
   if (shots) await dialog.screenshot({ path: `${shots}/dialog-mini.png` });
   // A click leaves a page out, another takes it back.
   const firstPage = await page.evaluate(async () => {
-    const { miniSheet, MINI_DEFAULTS } = await import("/src/mininame.ts");
-    const { newProject } = await import("/src/project.ts");
+    const { miniSheet, MINI_DEFAULTS } = await import("/src/domain/mininame.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     const sheet = miniSheet(newProject("x", 7), MINI_DEFAULTS, true);
     const [x0, y0, x1, y1] = sheet.pages[0].box;
     const canvas = document.getElementById("ii-preview");
@@ -318,7 +318,7 @@ try {
     return canvas.toDataURL("image/jpeg", 0.75).split(",")[1];
   }, written.png);
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     window.nameStudio.show(newProject("スキャンから", 7));
   });
   await page.locator("#image-import").click();
@@ -370,15 +370,15 @@ try {
 
   // A page cut a little off is put right by dragging its edge: the click that ends the drag leaves nothing out.
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     window.nameStudio.show(newProject("範囲を直す", 7));
   });
   await page.locator("#image-import").click();
   await page.setInputFiles("#ii-input", { name: "往復_ミニネーム.png", mimeType: "image/png", buffer: png });
   await page.waitForFunction(() => document.getElementById("ii-summary").textContent.includes("見つけました"));
   const edge = await page.evaluate(async () => {
-    const { miniSheet, MINI_DEFAULTS } = await import("/src/mininame.ts");
-    const { newProject } = await import("/src/project.ts");
+    const { miniSheet, MINI_DEFAULTS } = await import("/src/domain/mininame.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     const sheet = miniSheet(newProject("x", 7), MINI_DEFAULTS, true);
     const [x0, y0, , y1] = sheet.pages[0].box;
     const rect = document.getElementById("ii-preview").getBoundingClientRect();

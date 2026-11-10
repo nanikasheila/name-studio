@@ -1,4 +1,4 @@
-//! What an AI changes with the app's 変更の案 (app/src/assist.ts, also the
+//! What an AI changes with the app's 変更の案 (app/src/domain/assist.ts, also the
 //! Skills' command line) must open here: `fixtures/assist-made.json` is a
 //! name made by every kind of operation, written by `assist.test.ts`.
 

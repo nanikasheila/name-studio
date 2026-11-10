@@ -24,10 +24,10 @@ try {
   await page.waitForFunction(() => window.nameStudio);
   // A page with one panel and one line of dialogue in it.
   const where = await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
-    const { addPanel } = await import("/src/panels.ts");
-    const { addLine } = await import("/src/dialogue.ts");
-    const { rectShape } = await import("/src/geometry.ts");
+    const { newProject } = await import("/src/domain/project.ts");
+    const { addPanel } = await import("/src/domain/panels.ts");
+    const { addLine } = await import("/src/domain/dialogue.ts");
+    const { rectShape } = await import("/src/model/geometry.ts");
     const project = newProject("その場で書く", 4);
     const first = project.pages[0];
     const panel = addPanel(project, first, rectShape([20, 20, 200, 160]));

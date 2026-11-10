@@ -2,39 +2,39 @@
 // Name Studio front end: puts the screens together. The start screen
 // (startscreen.ts) and the sheet viewer (viewer.ts, sheetexport.ts) share the
 // first workspace; name data is edited in the second (workbench.ts).
-import { call } from "./backend";
+import { call } from "./platform/backend";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { open } from "./dialogs";
-import { setInstalledFonts } from "./fonts";
-import { batchExportTask, runBatchExport } from "./batch";
-import { appVersion, checkForUpdate } from "./updater";
-import { applyNewNameDefaults } from "./namedefaults";
-import type { Project } from "./model";
-import { newProject } from "./project";
-import { STRUCTURES } from "./structures";
-import { adoptShape } from "./shapes";
-import { libraryShapes, loadRecentNames, newNameDefaults } from "./prefs";
-import { HelpBar, helpBarShown, showHelpBar } from "./helpbar";
-import { HelpOverlay } from "./helpoverlay";
-import type { HelpKind } from "./helptopics";
-import { comboOf } from "./shortcuts";
-import { Tour } from "./tour";
-import { CommandPalette } from "./palette";
-import { SheetExport } from "./sheetexport";
-import { splitPath } from "./recent";
-import { StartScreen } from "./startscreen";
-import { RecoveryDialog } from "./recoverydialog";
-import { showAlert } from "./alerts";
-import { SheetViewer } from "./viewer";
-import { PROJECT_EXTENSION } from "./namesaver";
-import { Workbench } from "./workbench";
-import { $, isTyping } from "./dom";
-import { installDialogEnter } from "./dialogkeys";
-import { ImageImportDialog } from "./imageimport";
-import { panelAt, panelBadge } from "./hittest";
-import { perfMeter } from "./perfmeter";
-import { applyLook, readLook } from "./look";
-import { fail, showStatus, installStatus } from "./status";
+import { open } from "./platform/dialogs";
+import { setInstalledFonts } from "./domain/fonts";
+import { batchExportTask, runBatchExport } from "./service/batch";
+import { appVersion, checkForUpdate } from "./ui/updater";
+import { applyNewNameDefaults } from "./domain/namedefaults";
+import type { Project } from "./model/model";
+import { newProject } from "./domain/project";
+import { STRUCTURES } from "./domain/structures";
+import { adoptShape } from "./domain/shapes";
+import { libraryShapes, loadRecentNames, newNameDefaults } from "./platform/prefs";
+import { HelpBar, helpBarShown, showHelpBar } from "./ui/helpbar";
+import { HelpOverlay } from "./ui/helpoverlay";
+import type { HelpKind } from "./editing/helptopics";
+import { comboOf } from "./editing/shortcuts";
+import { Tour } from "./ui/tour";
+import { CommandPalette } from "./ui/palette";
+import { SheetExport } from "./ui/sheetexport";
+import { splitPath } from "./editing/recent";
+import { StartScreen } from "./ui/startscreen";
+import { RecoveryDialog } from "./ui/recoverydialog";
+import { showAlert } from "./platform/alerts";
+import { SheetViewer } from "./ui/viewer";
+import { PROJECT_EXTENSION } from "./ui/namesaver";
+import { Workbench } from "./ui/workbench";
+import { $, isTyping } from "./platform/dom";
+import { installDialogEnter } from "./ui/dialogkeys";
+import { ImageImportDialog } from "./ui/imageimport";
+import { panelAt, panelBadge } from "./editing/hittest";
+import { perfMeter } from "./platform/perfmeter";
+import { applyLook, readLook } from "./platform/look";
+import { fail, showStatus, installStatus } from "./platform/status";
 
 // 画面の見た目 before anything is shown (設定 › 画面の見た目). The user's CSS waits for the
 // Rust side to say the app was not started with Shift held (lookpane.ts).

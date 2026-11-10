@@ -26,7 +26,7 @@ try {
 
   // A drawn name: 24 pages, 120 rough lines each.
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     const project = newProject("通しテスト", 24);
     let seed = 7;
     const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
@@ -170,8 +170,8 @@ try {
 
   // The right panel follows the selection, and a change made there is one undo step.
   const panelId = await page.evaluate(async () => {
-    const { addPanel } = await import("/src/panels.ts");
-    const { rectShape } = await import("/src/geometry.ts");
+    const { addPanel } = await import("/src/domain/panels.ts");
+    const { rectShape } = await import("/src/model/geometry.ts");
     const wb = window.nameStudio.workbench;
     let id = "";
     wb.edit((p) => (id = addPanel(p, p.pages[0], rectShape([20, 20, 100, 100])).id));

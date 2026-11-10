@@ -42,7 +42,7 @@ try {
   await page.goto(url);
   await page.waitForFunction(() => window.nameStudio);
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     window.nameStudio.show(newProject("第1話", 3));
   });
   const settle = () => page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 150)));

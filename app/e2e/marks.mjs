@@ -27,7 +27,7 @@ try {
   await page.goto(url);
   await page.waitForFunction(() => window.nameStudio);
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     window.nameStudio.show(newProject("指示", 2));
     const wb = window.nameStudio.workbench;
     wb.editor.showPage(1);
@@ -198,7 +198,7 @@ try {
 
   // CSP: a 下描き layer each, on top, in its colour.
   const exported = await page.evaluate(async () => {
-    const { exportToCsp } = await import("/src/nameexport.ts");
+    const { exportToCsp } = await import("/src/service/nameexport.ts");
     const pages = [];
     let request = null;
     window.__answer = (command, args) => {

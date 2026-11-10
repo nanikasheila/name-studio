@@ -1,6 +1,6 @@
 # 過去の版のネーム（固定の見本）
 
-前の版の name-studio が書いたネームです。`tests/past.rs`（Rust）と `app/src/past.test.ts`（画面側）が、
+前の版の name-studio が書いたネームです。`tests/past.rs`（Rust）と `app/src/domain/past.test.ts`（画面側）が、
 どれも開けて、保存し直しても中身が欠けないことを確かめます。
 
 - `full-project-prNN.json`: その PR の時点の `contract.test.ts` の全項目の見本（`git show <commit>:crates/name-model/tests/fixtures/full-project.json`）。

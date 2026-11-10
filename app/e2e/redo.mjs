@@ -29,7 +29,7 @@ try {
   await page.goto(server.resolvedUrls.local[0]);
   await page.waitForFunction(() => window.nameStudio);
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     const project = newProject("やり直し", 4);
     project.pages.forEach((p, i) => (p.memo = `メモ${i + 1}`));
     window.nameStudio.show(project);

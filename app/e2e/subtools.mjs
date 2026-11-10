@@ -31,13 +31,13 @@ try {
   await page.waitForFunction(() => window.nameStudio);
   // A name without pens of its own still lists the plain ones.
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     window.nameStudio.show(newProject("ペンなし", 2));
   });
   check((await page.locator("#side-subtools .subtool-row .subtool-name").allTextContents()).join("/") === "標準のペン", "a name with no pens shows the plain pen");
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
-    const { newBrush } = await import("/src/cspsettings.ts");
+    const { newProject } = await import("/src/domain/project.ts");
+    const { newBrush } = await import("/src/domain/cspsettings.ts");
     const project = newProject("サブツール", 2);
     const g = newBrush("pen", "brush-1", "Gペン");
     g.sizeMm = 0.6;
@@ -175,8 +175,8 @@ try {
   await page.reload();
   await page.waitForFunction(() => window.nameStudio);
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
-    const { newBrush } = await import("/src/cspsettings.ts");
+    const { newProject } = await import("/src/domain/project.ts");
+    const { newBrush } = await import("/src/domain/cspsettings.ts");
     const project = newProject("別のネーム", 2);
     const g = newBrush("pen", "brush-1", "丸ペン");
     g.sizeMm = 0.3;

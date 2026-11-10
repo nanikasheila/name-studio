@@ -73,7 +73,7 @@ try {
   const show = (path, title) =>
     page.evaluate(
       async ([path, title]) => {
-        const { newProject } = await import("/src/project.ts");
+        const { newProject } = await import("/src/domain/project.ts");
         window.nameStudio.show(newProject(title, 2));
         window.nameStudio.workbench.show(newProject(title, 2), path, "");
       },

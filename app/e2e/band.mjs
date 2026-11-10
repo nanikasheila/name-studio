@@ -28,7 +28,7 @@ try {
   await page.waitForFunction(() => window.nameStudio);
   const show = () =>
     page.evaluate(async () => {
-      const { newProject } = await import("/src/project.ts");
+      const { newProject } = await import("/src/domain/project.ts");
       window.nameStudio.show(newProject("帯", 8));
     });
   await show();
@@ -161,7 +161,7 @@ try {
   await tall.goto(server.resolvedUrls.local[0]);
   await tall.waitForFunction(() => window.nameStudio);
   await tall.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     window.nameStudio.show(newProject("高い", 8));
   });
   await tall.waitForTimeout(300);
@@ -183,7 +183,7 @@ try {
   await low.goto(server.resolvedUrls.local[0]);
   await low.waitForFunction(() => window.nameStudio);
   await low.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     window.nameStudio.show(newProject("低い", 8));
   });
   await low.waitForTimeout(300);
@@ -204,7 +204,7 @@ try {
     await narrow.goto(server.resolvedUrls.local[0]);
     await narrow.waitForFunction(() => window.nameStudio);
     await narrow.evaluate(async () => {
-      const { newProject } = await import("/src/project.ts");
+      const { newProject } = await import("/src/domain/project.ts");
       window.nameStudio.show(newProject("長い", 40));
     });
     // 設定 › 画面の見た目: larger words take more of the row.

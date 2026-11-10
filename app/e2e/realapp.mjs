@@ -32,8 +32,8 @@ if (!dir || !existsSync(join(dir, "page.clip")) || !existsSync(app)) {
 const server = await createServer({ root, logLevel: "error", server: { middlewareMode: true } });
 const P = {};
 for (const module of ["project", "panels", "dialogue", "geometry"]) Object.assign(P, await server.ssrLoadModule(`/src/${module}.ts`));
-const { projectJson } = await server.ssrLoadModule("/src/projectjson.ts");
-const { cspPageOf } = await server.ssrLoadModule("/src/csppage.ts");
+const { projectJson } = await server.ssrLoadModule("/src/domain/projectjson.ts");
+const { cspPageOf } = await server.ssrLoadModule("/src/domain/csppage.ts");
 const project = P.newProject("通しテスト", 3);
 const page = project.pages[0];
 P.addPanel(project, page, P.rectShape([20, 20, 160, 120]));

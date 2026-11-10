@@ -58,7 +58,7 @@ try {
   await page.goto(url);
   await page.waitForFunction(() => window.nameStudio);
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     const first = newProject("第1話", 3);
     first.characters = [{ id: "mina", name: "ミナ" }];
     window.nameStudio.show(first);

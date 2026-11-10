@@ -25,11 +25,11 @@ try {
   await page.waitForFunction(() => window.nameStudio);
   // 8 pages; page 2 has a panel, a line and a sticky (the sticky is the work's, not the book's).
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
-    const { addPanel } = await import("/src/panels.ts");
-    const { addLine } = await import("/src/dialogue.ts");
-    const { addSticky } = await import("/src/stickies.ts");
-    const { rectShape } = await import("/src/geometry.ts");
+    const { newProject } = await import("/src/domain/project.ts");
+    const { addPanel } = await import("/src/domain/panels.ts");
+    const { addLine } = await import("/src/domain/dialogue.ts");
+    const { addSticky } = await import("/src/domain/stickies.ts");
+    const { rectShape } = await import("/src/model/geometry.ts");
     const project = newProject("読む", 8);
     const second = project.pages[1];
     addPanel(project, second, rectShape([20, 20, 160, 120]));
@@ -50,8 +50,8 @@ try {
 
   // Ink where the panel's border is, paper (not the sticky's yellow) where the sticky is.
   const pixels = await page.evaluate(async () => {
-    const { placeSpread } = await import("/src/reader.ts");
-    const { trimBox } = await import("/src/pagebox.ts");
+    const { placeSpread } = await import("/src/ui/reader.ts");
+    const { trimBox } = await import("/src/domain/pagebox.ts");
     const project = window.nameStudio.workbench.project;
     const placed = placeSpread(project, [2, 3], window.innerWidth, window.innerHeight).find((p) => p.index === 1);
     const [x0, y0] = trimBox(project.pageFormat);

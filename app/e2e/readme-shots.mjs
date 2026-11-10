@@ -112,14 +112,14 @@ try {
   const themeDir = mkdtempSync(join(tmpdir(), "looks-"));
   for (const theme of themes) {
     await page.evaluate(async (theme) => {
-      const { applyLook, DEFAULT_LOOK } = await import("/src/look.ts");
+      const { applyLook, DEFAULT_LOOK } = await import("/src/platform/look.ts");
       applyLook({ ...DEFAULT_LOOK, theme });
     }, theme);
     await settle(300);
     await page.screenshot({ path: join(themeDir, `${theme}.png`) });
   }
   await page.evaluate(async () => {
-    const { applyLook, DEFAULT_LOOK } = await import("/src/look.ts");
+    const { applyLook, DEFAULT_LOOK } = await import("/src/platform/look.ts");
     applyLook(DEFAULT_LOOK);
   });
   execFileSync("ffmpeg", [
@@ -265,10 +265,10 @@ try {
 
   // Moving pictures of the tools: a fresh page in 単独, one tool at a time.
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
-    const { addPanel } = await import("/src/panels.ts");
-    const { rectShape } = await import("/src/geometry.ts");
-    const { basicBox } = await import("/src/pagebox.ts");
+    const { newProject } = await import("/src/domain/project.ts");
+    const { addPanel } = await import("/src/domain/panels.ts");
+    const { rectShape } = await import("/src/model/geometry.ts");
+    const { basicBox } = await import("/src/domain/pagebox.ts");
     const project = newProject("サンプル", 2);
     addPanel(project, project.pages[0], rectShape(basicBox(project.pageFormat)));
     window.nameStudio.show(project);

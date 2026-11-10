@@ -23,7 +23,7 @@ try {
   await page.goto(server.resolvedUrls.local[0]);
   await page.waitForFunction(() => window.nameStudio);
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     window.nameStudio.show(newProject("道具", 2));
     await new Promise((done) => setTimeout(done, 300));
     window.nameStudio.workbench.setTool("pen");

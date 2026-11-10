@@ -63,7 +63,7 @@ try {
 
   // A name opened from its file: nothing to write until it changes.
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     window.__project = newProject("A", 2);
     window.nameStudio.show(newProject("A", 2));
   });

@@ -31,7 +31,7 @@ try {
     await page.goto(url);
     await page.waitForFunction(() => window.nameStudio);
     await page.evaluate(async () => {
-      const { newProject } = await import("/src/project.ts");
+      const { newProject } = await import("/src/domain/project.ts");
       window.nameStudio.show(newProject("見た目", 2));
     });
     await page.waitForTimeout(200);
@@ -139,7 +139,7 @@ try {
 
   // --- CSS that hides the whole screen: the fixed keys put the look back ---
   await page.evaluate(async () => {
-    const { readLook, writeLook } = await import("/src/look.ts");
+    const { readLook, writeLook } = await import("/src/platform/look.ts");
     writeLook({ ...readLook(), css: "body { display: none !important; }", cssOn: true });
   });
   await start().catch(() => undefined);
@@ -155,7 +155,7 @@ try {
 
   // --- started with Shift held: the CSS left off that time only ---
   await page.evaluate(async () => {
-    const { readLook, writeLook } = await import("/src/look.ts");
+    const { readLook, writeLook } = await import("/src/platform/look.ts");
     writeLook({ ...readLook(), theme: "dark", css: "body { display: none !important; }", cssOn: true });
   });
   await page.evaluate(() => sessionStorage.setItem("safeLook", "1"));
@@ -181,7 +181,7 @@ try {
   const nightBar = () => nightPage.evaluate(() => getComputedStyle(document.querySelector(".toolbar")).backgroundColor);
   check((await nightBar()) === darkBar, "Windows に合わせる with Windows dark: the screen is dark");
   await nightPage.evaluate(async () => {
-    const { applyLook, DEFAULT_LOOK } = await import("/src/look.ts");
+    const { applyLook, DEFAULT_LOOK } = await import("/src/platform/look.ts");
     applyLook({ ...DEFAULT_LOOK, theme: "light" });
   });
   check((await nightBar()) === lightBar, "明るい with Windows dark: light all the same");

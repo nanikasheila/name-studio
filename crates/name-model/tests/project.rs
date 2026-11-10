@@ -57,7 +57,7 @@ fn refuses_broken_projects() {
     assert!(matches!(Project::from_json("{}"), Err(ProjectError::Json(_))));
 }
 
-/// A project saved by the editor (app/src/project.ts) reads back and saves unchanged.
+/// A project saved by the editor (app/src/domain/project.ts) reads back and saves unchanged.
 #[test]
 fn reads_what_the_editor_writes() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/editor-project.namestudio");

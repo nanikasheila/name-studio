@@ -3,7 +3,7 @@
 // command line; one added to assist.ts must be explained there too.
 import { describe, expect, it } from "vitest";
 import SKILL from "../../../skills/name-studio/SKILL.md?raw";
-import { OPS_GUIDE } from "../assist";
+import { OPS_GUIDE } from "../domain/assist";
 
 describe("SKILL.md", () => {
   it("names every operation", () => {

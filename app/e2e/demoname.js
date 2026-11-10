@@ -4,14 +4,14 @@
 // author's own drawings traced into lines (`art`: crops of their finished
 // pages, kept outside the repository; see docs/DEVELOPMENT.md); without them
 // simple figures drawn by code stand in. Imported in the page through Vite.
-import { addAutoTails } from "/src/autotail.ts";
-import { balloonExtent } from "/src/balloon.ts";
-import { addLine, moveLine } from "/src/dialogue.ts";
-import { insidePolygon, rectShape } from "/src/geometry.ts";
-import { basicBox } from "/src/pagebox.ts";
-import { addPanel, cutPanels } from "/src/panels.ts";
-import { newId, newProject } from "/src/project.ts";
-import { addSticky } from "/src/stickies.ts";
+import { addAutoTails } from "/src/domain/autotail.ts";
+import { balloonExtent } from "/src/domain/balloon.ts";
+import { addLine, moveLine } from "/src/domain/dialogue.ts";
+import { insidePolygon, rectShape } from "/src/model/geometry.ts";
+import { basicBox } from "/src/domain/pagebox.ts";
+import { addPanel, cutPanels } from "/src/domain/panels.ts";
+import { newId, newProject } from "/src/domain/project.ts";
+import { addSticky } from "/src/domain/stickies.ts";
 
 let seed = 11;
 const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;

@@ -1,7 +1,7 @@
 //! The app's commands, and the shapes they take and give, as TypeScript.
 //!
 //! The front end calls the Rust side by name with JSON (`call` in
-//! app/src/backend.ts). What a command is called, what its arguments are
+//! app/src/platform/backend.ts). What a command is called, what its arguments are
 //! called and what comes back used to be written down a second time by hand;
 //! here it is read from the Rust source instead, so the two cannot drift
 //! apart: `cargo run -p ipc-types` writes app/src/generated/ipc.ts, and a

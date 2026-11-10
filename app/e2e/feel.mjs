@@ -34,7 +34,7 @@ const work = mkdtempSync(join(tmpdir(), "name-studio-feel-"));
 const server = await createServer({ root, logLevel: "error", server: { middlewareMode: true } });
 const m = {};
 for (const module of ["project", "panels", "dialogue", "geometry", "pagebox"]) Object.assign(m, await server.ssrLoadModule(`/src/${module}.ts`));
-const { projectJson } = await server.ssrLoadModule("/src/projectjson.ts");
+const { projectJson } = await server.ssrLoadModule("/src/domain/projectjson.ts");
 await server.close();
 const name = join(work, "重いネーム.namestudio");
 writeFileSync(name, projectJson(fillHeavy(m, { pages: 32, strokes: 200 })));

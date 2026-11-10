@@ -41,11 +41,11 @@ export function fillHeavy(m, { pages = 32, strokes = 200 } = {}) {
 export function openHeavyName(page, { pages = 32, strokes = 200, show = 10 } = {}) {
   return page.evaluate(`(async () => {
     const m = {
-      ...(await import("/src/project.ts")),
-      ...(await import("/src/panels.ts")),
-      ...(await import("/src/dialogue.ts")),
-      ...(await import("/src/geometry.ts")),
-      ...(await import("/src/pagebox.ts")),
+      ...(await import("/src/domain/project.ts")),
+      ...(await import("/src/domain/panels.ts")),
+      ...(await import("/src/domain/dialogue.ts")),
+      ...(await import("/src/model/geometry.ts")),
+      ...(await import("/src/domain/pagebox.ts")),
     };
     const project = (${fillHeavy.toString()})(m, ${JSON.stringify({ pages, strokes })});
     const start = performance.now();

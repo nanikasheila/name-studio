@@ -84,8 +84,8 @@ try {
   await page.goto(url);
   await page.waitForFunction(() => window.nameStudio);
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
-    const { applyOps } = await import("/src/assist.ts");
+    const { newProject } = await import("/src/domain/project.ts");
+    const { applyOps } = await import("/src/domain/assist.ts");
     const project = newProject("屋上", 4);
     applyOps(project, [{ op: "script", text: "### 1ページ\n[1]\nミカ「星、見えないね」\n[2]\nソラ「見えなくても、あるよ」" }]);
     window.nameStudio.show(project);

@@ -228,7 +228,7 @@ try {
 
   // Autosave, after a few seconds of quiet: the name as the bytes it sends.
   const save = await page.evaluate(async () => {
-    const { projectBody } = await import("/src/projectjson.ts");
+    const { projectBody } = await import("/src/domain/projectjson.ts");
     const project = window.nameStudio.workbench.project;
     projectBody({}, project);
     const start = performance.now();
@@ -239,7 +239,7 @@ try {
   timed(save, 2 * BUDGET_MS, `autosave makes what it writes in ${save.toFixed(1)} ms (budget ${2 * BUDGET_MS} ms: it waits for a pause)`);
   // Before it writes, autosave sees whether the file holds the name already (a snapshot, compared).
   const same = await page.evaluate(async () => {
-    const { sameSnapshot } = await import("/src/snapshot.ts");
+    const { sameSnapshot } = await import("/src/editing/snapshot.ts");
     const session = window.nameStudio.workbench.session;
     const held = session.snapshot();
     const start = performance.now();

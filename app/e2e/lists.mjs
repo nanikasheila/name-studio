@@ -36,13 +36,13 @@ try {
   await page.goto(server.resolvedUrls.local[0]);
   await page.waitForFunction(() => window.nameStudio);
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
-    const { addPanel } = await import("/src/panels.ts");
-    const { addLine } = await import("/src/dialogue.ts");
-    const { addCharacter, addScene } = await import("/src/cast.ts");
-    const { addSticky } = await import("/src/stickies.ts");
-    const { holdPanel } = await import("/src/hold.ts");
-    const { rectShape } = await import("/src/geometry.ts");
+    const { newProject } = await import("/src/domain/project.ts");
+    const { addPanel } = await import("/src/domain/panels.ts");
+    const { addLine } = await import("/src/domain/dialogue.ts");
+    const { addCharacter, addScene } = await import("/src/domain/cast.ts");
+    const { addSticky } = await import("/src/domain/stickies.ts");
+    const { holdPanel } = await import("/src/domain/hold.ts");
+    const { rectShape } = await import("/src/model/geometry.ts");
     const project = newProject("一覧の操作", 6);
     const [a, b, c] = ["ユメ", "ノスト", "ユメ（取り込み）"].map((n) => addCharacter(project, n));
     const p1 = project.pages[0];

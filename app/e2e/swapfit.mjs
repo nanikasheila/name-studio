@@ -28,10 +28,10 @@ try {
   await page.waitForFunction(() => window.nameStudio);
   // Page 2: a wide panel on top with two rough lines far apart, under it a tall panel and a wide-ish one.
   const panels = await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
-    const { addPanel } = await import("/src/panels.ts");
-    const { rectShape } = await import("/src/geometry.ts");
-    const { basicBox } = await import("/src/pagebox.ts");
+    const { newProject } = await import("/src/domain/project.ts");
+    const { addPanel } = await import("/src/domain/panels.ts");
+    const { rectShape } = await import("/src/model/geometry.ts");
+    const { basicBox } = await import("/src/domain/pagebox.ts");
     const project = newProject("入れ替えの合わせ方", 3);
     const [x0, y0, x1, y1] = basicBox(project.pageFormat);
     const page = project.pages[1];

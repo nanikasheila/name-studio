@@ -37,7 +37,7 @@ try {
   await page.waitForFunction(() => window.nameStudio);
   // 第4話 opens; the one that was moved away does not.
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     window.__answer = (command, args) => {
       // 第4話 was saved by a newer version: one field this version does not know.
       if (command === "unknown_project_fields") return args.path.includes("第4話") ? ["pages.strokes.wobble"] : [];
@@ -129,7 +129,7 @@ try {
   await second.goto(server.resolvedUrls.local[0]);
   await second.waitForFunction(() => window.nameStudio);
   await second.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     window.__answer = (command, args) => {
       if (command === "unknown_project_fields") return [];
       if (command === "choose_open") return "E:\\移した\\消えた.namestudio";

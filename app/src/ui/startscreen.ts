@@ -1,0 +1,109 @@
+// The start screen: open a file, make a new name, or pick up one of the names
+// opened last with one click (each also in the command palette, Ctrl+K).
+import type { Command } from "../editing/commands";
+import { $, element } from "../platform/dom";
+import { forgetName, loadRecentNames } from "../platform/prefs";
+import { splitPath, whenLabel, type RecentName } from "../editing/recent";
+
+export interface StartHost {
+  openFile(): void;
+  newName(): void;
+  /** A new name from a picture of all its pages (ネーム画像から). */
+  fromImage(): void;
+  /** Opens a name from the list: null when it opened (or the user kept the name open now), else why not. */
+  openName(path: string): Promise<string | null>;
+  /** Asks where a name that is not there now went, and opens it there: the path it opened, or null. */
+  locate(path: string): Promise<string | null>;
+}
+
+export class StartScreen {
+  /**
+   * Names on the list that did not open, with why: they stay on the list (a
+   * drive not plugged in comes back) with what can be done about it.
+   */
+  private readonly failed = new Map<string, string>();
+
+  constructor(private readonly host: StartHost) {
+    $("start-open").addEventListener("click", () => host.openFile());
+    $("start-new").addEventListener("click", () => host.newName());
+    $("start-image").addEventListener("click", () => host.fromImage());
+  }
+
+  /** Lists the names opened last (again, after one was opened or saved). */
+  render(): void {
+    const names = loadRecentNames();
+    $("start-recent").hidden = names.length === 0;
+    $("recent-names").replaceChildren(...names.map((name) => this.row(name)));
+  }
+
+  /** The start screen's commands for the palette: open, new, and each recent name. */
+  commands(): Command[] {
+    const group = "開始";
+    return [
+      { id: "start.open", label: "開く", group, keys: ["Ctrl+O"], words: "ファイル ひらく", run: () => (this.host.openFile(), true) },
+      { id: "start.new", label: "新しいネーム", group, keys: [], words: "あたらしい 白紙 作る", run: () => (this.host.newName(), true) },
+      { id: "start.image", label: "ネーム画像から新しいネームを作る", group, keys: [], words: "ミニネーム 俯瞰 画像 スキャン 取り込む 分割", run: () => (this.host.fromImage(), true) },
+      ...loadRecentNames().map((name) => ({
+        id: `start.recent:${name.path}`,
+        label: `${name.title || splitPath(name.path).name} を開く`,
+        group: "最近のネーム",
+        keys: [],
+        words: splitPath(name.path).name,
+        run: () => (void this.open(name.path), true),
+      })),
+    ];
+  }
+
+  private async open(path: string): Promise<void> {
+    const problem = await this.host.openName(path);
+    if (problem) this.failed.set(path, problem);
+    else this.failed.delete(path);
+    this.render();
+  }
+
+  private async locate(path: string): Promise<void> {
+    const found = await this.host.locate(path);
+    if (found !== null) {
+      this.failed.delete(path);
+      // The name is on the list again at the top, where it was found.
+      if (found !== path) forgetName(path);
+    }
+    this.render();
+  }
+
+  private row(name: RecentName): HTMLElement {
+    const { name: file, folder } = splitPath(name.path);
+    const open = element(
+      "button",
+      { className: "recent-open", title: `開く: ${name.path}` },
+      element("span", { className: "recent-title", textContent: name.title || file }),
+      element("span", { className: "recent-when", textContent: `${name.pages} ページ ・ ${whenLabel(name.timeMs)}` }),
+      element("span", { className: "recent-where", textContent: folder ? `${file} — ${folder}` : file }),
+    );
+    open.addEventListener("click", () => void this.open(name.path));
+    const forget = element("button", { className: "recent-forget", title: "一覧から外す（ファイルは消えません）", textContent: "×" });
+    forget.setAttribute("aria-label", `${name.title || file} を一覧から外す`);
+    forget.addEventListener("click", () => {
+      forgetName(name.path);
+      this.failed.delete(name.path);
+      this.render();
+    });
+    const problem = this.failed.get(name.path);
+    if (problem === undefined) return element("li", { className: "recent-name" }, open, forget);
+    const again = element("button", { className: "recent-again", textContent: "もう一度" });
+    again.addEventListener("click", () => void this.open(name.path));
+    const locate = element("button", { className: "recent-locate", textContent: "場所を探す…" });
+    locate.addEventListener("click", () => void this.locate(name.path));
+    const remove = element("button", { className: "recent-remove", textContent: "一覧から外す" });
+    remove.addEventListener("click", () => forget.click());
+    const trouble = element(
+      "div",
+      { className: "recent-trouble", role: "alert" },
+      element("span", { className: "recent-problem", textContent: `開けませんでした: ${problem}` }),
+      again,
+      locate,
+      remove,
+    );
+    return element("li", { className: "recent-name failed" }, open, forget, trouble);
+  }
+}

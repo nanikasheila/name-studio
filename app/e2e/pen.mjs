@@ -39,7 +39,7 @@ try {
   // The checks of the line's points below without 手ブレ補正 (it has a check of its own at the end).
   const steady = (value) =>
     page.evaluate(async (value) => {
-      const { penPreferences } = await import("/src/prefs.ts");
+      const { penPreferences } = await import("/src/platform/prefs.ts");
       penPreferences.update({ stabilization: value });
     }, value);
   await steady(0);

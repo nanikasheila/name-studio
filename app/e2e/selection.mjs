@@ -32,11 +32,11 @@ try {
   await page.waitForFunction(() => window.nameStudio);
   // Four pages; page 2 cut into two panels, a rough line in the top one, a fill in the bottom one.
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
-    const { addPanel } = await import("/src/panels.ts");
-    const { rectShape } = await import("/src/geometry.ts");
-    const { basicBox } = await import("/src/pagebox.ts");
-    const { addFill } = await import("/src/strokes.ts");
+    const { newProject } = await import("/src/domain/project.ts");
+    const { addPanel } = await import("/src/domain/panels.ts");
+    const { rectShape } = await import("/src/model/geometry.ts");
+    const { basicBox } = await import("/src/domain/pagebox.ts");
+    const { addFill } = await import("/src/domain/strokes.ts");
     const project = newProject("選択", 4);
     for (const p of project.pages) addPanel(project, p, rectShape(basicBox(project.pageFormat)));
     const [x0, y0, x1, y1] = basicBox(project.pageFormat);
@@ -87,7 +87,7 @@ try {
   }
   const click = async (mm, keys) => drag([await at(mm)], keys);
   const box = await page.evaluate(async () => {
-    const { basicBox } = await import("/src/pagebox.ts");
+    const { basicBox } = await import("/src/domain/pagebox.ts");
     return basicBox(window.nameStudio.workbench.project.pageFormat);
   });
   const [x0, y0, x1, y1] = box;
@@ -213,7 +213,7 @@ try {
   await tool("select");
   await click(top);
   await page.evaluate(async () => {
-    const { addScene } = await import("/src/cast.ts");
+    const { addScene } = await import("/src/domain/cast.ts");
     const wb = window.nameStudio.workbench;
     const [first, second] = wb.project.pages;
     const scene = addScene(wb.project, first.id, second.id, "はじまり");

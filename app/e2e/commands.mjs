@@ -31,9 +31,9 @@ try {
   await page.goto(server.resolvedUrls.local[0]);
   await page.waitForFunction(() => window.nameStudio);
   const ids = await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
-    const { addPanel } = await import("/src/panels.ts");
-    const { rectShape } = await import("/src/geometry.ts");
+    const { newProject } = await import("/src/domain/project.ts");
+    const { addPanel } = await import("/src/domain/panels.ts");
+    const { rectShape } = await import("/src/model/geometry.ts");
     const project = newProject("命令", 40);
     const first = project.pages[0];
     const a = addPanel(project, first, rectShape([20, 20, 100, 80]));
@@ -119,7 +119,7 @@ try {
   // 読み戻し one change at a time: all ticked to start with, the unticked stay as the name has them.
   await page.keyboard.press("Escape");
   await wb(async () => {
-    const { chooseTakeBack } = await import("/src/readbackpick.ts");
+    const { chooseTakeBack } = await import("/src/ui/readbackpick.ts");
     const plan = {
       retyped: [{ page: 0, line: "a", from: "今日も", to: "今夜も" }],
       added: [{ text: "……", page: 1, box: null }],

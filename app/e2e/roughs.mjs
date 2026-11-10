@@ -25,7 +25,7 @@ try {
   await page.goto(url);
   await page.waitForFunction(() => window.nameStudio);
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     window.nameStudio.show(newProject("ラフ線のレイヤー", 2));
     const wb = window.nameStudio.workbench;
     wb.editor.showPage(1);

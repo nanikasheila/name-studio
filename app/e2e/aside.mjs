@@ -29,10 +29,10 @@ try {
 
   await page.evaluate(async () => {
     localStorage.clear();
-    const { newProject } = await import("/src/project.ts");
-    const { addPanel } = await import("/src/panels.ts");
-    const { rectShape } = await import("/src/geometry.ts");
-    const { addLine } = await import("/src/dialogue.ts");
+    const { newProject } = await import("/src/domain/project.ts");
+    const { addPanel } = await import("/src/domain/panels.ts");
+    const { rectShape } = await import("/src/model/geometry.ts");
+    const { addLine } = await import("/src/domain/dialogue.ts");
     const project = newProject("欄外の通しテスト", 4);
     const second = project.pages[1];
     addPanel(project, second, rectShape([20, 20, 240, 150]));

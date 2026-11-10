@@ -27,7 +27,7 @@ try {
   await page.waitForFunction(() => window.nameStudio);
   const file = process.env.NAME;
   await page.evaluate(async (text) => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     const project = text ? JSON.parse(text) : newProject("説明", 12);
     if (!text) {
       const long = "場面の説明：ここでは二人が出会い、互いの目的を確かめる。会話は短く、表情で気持ちの変化を見せる。次のページへの引きを残す。";
@@ -40,8 +40,8 @@ try {
   /** Each shown page's caption: how many rows it is drawn in, and where its room ends and what lies under it begins (px). */
   const captions = () =>
     page.evaluate(async () => {
-      const { captionRows, CAPTION_FONT } = await import("/src/screendraw.ts");
-      const { trimBox } = await import("/src/pagebox.ts");
+      const { captionRows, CAPTION_FONT } = await import("/src/render/screendraw.ts");
+      const { trimBox } = await import("/src/domain/pagebox.ts");
       const { editor, project } = window.nameStudio.workbench;
       const slots = editor.slots;
       // Measured as drawn: on the editor's own canvas (a canvas apart may pick another font for the letters).

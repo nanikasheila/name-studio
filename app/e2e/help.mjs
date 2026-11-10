@@ -38,10 +38,10 @@ try {
 
   // A name opened: the editor's guide takes over, from its first stop.
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
-    const { addPanel } = await import("/src/panels.ts");
-    const { addLine } = await import("/src/dialogue.ts");
-    const { rectShape } = await import("/src/geometry.ts");
+    const { newProject } = await import("/src/domain/project.ts");
+    const { addPanel } = await import("/src/domain/panels.ts");
+    const { addLine } = await import("/src/domain/dialogue.ts");
+    const { rectShape } = await import("/src/model/geometry.ts");
     const project = newProject("ヘルプ", 8);
     addPanel(project, project.pages[1], rectShape([20, 20, 160, 120]));
     addLine(project, project.pages[1], [100, 60], "セリフ");
