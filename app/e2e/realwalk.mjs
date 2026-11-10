@@ -13,7 +13,7 @@
 //   npx tauri build --no-bundle --config '{"identifier":"com.nanikasheila.namestudio.feel"}'
 //   node e2e/realwalk.mjs
 // In CI (a fresh Windows runner) the plain release build is walked.
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -67,6 +67,22 @@ async function launch() {
     }
   }
   if (!browser) {
+    // What WebView2 was started with (its own processes, and whether the port is among their arguments).
+    try {
+      console.error(
+        execFileSync(
+          "powershell",
+          [
+            "-NoProfile",
+            "-Command",
+            "Get-CimInstance Win32_Process -Filter \"Name='msedgewebview2.exe' or Name='name-studio-app.exe'\" | Select-Object ProcessId,ParentProcessId,CommandLine | Format-List | Out-String -Width 400; netstat -ano | Select-String ':9335'",
+          ],
+          { encoding: "utf8" },
+        ),
+      );
+    } catch (error) {
+      console.error(`(could not list the processes: ${error.message})`);
+    }
     child.kill();
     const why = exited !== null ? `the app ended (exit ${exited})` : "the app is running, but the port did not open in 120 s";
     throw new Error(`the app's debugging port did not open: ${why}${stderr ? `\n${stderr}` : ""}`);
