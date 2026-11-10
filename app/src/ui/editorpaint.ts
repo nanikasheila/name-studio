@@ -100,14 +100,25 @@ export class EditorPainter {
 
   private overlayFrame = 0;
 
+  /**
+   * Where drawing goes: the picture of the pages (the cache) while the pages
+   * are drawn, the screen for what lies over them. The pages are never read
+   * back from the screen: the screen is desynchronized (drawn straight to the
+   * display), and copying from it waited on the GPU 50–73 ms each time the pen
+   * let go of a line.
+   */
+  private ctx: CanvasRenderingContext2D;
+
   constructor(
     private readonly canvas: HTMLCanvasElement,
-    private readonly ctx: CanvasRenderingContext2D,
+    private readonly screen: CanvasRenderingContext2D,
     private readonly host: EditorHost,
     private readonly stage: EditorStage,
     private readonly picks: EditorPicks,
     private readonly scene: PaintScene,
-  ) {}
+  ) {
+    this.ctx = screen;
+  }
 
   /**
    * While something is dragged: what is dragged, drawn over the other pages
@@ -213,29 +224,41 @@ export class EditorPainter {
     }
     // A hidden editor (a file loading before the editor shows) has no pixels to draw.
     if (!this.canvas.width || !this.canvas.height) return;
-    const ctx = this.ctx;
     const started = performance.now();
     if (this.scene.drag?.kind === "pen" && this.live && this.cache) {
       // While a line is drawn nothing else changes: the pages as they were with the line painted on so far, then what lies over them.
       this.paintLive(this.scene.drag);
-      ctx.save();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-      ctx.drawImage(this.cache, 0, 0);
-      ctx.restore();
+      this.showCache();
       this.drawOverlay();
       perfMeter.drawn(started, true);
       return;
     }
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    // A turned view leaves the corners outside the pages: the stage colour there.
-    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    ctx.restore();
     const project = this.host.project();
-    if (!project) return;
+    if (!project) {
+      this.clear(this.screen);
+      return;
+    }
     if (!this.scene.drag) this.stage.keepRoom(project);
     this.stage.arrange(project);
+    // The pages go onto their picture (with the view's transform), then the picture onto the screen.
+    const cache = this.pagePicture();
+    this.clear(cache);
+    cache.setTransform(this.screen.getTransform());
+    this.ctx = cache;
+    try {
+      this.drawPages(project);
+    } finally {
+      this.ctx = this.screen;
+      this.cacheStale = false;
+    }
+    this.showCache();
+    this.scene.laidOut();
+    this.drawOverlay();
+    if (this.scene.drag) perfMeter.drawn(started, false);
+  }
+
+  /** The pages, the room beside them and what is dragged over them, on `this.ctx`. */
+  private drawPages(project: Project): void {
     this.strokeCache.startFrame();
     const drawn = new Set<string>();
     for (const slot of this.stage.slots) {
@@ -255,10 +278,24 @@ export class EditorPainter {
     this.drawSpreadMarks(project);
     this.drawDragged(project);
     this.drawOverflow(project);
-    this.keepCache();
-    this.scene.laidOut();
-    this.drawOverlay();
-    if (this.scene.drag) perfMeter.drawn(started, false);
+  }
+
+  /** Clear a whole canvas: a turned view leaves the corners outside the pages, the stage colour there. */
+  private clear(ctx: CanvasRenderingContext2D): void {
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.restore();
+  }
+
+  /** The screen shows the picture of the pages, for what lies over them to be drawn on. */
+  private showCache(): void {
+    const ctx = this.screen;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    if (this.cache) ctx.drawImage(this.cache, 0, 0);
+    ctx.restore();
   }
 
   /** What the editor keeps to draw quickly (device pixels): the pictures of the pages' lines, and the screen's own copy. */
@@ -270,7 +307,7 @@ export class EditorPainter {
   /** Paint what the pen added onto the picture of the pages (all of the line again when the view moved). */
   private paintLive(drag: DragOf<"pen">): void {
     const cache = this.cache!.getContext("2d")!;
-    cache.setTransform(this.ctx.getTransform());
+    cache.setTransform(this.screen.getTransform());
     const { slot } = drag;
     const m = { scale: slot.scale, x: slot.x, y: slot.y };
     const [width, color, brush] = this.liveInk(drag);
@@ -290,19 +327,15 @@ export class EditorPainter {
     return [drag.mark?.widthMm ?? this.scene.penWidthMm, drag.mark?.color ?? "#3a3834", drag.mark ? undefined : this.scene.brush("pen")];
   }
 
-  private keepCache(): void {
+  /** The picture of the pages, the size of the screen. */
+  private pagePicture(): CanvasRenderingContext2D {
     const cache = this.cache ?? document.createElement("canvas");
     if (cache.width !== this.canvas.width || cache.height !== this.canvas.height) {
       cache.width = this.canvas.width;
       cache.height = this.canvas.height;
     }
-    const ctx = cache.getContext("2d")!;
-    // A line drawn on it last left the view's transform.
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, cache.width, cache.height);
-    ctx.drawImage(this.canvas, 0, 0);
     this.cache = cache;
-    this.cacheStale = false;
+    return cache.getContext("2d")!;
   }
 
   /** Redraw only what lies over the pages (hover marks, the eraser ring) on the next frame. */
@@ -314,12 +347,7 @@ export class EditorPainter {
         this.draw();
         return;
       }
-      const ctx = this.ctx;
-      ctx.save();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-      ctx.drawImage(this.cache, 0, 0);
-      ctx.restore();
+      this.showCache();
       this.drawOverlay();
     });
   }
