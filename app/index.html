@@ -816,6 +816,19 @@
                 <p class="hint" id="st-release-note">新しい版で困ったときに、選んだ版へ入れ替えます（作業は保存してから）。入れ替えると、自動更新は「知らせるだけ」になります。</p>
               </div>
             </section>
+            <section class="settings-pane" data-pane="usage" data-scope="pc" data-title="使われ方">
+              <h3>使われ方 <small>この PC</small></h3>
+              <div class="setting-item" data-keys="使われ方 統計 回数 よく使う 記録 送信 プライバシー テレメトリー">
+                <label class="check"><input type="checkbox" id="st-usage-on" /> この PC の中で、使った命令・道具・書き出しの回数を数える</label>
+                <p class="hint">数えたものはこの PC の中だけに置き、どこにも送りません。よく使うものがわかると、キー設定や作業の配置を決める手がかりになります。</p>
+                <p id="st-usage-since" class="hint"></p>
+                <div id="st-usage-lists" class="usage-lists"></div>
+                <div class="setting-row">
+                  <button type="button" id="st-usage-copy" title="数えたものをテキストにしてコピーする（人に見せたいときに貼れます）">テキストでコピー</button>
+                  <button type="button" id="st-usage-clear">数えたものを消す…</button>
+                </div>
+              </div>
+            </section>
             <section class="settings-pane" data-pane="more" data-scope="pc" data-title="ペン・キー">
               <h3>ペン・キー <small>この PC</small></h3>
               <div class="setting-item" data-keys="ペン タブレット 筆圧 傾き 消しゴム サイドボタン タッチ カーソル">

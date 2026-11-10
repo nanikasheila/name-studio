@@ -39,6 +39,7 @@ import { perfMeter } from "./platform/perfmeter";
 import { applyLook, readLook } from "./platform/look";
 import { fail, showStatus, installStatus } from "./platform/status";
 import { folderStep } from "./platform/reveal";
+import { noteStarted } from "./platform/usagestore";
 
 // 画面の見た目 before anything is shown (設定 › 画面の見た目). The user's CSS waits for the
 // Rust side to say the app was not started with Shift held (lookpane.ts).
@@ -402,6 +403,7 @@ async function start(): Promise<void> {
     await runBatchExport(batch, setStatus);
     return;
   }
+  noteStarted();
   // Work left unsaved comes first: the update check can wait on the network.
   await offerRecovery();
   if (firstRun && workspace === "viewer") tour.offer("start");

@@ -61,6 +61,7 @@ import {
   type StyleLine,
 } from "../domain/style";
 import { explain } from "../platform/errortext";
+import { UsagePane, type UseLabel } from "./usagepane";
 
 export interface SettingsHost {
   readonly editor: PageEditor;
@@ -82,6 +83,8 @@ export interface SettingsHost {
   openShortcuts(): void;
   /** Before the app is closed for another version: false to stay. */
   prepareRestart(): Promise<boolean>;
+  /** 使われ方: what a counted command, tool or export is called. */
+  useLabel: UseLabel;
 }
 
 /** Said when the update setting is changed. */
@@ -121,9 +124,12 @@ export class SettingsDialog {
   private pane = readText(PANE_KEY) ?? "koma";
   /** 画面の見た目 (theme, the screen's font and size, the user's CSS). */
   readonly look: LookPane;
+  /** 使われ方 counted on this computer. */
+  private readonly usage: UsagePane;
 
   constructor(private readonly host: SettingsHost) {
     this.look = new LookPane((message) => this.host.status(message));
+    this.usage = new UsagePane(host.useLabel, (message) => this.host.status(message));
     const number = (id: string) => $<HTMLInputElement>(id);
     for (const id of ["st-gutter-across", "st-gutter-down"]) {
       number(id).addEventListener("change", () => {
@@ -518,6 +524,7 @@ export class SettingsDialog {
     this.renderSizes(project);
     this.renderShapes(project);
     this.renderFonts(project);
+    this.usage.render();
     const gap = $<HTMLInputElement>("st-page-gap");
     if (document.activeElement !== gap) gap.value = String(this.host.editor.pageGapMm);
     $<HTMLInputElement>("st-show-notes").checked = this.host.editor.showNotes;

@@ -16,6 +16,7 @@ import { addDrawnPanel, spanGutter } from "../domain/koma";
 import { joinPanels, seamAt } from "../domain/komaedit";
 import { onTipLoaded } from "../render/pagedraw";
 import { perfMeter } from "../platform/perfmeter";
+import { noteUse } from "../platform/usagestore";
 import { ROUGH_BASE } from "../domain/roughlayers";
 import { neighbour, setLineText } from "../domain/dialogue";
 import type { FillSettings } from "../editing/fillsettings";
@@ -508,6 +509,7 @@ export class PageEditor {
   // --- Tools and what they show -----------------------------------------------------
 
   setTool(tool: Tool): void {
+    if (tool !== this.tool) noteUse("tool", tool);
     this.tool = tool;
     if (tool !== "cut") this.cancelPolygon();
     if (tool === "sticky" && !this.stage.showStickies) this.setStickiesShown(true); // 付箋 put while hidden would not be seen.

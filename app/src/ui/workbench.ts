@@ -12,6 +12,8 @@ import { ask } from "../platform/dialogs";
 import { heldNear } from "../domain/hold";
 import { formatTime } from "../service/autosave";
 import { penPreferences, rememberName } from "../platform/prefs";
+import { noteUse } from "../platform/usagestore";
+import { useLabels } from "./usagepane";
 import { NameSaver } from "./namesaver";
 import { BrushDialog } from "./brushdialog";
 import { BrushEditor } from "./brusheditor";
@@ -337,6 +339,7 @@ export class Workbench {
       openPenSettings: () => this.penDialog.open(),
       openShortcuts: () => this.shortcutDialog.open(),
       prepareRestart: () => this.confirmDiscard(),
+      useLabel: useLabels(() => this.commands),
     });
     this.commands = buildCommands({
       editor: this.editor,
@@ -393,6 +396,7 @@ export class Workbench {
       keysOf: (id) => this.shortcuts.keys(id),
       run: (command) => {
         if (!command.run()) return;
+        noteUse("command", command.id);
         this.editor.draw();
       },
       status: (message) => this.setStatus(message),
@@ -1035,6 +1039,8 @@ export class Workbench {
 
   /** Run a command (a shortcut's action, an action bar's button); false when it does not apply now. */
   run(action: ActionId): boolean {
-    return this.commands.find((command) => command.id === action)?.run() ?? false;
+    const done = this.commands.find((command) => command.id === action)?.run() ?? false;
+    if (done) noteUse("command", action);
+    return done;
   }
 }

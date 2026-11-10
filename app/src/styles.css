@@ -1193,12 +1193,17 @@ dialog.command-palette {
 }
 dialog.command-palette::backdrop { background: rgb(0 0 0 / 0.2); }
 .cmdp-input { width: 100%; font: inherit; font-size: calc(15 * var(--px)); color: var(--text); background: transparent; border: 0; border-bottom: 1px solid var(--line); padding: 12px 16px; outline: none; }
+.usage-lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px 16px; margin: 6px 0; }
+.usage-kind h4 { margin: 0 0 4px; font-size: calc(12 * var(--px)); }
+.usage-list { margin: 0; padding-left: 1.6em; font-size: calc(12 * var(--px)); }
+.usage-list li span:first-child { margin-right: 6px; }
+.usage-count { color: var(--muted); }
 .cmdp-list { max-height: min(420px, 60vh); overflow: auto; padding: 4px; }
 .cmdp-item { display: grid; grid-template-columns: 4.5em 1fr auto; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 6px; cursor: pointer; }
 .cmdp-item.current { background: var(--accent); color: var(--on-accent); }
 .cmdp-item.unavailable { opacity: 0.45; }
 .cmdp-group { font-size: calc(11 * var(--px)); color: var(--muted); }
-.cmdp-item.current .cmdp-group, .cmdp-item.current .cmdp-keys { color: color-mix(in srgb, var(--on-accent) 85%, transparent); }
+.cmdp-item.current .cmdp-group, .cmdp-item.current .cmdp-keys { color: var(--on-accent); }
 .cmdp-keys { font-size: calc(12 * var(--px)); color: var(--muted); white-space: nowrap; }
 .cmdp-nothing { padding: 14px 12px; color: var(--muted); }
 

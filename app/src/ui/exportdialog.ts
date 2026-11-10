@@ -55,6 +55,7 @@ import { isNamePicture } from "../domain/references";
 import { failureText, explain } from "../platform/errortext";
 import type { AlertAction } from "../platform/alerts";
 import { folderStep } from "../platform/reveal";
+import { noteUse } from "../platform/usagestore";
 
 export interface ExportDialogHost {
   project(): Project | null;
@@ -995,6 +996,7 @@ export class ExportDialog {
         const check = checkSummary(report);
         lines.push(...check.lines);
         this.message(lines.join("\n"), !check.ok, [folderStep(report.work ?? this.form.outDir, "書き出し先を開く")]);
+        noteUse("export", "csp");
         this.remember();
         this.host.status(
           check.ok
@@ -1058,6 +1060,7 @@ export class ExportDialog {
             [folderStep(path)],
           );
           this.remember(path);
+          noteUse("export", "mini");
           this.host.status(`ミニネームを書き出しました: ${path}`);
           return;
         } else {
@@ -1065,6 +1068,7 @@ export class ExportDialog {
         }
         this.message(`書き出しました（${seconds()} 秒）: ${path}`, false, [folderStep(path)]);
         this.remember(path);
+        noteUse("export", this.kind);
         this.host.status(`書き出しました: ${path}`);
       }
     } catch (error) {
@@ -1151,6 +1155,7 @@ export class ExportDialog {
       };
       const path = this.host.projectPath();
       if (path) keepLastUpdate(path, update);
+      noteUse("export", "update");
       // Kept with the CSP pages too, run after run, to look back on.
       const recorded = update.rows.length
         ? await call("record_dialogue_update", {
