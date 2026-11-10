@@ -313,6 +313,7 @@ body:has(#viewer.start) .viewer-only { display: none; }
 .alert { pointer-events: auto; display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px 8px 12px; border-radius: 8px; font-size: calc(13 * var(--px)); line-height: 1.5; box-shadow: 0 4px 14px rgb(0 0 0 / 0.18); border: 1px solid; }
 .alert.error { background: var(--error-bg); color: var(--error-text); border-color: var(--error-line); }
 .alert.warning { background: var(--warn-bg); color: var(--warn-text); border-color: var(--warn-line); }
+.alert.info { background: var(--panel); color: var(--text); border-color: var(--accent); }
 .alert p { margin: 0; flex: 1; white-space: pre-line; }
 .alert button { border: 0; background: transparent; color: inherit; font-size: calc(16 * var(--px)); line-height: 1; cursor: pointer; padding: 2px 4px; }
 .alert button.alert-action { font-size: calc(12 * var(--px)); padding: 2px 8px; border: 1px solid currentColor; border-radius: 4px; white-space: nowrap; }

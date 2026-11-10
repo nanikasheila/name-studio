@@ -11,9 +11,12 @@ import { appVersion, checkForUpdate } from "./ui/updater";
 import { applyNewNameDefaults } from "./domain/namedefaults";
 import type { Project } from "./model/model";
 import { newProject } from "./domain/project";
+import { sampleName } from "./domain/samplename";
 import { STRUCTURES } from "./domain/structures";
 import { adoptShape } from "./domain/shapes";
-import { libraryShapes, loadRecentNames, newNameDefaults } from "./platform/prefs";
+import { LARGE_OFFERED_KEY, libraryShapes, loadRecentNames, newNameDefaults } from "./platform/prefs";
+import { readText, writeText } from "./platform/settings";
+import { largeOfferReason, largeOfferText } from "./editing/largeoffer";
 import { HelpBar, helpBarShown, showHelpBar } from "./ui/helpbar";
 import { HelpOverlay } from "./ui/helpoverlay";
 import type { HelpKind } from "./editing/helptopics";
@@ -74,6 +77,30 @@ const helpOverlay = new HelpOverlay({
   openShortcuts: () => $("shortcuts").click(),
 });
 const helpBar = new HelpBar({ editor: () => (workspace === "editor" ? workbench.editor : null), keysOf });
+
+/** 大きめを勧める: once on this computer, when a pen is used or the screen is wide and fine. */
+let largeAsked = readText(LARGE_OFFERED_KEY) === "1";
+function offerLarge(pen: boolean): void {
+  if (largeAsked) return;
+  const reason = largeOfferReason({
+    large: readLook().large,
+    offered: largeAsked,
+    pen,
+    screenWidth: screen.width,
+    pixelRatio: devicePixelRatio,
+  });
+  if (!reason) return;
+  largeAsked = true;
+  writeText(LARGE_OFFERED_KEY, "1");
+  showAlert("large-offer", largeOfferText(reason), "info", undefined, { label: "大きめにする", run: () => workbench.useLarge() });
+}
+window.addEventListener(
+  "pointerdown",
+  (event) => {
+    if (event.pointerType === "pen") offerLarge(true);
+  },
+  { capture: true, passive: true },
+);
 
 function askHelp(kind: HelpKind): void {
   if (kind === "overlay") helpOverlay.toggle();
@@ -211,6 +238,18 @@ const imageImport = new ImageImportDialog({
   status: setStatus,
 });
 
+/** 見本で試す: the sample name, not saved anywhere until the person saves it, with the editor's guide on it. */
+function trySample(): void {
+  void (async () => {
+    if (!(await workbench.confirmDiscard())) return;
+    const project = sampleName();
+    showWorkspace("editor");
+    workbench.show(project, null, "見本のネームを開きました。自由に描き足したり消したりしてください（保存するまでファイルにはなりません）");
+    // After the editor is laid out (and in place of the first-time offer, which it repeats).
+    requestAnimationFrame(() => requestAnimationFrame(() => tour.start("editor")));
+  })();
+}
+
 async function nameFromImage(): Promise<void> {
   if (workspace === "editor" || !(await workbench.confirmDiscard())) return;
   imageImport.open();
@@ -222,6 +261,7 @@ const startScreen = new StartScreen({
   openFile: () => void openFile(),
   newName,
   fromImage: () => void nameFromImage(),
+  sample: trySample,
   openName: async (path) => ((await workbench.confirmDiscard()) ? openName(path) : null),
   locate: locateName,
 });
@@ -364,6 +404,7 @@ async function start(): Promise<void> {
   // Work left unsaved comes first: the update check can wait on the network.
   await offerRecovery();
   if (firstRun && workspace === "viewer") tour.offer("start");
+  offerLarge(false);
   await checkForUpdate({
     status: setStatus,
     busy: () => workbench.project !== null,

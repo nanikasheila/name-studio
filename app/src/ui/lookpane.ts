@@ -55,9 +55,7 @@ export class LookPane {
       this.status(`画面の文字の大きさを ${this.kept.sizePx} px にしました`);
     });
     $<HTMLInputElement>("st-ui-large").addEventListener("change", (event) => {
-      const large = (event.target as HTMLInputElement).checked;
-      this.change({ large });
-      this.status(large ? "ボタンや入力欄を大きめにしました" : "ボタンや入力欄をふつうの大きさに戻しました");
+      this.setLarge((event.target as HTMLInputElement).checked);
     });
     $("st-ui-size-reset").addEventListener("click", () => {
       this.change({ sizePx: DEFAULT_SIZE_PX });
@@ -142,6 +140,12 @@ export class LookPane {
     if (!this.editorFilled) $<HTMLTextAreaElement>("st-css").value = look.css;
     this.editorFilled = true;
     this.showNotes();
+  }
+
+  /** 大きめ on or off, as its check box does. */
+  setLarge(large: boolean): void {
+    this.change({ large });
+    this.status(large ? "ボタンや入力欄を大きめにしました" : "ボタンや入力欄をふつうの大きさに戻しました");
   }
 
   /** この PC の設定を初期に戻す: the look as it comes, the user's CSS off but kept. */

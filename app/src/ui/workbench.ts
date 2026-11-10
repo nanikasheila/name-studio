@@ -493,6 +493,11 @@ export class Workbench {
     this.setTool(this.editor.tool);
   }
 
+  /** 大きめ on (the offer's button): kept for this computer, as in 設定 › 画面の見た目. */
+  useLarge(): void {
+    this.settingsDialog.look.setLarge(true);
+  }
+
   get project(): Project | null {
     return this.session.project;
   }

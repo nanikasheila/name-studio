@@ -29,6 +29,8 @@ export const PAGE_GAP_KEY = "namestudio.pageGap";
 export const HELP_BAR_KEY = "namestudio.helpBar";
 /** The first-time guide seen (or closed): "editor" and "start" each once. */
 export const TOUR_SEEN_KEY = "namestudio.tourSeen";
+/** 「大きめ」 was offered on this computer ("1"): it is offered once. */
+export const LARGE_OFFERED_KEY = "namestudio.largeOffered";
 
 /** コマの入れ替え・保留コマを入れるとき: "stretch" (入れ替え先のコマに合わせる) or "keep" (縦横比を保つ). */
 export const SWAP_FIT_KEY = "namestudio.swapFit";

@@ -708,6 +708,7 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
   { target: "#start-open", name: "開く", text: "ネームデータか CSP のネーム用紙", command: "button.open", side: "below" },
   { target: "#start-new", name: "新しいネーム", text: "白紙から作る", side: "below" },
   { target: "#start-image", name: "ネーム画像から", text: "1 枚にまとめたネームをページに分けて新しいネームに", side: "below" },
+  { target: "#start-sample", name: "見本で試す", text: "8 ページの見本を開いて、画面の案内をその上でたどる", side: "below" },
   { target: "#start-recent", name: "最近のネーム", text: "クリックで開く", side: "inside" },
 ];
 
@@ -814,7 +815,8 @@ export const START_STOPS: TourStop[] = [
     target: ".start-actions",
     title: "Name Studio へようこそ",
     text: [
-      "まず「新しいネーム」で白紙のネームを作るか、「開く」でネームデータや CSP のネーム用紙を開きます。",
+      "はじめてなら「見本で試す」で、コマとセリフの入った見本を開いて触ってみてください。保存するまでファイルにはなりません。",
+      "自分のネームは「新しいネーム」で白紙から作るか、「開く」でネームデータや CSP のネーム用紙を開きます。",
       "ネームを開くと、画面の各部を案内します。",
     ],
   },
