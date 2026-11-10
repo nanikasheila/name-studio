@@ -214,6 +214,10 @@ export class Inspector {
     const memo = page.memo.trim();
     if (!memo) return [];
     const box = element("div", { className: "page-memo", title: "ページのメモ（ページを選ぶと直せます）" });
+    // A long memo scrolls in its box: reachable with Tab, to scroll it from the keyboard.
+    box.tabIndex = 0;
+    box.setAttribute("role", "region");
+    box.setAttribute("aria-label", `${pageIndex(project, page.id) + 1} ページのメモ`);
     box.append(
       element("span", { className: "label", textContent: `${pageIndex(project, page.id) + 1} ページのメモ` }),
       element("div", { textContent: memo }),
@@ -913,6 +917,7 @@ export class Inspector {
       }),
     );
     const pattern = element("select");
+    pattern.setAttribute("aria-label", "コマ割りの型");
     for (const item of PATTERNS)
       pattern.append(element("option", { value: item.id, textContent: `${item.label}（${patternCount(item.id)}）`, title: item.note }));
     const patternNote = element("p", { className: "hint", textContent: PATTERNS[0].note });

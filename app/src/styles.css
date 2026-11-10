@@ -1198,7 +1198,7 @@ dialog.command-palette::backdrop { background: rgb(0 0 0 / 0.2); }
 .cmdp-item.current { background: var(--accent); color: var(--on-accent); }
 .cmdp-item.unavailable { opacity: 0.45; }
 .cmdp-group { font-size: calc(11 * var(--px)); color: var(--muted); }
-.cmdp-item.current .cmdp-group, .cmdp-item.current .cmdp-keys { color: color-mix(in srgb, var(--on-accent) 85%, transparent); }
+.cmdp-item.current .cmdp-group, .cmdp-item.current .cmdp-keys { color: var(--on-accent); }
 .cmdp-keys { font-size: calc(12 * var(--px)); color: var(--muted); white-space: nowrap; }
 .cmdp-nothing { padding: 14px 12px; color: var(--muted); }
 

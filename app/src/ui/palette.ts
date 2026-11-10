@@ -33,6 +33,9 @@ export class CommandPalette {
     this.input.setAttribute("aria-controls", `${id}-list`);
     this.list = element("div", { className: "cmdp-list", id: `${id}-list` });
     this.list.setAttribute("role", "listbox");
+    this.list.setAttribute("aria-label", "命令の一覧");
+    // A list taller than its box can be scrolled from the keyboard too (Tab to it, then the arrows).
+    this.list.tabIndex = 0;
     this.dialog = element("dialog", { className: "command-palette", id }, this.input, this.list);
     document.body.append(this.dialog);
     this.input.addEventListener("input", () => {
@@ -111,7 +114,11 @@ export class CommandPalette {
       row.setAttribute("role", "option");
       row.setAttribute("aria-selected", String(i === this.index));
       if (i === this.index) row.classList.add("current");
-      if (command.available && !command.available()) row.classList.add("unavailable");
+      if (command.available && !command.available()) {
+        // Can't be used now: dimmed, and said to be so (a screen reader says it; contrast rules leave it out).
+        row.classList.add("unavailable");
+        row.setAttribute("aria-disabled", "true");
+      }
       row.addEventListener("mousemove", () => {
         if (this.index === i) return;
         this.index = i;

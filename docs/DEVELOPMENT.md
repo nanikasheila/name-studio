@@ -68,6 +68,9 @@ cargo test
 cargo audit
 # 画面の通しテスト（ブラウザで開く・描く・元に戻す・失敗の取り消し・自動保存・連続表示と速さ）
 (cd app && npx playwright install chromium && npm run e2e)
+# アクセシビリティ（e2e の最後にも入っている）: 配色 5 つ × 開始画面・編集画面・セリフを選んだところ・命令パレット・ヘルプ・読む表示・設定・書き出しを
+# axe-core（WCAG 2.1 A/AA、文字のコントラストを含む）で調べる。--list で見つかったものを全部出す
+(cd app && npm run e2e:a11y -- --list)
 # 実アプリで書き出す（WebView・CSP・Rust 側との通信まで。Linux は xvfb-run を前に付ける）
 (cd app && npx tauri build --no-bundle)
 cargo run -p clip-core --features fixtures --example fixture_page -- /tmp/app-check/page.clip
