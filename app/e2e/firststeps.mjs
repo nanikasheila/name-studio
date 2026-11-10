@@ -1,8 +1,9 @@
 // The first minutes with the app: Enter in a dialog's field does what was
 // meant (作る, not やめる; the settings stay open), the top bar fits a
 // 1280 px window with the file name shown, a line across a blank page's
-// 基本枠 cuts it, and the help over the screen lays its words clear of each
-// other. Run: npm run e2e:firststeps
+// 基本枠 cuts it, 見本で試す opens the sample with the guide on it, 大きめ is
+// offered once when a pen is used, and the help over the screen lays its
+// words clear of each other. Run: npm run e2e:firststeps
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { createServer } from "vite";
@@ -117,6 +118,84 @@ try {
   ]);
   check(missed[0] === 0 && missed[1].includes("基本枠を横切る"), `a line off the frame makes nothing and tells how (${missed[1]})`);
   await page.close();
+
+  // 見本で試す: the sample opens, unsaved, with the editor's guide on it (even when the guide was seen).
+  {
+    const tried = await open(1366, 768);
+    await tried.evaluate(() => localStorage.setItem("namestudio.tourSeen", JSON.stringify({ start: true, editor: true })));
+    const shown = await tried.locator("#start-sample").isVisible();
+    await tried.click("#start-sample");
+    await tried.waitForSelector("#tour:not([hidden])", { timeout: 3000 }).catch(() => undefined);
+    const sample = await tried.evaluate(() => {
+      const wb = window.nameStudio.workbench;
+      const project = wb.project;
+      return {
+        title: project?.title,
+        pages: project?.pages.length,
+        panels: project?.pages.reduce((n, page) => n + page.panels.length, 0),
+        lines: project?.pages.reduce((n, page) => n + page.lines.length, 0),
+        path: wb.session.path ?? null,
+        editor: !document.getElementById("editor").hidden,
+        status: document.getElementById("status").textContent,
+        tour: !document.getElementById("tour").hidden,
+        first: document.querySelector(".tour-count")?.textContent,
+      };
+    });
+    check(shown, "the start screen offers 見本で試す");
+    check(
+      sample.editor && sample.pages === 8 && sample.panels >= 24 && sample.lines >= 20,
+      `見本で試す opens the sample name in the editor (${sample.title}: ${sample.pages} pages, ${sample.panels} panels, ${sample.lines} lines)`,
+    );
+    check(sample.path === null && sample.status.includes("保存するまで"), `it is not a file until saved (${sample.status})`);
+    check(sample.tour && sample.first?.startsWith("1 /"), `and the editor's guide starts on it (${sample.first})`);
+    await tried.keyboard.press("Escape");
+    // In the command palette too.
+    const palette = await open(1366, 768);
+    await palette.keyboard.press("Control+k");
+    await palette.keyboard.type("見本");
+    await palette.waitForTimeout(200);
+    const listed = await palette.evaluate(() =>
+      [...document.querySelectorAll("#start-palette [role=option]")].map((node) => node.textContent),
+    );
+    check(
+      listed.some((text) => text.includes("見本のネームで試す")),
+      `Ctrl+K on the start screen finds it (${listed.slice(0, 3).join(" / ")})`,
+    );
+    await palette.close();
+    await tried.close();
+  }
+
+  // 大きめを勧める: once, when a pen first touches; its button turns 大きめ on.
+  {
+    const pen = await open(1366, 768);
+    const touch = () =>
+      pen.evaluate(() =>
+        document
+          .getElementById("start-open")
+          .dispatchEvent(new PointerEvent("pointerdown", { pointerType: "pen", bubbles: true, cancelable: true })),
+      );
+    const offered = () => pen.locator(".alert.info").count();
+    check((await offered()) === 0, "no 大きめ offer before a pen is used (an ordinary screen)");
+    await touch();
+    const words = await pen
+      .locator(".alert.info p")
+      .textContent()
+      .catch(() => "");
+    check((await offered()) === 1 && words.includes("ペン"), `a pen's first touch offers 大きめ (${words.slice(0, 30)}…)`);
+    await pen.locator(".alert.info .alert-action").click();
+    const after = await pen.evaluate(() => [
+      document.documentElement.dataset.density,
+      JSON.parse(localStorage.getItem("namestudio.look")).large,
+    ]);
+    check(after[0] === "large" && after[1] === true, `its button turns 大きめ on and keeps it (${after.join(", ")})`);
+    await touch();
+    check((await offered()) === 0, "it is offered once only");
+    await pen.reload();
+    await pen.waitForFunction(() => window.nameStudio);
+    await touch();
+    check((await offered()) === 0, "nor after the app starts again");
+    await pen.close();
+  }
 
   // The top bar in windows of every width: nothing off the right edge, the file name readable or on hover.
   for (const width of [900, 1100, 1181, 1241, 1280, 1366, 1400, 1501, 1681, 1920]) {

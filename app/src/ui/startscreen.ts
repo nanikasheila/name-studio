@@ -10,6 +10,8 @@ export interface StartHost {
   newName(): void;
   /** A new name from a picture of all its pages (ネーム画像から). */
   fromImage(): void;
+  /** Opens the sample name (見本で試す), with the editor's guide on it. */
+  sample(): void;
   /** Opens a name from the list: null when it opened (or the user kept the name open now), else why not. */
   openName(path: string): Promise<string | null>;
   /** Asks where a name that is not there now went, and opens it there: the path it opened, or null. */
@@ -27,6 +29,7 @@ export class StartScreen {
     $("start-open").addEventListener("click", () => host.openFile());
     $("start-new").addEventListener("click", () => host.newName());
     $("start-image").addEventListener("click", () => host.fromImage());
+    $("start-sample").addEventListener("click", () => host.sample());
   }
 
   /** Lists the names opened last (again, after one was opened or saved). */
@@ -49,6 +52,14 @@ export class StartScreen {
         keys: [],
         words: "ミニネーム 俯瞰 画像 スキャン 取り込む 分割",
         run: () => (this.host.fromImage(), true),
+      },
+      {
+        id: "start.sample",
+        label: "見本のネームで試す",
+        group,
+        keys: [],
+        words: "サンプル 見本 試す お試し 練習 はじめて 案内",
+        run: () => (this.host.sample(), true),
       },
       ...loadRecentNames().map((name) => ({
         id: `start.recent:${name.path}`,
