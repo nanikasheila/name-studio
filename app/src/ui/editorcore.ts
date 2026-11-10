@@ -102,6 +102,13 @@ export interface MoveSnap {
   targets: SnapTargets;
 }
 
+/** What is transformed on another page than the selection's own (a 範囲選択 over a 見開き), and how far that page lies from it (mm). */
+export interface OtherBase {
+  page: Page;
+  base: TransformBase;
+  offset: Point;
+}
+
 /** Handles of the transform frame: corners from the top left clockwise, then the sides top, right, bottom, left; then the round one to turn. */
 export const FRAME_HANDLES = 8;
 
@@ -117,6 +124,8 @@ export type ToolDrag =
       items?: ItemRef[];
       cycle?: string;
       snap?: MoveSnap;
+      /** What a click (let go without moving) picks instead: null for nothing. */
+      release?: Selection | null;
     }
   | {
       kind: "vertex";
@@ -167,7 +176,8 @@ export type ToolDrag =
       kind: "pick";
       slot: Slot;
       points: Point[];
-      add?: { base: ItemRef[]; target: ItemRef | null };
+      /** Shift: added to `base` (each named with its page), the selection kept on `pageId`. */
+      add?: { base: ItemRef[]; target: ItemRef | null; pageId: string };
     }
   /** `marks`: the 指示 tool erasing, which erases 指示 only (the eraser erases all but them). */
   | { kind: "eraseLasso"; slot: Slot; points: Point[]; marks?: boolean }
@@ -204,6 +214,7 @@ export type ToolDrag =
       slot: Slot;
       handle: number;
       base: TransformBase;
+      others: OtherBase[];
       box: BoxMm;
       moved: boolean;
       targets: SnapTargets;
@@ -214,6 +225,7 @@ export type ToolDrag =
       slot: Slot;
       handle: number;
       base: TransformBase;
+      others: OtherBase[];
       box: BoxMm;
       corners: [Point, Point, Point, Point];
       moved: boolean;
@@ -222,6 +234,7 @@ export type ToolDrag =
       kind: "rotate";
       slot: Slot;
       base: TransformBase;
+      others: OtherBase[];
       centre: Point;
       start: number;
       moved: boolean;
@@ -334,7 +347,10 @@ export interface EditorLook {
   linkTarget(slot: Slot, point: Point): Selection | null;
   referenceCornerAt(slot: Slot, sx: number, sy: number): number;
   isSelected(page: Page, kind: Selection["kind"], id: string): boolean;
-  groupHit(page: Page, point: Point, tolerance: number): boolean;
+  /** Whether a canvas point (px) is inside the transform frame: a press there moves what is picked. */
+  insideFrame(sx: number, sy: number): boolean;
+  /** The selection's own page on screen. */
+  selectionSlot(): Slot | null;
   selectedItems(): ItemRef[];
   frameHandleAt(sx: number, sy: number): number;
   frameGeometry(): { slot: Slot; box: BoxMm } | null;
@@ -369,7 +385,8 @@ export interface EditorChange {
   moveSelection(page: Page, dx: number, dy: number, items?: ItemRef[]): void;
   /** Contents carried by the selected panel follow it. */
   follow(page: Page, carried: CarriedContents | undefined): void;
-  carryToPageUnder(project: Project, slot: Slot): void;
+  /** What was moved onto another page (or its 欄外) goes to that page. */
+  carryToPageUnder(project: Project): void;
   spanPanels(project: Project, pageId: string): number;
   addFreePanel(project: Project, page: Page, outline: Point[]): void;
   placeCorner(slot: Slot, point: Point, free: boolean): void;

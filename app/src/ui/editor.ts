@@ -1007,7 +1007,8 @@ export class PageEditor {
       linkTarget: (slot, point) => this.linkTarget(slot, point),
       referenceCornerAt: (slot, sx, sy) => this.referenceCornerAt(slot, sx, sy),
       isSelected: (page, kind, id) => this.picks.isSelected(page, kind, id),
-      groupHit: (page, point, tolerance) => this.picks.groupHit(page, point, tolerance),
+      insideFrame: (sx, sy) => this.picks.insideFrame(sx, sy),
+      selectionSlot: () => this.picks.selectionSlot(),
       selectedItems: () => this.picks.selectedItems(),
       frameHandleAt: (sx, sy) => this.picks.frameHandleAt(sx, sy),
       frameGeometry: () => this.picks.frameGeometry(),
@@ -1015,7 +1016,7 @@ export class PageEditor {
       snapped: (slot, point, targets, free, beside) => this.snapped(slot, point, targets, free, beside),
       moveSelection: (page, dx, dy, items) => this.picks.moveSelection(page, dx, dy, items),
       follow: (page, carried) => this.picks.follow(page, carried),
-      carryToPageUnder: (project, slot) => this.picks.carryToPageUnder(project, slot),
+      carryToPageUnder: (project) => this.picks.carryToPageUnder(project),
       spanPanels: (project, pageId) => this.spanPanels(project, pageId),
       addFreePanel: (project, page, outline) => this.addFreePanel(project, page, outline),
       placeCorner: (slot, point, free) => this.placeCorner(slot, point, free),
@@ -1164,7 +1165,15 @@ export class PageEditor {
         if (tail) hover = { kind: "tail", slot, hit: tail };
         const onHandle = !!tail || this.picks.vertexAt(slot, sx, sy) >= 0 || !!this.badgeAt(slot, sx, sy, project.pageFormat.canvasMm[0]);
         const target = onHandle ? null : this.picks.hit(slot, point);
-        if (!onHandle && (!target || target.kind === "panel")) {
+        // Inside the transform frame (between what is picked too): a press moves it all.
+        const picked = this.picks.selection;
+        const framed =
+          !onHandle &&
+          !!picked &&
+          this.picks.insideFrame(sx, sy) &&
+          (!target || target.kind === "panel" || this.picks.isSelected(slot.page, target.kind, target.id));
+        if (framed) hover = { kind: "item", slot, target: picked };
+        else if (!onHandle && (!target || target.kind === "panel")) {
           const seam = seamAt(slot.page, point, 6 / slot.scale);
           if (seam) hover = { kind: "seam", slot, seam };
         }

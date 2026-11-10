@@ -862,15 +862,15 @@ export class Workbench {
 
   private layerSelected(ref: LayerRef): boolean {
     const s = this.editor.selection;
-    if (!s || s.pageId !== ref.pageId) return false;
+    if (!s) return false;
     if (ref.kind === "strokes") {
-      const picked = pickedStrokes(s);
+      const picked = pickedStrokes(s)
+        .filter((stroke) => stroke.pageId === ref.pageId)
+        .map((stroke) => stroke.id);
       return picked.length === ref.ids.length && ref.ids.every((id) => picked.includes(id));
     }
-    return (
-      (s.kind === ref.kind && s.id === ref.id) ||
-      (s.kind === "group" && !!s.items?.some((item) => item.kind === ref.kind && item.id === ref.id))
-    );
+    const page = this.project?.pages.find((p) => p.id === ref.pageId);
+    return !!page && this.editor.picks.isSelected(page, ref.kind, ref.id);
   }
 
   private selectLayer(ref: LayerRef): void {

@@ -5,6 +5,7 @@ import { defaultTailStyle, insideBalloon, resolvedShape, tailGeometry, tailRootA
 import type { DragHandler, DragOf, EditorCore, EditorSnap, MoveSnap, Press, Selection } from "./editorcore";
 import { moveSeam, seamAt, seamBase, snapSeam } from "../domain/komaedit";
 import { toPage } from "../editing/layout";
+import { namedItems, pickedOf, slotOffset } from "../editing/pickpages";
 import { bounds } from "../model/geometry";
 import type { Page, Point, Project } from "../model/model";
 import { type CarriedContents, carryContents, followPanel, swapPanelContents } from "../domain/panels";
@@ -120,18 +121,62 @@ export function pressSelect(editor: EditorCore, { event, project, slot, point, s
   const target = editor.hit(slot, point);
   // Shift: click to add a thing to the picked ones (or take it out), drag around things to add them.
   if (event.shiftKey) {
+    // Each named with its page: the facing page's things can be added too.
     const s = editor.selection;
-    const base: ItemRef[] =
-      s?.pageId !== slot.page.id ? [] : s.kind === "group" ? [...(s.items ?? [])] : isItemKind(s.kind) ? [{ kind: s.kind, id: s.id }] : [];
+    const base: ItemRef[] = !s
+      ? []
+      : s.kind === "group"
+        ? namedItems(s.items ?? [], s.pageId)
+        : isItemKind(s.kind)
+          ? [{ kind: s.kind, id: s.id, pageId: s.pageId }]
+          : [];
     // Halves of 見開き panels move and change only as a pair.
     const spread = target?.kind === "panel" && slot.page.panels.some((panel) => panel.id === target.id && panel.spread);
-    const ref = target && isItemKind(target.kind) && !spread ? { kind: target.kind, id: target.id } : null;
+    const ref = target && isItemKind(target.kind) && !spread ? { kind: target.kind, id: target.id, pageId: slot.page.id } : null;
     editor.startDrag({
       kind: "pick",
       slot,
       points: [point],
-      add: { base, target: ref },
+      add: { base, target: ref, pageId: s?.pageId ?? slot.page.id },
     });
+    return;
+  }
+  // Inside the transform frame, on what is picked or between its things (or on a panel under them):
+  // all that is picked moves together, on whichever page it lies.
+  const own = editor.selectionSlot();
+  if (own && editor.insideFrame(sx, sy) && (!target || target.kind === "panel" || editor.isSelected(slot.page, target.kind, target.id))) {
+    const picked = editor.selection!;
+    // In the terms of the selection's own page (the press may be on the facing one).
+    const at = toPage(own, sx, sy);
+    // A click (no drag) on nothing, or on a panel not picked, picks as a click does.
+    const release = !target ? null : editor.isSelected(slot.page, target.kind, target.id) ? undefined : target;
+    editor.host.begin();
+    if (picked.kind === "group") {
+      // Panels picked take along what is drawn in them.
+      const items = editor.selectedItems();
+      editor.startDrag({
+        kind: "move",
+        slot: own,
+        last: at,
+        moved: false,
+        items,
+        snap: moveSnap(editor, project, own.page, at, items),
+        ...(release !== undefined ? { release } : {}),
+      });
+    } else {
+      const panel = picked.kind === "panel" ? own.page.panels.find((p) => p.id === picked.id) : undefined;
+      const carried = panel && editor.panelCarries ? carryContents(own.page, panel) : undefined;
+      const snap = panel ? moveSnap(editor, project, own.page, at, [{ kind: "panel", id: panel.id }]) : undefined;
+      editor.startDrag({
+        kind: "move",
+        slot: own,
+        last: at,
+        moved: false,
+        carried,
+        ...(snap ? { snap } : {}),
+        ...(release !== undefined ? { release } : {}),
+      });
+    }
     return;
   }
   // コマの境目: the gutter or an edge moves, the panels on both sides with it.
@@ -165,28 +210,6 @@ export function pressSelect(editor: EditorCore, { event, project, slot, point, s
       return;
     }
   }
-  // Inside a 範囲選択: drag the whole group.
-  const selection = editor.selection;
-  if (
-    selection?.kind === "group" &&
-    selection.pageId === slot.page.id &&
-    (!target || editor.isSelected(slot.page, target.kind, target.id))
-  ) {
-    if (editor.groupHit(slot.page, point, 4 / slot.scale)) {
-      editor.host.begin();
-      // Panels picked take along what is drawn in them.
-      const items = editor.selectedItems();
-      editor.startDrag({
-        kind: "move",
-        slot,
-        last: point,
-        moved: false,
-        items,
-        snap: moveSnap(editor, project, slot.page, point, items),
-      });
-      return;
-    }
-  }
   if (!target) {
     // On nothing: drag around rough lines and dialogue to pick them together.
     editor.select(null);
@@ -214,9 +237,9 @@ export function pressSelect(editor: EditorCore, { event, project, slot, point, s
   });
 }
 
-/** Moving panels (among `items`) snap by their box; nothing to snap when no panel moves. */
+/** Moving panels (among `items`, those of `page`) snap by their box; nothing to snap when no panel moves. */
 function moveSnap(editor: EditorSnap, project: Project, page: Page, origin: Point, items: readonly ItemRef[]): MoveSnap | undefined {
-  const ids = items.filter((item) => item.kind === "panel").map((item) => item.id);
+  const ids = items.filter((item) => item.kind === "panel" && !item.pageId).map((item) => item.id);
   const shapes = page.panels.filter((panel) => ids.includes(panel.id)).map((panel) => panel.shape);
   if (!shapes.length) return undefined;
   return {
@@ -258,6 +281,7 @@ const move: DragHandler<DragOf<"move">> = {
   end(editor, drag, project) {
     if (!drag.moved) {
       editor.host.cancel();
+      if (drag.release !== undefined) editor.select(drag.release);
       if (drag.cycle) {
         // Not at once: the second click of a double-click writes in the selected one.
         const pageId = drag.slot.page.id;
@@ -269,10 +293,10 @@ const move: DragHandler<DragOf<"move">> = {
       }
       return;
     }
-    if (editor.selection?.kind === "panel" || editor.selection?.items?.some((item) => item.kind === "panel")) {
-      orderPanels(drag.slot.page, project.binding);
-    }
-    editor.carryToPageUnder(project, drag.slot);
+    // Each page panels were moved on (a 範囲選択 may lie over a 見開き).
+    for (const { page } of editor.slots)
+      if (page.panels.some((panel) => editor.isSelected(page, "panel", panel.id))) orderPanels(page, project.binding);
+    editor.carryToPageUnder(project);
     settleMoved(editor, project, drag.slot.page.id);
   },
 };
@@ -463,24 +487,32 @@ const pick: DragHandler<DragOf<"pick">> = {
       if (!drag.add.target) return;
       items = toggleItem(drag.add.base, drag.add.target);
     } else {
-      const picked = pickInside(page, drag.points);
-      // Lines on a hidden or locked layer stay where they are.
+      // Around things on this page and the pages beside it (a 見開き's two pages, 連続's rows).
+      const found: ItemRef[] = [];
       const project = editor.host.project();
-      if (project)
-        picked.strokes = picked.strokes.filter((id) => strokeEditable(project, page.strokes.find((stroke) => stroke.id === id) ?? {}));
-      const found: ItemRef[] = [
-        ...picked.panels.map((id) => ({ kind: "panel" as const, id })),
-        ...picked.strokes.map((id) => ({ kind: "stroke" as const, id })),
-        ...picked.lines.map((id) => ({ kind: "line" as const, id })),
-        ...picked.fills.map((id) => ({ kind: "fill" as const, id })),
-        ...picked.breakouts.map((id) => ({ kind: "breakout" as const, id })),
-      ];
+      for (const slot of editor.slots) {
+        const [ox, oy] = slotOffset(drag.slot, slot);
+        const points = slot === drag.slot ? drag.points : drag.points.map(([x, y]) => [x + ox, y + oy] as Point);
+        const picked = pickInside(slot.page, points);
+        // Lines on a hidden or locked layer stay where they are.
+        if (project)
+          picked.strokes = picked.strokes.filter((id) =>
+            strokeEditable(project, slot.page.strokes.find((stroke) => stroke.id === id) ?? {}),
+          );
+        const pageId = slot.page.id;
+        found.push(
+          ...picked.panels.map((id) => ({ kind: "panel" as const, id, pageId })),
+          ...picked.strokes.map((id) => ({ kind: "stroke" as const, id, pageId })),
+          ...picked.lines.map((id) => ({ kind: "line" as const, id, pageId })),
+          ...picked.fills.map((id) => ({ kind: "fill" as const, id, pageId })),
+          ...picked.breakouts.map((id) => ({ kind: "breakout" as const, id, pageId })),
+        );
+      }
       items = drag.add ? [...drag.add.base] : [];
-      for (const item of found) if (!items.some((x) => x.kind === item.kind && x.id === item.id)) items.push(item);
+      for (const item of found)
+        if (!items.some((x) => x.kind === item.kind && x.id === item.id && x.pageId === item.pageId)) items.push(item);
     }
-    if (!items.length) editor.select(null);
-    else if (items.length === 1) editor.select({ kind: items[0].kind, pageId: page.id, id: items[0].id });
-    else editor.select({ kind: "group", pageId: page.id, id: "group", items });
+    editor.select(pickedOf(items, drag.add?.pageId ?? page.id));
     if (items.length > 1)
       editor.host.status(
         `${pickedSummary(items)}を選びました。ドラッグで動かし、枠で変形、Delete で消せます（Shift + クリックで足す・外す）`,

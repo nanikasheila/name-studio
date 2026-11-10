@@ -70,6 +70,24 @@ export function warpScale(w: Warp): number {
 export interface ItemRef {
   kind: "stroke" | "line" | "panel" | "fill" | "breakout";
   id: string;
+  /** In a 範囲選択 over several pages: the page it is on, when not the selection's own. */
+  pageId?: string;
+}
+
+/**
+ * `w`, given in the terms of a page that lies `offset` mm away on the canvas
+ * (a point here is at `p + offset` there), in this page's own terms: what is
+ * picked on the facing page turns and grows about the same middle.
+ */
+export function warpFrom(w: Warp, [ox, oy]: Point): Warp {
+  if (!ox && !oy) return w;
+  if (Array.isArray(w)) {
+    const [a, b, c, d, e, f] = w;
+    return [a, b, c, d, a * ox + c * oy + e - ox, b * ox + d * oy + f - oy];
+  }
+  const back = ([x, y]: Point): Point => [x - ox, y - oy];
+  const [x0, y0, x1, y1] = w.box;
+  return { box: [x0 - ox, y0 - oy, x1 - ox, y1 - oy], corners: w.corners.map(back) as Quad["corners"] };
 }
 
 /**
@@ -121,8 +139,8 @@ export function moveItems(page: Page, items: readonly ItemRef[], dx: number, dy:
 
 /** Shift + click: the thing added to the picked ones, or taken out if it was in. */
 export function toggleItem(items: readonly ItemRef[], ref: ItemRef): ItemRef[] {
-  const inside = items.some((item) => item.kind === ref.kind && item.id === ref.id);
-  return inside ? items.filter((item) => !(item.kind === ref.kind && item.id === ref.id)) : [...items, ref];
+  const same = (item: ItemRef) => item.kind === ref.kind && item.id === ref.id && item.pageId === ref.pageId;
+  return items.some(same) ? items.filter((item) => !same(item)) : [...items, ref];
 }
 
 /** The selected things as they were when a transform began. */
@@ -359,6 +377,41 @@ export function copySelection(page: Page, selection: CopySource, contents?: { st
     !clip.stickies.length &&
     !clip.fills?.length;
   return empty ? null : clip;
+}
+
+/**
+ * Clips of several pages as one, in the terms of the first: each other one
+ * moved by how far its page lies from the first on the canvas (a 範囲選択
+ * over a 見開き copied together).
+ */
+export function joinClips(first: Clip, others: readonly { clip: Clip; offset: Point }[]): Clip {
+  const joined = clone(first);
+  for (const { clip, offset } of others) {
+    const [dx, dy] = offset;
+    const moved = clone(clip);
+    const page = { ...moved, breakouts: moved.breakouts, fills: moved.fills ?? [] } as unknown as Page;
+    const all = (kind: ItemRef["kind"], list: readonly { id: string }[]) => list.map(({ id }) => ({ kind, id }));
+    moveItems(
+      page,
+      [
+        ...all("stroke", moved.strokes),
+        ...all("line", moved.lines),
+        ...all("panel", moved.panels),
+        ...all("fill", moved.fills ?? []),
+        ...all("breakout", moved.breakouts),
+      ],
+      dx,
+      dy,
+    );
+    for (const sticky of moved.stickies) sticky.at = [sticky.at[0] + dx, sticky.at[1] + dy];
+    joined.strokes.push(...moved.strokes);
+    joined.lines.push(...moved.lines);
+    joined.panels.push(...moved.panels);
+    joined.breakouts.push(...moved.breakouts);
+    joined.stickies.push(...moved.stickies);
+    if (moved.fills?.length) joined.fills = [...(joined.fills ?? []), ...moved.fills];
+  }
+  return joined;
 }
 
 /** What was pasted, to select it. */

@@ -76,3 +76,25 @@ describe("taking things off a page", () => {
     expect(stillThere(null, { kind: "line", pageId: page.id, id: line.id })).toBe(false);
   });
 });
+
+describe("things picked over two pages", () => {
+  it("removes each page's own, and is still there only while all of them are", () => {
+    const { project, page, line } = setUp();
+    const other = project.pages[1];
+    const far = addLine(project, other, [60, 60], "向かい");
+    const picked = {
+      kind: "group" as const,
+      pageId: page.id,
+      id: "group",
+      items: [
+        { kind: "line" as const, id: line.id },
+        { kind: "line" as const, id: far.id, pageId: other.id },
+      ],
+    };
+    expect(stillThere(project, picked)).toBe(true);
+    removePicked(project, picked);
+    expect(page.lines.some((l) => l.id === line.id)).toBe(false);
+    expect(other.lines).toEqual([]);
+    expect(stillThere(project, picked)).toBe(false);
+  });
+});

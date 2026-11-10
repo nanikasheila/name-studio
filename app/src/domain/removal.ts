@@ -1,7 +1,7 @@
 // Taking things off a page: one panel, line, rough line, はみ出し, 付箋 or fill,
 // or what was picked together. Pure: the screens say what is picked.
 import { spreadTwin } from "./koma";
-import type { Project } from "../model/model";
+import type { Page, Project } from "../model/model";
 import { removePanel } from "./panels";
 import { assignPanels, orderPanels } from "./readingorder";
 import { removeSticky } from "./stickies";
@@ -17,18 +17,24 @@ export interface Picked {
 
 /** Whether what is picked is all still there (after an undo, it may not be). */
 export function stillThere(project: Project | null, s: Picked): boolean {
-  const page = project?.pages.find((p) => p.id === s.pageId);
-  if (!page) return false;
-  const lists = {
-    panel: page.panels,
-    line: page.lines,
-    stroke: page.strokes,
-    breakout: page.breakouts,
-    sticky: page.stickies ?? [],
-    fill: page.fills ?? [],
+  const lists = (pageId: string) => {
+    const page = project?.pages.find((p) => p.id === pageId);
+    return (
+      page && {
+        panel: page.panels,
+        line: page.lines,
+        stroke: page.strokes,
+        breakout: page.breakouts,
+        sticky: page.stickies ?? [],
+        fill: page.fills ?? [],
+      }
+    );
   };
-  if (s.kind === "group") return !!s.items?.every((item) => lists[item.kind].some((x: { id: string }) => x.id === item.id));
-  return lists[s.kind].some((item: { id: string }) => item.id === s.id);
+  const own = lists(s.pageId);
+  if (!own) return false;
+  if (s.kind === "group")
+    return !!s.items?.every((item) => !!lists(item.pageId ?? s.pageId)?.[item.kind].some((x: { id: string }) => x.id === item.id));
+  return own[s.kind].some((item: { id: string }) => item.id === s.id);
 }
 
 /** Removes what is picked. What was drawn in a removed panel stays on the page; balloons joined to a removed one come loose. */
@@ -48,22 +54,32 @@ export function removePicked(project: Project, s: Picked): void {
   if (s.kind === "sticky") removeSticky(page, s.id);
   if (s.kind === "fill" && page.fills) page.fills = page.fills.filter((fill) => fill.id !== s.id);
   if (s.kind === "group") {
-    const ids = (kind: string) => new Set(s.items?.filter((item) => item.kind === kind).map((item) => item.id));
-    const [strokes, lines, panels, fills, breakouts] = ["stroke", "line", "panel", "fill", "breakout"].map(ids);
-    page.strokes = page.strokes.filter((stroke) => !strokes.has(stroke.id));
-    page.lines = page.lines.filter((line) => !lines.has(line.id));
-    for (const line of page.lines) if (line.linkTo && lines.has(line.linkTo)) delete line.linkTo;
-    page.breakouts = page.breakouts.filter((breakout) => !breakouts.has(breakout.id));
-    if (page.fills) page.fills = page.fills.filter((fill) => !fills.has(fill.id));
-    if (panels.size) {
-      // What was drawn in the panels stays, as when one panel is removed.
-      page.panels = page.panels.filter((panel) => !panels.has(panel.id));
-      orderPanels(page, project.binding);
-      assignPanels(page);
+    // Page by page (a 範囲選択 may lie over a 見開き).
+    for (const on of new Set((s.items ?? []).map((item) => item.pageId ?? s.pageId))) {
+      const there = project.pages.find((p) => p.id === on);
+      const items = (s.items ?? []).filter((item) => (item.pageId ?? s.pageId) === on);
+      if (there) removeItems(project, there, items);
     }
   }
   if (s.kind === "line") {
     // Balloons joined to the removed one come loose.
     for (const line of page.lines) if (line.linkTo === s.id) delete line.linkTo;
+  }
+}
+
+/** Removes things picked together on one page. */
+function removeItems(project: Project, page: Page, items: readonly ItemRef[]): void {
+  const ids = (kind: string) => new Set(items.filter((item) => item.kind === kind).map((item) => item.id));
+  const [strokes, lines, panels, fills, breakouts] = ["stroke", "line", "panel", "fill", "breakout"].map(ids);
+  page.strokes = page.strokes.filter((stroke) => !strokes.has(stroke.id));
+  page.lines = page.lines.filter((line) => !lines.has(line.id));
+  for (const line of page.lines) if (line.linkTo && lines.has(line.linkTo)) delete line.linkTo;
+  page.breakouts = page.breakouts.filter((breakout) => !breakouts.has(breakout.id));
+  if (page.fills) page.fills = page.fills.filter((fill) => !fills.has(fill.id));
+  if (panels.size) {
+    // What was drawn in the panels stays, as when one panel is removed.
+    page.panels = page.panels.filter((panel) => !panels.has(panel.id));
+    orderPanels(page, project.binding);
+    assignPanels(page);
   }
 }

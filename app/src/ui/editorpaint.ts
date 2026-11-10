@@ -12,7 +12,7 @@ import { bounds } from "../model/geometry";
 import { panelBadge } from "../editing/hittest";
 import { seamLines } from "../domain/komaedit";
 import { toPage, type Slot } from "../editing/layout";
-import type { Brush, Line, Page, Panel, Point, Project } from "../model/model";
+import type { BoxMm, Brush, Line, Page, Panel, Point, Project } from "../model/model";
 import { ACCENT, drawSticky, NOTE_FONT, NOTE_ROW, noteBox, type NoteBox } from "../render/notedraw";
 import { snapCut } from "../domain/pagebox";
 import { drawLineText, drawStroke, LiveLine, tracePath } from "../render/pagedraw";
@@ -118,44 +118,51 @@ export class EditorPainter {
     const drag = this.scene.drag;
     const s = this.picks.selection;
     if (drag?.kind !== "move" || !drag.moved || !s) return;
-    const slot = this.stage.slots.find((x) => x.index === drag.slot.index);
-    if (!slot) return;
-    const page = slot.page;
-    const ids = (kind: ItemRef["kind"]) => new Set((drag.items ?? []).filter((item) => item.kind === kind).map((item) => item.id));
-    const panels = ids("panel");
-    const lines = ids("line");
-    const strokes = ids("stroke");
-    const fills = ids("fill");
-    const breakouts = ids("breakout");
-    if (!drag.items) {
-      const own = { panel: panels, line: lines, stroke: strokes, fill: fills, breakout: breakouts } as Record<string, Set<string>>;
-      own[s.kind]?.add(s.id);
-      for (const line of drag.carried?.lines ?? []) lines.add(line.id);
-      for (const stroke of drag.carried?.strokes ?? []) strokes.add(stroke.id);
-      for (const fill of drag.carried?.fills ?? []) fills.add(fill.id);
-    }
-    const dragged: Page = {
-      ...page,
-      panels: page.panels.filter((x) => panels.has(x.id)),
-      lines: page.lines.filter((x) => lines.has(x.id)),
-      strokes: page.strokes.filter((x) => strokes.has(x.id)),
-      breakouts: page.breakouts.filter((x) => breakouts.has(x.id)),
-      fills: (page.fills ?? []).filter((x) => fills.has(x.id)),
-      stickies: [],
-    };
-    drawLifted(this.ctx, project, slot, dragged);
-
-    // Where it goes: a panel on its own (not half of a 見開き panel), dialogue and rough lines.
-    const panel = s.kind === "panel" && !drag.items ? dragged.panels[0] : undefined;
-    const going = panel
-      ? panel.spread
-        ? []
-        : [bounds(panel.shape)]
-      : [
+    // A 範囲選択: page by page (it may lie over a 見開き); else the one thing and what its panel carries.
+    const parts = drag.items
+      ? this.picks.parts(false, drag.items).flatMap((part) => (part.slot ? [{ slot: part.slot, items: part.items }] : []))
+      : [{ slot: this.stage.slots.find((x) => x.index === drag.slot.index), items: [] as ItemRef[] }];
+    const going: BoxMm[] = [];
+    let from: Slot | undefined;
+    let panel: Panel | undefined;
+    for (const { slot, items } of parts) {
+      if (!slot) continue;
+      const page = slot.page;
+      const ids = (kind: ItemRef["kind"]) => new Set(items.filter((item) => item.kind === kind).map((item) => item.id));
+      const panels = ids("panel");
+      const lines = ids("line");
+      const strokes = ids("stroke");
+      const fills = ids("fill");
+      const breakouts = ids("breakout");
+      if (!drag.items) {
+        const own = { panel: panels, line: lines, stroke: strokes, fill: fills, breakout: breakouts } as Record<string, Set<string>>;
+        own[s.kind]?.add(s.id);
+        for (const line of drag.carried?.lines ?? []) lines.add(line.id);
+        for (const stroke of drag.carried?.strokes ?? []) strokes.add(stroke.id);
+        for (const fill of drag.carried?.fills ?? []) fills.add(fill.id);
+      }
+      const dragged: Page = {
+        ...page,
+        panels: page.panels.filter((x) => panels.has(x.id)),
+        lines: page.lines.filter((x) => lines.has(x.id)),
+        strokes: page.strokes.filter((x) => strokes.has(x.id)),
+        breakouts: page.breakouts.filter((x) => breakouts.has(x.id)),
+        fills: (page.fills ?? []).filter((x) => fills.has(x.id)),
+        stickies: [],
+      };
+      drawLifted(this.ctx, project, slot, dragged);
+      if (page.id !== s.pageId) continue;
+      // Where it goes (the selection's own page's things): a panel on its own (not half of a 見開き panel), dialogue and rough lines.
+      from = slot;
+      panel = s.kind === "panel" && !drag.items ? dragged.panels[0] : undefined;
+      if (panel) going.push(...(panel.spread ? [] : [bounds(panel.shape)]));
+      else
+        going.push(
           ...dragged.lines.map((line) => line.box),
           ...dragged.strokes.map((stroke) => bounds(stroke.points.map(([x, y]) => [x, y] as Point))),
-        ];
-    if (!going.length) return;
+        );
+    }
+    if (!going.length || !from) return;
     const box = bounds(
       going.flatMap(
         ([x0, y0, x1, y1]) =>
@@ -165,7 +172,7 @@ export class EditorPainter {
           ] as Point[],
       ),
     );
-    const to = this.stage.otherPageUnder(project, slot, [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2]);
+    const to = this.stage.otherPageUnder(project, from, [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2]);
     if (to) drawGoingTo(this.ctx, project, to, `${to.index + 1} ページへ${panel ? "（中身ごと）" : ""}`);
   }
 
