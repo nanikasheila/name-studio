@@ -39,6 +39,25 @@ interface Content {
   lines: string[];
 }
 
+/**
+ * Have what was drawn on `canvas` painted into it now. Chrome keeps what is
+ * drawn on a canvas as a list of commands until something takes a picture of
+ * it; a page's lines picture is only drawn on (a line added each time the pen
+ * lets go) and drawn from, so the list grew with every line and was played
+ * again on the GPU each time the picture was used: on a PC, the frame after
+ * the pen let go stopped 2.4 ms longer for each line drawn since the picture
+ * was made (50–94 ms after 25–40 lines). A snapshot (thrown away) paints the
+ * list into the picture once; it is taken at once, the painting is done on the
+ * GPU without waiting for it here.
+ */
+function settleCommands(canvas: HTMLCanvasElement): void {
+  if (typeof createImageBitmap !== "function") return;
+  createImageBitmap(canvas).then(
+    (bitmap) => bitmap.close(),
+    () => undefined,
+  );
+}
+
 function sameContent(a: Content, b: Content): boolean {
   return a.shared === b.shared && a.lines.length === b.lines.length && a.lines.every((line, i) => line === b.lines[i]);
 }
@@ -183,6 +202,7 @@ export class StrokeCache {
       style.brushes,
     );
     layer.content = content;
+    settleCommands(layer.canvas);
   }
 
   private paint(
@@ -203,6 +223,7 @@ export class StrokeCache {
     ctx.setTransform(pixelScale, 0, 0, pixelScale, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     drawStrokes(ctx, { strokes } as Page, { scale, x: 0, y: 0 }, !!strokes[0]?.over, style.color, style.minWidthPx, style.brushes);
+    settleCommands(canvas);
     const layer: Layer = { content, scale, pixelScale, canvas, asked: scale, askedAt: old?.askedAt ?? 0, used: ++this.clock };
     this.layers.set(key, layer);
     this.keepBudget();
