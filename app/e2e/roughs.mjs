@@ -25,7 +25,7 @@ try {
   await page.goto(url);
   await page.waitForFunction(() => window.nameStudio);
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     window.nameStudio.show(newProject("ラフ線のレイヤー", 2));
     const wb = window.nameStudio.workbench;
     wb.editor.showPage(1);
@@ -89,7 +89,10 @@ try {
     [120, 140],
   ]);
   s = await state();
-  check(s.active === "rough" && s.strokes.length === 2 && s.strokes[1].layer === null, "after picking the first layer, the pen draws there");
+  check(
+    s.active === "rough" && s.strokes.length === 2 && s.strokes[1].layer === null,
+    "after picking the first layer, the pen draws there",
+  );
 
   // Locked: the pen refuses it, the eraser leaves its lines.
   await row(added).locator(".rough-lock").click();
@@ -107,7 +110,10 @@ try {
   // Slowly down across both lines (the eraser takes what it passes over at each move).
   await dragMm(Array.from({ length: 25 }, (_, i) => [80, 40 + i * 5]));
   s = await state();
-  check(s.strokes.length === 1 && s.strokes[0].layer === added, `the eraser takes the line on the open layer only (${JSON.stringify(s.strokes)} ${s.status})`);
+  check(
+    s.strokes.length === 1 && s.strokes[0].layer === added,
+    `the eraser takes the line on the open layer only (${JSON.stringify(s.strokes)} ${s.status})`,
+  );
   await tool("select");
   await dragMm([[80, 70]]);
   s = await state();
@@ -144,7 +150,10 @@ try {
   s = await state();
   check(s.layers[1].opacity === during, `letting go keeps the opacity (${s.layers[1].opacity})`);
   check((await undoDepth()) === depth + 1, "the drag is one undo step");
-  check((await row(added).locator(".rough-opacity").getAttribute("title")) === `不透明度 ${Math.round(during * 100)}%`, "the slider says its value");
+  check(
+    (await row(added).locator(".rough-opacity").getAttribute("title")) === `不透明度 ${Math.round(during * 100)}%`,
+    "the slider says its value",
+  );
   await page.keyboard.press("Control+z");
   await settle();
   check((await state()).layers[1].opacity === undefined, "undo gives the opacity back");

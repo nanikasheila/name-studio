@@ -39,7 +39,7 @@ try {
   // The checks of the line's points below without 手ブレ補正 (it has a check of its own at the end).
   const steady = (value) =>
     page.evaluate(async (value) => {
-      const { penPreferences } = await import("/src/prefs.ts");
+      const { penPreferences } = await import("/src/platform/prefs.ts");
       penPreferences.update({ stabilization: value });
     }, value);
   await steady(0);
@@ -47,10 +47,26 @@ try {
 
   const cdp = await page.context().newCDPSession(page);
   const settle = () => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-  const at = (n, mm) => page.evaluate(([n, mm]) => window.nameStudio.workbench.editor.clientOf(window.nameStudio.workbench.project.pages[n - 1].id, mm), [n, mm]);
+  const at = (n, mm) =>
+    page.evaluate(
+      ([n, mm]) => window.nameStudio.workbench.editor.clientOf(window.nameStudio.workbench.project.pages[n - 1].id, mm),
+      [n, mm],
+    );
   // `timestamp` (seconds since 1970): when the pen reported it, for the event's timeStamp.
   const pen = (type, [x, y], pressure, buttons = 1, timestamp = undefined) =>
-    cdp.send("Input.dispatchMouseEvent", { type, x, y, button: type === "mouseMoved" && !buttons ? "none" : "left", buttons, clickCount: type === "mouseMoved" ? 0 : 1, pointerType: "pen", force: pressure, tiltX: 10, tiltY: 5, ...(timestamp === undefined ? {} : { timestamp }) });
+    cdp.send("Input.dispatchMouseEvent", {
+      type,
+      x,
+      y,
+      button: type === "mouseMoved" && !buttons ? "none" : "left",
+      buttons,
+      clickCount: type === "mouseMoved" ? 0 : 1,
+      pointerType: "pen",
+      force: pressure,
+      tiltX: 10,
+      tiltY: 5,
+      ...(timestamp === undefined ? {} : { timestamp }),
+    });
   /** A line with the pen through screen points, each with its pressure. */
   async function line(points, pressures, { during } = {}) {
     await pen("mouseMoved", points[0], 0, 0);
@@ -77,10 +93,7 @@ try {
   await line(straight, pressures);
   const drawn = await lastStroke();
   const read = drawn.points.map((p) => p[2]);
-  check(
-    (await page.evaluate(() => window.nameStudio.workbench.project.pages[10].strokes.length)) === before + 1,
-    "the line is drawn",
-  );
+  check((await page.evaluate(() => window.nameStudio.workbench.project.pages[10].strokes.length)) === before + 1, "the line is drawn");
   check(
     read.every((p) => Math.abs(p - 0.3) < 0.01),
     `a pressure of 0 on the way (and at the start) holds the pen's pressure: every point at 0.3 (${Math.min(...read).toFixed(2)}–${Math.max(...read).toFixed(2)})`,
@@ -101,7 +114,9 @@ try {
         const canvas = document.getElementById("editor-canvas");
         const box = canvas.getBoundingClientRect();
         const scale = canvas.width / box.width;
-        const [r, g, b] = canvas.getContext("2d").getImageData(Math.round((x - box.left) * scale), Math.round((y - box.top) * scale), 1, 1).data;
+        const [r, g, b] = canvas
+          .getContext("2d")
+          .getImageData(Math.round((x - box.left) * scale), Math.round((y - box.top) * scale), 1, 1).data;
         return r + g + b;
       },
       [x, y],
@@ -125,7 +140,10 @@ try {
     },
   );
   check(withCursor < 500, `the pen's cursor shows where the pen is (${withCursor})`);
-  check(during !== null && during > 700, `while a line is drawn away from it, the cursor does not stay where the pen came down (${during})`);
+  check(
+    during !== null && during > 700,
+    `while a line is drawn away from it, the cursor does not stay where the pen came down (${during})`,
+  );
   await page.evaluate(() => {
     window.nameStudio.workbench.editor.penWidthMm = 0.4;
   });
@@ -179,15 +197,33 @@ try {
     const tenth = Math.max(5, Math.floor(frames.length / 10));
     const [first, last] = [median(frames.slice(0, tenth)), median(frames.slice(-tenth))];
     const points = (await lastStroke()).points.length;
-    console.log(`     ${what}: ${frames.length} frames for a line of ${points} points: ${first.toFixed(2)} ms a frame at its start, ${last.toFixed(2)} ms at its end`);
+    console.log(
+      `     ${what}: ${frames.length} frames for a line of ${points} points: ${first.toFixed(2)} ms a frame at its start, ${last.toFixed(2)} ms at its end`,
+    );
     check(frames.length >= 20, `${what}: the long line is drawn over many frames (${frames.length})`);
-    check(last <= first * 2 + 1, `${what}: a frame at the end of a long line costs about what one at its start does (${first.toFixed(2)} → ${last.toFixed(2)} ms)`);
+    check(
+      last <= first * 2 + 1,
+      `${what}: a frame at the end of a long line costs about what one at its start does (${first.toFixed(2)} → ${last.toFixed(2)} ms)`,
+    );
   }
   await longLine("a round pen");
   // A brush that stamps its tip (flat, as CSP's 丸ペン at a slant): many stamps a line.
   await page.evaluate(() => {
     const wb = window.nameStudio.workbench;
-    wb.project.brushes.push({ id: "brush-flat", name: "平たいペン", kind: "pen", sizeMm: 1.2, opacity: 1, hardness: 100, stabilization: 4, taperInMm: 3, taperOutMm: 3, thickness: 40, rotation: 30, sizePressure: { min: 0.2 } });
+    wb.project.brushes.push({
+      id: "brush-flat",
+      name: "平たいペン",
+      kind: "pen",
+      sizeMm: 1.2,
+      opacity: 1,
+      hardness: 100,
+      stabilization: 4,
+      taperInMm: 3,
+      taperOutMm: 3,
+      thickness: 40,
+      rotation: 30,
+      sizePressure: { min: 0.2 },
+    });
     wb.editor.penBrush = "brush-flat";
     wb.editor.penWidthMm = 1.2;
   });
@@ -224,27 +260,41 @@ try {
   await page.waitForTimeout(800);
   await thumbIsOld(true);
   const [tx, ty] = await at(11, [40, 40]);
-  await line(Array.from({ length: 20 }, (_, i) => [tx + i * 4, ty]), Array.from({ length: 20 }, () => 0.5));
+  await line(
+    Array.from({ length: 20 }, (_, i) => [tx + i * 4, ty]),
+    Array.from({ length: 20 }, () => 0.5),
+  );
   const right = await thumbIsOld(false);
   await page.waitForTimeout(800);
   const later = !(await thumbIsOld(false));
   check(right && later, "the strip draws the page again once the pen rests, not as each line ends");
   const report = await page.evaluate(() => window.nameStudioPerf.report());
-  console.log(`     動作の記録: input to screen ${JSON.stringify(report.penLatency)}, a frame ${JSON.stringify(report.penFrame)}, ${report.penRate} events a second`);
+  console.log(
+    `     動作の記録: input to screen ${JSON.stringify(report.penLatency)}, a frame ${JSON.stringify(report.penFrame)}, ${report.penRate} events a second`,
+  );
   check(report.penLatency && report.penLatency.count > 0 && report.penLatency.median > 0, "動作の記録 times the pen's input to the screen");
-  check(report.penFrame && report.penFrame.p95 < 16, `a frame of the pen line takes ${report.penFrame?.p95} ms at the most often (under a frame at 60 Hz)`);
+  check(
+    report.penFrame && report.penFrame.p95 < 16,
+    `a frame of the pen line takes ${report.penFrame?.p95} ms at the most often (under a frame at 60 Hz)`,
+  );
   // 先読み: where the browser predicts the pen (Chromium does for its pointer events).
   const predicts = await page.evaluate(() => typeof PointerEvent.prototype.getPredictedEvents === "function");
   if (predicts && aheadSeen) {
     check(aheadFar === 0, "先読み goes only a little ahead (30 px at most)");
     const end = spiralLine[spiralLine.length - 1];
-    const lastSent = await page.evaluate(([x, y]) => {
-      const wb = window.nameStudio.workbench;
-      const slot = wb.editor.slots.find((s) => s.page.id === wb.project.pages[10].id);
-      const rect = document.getElementById("editor-canvas").getBoundingClientRect();
-      return [(x - rect.left - slot.x) / slot.scale, (y - rect.top - slot.y) / slot.scale];
-    }, spiral[spiral.length - 1]);
-    check(Math.hypot(end[0] - lastSent[0], end[1] - lastSent[1]) < 0.5, "the line kept ends where the pen left the page (none of 先読み in it)");
+    const lastSent = await page.evaluate(
+      ([x, y]) => {
+        const wb = window.nameStudio.workbench;
+        const slot = wb.editor.slots.find((s) => s.page.id === wb.project.pages[10].id);
+        const rect = document.getElementById("editor-canvas").getBoundingClientRect();
+        return [(x - rect.left - slot.x) / slot.scale, (y - rect.top - slot.y) / slot.scale];
+      },
+      spiral[spiral.length - 1],
+    );
+    check(
+      Math.hypot(end[0] - lastSent[0], end[1] - lastSent[1]) < 0.5,
+      "the line kept ends where the pen left the page (none of 先読み in it)",
+    );
   } else {
     console.log(`     (先読み not checked: ${predicts ? "this browser predicted nothing for these events" : "no getPredictedEvents"})`);
   }
@@ -276,7 +326,9 @@ try {
   const plain = await wobble(0, 2);
   const steadied = await wobble(30, 10);
   const steadiedFast = await wobble(30, 2);
-  console.log(`     a line shaking ${plain.toFixed(2)} mm: 手ブレ補正 30 makes it ${steadied.toFixed(2)} mm at 100 reports a second, ${steadiedFast.toFixed(2)} mm at 500`);
+  console.log(
+    `     a line shaking ${plain.toFixed(2)} mm: 手ブレ補正 30 makes it ${steadied.toFixed(2)} mm at 100 reports a second, ${steadiedFast.toFixed(2)} mm at 500`,
+  );
   check(steadied < plain * 0.5, "手ブレ補正 makes a shaky line steadier");
   check(Math.abs(steadiedFast - steadied) < steadied * 0.2, "手ブレ補正 works the same whatever the pen's report rate");
   check(errors.length === 0, `no errors (${errors.join(" / ")})`);

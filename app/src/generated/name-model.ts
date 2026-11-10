@@ -1,5 +1,5 @@
 // Generated from crates/name-model (cargo test -p name-model --features ts --test typescript). Do not edit.
-// app/src/modelcheck.ts checks it against model.ts.
+// app/src/model/modelcheck.test.ts checks it against model.ts.
 
 export type StrokePoint = [number, number, number] | [number, number, number, number, number];
 

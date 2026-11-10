@@ -41,7 +41,11 @@ function shift(down) {
 async function start({ holdShift = false } = {}) {
   if (holdShift) shift(true);
   const child = spawn(app, [], {
-    env: { ...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${PORT}`, WEBVIEW2_USER_DATA_FOLDER: join(work, "webview") },
+    env: {
+      ...process.env,
+      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${PORT}`,
+      WEBVIEW2_USER_DATA_FOLDER: join(work, "webview"),
+    },
     stdio: "ignore",
   });
   let browser = null;
@@ -70,7 +74,10 @@ async function stop({ child, browser }) {
   await exited;
   // The next start must not reach this one's debugging port: wait until it is closed.
   for (let i = 0; i < 50; i++) {
-    const open = await fetch(`http://127.0.0.1:${PORT}/json/version`).then(() => true, () => false);
+    const open = await fetch(`http://127.0.0.1:${PORT}/json/version`).then(
+      () => true,
+      () => false,
+    );
     if (!open) break;
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
@@ -105,15 +112,29 @@ try {
 
   // 2. The next start: both kept.
   run = await start();
-  check((await bar(run.page)) === "rgb(42, 41, 38)" && (await accent(run.page)) === "rgb(208, 69, 122)", "the next start: 暗い and the CSS kept");
+  check(
+    (await bar(run.page)) === "rgb(42, 41, 38)" && (await accent(run.page)) === "rgb(208, 69, 122)",
+    "the next start: 暗い and the CSS kept",
+  );
   await run.page.screenshot({ path: join(shots, "3-next-start.png") });
   await stop(run);
 
   // 3. Started with Shift held: the CSS left off this time, the theme still 暗い.
   if (process.platform === "win32") {
     run = await start({ holdShift: true });
-    check((await accent(run.page)) !== "rgb(208, 69, 122)" && (await bar(run.page)) === "rgb(42, 41, 38)", "Shift held at the start: the CSS left off, the theme kept");
-    check(((await run.page.locator(".alert.warning").textContent().catch(() => "")) ?? "").includes("Shift を押しながら起動したので"), "and it says why");
+    check(
+      (await accent(run.page)) !== "rgb(208, 69, 122)" && (await bar(run.page)) === "rgb(42, 41, 38)",
+      "Shift held at the start: the CSS left off, the theme kept",
+    );
+    check(
+      (
+        (await run.page
+          .locator(".alert.warning")
+          .textContent()
+          .catch(() => "")) ?? ""
+      ).includes("Shift を押しながら起動したので"),
+      "and it says why",
+    );
     await run.page.screenshot({ path: join(shots, "4-shift-start.png") });
     await stop(run);
   }

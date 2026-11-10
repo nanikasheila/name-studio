@@ -37,7 +37,7 @@ try {
   await page.waitForFunction(() => window.nameStudio);
   // 第4話 opens; the one that was moved away does not.
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     window.__answer = (command, args) => {
       // 第4話 was saved by a newer version: one field this version does not know.
       if (command === "unknown_project_fields") return args.path.includes("第4話") ? ["pages.strokes.wobble"] : [];
@@ -62,25 +62,46 @@ try {
 
   check(await page.locator("#empty").isVisible(), "the start screen shows before anything is open");
   check(!(await page.locator("#viewer .sidebar").isVisible()), "with no sheet, the empty layer list is out of the way");
-  check(JSON.stringify(await titles()) === JSON.stringify(["第4話", "消えたネーム", "読み切り"]), "it lists the names opened last, newest first");
+  check(
+    JSON.stringify(await titles()) === JSON.stringify(["第4話", "消えたネーム", "読み切り"]),
+    "it lists the names opened last, newest first",
+  );
   const whens = await rows.locator(".recent-when").allTextContents();
-  check(whens[0].startsWith("24 ページ ・ 今日 11:00") && whens[1].startsWith("16 ページ ・ 昨日 12:00") && whens[2].startsWith("32 ページ ・ 9月5日"), `with their pages and when (${whens.join(" / ")})`);
+  check(
+    whens[0].startsWith("24 ページ ・ 今日 11:00") &&
+      whens[1].startsWith("16 ページ ・ 昨日 12:00") &&
+      whens[2].startsWith("32 ページ ・ 9月5日"),
+    `with their pages and when (${whens.join(" / ")})`,
+  );
 
   await rows.nth(1).locator(".recent-open").click();
   await page.waitForTimeout(200);
-  check(JSON.stringify(await titles()) === JSON.stringify(["第4話", "消えたネーム", "読み切り"]), "a name that cannot be opened stays on the list (a drive may come back)");
+  check(
+    JSON.stringify(await titles()) === JSON.stringify(["第4話", "消えたネーム", "読み切り"]),
+    "a name that cannot be opened stays on the list (a drive may come back)",
+  );
   check(JSON.stringify(await kept()) === JSON.stringify(["第4話", "消えたネーム", "読み切り"]), "and on this computer's list");
   const trouble = rows.nth(1).locator(".recent-trouble");
-  check((await trouble.locator(".recent-problem").textContent()).startsWith("開けませんでした: Error: ファイルが見つかりません。"), "its row says why");
+  check(
+    (await trouble.locator(".recent-problem").textContent()).startsWith("開けませんでした: Error: ファイルが見つかりません。"),
+    "its row says why",
+  );
   check((await rows.locator(".recent-trouble").count()) === 1, "only on its own row");
   check(await page.locator("#empty").isVisible(), "the start screen stays");
   await trouble.getByText("もう一度").click();
   await page.waitForTimeout(200);
-  check((await rows.locator(".recent-trouble").count()) === 1 && (await page.evaluate(() => window.__calls.filter((c) => c.command === "load_project").length)) === 2, "もう一度 tries it again (still not there)");
+  check(
+    (await rows.locator(".recent-trouble").count()) === 1 &&
+      (await page.evaluate(() => window.__calls.filter((c) => c.command === "load_project").length)) === 2,
+    "もう一度 tries it again (still not there)",
+  );
   await trouble.getByText("場所を探す…").click();
   await page.waitForTimeout(200);
   const looked = await page.evaluate(() => window.__opened.at(-1));
-  check(looked?.defaultPath === "C:\\ネーム" && looked?.filters?.[0]?.extensions?.[0] === "namestudio", `場所を探す… opens where it was (${looked?.defaultPath})`);
+  check(
+    looked?.defaultPath === "C:\\ネーム" && looked?.filters?.[0]?.extensions?.[0] === "namestudio",
+    `場所を探す… opens where it was (${looked?.defaultPath})`,
+  );
   check(JSON.stringify(await kept()) === JSON.stringify(["第4話", "消えたネーム", "読み切り"]), "nothing found: the list is as it was");
   await rows.nth(1).getByText("一覧から外す").click();
   check(JSON.stringify(await titles()) === JSON.stringify(["第4話", "読み切り"]), "一覧から外す takes it off");
@@ -98,7 +119,10 @@ try {
   await page.waitForTimeout(300);
   check(await page.locator("#editor").isVisible(), "Enter opens it in the editor");
   const warning = await page.locator("#alerts .alert.warning").allTextContents();
-  check(warning.length === 1 && warning[0].includes("この版が知らない項目") && warning[0].includes("pages.strokes.wobble"), "a name saved by a newer version says what this one does not show");
+  check(
+    warning.length === 1 && warning[0].includes("この版が知らない項目") && warning[0].includes("pages.strokes.wobble"),
+    "a name saved by a newer version says what this one does not show",
+  );
   const first = await page.evaluate(() => JSON.parse(localStorage.getItem("namestudio.recentNames"))[0]);
   check(first.title === "第4話" && first.timeMs === NOW, "opening it puts it first again, as of now");
 
@@ -107,18 +131,25 @@ try {
   await page.keyboard.press("Escape");
   // Tab, as CSP's: the palettes and the story band go, the page takes the window.
   // (At 900 px high the strip starts folded, the pages first: Tab then gives the width of the side palettes.)
-  const stage = () => page.locator("#editor-canvas").evaluate((c) => Math.round(c.getBoundingClientRect().height * c.getBoundingClientRect().width / 1000));
+  const stage = () =>
+    page.locator("#editor-canvas").evaluate((c) => Math.round((c.getBoundingClientRect().height * c.getBoundingClientRect().width) / 1000));
   const before = await stage();
   const storyBefore = await page.locator("#story").isVisible();
   await page.locator("#editor-canvas").click({ position: { x: 5, y: 5 } });
   await page.keyboard.press("Tab");
   await page.waitForTimeout(200);
-  check(!(await page.locator("#story").isVisible()) && !(await page.locator("#dock-right").isVisible()), "Tab hides the side palettes and the story band");
+  check(
+    !(await page.locator("#story").isVisible()) && !(await page.locator("#dock-right").isVisible()),
+    "Tab hides the side palettes and the story band",
+  );
   check((await stage()) > before + 100, "and the page takes the room");
   await page.keyboard.press("Tab");
   await page.waitForTimeout(200);
   const after = await stage();
-  check((await page.locator("#story").isVisible()) === storyBefore && Math.abs(after - before) < 6, `Tab again brings them back (${before} → ${after})`);
+  check(
+    (await page.locator("#story").isVisible()) === storyBefore && Math.abs(after - before) < 6,
+    `Tab again brings them back (${before} → ${after})`,
+  );
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(" / ")}` : ""}`);
 
   // Found where it was moved: it opens from there, and the list keeps it at its new place only.
@@ -129,7 +160,7 @@ try {
   await second.goto(server.resolvedUrls.local[0]);
   await second.waitForFunction(() => window.nameStudio);
   await second.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     window.__answer = (command, args) => {
       if (command === "unknown_project_fields") return [];
       if (command === "choose_open") return "E:\\移した\\消えた.namestudio";
@@ -143,7 +174,10 @@ try {
   await moved.getByText("場所を探す…").click();
   await second.waitForFunction(() => document.getElementById("editor").checkVisibility());
   const paths = await second.evaluate(() => JSON.parse(localStorage.getItem("namestudio.recentNames")).map((n) => n.path));
-  check(paths[0] === "E:\\移した\\消えた.namestudio" && !paths.includes("C:\\ネーム\\消えた.namestudio") && paths.length === 3, `found elsewhere: it opens, and the list has it at its new place (${paths.join(", ")})`);
+  check(
+    paths[0] === "E:\\移した\\消えた.namestudio" && !paths.includes("C:\\ネーム\\消えた.namestudio") && paths.length === 3,
+    `found elsewhere: it opens, and the list has it at its new place (${paths.join(", ")})`,
+  );
 } finally {
   await browser.close();
   await server.close();

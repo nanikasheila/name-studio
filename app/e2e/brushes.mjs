@@ -28,7 +28,7 @@ try {
   await page.goto(url);
   await page.waitForFunction(() => window.nameStudio);
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     window.nameStudio.show(newProject("ペン", 2));
     window.__dialogs = [];
     window.__answer = (command) => {
@@ -65,7 +65,10 @@ try {
   await size.locator('.be-field input[type="number"]').fill("60");
   await size.locator('.be-field input[type="number"]').press("Enter");
   pen = await brush();
-  check(Math.abs(pen.sizeMm - 2.54) < 1e-9 && pen.csp.settings.BrushSize === 60 && pen.width === pen.sizeMm, "a size typed in is the pen's size (and the size in hand)");
+  check(
+    Math.abs(pen.sizeMm - 2.54) < 1e-9 && pen.csp.settings.BrushSize === 60 && pen.width === pen.sizeMm,
+    "a size typed in is the pen's size (and the size in hand)",
+  );
   check((await size.locator(".be-mm").textContent()) === "= 2.54 mm", "the size shows its mm too");
 
   const pressure = size.locator(".be-inputs button", { hasText: "筆圧" });
@@ -130,7 +133,13 @@ try {
   await page.click("#be-export");
   await page.waitForFunction(() => document.getElementById("be-message").textContent.includes("書き出しました"));
   const written = await page.evaluate(() => window.__calls.find((call) => call.command === "write_csp_sub_tool")?.args);
-  check(written?.path === "/tmp/ペン.sut" && written.name === "新しいペン" && written.tool.settings.BrushSize === 60 && written.tool.settings.BrushInLength === 4.8, ".sut に書き出す sends the CSP rows");
+  check(
+    written?.path === "/tmp/ペン.sut" &&
+      written.name === "新しいペン" &&
+      written.tool.settings.BrushSize === 60 &&
+      written.tool.settings.BrushInLength === 4.8,
+    ".sut に書き出す sends the CSP rows",
+  );
 
   await page.click("#be-duplicate");
   let names = await page.evaluate(() => window.nameStudio.workbench.project.brushes.map((b) => b.name));
@@ -144,7 +153,10 @@ try {
   const eraser = await page.evaluate(() => window.nameStudio.workbench.project.brushes.find((b) => b.kind === "eraser"));
   check(eraser?.erase === "touched" && eraser.csp.node.NodeInputOp === 12, "an eraser made new erases as CSP's vector eraser");
   await row("ベクター消去の方式").locator("select").selectOption("2");
-  check((await page.evaluate(() => window.nameStudio.workbench.project.brushes.find((b) => b.kind === "eraser").erase)) === "whole", "its way of erasing is a CSP setting too");
+  check(
+    (await page.evaluate(() => window.nameStudio.workbench.project.brushes.find((b) => b.kind === "eraser").erase)) === "whole",
+    "its way of erasing is a CSP setting too",
+  );
   check(errors.length === 0, `no page errors (${errors.join(" / ")})`);
 } finally {
   await browser.close();

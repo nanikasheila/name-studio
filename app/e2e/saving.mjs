@@ -73,7 +73,7 @@ try {
   const show = (path, title) =>
     page.evaluate(
       async ([path, title]) => {
-        const { newProject } = await import("/src/project.ts");
+        const { newProject } = await import("/src/domain/project.ts");
         window.nameStudio.show(newProject(title, 2));
         window.nameStudio.workbench.show(newProject(title, 2), path, "");
       },
@@ -85,7 +85,12 @@ try {
   const state = () =>
     page.evaluate(() => {
       const wb = window.nameStudio.workbench;
-      return { title: wb.project.title, path: wb.session.path, dirty: wb.session.dirty, status: document.getElementById("status").textContent };
+      return {
+        title: wb.project.title,
+        path: wb.session.path,
+        dirty: wb.session.dirty,
+        status: document.getElementById("status").textContent,
+      };
     });
 
   // 1. A is being saved when B is opened.
@@ -162,7 +167,10 @@ try {
   check(saving.going && !saving.dirty && (await file(B))?.title === "閉じる0", "「保存して続ける」 saves to its file and goes on");
   const before = saving.discarded;
   const dropping = await close(1);
-  check(dropping.going && dropping.discarded === before + 1 && (await file(B))?.title === "閉じる0", "「保存しないで続ける」 goes on without writing the file, and drops the recovery copy");
+  check(
+    dropping.going && dropping.discarded === before + 1 && (await file(B))?.title === "閉じる0",
+    "「保存しないで続ける」 goes on without writing the file, and drops the recovery copy",
+  );
 
   // 2. The export dialog: unsaved A, then unsaved B.
   await show(null, "未保存A");
@@ -181,7 +189,10 @@ try {
     document.getElementById("name-export-dialog").close();
     return form;
   });
-  check(form.outDir === "" && form.workName === "未保存B", `unsaved B does not get A's folder or title (${form.outDir} / ${form.workName})`);
+  check(
+    form.outDir === "" && form.workName === "未保存B",
+    `unsaved B does not get A's folder or title (${form.outDir} / ${form.workName})`,
+  );
   // The dialog: where to first, what it makes in a line by the buttons, and every field named.
   const dialog = await page.evaluate(() => {
     window.nameStudio.workbench.exportDialog.open();
@@ -191,12 +202,18 @@ try {
       summary: document.getElementById("ne-summary").textContent,
       readback: document.getElementById("ne-readback").disabled,
       unnamed: fields.filter((el) => !named(el)).map((el) => el.id || el.outerHTML.slice(0, 50)),
-      outFirst: !!(document.getElementById("ne-out-dir").compareDocumentPosition(document.getElementById("ne-panels")) & Node.DOCUMENT_POSITION_FOLLOWING),
+      outFirst: !!(
+        document.getElementById("ne-out-dir").compareDocumentPosition(document.getElementById("ne-panels")) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+      ),
     };
     document.getElementById("name-export-dialog").close();
     return result;
   });
-  check(dialog.summary.startsWith("2 ページ") && dialog.summary.includes("書き出し先が未選択"), `the dialog says what it will make (${dialog.summary})`);
+  check(
+    dialog.summary.startsWith("2 ページ") && dialog.summary.includes("書き出し先が未選択"),
+    `the dialog says what it will make (${dialog.summary})`,
+  );
   check(dialog.readback, "reading back waits for a folder");
   check(dialog.unnamed.length === 0, `every field has a name (${dialog.unnamed.join(", ")})`);
   check(dialog.outFirst, "where to comes before the layer settings");
@@ -247,7 +264,10 @@ try {
   await settle();
   check(!(await alert.isVisible()), "「もう一度」 writes it and the alert goes");
   check(!(await saveState()).includes("シリーズ"), `and the save state no longer mentions the series (${await saveState()})`);
-  check((await file(SERIES))?.shared?.characters?.some((c) => c.name === "新しい人"), "the series has the new character");
+  check(
+    (await file(SERIES))?.shared?.characters?.some((c) => c.name === "新しい人"),
+    "the series has the new character",
+  );
 
   // 4. The smallest window keeps everything on screen.
   for (const [width, height] of [

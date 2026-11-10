@@ -22,7 +22,7 @@ try {
   await page.goto(server.resolvedUrls.local[0]);
   await page.waitForFunction(() => window.nameStudio);
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     window.nameStudio.show(newProject("パレット", 8));
   });
   await page.waitForTimeout(300);
@@ -52,7 +52,10 @@ try {
 
   // The recent one leads next time; arrows choose.
   await page.keyboard.press("Control+k");
-  check((await palette.locator(".cmdp-item").first().locator(".cmdp-label").textContent()) === "このページの後ろに白紙のページを足す", "the last used command comes first");
+  check(
+    (await palette.locator(".cmdp-item").first().locator(".cmdp-label").textContent()) === "このページの後ろに白紙のページを足す",
+    "the last used command comes first",
+  );
   await input.fill("連続");
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("ArrowUp");
@@ -62,7 +65,10 @@ try {
   // What cannot be done now is greyed and does nothing.
   await page.keyboard.press("Control+k");
   await input.fill("選んだものを消す");
-  check(await palette.locator(".cmdp-item.current").evaluate((row) => row.classList.contains("unavailable")), "with nothing selected, 消す is greyed");
+  check(
+    await palette.locator(".cmdp-item.current").evaluate((row) => row.classList.contains("unavailable")),
+    "with nothing selected, 消す is greyed",
+  );
   await page.keyboard.press("Enter");
   check(await palette.evaluate((d) => d.open), "and Enter leaves the palette open");
   await page.keyboard.press("Escape");

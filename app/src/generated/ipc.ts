@@ -2,7 +2,7 @@
 // Generated from the Rust source by `cargo run -p ipc-types`; do not edit.
 // Change the Rust side and run it again (crates/ipc-types has a test that fails while this is behind).
 
-import type { CspToolData, Project, Series } from "../model";
+import type { CspToolData, Project, Series } from "../model/model";
 
 /**
  * A request body of `[u32 little-endian JSON length][JSON][bytes]` (see

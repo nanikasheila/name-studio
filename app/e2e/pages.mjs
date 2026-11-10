@@ -37,9 +37,9 @@ try {
   await page.goto(server.resolvedUrls.local[0]);
   await page.waitForFunction(() => window.nameStudio);
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
-    const { addPanel } = await import("/src/panels.ts");
-    const { rectShape } = await import("/src/geometry.ts");
+    const { newProject } = await import("/src/domain/project.ts");
+    const { addPanel } = await import("/src/domain/panels.ts");
+    const { rectShape } = await import("/src/model/geometry.ts");
     const project = newProject("ページ管理", 6);
     project.pages.forEach((p, i) => (p.memo = `メモ${i + 1}`));
     addPanel(project, project.pages[1], rectShape([20, 20, 160, 120]));

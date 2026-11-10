@@ -37,7 +37,10 @@ try {
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => window.nameStudio.workbench.project !== null, null, { timeout: 5000 }).catch(() => undefined);
   const made = await project(page);
-  check(made?.title === "はじめてのネーム" && made.pages.length === 16, `Enter in the title of 新しいネーム makes the name (${made?.title}, ${made?.pages.length} pages)`);
+  check(
+    made?.title === "はじめてのネーム" && made.pages.length === 16,
+    `Enter in the title of 新しいネーム makes the name (${made?.title}, ${made?.pages.length} pages)`,
+  );
 
   // The Enter that settles かな漢字変換 is the field's own: the dialog stays.
   await page.click("#new-project");
@@ -48,7 +51,10 @@ try {
   });
   check(await isOpen(page, "new-dialog"), "Enter while a word is being composed leaves the dialog open");
   await page.keyboard.press("Escape");
-  check(!(await isOpen(page, "new-dialog")) && (await project(page)).title === "はじめてのネーム", "Esc still closes it, and the name is as it was");
+  check(
+    !(await isOpen(page, "new-dialog")) && (await project(page)).title === "はじめてのネーム",
+    "Esc still closes it, and the name is as it was",
+  );
 
   // 設定: Enter in the search and in a number keeps the settings open; the number is taken.
   await page.click("#settings");
@@ -61,7 +67,10 @@ try {
   await gutter.fill("3.5");
   await page.keyboard.press("Enter");
   const kept = await page.evaluate(() => window.nameStudio.workbench.project.gutters);
-  check((await isOpen(page, "settings-dialog")) && JSON.stringify(kept).includes("3.5"), `Enter in a number of the settings takes it and stays (${JSON.stringify(kept)})`);
+  check(
+    (await isOpen(page, "settings-dialog")) && JSON.stringify(kept).includes("3.5"),
+    `Enter in a number of the settings takes it and stays (${JSON.stringify(kept)})`,
+  );
   check(await page.evaluate(() => document.activeElement?.matches("#settings-dialog input[type=number]")), "the field keeps the focus");
   await page.keyboard.press("Escape");
 
@@ -77,7 +86,11 @@ try {
 
   // A blank page: a line across the 基本枠 with コマ割り cuts it in two; one undo takes both back.
   await page.keyboard.press("k");
-  const at = (mm) => page.evaluate((mm) => { const { editor, project } = window.nameStudio.workbench; return editor.clientOf(project.pages[0].id, mm); }, mm);
+  const at = (mm) =>
+    page.evaluate((mm) => {
+      const { editor, project } = window.nameStudio.workbench;
+      return editor.clientOf(project.pages[0].id, mm);
+    }, mm);
   const [ax, ay] = await at([30, 180]);
   const [bx, by] = await at([230, 181]);
   await page.mouse.move(ax, ay);
@@ -98,7 +111,10 @@ try {
   await page.mouse.down();
   await page.mouse.move(dx, dy, { steps: 6 });
   await page.mouse.up();
-  const missed = await page.evaluate(() => [window.nameStudio.workbench.project.pages[0].panels.length, document.getElementById("status").textContent]);
+  const missed = await page.evaluate(() => [
+    window.nameStudio.workbench.project.pages[0].panels.length,
+    document.getElementById("status").textContent,
+  ]);
   check(missed[0] === 0 && missed[1].includes("基本枠を横切る"), `a line off the frame makes nothing and tells how (${missed[1]})`);
   await page.close();
 
@@ -112,19 +128,35 @@ try {
     await narrow.waitForTimeout(300);
     const bar = await narrow.evaluate(() => {
       const name = document.getElementById("file-name");
-      return { help: document.getElementById("help").getBoundingClientRect().right, wide: document.documentElement.scrollWidth, name: name.getBoundingClientRect().width, title: name.title, text: name.textContent };
+      return {
+        help: document.getElementById("help").getBoundingClientRect().right,
+        wide: document.documentElement.scrollWidth,
+        name: name.getBoundingClientRect().width,
+        title: name.title,
+        text: name.textContent,
+      };
     });
-    check(bar.help <= width && bar.wide <= width, `${width} px: the bar fits (ヘルプ ends at ${Math.round(bar.help)}, page ${bar.wide} wide)`);
-    check(bar.name >= 100 && bar.title === bar.text, `${width} px: the file name has room (${Math.round(bar.name)} px) and its whole text on hover`);
+    check(
+      bar.help <= width && bar.wide <= width,
+      `${width} px: the bar fits (ヘルプ ends at ${Math.round(bar.help)}, page ${bar.wide} wide)`,
+    );
+    check(
+      bar.name >= 100 && bar.title === bar.text,
+      `${width} px: the file name has room (${Math.round(bar.name)} px) and its whole text on hover`,
+    );
     if (width === 1280 || width === 1366) {
       // 画面のヘルプ: no words over other words.
       await narrow.click("#help");
       await narrow.waitForTimeout(300);
       const over = await narrow.evaluate(() => {
-        const boxes = [...document.querySelectorAll(".help-label")].map((label) => [label.textContent.slice(0, 6), label.getBoundingClientRect()]);
+        const boxes = [...document.querySelectorAll(".help-label")].map((label) => [
+          label.textContent.slice(0, 6),
+          label.getBoundingClientRect(),
+        ]);
         const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
         const out = [];
-        for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) if (hit(boxes[i][1], boxes[j][1])) out.push(`${boxes[i][0]}×${boxes[j][0]}`);
+        for (let i = 0; i < boxes.length; i++)
+          for (let j = i + 1; j < boxes.length; j++) if (hit(boxes[i][1], boxes[j][1])) out.push(`${boxes[i][0]}×${boxes[j][0]}`);
         return out;
       });
       check(over.length === 0, `${width} px: the help's words do not cover each other (${over.join(", ") || "none"})`);

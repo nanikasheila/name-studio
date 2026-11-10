@@ -31,27 +31,63 @@ if (!dir || !existsSync(join(dir, "page.clip")) || !existsSync(app)) {
 // A name of three pages with a panel, a line of dialogue, a rough line and a memo.
 const server = await createServer({ root, logLevel: "error", server: { middlewareMode: true } });
 const P = {};
-for (const module of ["project", "panels", "dialogue", "geometry"]) Object.assign(P, await server.ssrLoadModule(`/src/${module}.ts`));
-const { projectJson } = await server.ssrLoadModule("/src/projectjson.ts");
-const { cspPageOf } = await server.ssrLoadModule("/src/csppage.ts");
+for (const module of ["domain/project", "domain/panels", "domain/dialogue", "model/geometry"])
+  Object.assign(P, await server.ssrLoadModule(`/src/${module}.ts`));
+const { projectJson } = await server.ssrLoadModule("/src/domain/projectjson.ts");
+const { cspPageOf } = await server.ssrLoadModule("/src/domain/csppage.ts");
 const project = P.newProject("通しテスト", 3);
 const page = project.pages[0];
 P.addPanel(project, page, P.rectShape([20, 20, 160, 120]));
 P.setLineText(P.addLine(project, page, [40, 40, 60, 100]), "セリフ");
-page.strokes.push({ id: "rough1", points: [[30, 30, 0.5], [90, 90, 0.5]], widthMm: 0.5, closed: false });
+page.strokes.push({
+  id: "rough1",
+  points: [
+    [30, 30, 0.5],
+    [90, 90, 0.5],
+  ],
+  widthMm: 0.5,
+  closed: false,
+});
 page.memo = "メモ";
 // The same name with its rough lines on two layers (人物 hidden and faint): one CSP layer more.
 const layered = structuredClone(project);
-layered.roughLayers = [{ id: "rough", name: "ラフ線" }, { id: "rough9", name: "人物", hidden: true, opacity: 0.5 }];
-layered.pages[0].strokes.push({ id: "rough2", points: [[40, 30, 0.5], [90, 60, 0.5]], widthMm: 0.5, closed: false, layer: "rough9" });
+layered.roughLayers = [
+  { id: "rough", name: "ラフ線" },
+  { id: "rough9", name: "人物", hidden: true, opacity: 0.5 },
+];
+layered.pages[0].strokes.push({
+  id: "rough2",
+  points: [
+    [40, 30, 0.5],
+    [90, 60, 0.5],
+  ],
+  widthMm: 0.5,
+  closed: false,
+  layer: "rough9",
+});
 // The same name with 指示 in red on a 指示のレイヤー: a 下描き layer more on top (none with --no-marks).
 const marked = structuredClone(project);
-marked.roughLayers = [{ id: "rough", name: "ラフ線" }, { id: "rough8", name: "指示", marks: true }];
-marked.pages[0].strokes.push({ id: "mark1", points: [[50, 50, 1], [120, 70, 1]], widthMm: 0.6, closed: false, layer: "rough8" });
+marked.roughLayers = [
+  { id: "rough", name: "ラフ線" },
+  { id: "rough8", name: "指示", marks: true },
+];
+marked.pages[0].strokes.push({
+  id: "mark1",
+  points: [
+    [50, 50, 1],
+    [120, 70, 1],
+  ],
+  widthMm: 0.6,
+  closed: false,
+  layer: "rough8",
+});
 // The same name with a 資料 picture and a picture of the name (取り込んだネーム画像) on page 1: a 下描き layer each.
 const pictured = structuredClone(project);
 const dot = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
-pictured.images = [{ id: "image1", name: "資料", mime: "image/png", dataBase64: dot, widthPx: 1, heightPx: 1 }, { id: "image2", name: "ネーム 1", mime: "image/png", dataBase64: dot, widthPx: 1, heightPx: 1 }];
+pictured.images = [
+  { id: "image1", name: "資料", mime: "image/png", dataBase64: dot, widthPx: 1, heightPx: 1 },
+  { id: "image2", name: "ネーム 1", mime: "image/png", dataBase64: dot, widthPx: 1, heightPx: 1 },
+];
 pictured.pages[0].references = [
   { id: "reference1", image: "image1", box: [30, 30, 80, 80] },
   { id: "reference2", image: "image2", box: [20, 28, 277, 392], kind: "name" },
@@ -114,7 +150,12 @@ function runApp(label, args) {
         const home = join(dir, ".data", label);
         const env =
           process.platform === "linux"
-            ? { ...process.env, XDG_DATA_HOME: join(home, "data"), XDG_CONFIG_HOME: join(home, "config"), XDG_CACHE_HOME: join(home, "cache") }
+            ? {
+                ...process.env,
+                XDG_DATA_HOME: join(home, "data"),
+                XDG_CONFIG_HOME: join(home, "config"),
+                XDG_CACHE_HOME: join(home, "cache"),
+              }
             : process.env;
         const started = Date.now();
         const child = spawn(app, args, { env, stdio: ["ignore", "ignore", "pipe"] });
@@ -166,9 +207,21 @@ async function unmarkedThenUpdated() {
   const unmarked = await exportTo("unmarked", ["--builtin", "--no-marks"], markedName);
   const updates = [];
   for (const round of ["first", "again"]) {
-    const run = await runApp(`update-${round}`, ["--export-csp", markedName, "--builtin", "--update-dialogue", "--out", join(dir, "unmarked")]);
+    const run = await runApp(`update-${round}`, [
+      "--export-csp",
+      markedName,
+      "--builtin",
+      "--update-dialogue",
+      "--out",
+      join(dir, "unmarked"),
+    ]);
     const record = join(dir, "unmarked", "name-studio-反映の記録.txt");
-    updates.push({ round, run, report: readReport(join(dir, "unmarked")), record: existsSync(record) ? readFileSync(record, "utf8").replace(/^\uFEFF/, "") : "" });
+    updates.push({
+      round,
+      run,
+      report: readReport(join(dir, "unmarked")),
+      record: existsSync(record) ? readFileSync(record, "utf8").replace(/^\uFEFF/, "") : "",
+    });
   }
   return { unmarked, updates };
 }
@@ -193,18 +246,30 @@ check(builtin?.workCheck?.problems?.length === 0, "builtin: the work reads back 
 check(builtin?.vectorLayers === true && builtin?.textLayers === true, "builtin: the panels and dialogue are editable layers");
 // Each panel as a folder with a layer mask: the pages read back with the folder, its mask and the rough in it.
 const masks = checked("masks", masksRun);
-check((masks?.checks?.[0]?.layers ?? 0) > (builtin?.checks?.[0]?.layers ?? 0), "masks: the first page has the panel's folder and its layers");
+check(
+  (masks?.checks?.[0]?.layers ?? 0) > (builtin?.checks?.[0]?.layers ?? 0),
+  "masks: the first page has the panel's folder and its layers",
+);
 const layers = checked("layered", layeredRun);
-check((layers?.checks?.[0]?.layers ?? 0) === (builtin?.checks?.[0]?.layers ?? 0) + 1, "layered: the rough layer 人物 is a layer of its own");
+check(
+  (layers?.checks?.[0]?.layers ?? 0) === (builtin?.checks?.[0]?.layers ?? 0) + 1,
+  "layered: the rough layer 人物 is a layer of its own",
+);
 const withMarks = checked("marked", markedRun);
 check((withMarks?.checks?.[0]?.layers ?? 0) === (builtin?.checks?.[0]?.layers ?? 0) + 1, "marked: the 指示 are a layer of their own");
 const noMarks = checked("unmarked", unmarkedRuns.unmarked);
 check((noMarks?.checks?.[0]?.layers ?? 0) === (builtin?.checks?.[0]?.layers ?? 0), "unmarked: --no-marks leaves them out");
 for (const { round, run, report, record } of unmarkedRuns.updates) {
   const want = round === "first" ? ["指示"] : [];
-  check(run.status === 0 && report?.ok === true, `update (${round}): セリフだけ反映 succeeds (${report?.summary?.join(" / ") ?? run.stderr})`);
+  check(
+    run.status === 0 && report?.ok === true,
+    `update (${round}): セリフだけ反映 succeeds (${report?.summary?.join(" / ") ?? run.stderr})`,
+  );
   const drawn = report?.pages?.[0]?.marks ?? [];
-  check(JSON.stringify(drawn) === JSON.stringify(want), `update (${round}): the 指示 redrawn on the first page are ${JSON.stringify(want)} (${JSON.stringify(drawn)})`);
+  check(
+    JSON.stringify(drawn) === JSON.stringify(want),
+    `update (${round}): the 指示 redrawn on the first page are ${JSON.stringify(want)} (${JSON.stringify(drawn)})`,
+  );
   // The record kept with the pages: one entry for the run that changed a page, none for the one that did not.
   const entries = record.split(/\r\n/).filter((line) => line.startsWith("■ "));
   check(
@@ -213,7 +278,10 @@ for (const { round, run, report, record } of unmarkedRuns.updates) {
   );
 }
 const withPictures = checked("pictured", picturedRun);
-check((withPictures?.checks?.[0]?.layers ?? 0) === (builtin?.checks?.[0]?.layers ?? 0) + 2, "pictured: the 資料 and the picture of the name are a layer each");
+check(
+  (withPictures?.checks?.[0]?.layers ?? 0) === (builtin?.checks?.[0]?.layers ?? 0) + 2,
+  "pictured: the 資料 and the picture of the name are a layer each",
+);
 // A picture that cannot be read: the pages go out without it, and the report says which, on which page.
 const withSpoilt = checked("spoilt", spoiltRun);
 check(
@@ -223,7 +291,10 @@ check(
 check(!(withPictures?.summary ?? []).some((line) => line.includes("読めない画像")), "pictured: pictures that read say nothing of the kind");
 // A name saved by a newer version: it still goes out, and the report says first what this one leaves out.
 const fromNewer = checked("newer", newerRun);
-check(/^注意: このネームには、この版が知らない項目があります.*pages\.strokes\.wobble/.test(fromNewer?.summary?.[0] ?? ""), `newer: the report says first what this version does not know (${fromNewer?.summary?.[0]})`);
+check(
+  /^注意: このネームには、この版が知らない項目があります.*pages\.strokes\.wobble/.test(fromNewer?.summary?.[0] ?? ""),
+  `newer: the report says first what this version does not know (${fromNewer?.summary?.[0]})`,
+);
 check(!(builtin?.summary ?? []).some((line) => line.includes("知らない項目")), "builtin: a name of this version says nothing of the kind");
 const tall = checked("tall", tallRun, 1);
 check(tall?.textLayers === true && (tall?.checks?.[0]?.layers ?? 0) > 0, "tall: the joined page has its layers");

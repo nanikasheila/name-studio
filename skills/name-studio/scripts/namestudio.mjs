@@ -2,7 +2,7 @@
 // Name Studio の .namestudio を読み書きするコマンド（GPL-3.0-or-later）。
 // app/src から `npm run build:skill` で作るので、直接は直さないこと。
 import { copyFileSync, existsSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-// src/style.ts
+// src/domain/style.ts
 /** The app's text size (pt) for each kind of line. */
 var APP_FONT_PT = {
 	speech: 13,
@@ -25,7 +25,7 @@ function lineSpacing(style = current) {
 function linePitch(style = current) {
 	return lineSpacing(style) / 100;
 }
-// src/geometry.ts
+// src/model/geometry.ts
 function bounds(points) {
 	let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
 	for (const [x, y] of points) {
@@ -74,7 +74,7 @@ function insidePolygon(shape, [x, y]) {
 function boxCenter([x0, y0, x1, y1]) {
 	return [(x0 + x1) / 2, (y0 + y1) / 2];
 }
-// src/balloon.ts
+// src/domain/balloon.ts
 /** Room between the text and the outline, in mm. */
 var PAD = 3;
 function resolvedShape(line) {
@@ -434,7 +434,7 @@ function movePage(project, pageId, step) {
 	project.pages.splice(target, 0, page);
 	for (const scene of project.scenes) if (pageIndex(project, scene.firstPage) > pageIndex(project, scene.lastPage)) [scene.firstPage, scene.lastPage] = [scene.lastPage, scene.firstPage];
 }
-// src/readingorder.ts
+// src/domain/readingorder.ts
 /**
 * Reading order of panels in a right-bound book (same rule as the Rust
 * import): rows top to bottom, a panel starts a new row when its top is below
@@ -485,7 +485,7 @@ function sortLines(page, binding = "right") {
 		return ka.panel - kb.panel || ka.diagonal - kb.diagonal;
 	});
 }
-// src/pagebox.ts
+// src/domain/pagebox.ts
 function centred(format, size, offset) {
 	const x0 = (format.canvasMm[0] - size[0]) / 2 + offset[0];
 	const y0 = (format.canvasMm[1] - size[1]) / 2 + offset[1];
@@ -502,7 +502,7 @@ function trimBox(format) {
 function basicBox(format) {
 	return centred(format, format.basicMm, format.basicOffsetMm);
 }
-// src/strokes.ts
+// src/domain/strokes.ts
 function fillShape(fill) {
 	return {
 		id: fill.id,
@@ -515,7 +515,7 @@ function mapFill(fill, map, from = fill) {
 	fill.shape = from.shape.map(map);
 	if (from.holes?.length) fill.holes = from.holes.map((hole) => hole.map(map));
 }
-// src/panels.ts
+// src/domain/panels.ts
 function addPanel(project, page, shape) {
 	const panel = {
 		id: newId(project, "panel"),
@@ -631,7 +631,7 @@ function followPanel(page, panel, carried, fit = "stretch") {
 		if (tails && line.tails) line.tails.forEach((tail, i) => tails[i] && (tail.tip = map(tails[i])));
 	}
 }
-// src/autotail.ts
+// src/domain/autotail.ts
 /** Strokes this close (mm) belong to the same figure. */
 var TOUCH = 4;
 /** The figures drawn in a panel: boxes of strokes grouped where they touch, right to left. */
@@ -674,7 +674,7 @@ function union(a, b) {
 function contains(outer, inner) {
 	return outer[0] <= inner[0] && outer[1] <= inner[1] && inner[2] <= outer[2] && inner[3] <= outer[3];
 }
-// src/wrap.ts
+// src/domain/wrap.ts
 /** Characters a line must not start with. */
 var NO_START = /* @__PURE__ */ new Set([..."、。，．,.・：；:;！？!?‼⁉…‥ー〜～）)」』】〕］]｝}〉》ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶ゛゜ゝゞヽヾ々"]);
 /** Characters a line must not end with. */
@@ -746,7 +746,7 @@ function wrapDialogue(text, width = 8) {
 	if (start < chars.length) lines.push(chars.slice(start).join(""));
 	return lines.map((line) => line.replace(/^ +| +$/g, "")).join("\n");
 }
-// src/dialogue.ts
+// src/domain/dialogue.ts
 var KIND_LABELS = {
 	speech: "セリフ",
 	thought: "モノローグ",
@@ -842,7 +842,7 @@ function moveLine(line, dx, dy) {
 function textAmount(page) {
 	return page.lines.reduce((sum, line) => sum + [...line.text.replace(/\s/g, "")].length, 0);
 }
-// src/arrange.ts
+// src/domain/arrange.ts
 var AS_IT_IS = {
 	box: (box) => box,
 	shape: (shape) => [...shape]
@@ -1177,7 +1177,7 @@ function arrangePanel(project, page, panel) {
 	sortLines(page, project.binding);
 	return lines.length;
 }
-// src/koma.ts
+// src/domain/koma.ts
 var BORDER_LABELS = {
 	solid: "実線",
 	thick: "太枠",
@@ -1661,7 +1661,7 @@ function replacePanels(project, page, panels) {
 	for (const [panel, count] of shared) if (count > 1) arrangePanel(project, page, panel);
 	sortLines(page, project.binding);
 }
-// src/cast.ts
+// src/domain/cast.ts
 /** Categorical colours in a fixed order, checked for colour-blind separation. */
 var PALETTE = [
 	"#2a78d6",
@@ -1737,7 +1737,7 @@ function putScene(project, first, last, title, summary = "") {
 function sortScenes(project) {
 	project.scenes.sort((a, b) => pageIndex(project, a.firstPage) - pageIndex(project, b.firstPage));
 }
-// src/alternatives.ts
+// src/domain/alternatives.ts
 /** The 別案 set that holds a page in use, if any. */
 function alternativesOf(project, pageId) {
 	return project.alternatives?.find((set) => set.pageIds.includes(pageId));
@@ -1749,7 +1749,7 @@ function joinAlternative(project, pageId, besideId, after) {
 	const at = set.pageIds.indexOf(besideId);
 	set.pageIds.splice(after ? at + 1 : at, 0, pageId);
 }
-// src/reorder.ts
+// src/domain/reorder.ts
 /** The pages that move with page `index`: it and its 見開き partner, as first and last index. */
 function pageBlock(project, index) {
 	let [first, last] = [index, index];
@@ -1757,7 +1757,7 @@ function pageBlock(project, index) {
 	else if (index > 0 && wantsSpread(project, index - 1)) first = index - 1;
 	return [first, last];
 }
-// src/pageops.ts
+// src/domain/pageops.ts
 /** Where pages go in front of (`after` false) or behind page `index`, not between the halves of a 見開き. */
 function insertionPoint(project, index, after) {
 	if (!project.pages.length) return 0;
@@ -1871,7 +1871,7 @@ function deletePages(project, ids) {
 	for (const id of ids) removePage(project, id);
 	return true;
 }
-// src/scriptimport.ts
+// src/domain/scriptimport.ts
 var NARRATION = /* @__PURE__ */ new Set([
 	"n",
 	"na",
@@ -2493,7 +2493,7 @@ function linkSticky(page, sticky, kind, id, point) {
 	};
 	return true;
 }
-// src/structures.ts
+// src/domain/structures.ts
 /** Story shapes to hold the page split against: parts and their share of the pages. */
 var STRUCTURES = {
 	kishotenketsu: {
@@ -2637,7 +2637,7 @@ var STRUCTURES = {
 		]
 	}
 };
-// src/shapes.ts
+// src/domain/shapes.ts
 /** Colours of the parts, in turn; used wherever pages are shown by part. */
 var PART_COLORS = [
 	"#4f86d9",
@@ -2691,7 +2691,7 @@ function shapeSpans(shape, pages) {
 function beatPage(at, pages) {
 	return Math.max(0, Math.min(pages - 1, Math.floor(at * pages)));
 }
-// src/story.ts
+// src/domain/story.ts
 /** Scenes with their page ranges, in page order; scenes pointing at missing pages are left out. */
 function sceneSpans(project) {
 	return project.scenes.map((scene) => ({
@@ -2784,7 +2784,7 @@ function runs(indexes) {
 	}
 	return out;
 }
-// src/validate.ts
+// src/domain/validate.ts
 /** The trailing number of an id made by `newId` ("line40" → 40). */
 function idNumber(id) {
 	const digits = id.replace(/^\D*/, "");
@@ -2861,7 +2861,7 @@ function validate(project) {
 	if (highest !== null && highest >= project.nextId) problems.push(`next_id ${project.nextId} が使用済みの id 番号 ${highest} 以下です`);
 	return problems;
 }
-// src/assist.ts
+// src/domain/assist.ts
 var SHAPE_LABELS = {
 	ellipse: "楕円",
 	rounded: "角丸",
@@ -3393,7 +3393,7 @@ function applyOps(project, ops) {
 		broken: broken.length > 0
 	};
 }
-// src/namecheck.ts
+// src/domain/namecheck.ts
 var ISSUE_LABELS = {
 	overlap: "フキダシの重なり",
 	outside: "コマの外のセリフ",
@@ -3436,7 +3436,7 @@ function checkName(project) {
 	});
 	return issues;
 }
-// src/scripttext.ts
+// src/domain/scripttext.ts
 /** One line of dialogue as the script writes it (名前「…」, ナレーション：…). */
 function scriptLine(names, line) {
 	const text = line.text.replace(/\s*\n\s*/g, "　").trim();

@@ -23,7 +23,7 @@ try {
   await page.goto(server.resolvedUrls.local[0]);
   await page.waitForFunction(() => window.nameStudio);
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     window.nameStudio.show(newProject("道具", 2));
     await new Promise((done) => setTimeout(done, 300));
     window.nameStudio.workbench.setTool("pen");
@@ -41,7 +41,8 @@ try {
   // Held: repeats change nothing (the eraser's would cycle how it erases); let go, the pen again.
   const before = await mode();
   await page.keyboard.down("KeyE");
-  for (let i = 0; i < 4; i++) await page.evaluate(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "e", code: "KeyE", repeat: true, bubbles: true })));
+  for (let i = 0; i < 4; i++)
+    await page.evaluate(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "e", code: "KeyE", repeat: true, bubbles: true })));
   check((await tool()) === "eraser" && (await mode()) === before, "held, the eraser is lent and its repeats change nothing");
   await page.waitForTimeout(600);
   await page.keyboard.up("KeyE");

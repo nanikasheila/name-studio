@@ -29,7 +29,7 @@ try {
   await page.goto(url);
   await page.waitForFunction(() => window.nameStudio);
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     const project = newProject("塗り", 2);
     const line = (id, corners, closed = true) => ({
       id,
@@ -37,12 +37,28 @@ try {
       widthMm: 0.6,
       closed: false,
     });
-    const square = (x, y, s) => [[x, y], [x + s, y], [x + s, y + s], [x, y + s]];
+    const square = (x, y, s) => [
+      [x, y],
+      [x + s, y],
+      [x + s, y + s],
+      [x, y + s],
+    ];
     const page = project.pages[0];
     page.panels.push({ id: "panel1", shape: square(30, 30, 160), order: 1 });
     page.strokes.push(
       // A square with a 0.8 mm gap in its top side.
-      line("gap", [[60.4, 50], [100, 50], [100, 90], [40, 90], [40, 50], [59.6, 50]], false),
+      line(
+        "gap",
+        [
+          [60.4, 50],
+          [100, 50],
+          [100, 90],
+          [40, 90],
+          [40, 50],
+          [59.6, 50],
+        ],
+        false,
+      ),
       // A square with a smaller one inside.
       line("outer", square(110, 50, 60)),
       line("inner", square(130, 70, 20)),
@@ -52,7 +68,18 @@ try {
       // A square for 塗り残し.
       line("sliver", square(120, 140, 30)),
     );
-    page.fills = [{ id: "fill1", shape: [[120, 140], [150, 140], [150, 168.6], [120, 168.6]], tone: "gray" }];
+    page.fills = [
+      {
+        id: "fill1",
+        shape: [
+          [120, 140],
+          [150, 140],
+          [150, 168.6],
+          [120, 168.6],
+        ],
+        tone: "gray",
+      },
+    ];
     window.nameStudio.show(project);
     const wb = window.nameStudio.workbench;
     wb.editor.showPage(1);
@@ -92,7 +119,13 @@ try {
         fills: (wb.project.pages[0].fills ?? []).map((fill) => {
           const xs = fill.shape.map(([x]) => x);
           const ys = fill.shape.map(([, y]) => y);
-          return { id: fill.id, tone: fill.tone ?? "black", under: !!fill.under, box: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)], holes: fill.holes?.length ?? 0 };
+          return {
+            id: fill.id,
+            tone: fill.tone ?? "black",
+            under: !!fill.under,
+            box: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)],
+            holes: fill.holes?.length ?? 0,
+          };
         }),
         status: document.getElementById("status").textContent,
         hint: document.getElementById("tool-hint").textContent,
@@ -120,7 +153,10 @@ try {
   await settle();
   let s = await state();
   check(s.tool === "fill" && s.way === "lasso", `G takes up 塗り, 投げなわ塗り to begin with (${s.tool}, ${s.way})`);
-  check(await page.isVisible("#fill-click") && !(await page.isVisible("#fill-gap")), "the bar shows the ways and no 隙間閉じ for 投げなわ塗り");
+  check(
+    (await page.isVisible("#fill-click")) && !(await page.isVisible("#fill-gap")),
+    "the bar shows the ways and no 隙間閉じ for 投げなわ塗り",
+  );
   await page.keyboard.press("g");
   await settle();
   check((await state()).way === "remaining", "G again: the next way (塗り残し部分に塗る)");
@@ -128,14 +164,17 @@ try {
   // 塗りつぶし with 隙間閉じ しない: the gap lets it out over the panel.
   await page.click("#fill-click");
   await settle();
-  check(await page.isVisible("#fill-gap") && await page.isVisible("#fill-center"), "塗りつぶし shows 隙間閉じ and 線の中心まで");
+  check((await page.isVisible("#fill-gap")) && (await page.isVisible("#fill-center")), "塗りつぶし shows 隙間閉じ and 線の中心まで");
   check((await state()).hint.includes("閉じた範囲"), "the hint says what 塗りつぶし does");
   await page.selectOption("#fill-gap", "0");
   let before = await state();
   await clickMm([70, 70]);
   s = await state();
   let made = newest(s, before);
-  check(made.length === 1 && made[0].box[2] - made[0].box[0] > 100, `without 隙間閉じ the fill goes out through the gap, as far as the panel (${JSON.stringify(made[0]?.box)})`);
+  check(
+    made.length === 1 && made[0].box[2] - made[0].box[0] > 100,
+    `without 隙間閉じ the fill goes out through the gap, as far as the panel (${JSON.stringify(made[0]?.box)})`,
+  );
   await page.keyboard.press("Control+z");
   await settle();
   check((await state()).fills.length === before.fills.length, "Ctrl+Z takes it back");
@@ -147,14 +186,24 @@ try {
   s = await state();
   made = newest(s, before);
   const box = made[0]?.box ?? [0, 0, 0, 0];
-  check(made.length === 1 && Math.abs(box[0] - 40) < 0.4 && Math.abs(box[2] - 100) < 0.4 && Math.abs(box[1] - 50) < 0.6 && Math.abs(box[3] - 90) < 0.4, `隙間閉じ: the square, to the middle of its line (${JSON.stringify(box)})`);
+  check(
+    made.length === 1 &&
+      Math.abs(box[0] - 40) < 0.4 &&
+      Math.abs(box[2] - 100) < 0.4 &&
+      Math.abs(box[1] - 50) < 0.6 &&
+      Math.abs(box[3] - 90) < 0.4,
+    `隙間閉じ: the square, to the middle of its line (${JSON.stringify(box)})`,
+  );
   check(dark(await pixel([70, 70])), "the area is black on the page");
 
   // A click on the fill with グレー in hand: it turns grey.
   await page.click("#fill-gray");
   await clickMm([70, 70]);
   s = await state();
-  check(s.fills.find((fill) => fill.id === made[0]?.id)?.tone === "gray" && s.fills.length === before.fills.length + 1, `a click on a fill gives it the tone in hand (${s.status})`);
+  check(
+    s.fills.find((fill) => fill.id === made[0]?.id)?.tone === "gray" && s.fills.length === before.fills.length + 1,
+    `a click on a fill gives it the tone in hand (${s.status})`,
+  );
   // Under the rough lines: the line shows over the grey along its whole width.
   check(made[0]?.under === true, "塗りつぶし goes under the rough lines");
   const [onLine, inside] = [await pixel([40, 70]), await pixel([70, 70])];
@@ -172,46 +221,80 @@ try {
   // 囲って塗る: both squares, not what is round them.
   await page.click("#fill-enclose");
   before = await state();
-  await dragMm([[35, 105], [105, 105], [105, 140], [35, 140], [35, 106]]);
+  await dragMm([
+    [35, 105],
+    [105, 105],
+    [105, 140],
+    [35, 140],
+    [35, 106],
+  ]);
   s = await state();
   made = newest(s, before);
   check(made.length === 1 || made.length === 2, `囲って塗る fills the closed squares inside (${made.length}: ${s.status})`);
-  check(dark(await pixel([52, 122])) && dark(await pixel([87, 122])) && !dark(await pixel([70, 105.5])), "both squares black, nothing between them outside");
+  check(
+    dark(await pixel([52, 122])) && dark(await pixel([87, 122])) && !dark(await pixel([70, 105.5])),
+    "both squares black, nothing between them outside",
+  );
 
   // 塗り残し部分に塗る: the sliver under the grey fill.
   await page.click("#fill-remaining");
   await page.click("#fill-gray");
   before = await state();
-  await dragMm([[122, 169.4], [148, 169.4]]);
+  await dragMm([
+    [122, 169.4],
+    [148, 169.4],
+  ]);
   s = await state();
   made = newest(s, before);
-  check(made.length === 1 && made[0].box[1] > 167.5 && made[0].box[3] < 171, `塗り残し: the sliver between the fill and the line (${JSON.stringify(made[0]?.box)}, ${s.status})`);
+  check(
+    made.length === 1 && made[0].box[1] > 167.5 && made[0].box[3] < 171,
+    `塗り残し: the sliver between the fill and the line (${JSON.stringify(made[0]?.box)}, ${s.status})`,
+  );
 
   // The サブツール palette: the four ways, the one in hand marked, its settings, kept in step with the bar.
   const panel = page.locator("#side-subtools");
-  check((await panel.locator(".subtool-row .subtool-name").allTextContents()).join("/") === "塗りつぶし/囲って塗る/投げなわ塗り/塗り残し部分に塗る", "サブツール lists the four ways");
-  check((await panel.locator(".subtool-row.current .subtool-name").textContent()) === "塗り残し部分に塗る", "the way in hand is marked there");
+  check(
+    (await panel.locator(".subtool-row .subtool-name").allTextContents()).join("/") ===
+      "塗りつぶし/囲って塗る/投げなわ塗り/塗り残し部分に塗る",
+    "サブツール lists the four ways",
+  );
+  check(
+    (await panel.locator(".subtool-row.current .subtool-name").textContent()) === "塗り残し部分に塗る",
+    "the way in hand is marked there",
+  );
   await panel.locator(".subtool-row", { hasText: "囲って塗る" }).click();
   await settle();
-  check((await state()).way === "enclose" && (await page.locator("#fill-enclose").getAttribute("class")).includes("active"), "a click on a row takes that way up, and the bar follows");
+  check(
+    (await state()).way === "enclose" && (await page.locator("#fill-enclose").getAttribute("class")).includes("active"),
+    "a click on a row takes that way up, and the bar follows",
+  );
   await panel.locator(".subtool-field", { hasText: "隙間閉じ" }).locator("select").selectOption("2");
   await settle();
   check((await page.locator("#fill-gap").inputValue()) === "2", "a setting changed in the palette shows on the bar");
   await page.selectOption("#fill-gap", "0.5");
   await settle();
-  check((await panel.locator(".subtool-field", { hasText: "隙間閉じ" }).locator("select").inputValue()) === "0.5", "and the other way round");
-  const drawn = await panel.locator(".subtool-row", { hasText: "囲って塗る" }).locator("canvas").evaluate((canvas) => {
-    const data = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
-    let ink = 0;
-    for (let i = 3; i < data.length; i += 4) if (data[i] > 0) ink++;
-    return ink;
-  });
+  check(
+    (await panel.locator(".subtool-field", { hasText: "隙間閉じ" }).locator("select").inputValue()) === "0.5",
+    "and the other way round",
+  );
+  const drawn = await panel
+    .locator(".subtool-row", { hasText: "囲って塗る" })
+    .locator("canvas")
+    .evaluate((canvas) => {
+      const data = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+      let ink = 0;
+      for (let i = 3; i < data.length; i += 4) if (data[i] > 0) ink++;
+      return ink;
+    });
   check(drawn > 50, `each row has a small picture of the way (${drawn} px)`);
   await panel.locator(".subtool-row", { hasText: "塗り残し部分に塗る" }).click();
 
   // Kept on this computer.
   const kept = await page.evaluate(() => JSON.parse(localStorage.getItem("namestudio.fill") ?? "null"));
-  check(kept?.way === "remaining" && kept?.tone === "gray" && kept?.options?.click?.gapMm === 1, `the way and settings are kept (${JSON.stringify(kept)?.slice(0, 80)})`);
+  check(
+    kept?.way === "remaining" && kept?.tone === "gray" && kept?.options?.click?.gapMm === 1,
+    `the way and settings are kept (${JSON.stringify(kept)?.slice(0, 80)})`,
+  );
 
   if (process.env.FULL) await page.screenshot({ path: process.env.FULL });
   if (process.env.SHOT) {

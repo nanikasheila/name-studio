@@ -38,11 +38,15 @@ try {
       dot.style.cssText =
         "position:fixed;left:0;top:0;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;border:2px solid #fff;background:rgba(30,30,30,.55);box-shadow:0 0 0 1px rgba(0,0,0,.4);pointer-events:none;z-index:99999;display:none;transition:transform .05s";
       document.body.append(dot);
-      addEventListener("pointermove", (e) => {
-        dot.style.display = window.__pointer ? "block" : "none";
-        dot.style.left = `${e.clientX}px`;
-        dot.style.top = `${e.clientY}px`;
-      }, true);
+      addEventListener(
+        "pointermove",
+        (e) => {
+          dot.style.display = window.__pointer ? "block" : "none";
+          dot.style.left = `${e.clientX}px`;
+          dot.style.top = `${e.clientY}px`;
+        },
+        true,
+      );
       addEventListener("pointerdown", () => (dot.style.transform = "scale(.65)"), true);
       addEventListener("pointerup", () => (dot.style.transform = ""), true);
     });
@@ -55,7 +59,10 @@ try {
   const viewButton = (label) => page.locator("#page-nav button", { hasText: label }).first();
   const tool = (label) => page.locator("#editor-tools button", { hasText: label }).first();
   const clientOf = (pageNumber, mm) =>
-    page.evaluate(([n, mm]) => window.nameStudio.workbench.editor.clientOf(window.nameStudio.workbench.project.pages[n - 1].id, mm), [pageNumber, mm]);
+    page.evaluate(
+      ([n, mm]) => window.nameStudio.workbench.editor.clientOf(window.nameStudio.workbench.project.pages[n - 1].id, mm),
+      [pageNumber, mm],
+    );
 
   // The start screen.
   await settle(500);
@@ -112,20 +119,23 @@ try {
   const themeDir = mkdtempSync(join(tmpdir(), "looks-"));
   for (const theme of themes) {
     await page.evaluate(async (theme) => {
-      const { applyLook, DEFAULT_LOOK } = await import("/src/look.ts");
+      const { applyLook, DEFAULT_LOOK } = await import("/src/platform/look.ts");
       applyLook({ ...DEFAULT_LOOK, theme });
     }, theme);
     await settle(300);
     await page.screenshot({ path: join(themeDir, `${theme}.png`) });
   }
   await page.evaluate(async () => {
-    const { applyLook, DEFAULT_LOOK } = await import("/src/look.ts");
+    const { applyLook, DEFAULT_LOOK } = await import("/src/platform/look.ts");
     applyLook(DEFAULT_LOOK);
   });
   execFileSync("ffmpeg", [
-    "-y", "-loglevel", "error",
+    "-y",
+    "-loglevel",
+    "error",
     ...themes.flatMap((theme) => ["-i", join(themeDir, `${theme}.png`)]),
-    "-filter_complex", "[0][1][2][3]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0:fill=white,scale=1600:-1",
+    "-filter_complex",
+    "[0][1][2][3]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0:fill=white,scale=1600:-1",
     join(out, "looks.png"),
   ]);
   rmSync(themeDir, { recursive: true, force: true });
@@ -180,9 +190,18 @@ try {
     await act({ frame, glide, hold });
     await hold(18);
     execFileSync("ffmpeg", [
-      "-y", "-loglevel", "error", "-framerate", "12", "-i", join(dir, "f%04d.png"),
-      "-vf", "split[a][b];[a]palettegen=max_colors=64:stats_mode=diff[p];[b][p]paletteuse=dither=none",
-      "-loop", "0", join(out, `${name}.gif`),
+      "-y",
+      "-loglevel",
+      "error",
+      "-framerate",
+      "12",
+      "-i",
+      join(dir, "f%04d.png"),
+      "-vf",
+      "split[a][b];[a]palettegen=max_colors=64:stats_mode=diff[p];[b][p]paletteuse=dither=none",
+      "-loop",
+      "0",
+      join(out, `${name}.gif`),
     ]);
     rmSync(dir, { recursive: true, force: true });
   }
@@ -192,7 +211,7 @@ try {
     await glide(last, from, 6);
     await page.mouse.down();
     await frame();
-    await glide(last = from, to, steps, 1);
+    await glide((last = from), to, steps, 1);
     await page.mouse.up();
     await hold(5);
     last = to;
@@ -265,10 +284,10 @@ try {
 
   // Moving pictures of the tools: a fresh page in 単独, one tool at a time.
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
-    const { addPanel } = await import("/src/panels.ts");
-    const { rectShape } = await import("/src/geometry.ts");
-    const { basicBox } = await import("/src/pagebox.ts");
+    const { newProject } = await import("/src/domain/project.ts");
+    const { addPanel } = await import("/src/domain/panels.ts");
+    const { rectShape } = await import("/src/model/geometry.ts");
+    const { basicBox } = await import("/src/domain/pagebox.ts");
     const project = newProject("サンプル", 2);
     addPanel(project, project.pages[0], rectShape(basicBox(project.pageFormat)));
     window.nameStudio.show(project);
@@ -285,7 +304,24 @@ try {
   await page.mouse.move(...last);
   await film("komawari", async (f) => {
     await f.hold(6);
-    for (const [a, b] of [[[50, 160], [247, 160]], [[150, 70], [150, 165]], [[50, 262], [247, 248]], [[110, 255], [128, 350]]])
+    for (const [a, b] of [
+      [
+        [50, 160],
+        [247, 160],
+      ],
+      [
+        [150, 70],
+        [150, 165],
+      ],
+      [
+        [50, 262],
+        [247, 248],
+      ],
+      [
+        [110, 255],
+        [128, 350],
+      ],
+    ])
       await drag(f, await at(a), await at(b));
   });
 
@@ -302,18 +338,48 @@ try {
     // From mm to the screen once: the view stays as it is while drawing.
     const [o, u] = [await at([0, 0]), await at([100, 100])];
     const px = ([x, y]) => [o[0] + ((u[0] - o[0]) * x) / 100, o[1] + ((u[1] - o[1]) * y) / 100];
-    const head = (cx, cy, r) => Array.from({ length: 25 }, (_, i) => [cx + Math.cos((i / 24) * 6.5) * r, cy + Math.sin((i / 24) * 6.5) * r]);
+    const head = (cx, cy, r) =>
+      Array.from({ length: 25 }, (_, i) => [cx + Math.cos((i / 24) * 6.5) * r, cy + Math.sin((i / 24) * 6.5) * r]);
     const strokes = figures.length
       ? figures.flatMap(([crop, [x0, y0, x1, y1]]) => {
           const scale = Math.min((x1 - x0) / crop.w, (y1 - y0) / crop.h);
           const mm = ([x, y]) => [x0 + x * scale, y0 + y * scale];
           // Top to bottom, as one draws a figure: the head first.
-          return [...crop.paths].sort((a, b) => Math.min(...a.map((q) => q[1])) - Math.min(...b.map((q) => q[1]))).map((path) => path.map(mm));
+          return [...crop.paths]
+            .sort((a, b) => Math.min(...a.map((q) => q[1])) - Math.min(...b.map((q) => q[1])))
+            .map((path) => path.map(mm));
         })
       : [
-          head(196, 112, 13), [[185, 125], [174, 145], [170, 156]], [[207, 125], [218, 145], [222, 156]],
-          [[190, 111], [193, 111]], [[199, 111], [202, 111]],
-          head(100, 116, 11), [[90, 127], [80, 145], [77, 156]], [[110, 127], [120, 145], [123, 156]],
+          head(196, 112, 13),
+          [
+            [185, 125],
+            [174, 145],
+            [170, 156],
+          ],
+          [
+            [207, 125],
+            [218, 145],
+            [222, 156],
+          ],
+          [
+            [190, 111],
+            [193, 111],
+          ],
+          [
+            [199, 111],
+            [202, 111],
+          ],
+          head(100, 116, 11),
+          [
+            [90, 127],
+            [80, 145],
+            [77, 156],
+          ],
+          [
+            [110, 127],
+            [120, 145],
+            [123, 156],
+          ],
         ];
     const total = strokes.reduce((n, points) => n + points.length, 0);
     // About 150 frames of drawing, however many lines there are.

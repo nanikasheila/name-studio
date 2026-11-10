@@ -1,7 +1,15 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
-  "formatter": { "enabled": false },
-  "assist": { "enabled": false },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 140,
+    "includes": ["**", "!src/generated/**"]
+  },
+  "assist": {
+    "enabled": false
+  },
   "linter": {
     "enabled": true,
     "rules": {
@@ -22,5 +30,7 @@
       }
     }
   },
-  "files": { "includes": ["src/**/*.ts", "e2e/**/*.mjs", "e2e/**/*.js", "vite.config.ts"] }
+  "files": {
+    "includes": ["src/**/*.ts", "e2e/**/*.mjs", "e2e/**/*.js", "vite.config.ts"]
+  }
 }

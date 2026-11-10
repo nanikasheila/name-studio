@@ -106,18 +106,25 @@ try {
         const xs = [...Array(bitmap.width).keys()].filter((k) => blue(across, k));
         const ys = [...Array(bitmap.height).keys()].filter((k) => blue(down, k));
         const [x0, y0, x1, y1] = names[0].box;
-        const inner = xs.length && ys.length
-          ? [x0 + ((xs[0] + 0.5) / bitmap.width) * (x1 - x0), y0 + ((ys[0] + 0.5) / bitmap.height) * (y1 - y0), x0 + ((xs.at(-1) + 0.5) / bitmap.width) * (x1 - x0), y0 + ((ys.at(-1) + 0.5) / bitmap.height) * (y1 - y0)]
-          : null;
+        const inner =
+          xs.length && ys.length
+            ? [
+                x0 + ((xs[0] + 0.5) / bitmap.width) * (x1 - x0),
+                y0 + ((ys[0] + 0.5) / bitmap.height) * (y1 - y0),
+                x0 + ((xs.at(-1) + 0.5) / bitmap.width) * (x1 - x0),
+                y0 + ((ys.at(-1) + 0.5) / bitmap.height) * (y1 - y0),
+              ]
+            : null;
         out.push({ count: 1, box: names[0].box, bar: best.at, opacity: names[0].opacity, inner });
       }
       return out;
     });
-  const boxes = () => page.evaluate(async () => {
-    const { trimBox, basicBox } = await import("/src/pagebox.ts");
-    const format = window.nameStudio.workbench.project.pageFormat;
-    return { trim: trimBox(format), basic: basicBox(format) };
-  });
+  const boxes = () =>
+    page.evaluate(async () => {
+      const { trimBox, basicBox } = await import("/src/domain/pagebox.ts");
+      const format = window.nameStudio.workbench.project.pageFormat;
+      return { trim: trimBox(format), basic: basicBox(format) };
+    });
 
   // --- a name sheet picture into a new name, from the start screen ---------------------------
   // Two halves of 4 x 4 pages (right half first), the pages of a row touching, a 基本枠 inside each, as CSP writes a name sheet out.
@@ -175,10 +182,19 @@ try {
   {
     const got = await pictures();
     const { basic } = await boxes();
-    check(got.every((p) => p.count === 1), "each of the 32 pages has its picture of the name");
+    check(
+      got.every((p) => p.count === 1),
+      "each of the 32 pages has its picture of the name",
+    );
     const bars = got.map((p) => p.bar);
     const inOrder = bars.every((bar, i) => i === 0 || bar > bars[i - 1]);
-    check(inOrder, `the pages are in reading order (bars ${bars.slice(0, 5).map((b) => b.toFixed(3)).join(" ")} …)`);
+    check(
+      inOrder,
+      `the pages are in reading order (bars ${bars
+        .slice(0, 5)
+        .map((b) => b.toFixed(3))
+        .join(" ")} …)`,
+    );
     // The 基本枠 of the picture (its inner frame) lies on the name's 基本枠.
     // The inner frame's shape is not quite the 基本枠's: fitted inside it, centred, on every page.
     let off = 0;
@@ -189,8 +205,11 @@ try {
         continue;
       }
       off = Math.max(off, ...inner.map((v, k) => Math.abs(v - basic[k])));
-      const centred = Math.abs((inner[0] + inner[2]) / 2 - (basic[0] + basic[2]) / 2) < 1 && Math.abs((inner[1] + inner[3]) / 2 - (basic[1] + basic[3]) / 2) < 1;
-      const touches = Math.min(Math.abs(inner[2] - inner[0] - (basic[2] - basic[0])), Math.abs(inner[3] - inner[1] - (basic[3] - basic[1]))) < 1;
+      const centred =
+        Math.abs((inner[0] + inner[2]) / 2 - (basic[0] + basic[2]) / 2) < 1 &&
+        Math.abs((inner[1] + inner[3]) / 2 - (basic[1] + basic[3]) / 2) < 1;
+      const touches =
+        Math.min(Math.abs(inner[2] - inner[0] - (basic[2] - basic[0])), Math.abs(inner[3] - inner[1] - (basic[3] - basic[1]))) < 1;
       if (!(centred && touches)) {
         fitted = false;
         console.log(JSON.stringify({ inner, basic }));
@@ -202,14 +221,25 @@ try {
 
   // --- a name written out as a ミニネーム and taken back in -----------------------------------
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
-    const { trimBox } = await import("/src/pagebox.ts");
-    const { addLine } = await import("/src/dialogue.ts");
+    const { newProject } = await import("/src/domain/project.ts");
+    const { trimBox } = await import("/src/domain/pagebox.ts");
+    const { addLine } = await import("/src/domain/dialogue.ts");
     const project = newProject("ミニネームの往復", 7);
     const [x0, y0, x1, y1] = trimBox(project.pageFormat);
     project.pages.forEach((p, i) => {
       const y = y0 + (y1 - y0) * (0.12 + i * 0.1);
-      p.fills = [{ id: `fill${i}`, shape: [[x0 + 60, y], [x1 - 60, y], [x1 - 60, y + 9], [x0 + 60, y + 9]], tone: "black" }];
+      p.fills = [
+        {
+          id: `fill${i}`,
+          shape: [
+            [x0 + 60, y],
+            [x1 - 60, y],
+            [x1 - 60, y + 9],
+            [x0 + 60, y + 9],
+          ],
+          tone: "black",
+        },
+      ];
       addLine(project, p, [x0 + 30, y0 + 40], `${i + 1} ページ`);
     });
     window.nameStudio.show(project);
@@ -246,12 +276,15 @@ try {
     const length = new DataView(body.buffer, body.byteOffset).getUint32(0, true);
     return JSON.parse(new TextDecoder().decode(body.subarray(4, 4 + length)));
   });
-  check(pdf.pages.length === 1 && pdf.path.endsWith(".pdf") && pdf.pages[0].widthMm > pdf.pages[0].heightMm, "and as a PDF of one landscape page");
+  check(
+    pdf.pages.length === 1 && pdf.path.endsWith(".pdf") && pdf.pages[0].widthMm > pdf.pages[0].heightMm,
+    "and as a PDF of one landscape page",
+  );
   await page.keyboard.press("Escape");
 
   // Back in: onto a name of 3 pages (the rest are added).
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     window.nameStudio.show(newProject("取り込み先", 3));
   });
   await page.locator("#image-import").click();
@@ -259,14 +292,17 @@ try {
   await page.setInputFiles("#ii-input", { name: "往復_ミニネーム.png", mimeType: "image/png", buffer: png });
   await page.waitForFunction(() => document.getElementById("ii-summary").textContent.includes("見つけました"));
   const second = await page.locator("#ii-summary").textContent();
-  check(second.includes("7 ページ見つけました") && second.includes("足りない 4 ページを足す"), `its 7 pages are found, 4 to add (${second.slice(0, 40)})`);
+  check(
+    second.includes("7 ページ見つけました") && second.includes("足りない 4 ページを足す"),
+    `its 7 pages are found, 4 to add (${second.slice(0, 40)})`,
+  );
   check((await page.locator("#ii-order").inputValue()) === "rtl", "read row by row, right to left");
   check((await page.locator("#ii-fit").inputValue()) === "trim", "laid on the trim");
   if (shots) await dialog.screenshot({ path: `${shots}/dialog-mini.png` });
   // A click leaves a page out, another takes it back.
   const firstPage = await page.evaluate(async () => {
-    const { miniSheet, MINI_DEFAULTS } = await import("/src/mininame.ts");
-    const { newProject } = await import("/src/project.ts");
+    const { miniSheet, MINI_DEFAULTS } = await import("/src/domain/mininame.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     const sheet = miniSheet(newProject("x", 7), MINI_DEFAULTS, true);
     const [x0, y0, x1, y1] = sheet.pages[0].box;
     const canvas = document.getElementById("ii-preview");
@@ -286,7 +322,10 @@ try {
   {
     const got = await pictures();
     const { trim } = await boxes();
-    check(got.every((p) => p.count === 1), "each of the 7 pages has its picture");
+    check(
+      got.every((p) => p.count === 1),
+      "each of the 7 pages has its picture",
+    );
     const off = Math.max(...got.flatMap((p) => p.box.map((v, k) => Math.abs(v - trim[k]))));
     if (off >= 0.8) console.log(JSON.stringify({ trim, boxes: got.map((p) => p.box) }));
     check(off < 0.8, `each lies on the trim (${off.toFixed(2)} mm at most off)`);
@@ -318,14 +357,17 @@ try {
     return canvas.toDataURL("image/jpeg", 0.75).split(",")[1];
   }, written.png);
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     window.nameStudio.show(newProject("スキャンから", 7));
   });
   await page.locator("#image-import").click();
   await page.setInputFiles("#ii-input", { name: "スキャン.jpg", mimeType: "image/jpeg", buffer: Buffer.from(scanned, "base64") });
   await page.waitForFunction(() => document.getElementById("ii-summary").textContent.includes("見つけました"));
   const tilted = await page.locator("#ii-summary").textContent();
-  check(tilted.includes("7 ページ見つけました") && tilted.includes("1.00° 傾いていた"), `a sheet scanned askew: its 7 pages, the tilt seen (${tilted.slice(0, 50)})`);
+  check(
+    tilted.includes("7 ページ見つけました") && tilted.includes("1.00° 傾いていた"),
+    `a sheet scanned askew: its 7 pages, the tilt seen (${tilted.slice(0, 50)})`,
+  );
   if (shots) await dialog.screenshot({ path: `${shots}/dialog-scan.png` });
   await page.locator("#ii-run").click();
   await page.waitForFunction(() => window.nameStudio.workbench.project?.pages.every((p) => (p.references ?? []).length === 1));
@@ -358,27 +400,36 @@ try {
   await page.locator("#ne-run").click();
   await page.waitForFunction(() => document.getElementById("ne-message").textContent.includes("書き出しをやめました"));
   const asked = await page.evaluate(() => window.__asked.at(-1) ?? "");
-  check(asked.startsWith("読めない画像が 1 枚あります") && asked.includes("3 ページ「スキャン3.jpg」（画像として読めません）"), `the export names the picture and its page first (${asked.split("\n")[1]})`);
-  check((await pdfs()) === before && (await page.evaluate(() => window.__dialogs.length)) === 1, "やめる: nothing is written, not even a file asked for");
+  check(
+    asked.startsWith("読めない画像が 1 枚あります") && asked.includes("3 ページ「スキャン3.jpg」（画像として読めません）"),
+    `the export names the picture and its page first (${asked.split("\n")[1]})`,
+  );
+  check(
+    (await pdfs()) === before && (await page.evaluate(() => window.__dialogs.length)) === 1,
+    "やめる: nothing is written, not even a file asked for",
+  );
   await page.evaluate(() => {
     window.__decline = false;
   });
   await page.locator("#ne-run").click();
   await page.waitForFunction((n) => window.__calls.filter((c) => c.command === "write_pdf").length > n, before);
-  check((await page.locator("#ne-message").textContent()).includes("ミニネームを書き出しました"), "除いて書き出す: the ミニネーム is written without it");
+  check(
+    (await page.locator("#ne-message").textContent()).includes("ミニネームを書き出しました"),
+    "除いて書き出す: the ミニネーム is written without it",
+  );
   await page.keyboard.press("Escape");
 
   // A page cut a little off is put right by dragging its edge: the click that ends the drag leaves nothing out.
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     window.nameStudio.show(newProject("範囲を直す", 7));
   });
   await page.locator("#image-import").click();
   await page.setInputFiles("#ii-input", { name: "往復_ミニネーム.png", mimeType: "image/png", buffer: png });
   await page.waitForFunction(() => document.getElementById("ii-summary").textContent.includes("見つけました"));
   const edge = await page.evaluate(async () => {
-    const { miniSheet, MINI_DEFAULTS } = await import("/src/mininame.ts");
-    const { newProject } = await import("/src/project.ts");
+    const { miniSheet, MINI_DEFAULTS } = await import("/src/domain/mininame.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     const sheet = miniSheet(newProject("x", 7), MINI_DEFAULTS, true);
     const [x0, y0, , y1] = sheet.pages[0].box;
     const rect = document.getElementById("ii-preview").getBoundingClientRect();
@@ -397,7 +448,10 @@ try {
   await page.mouse.move(edge.x + 30, edge.y, { steps: 4 });
   await page.mouse.up();
   const fixed = await page.locator("#ii-summary").textContent();
-  check(fixed.startsWith("7 ページ見つけました（1 枚は範囲を直した）"), `the edge dragged in: said, and the page not left out (${fixed.slice(0, 30)})`);
+  check(
+    fixed.startsWith("7 ページ見つけました（1 枚は範囲を直した）"),
+    `the edge dragged in: said, and the page not left out (${fixed.slice(0, 30)})`,
+  );
   if (shots) await dialog.screenshot({ path: `${shots}/dialog-adjusted.png` });
   await page.locator("#ii-run").click();
   await page.waitForFunction(() => window.nameStudio.workbench.project?.pages.every((p) => (p.references ?? []).length === 1));
@@ -417,7 +471,8 @@ try {
     project.pages[1].roughs.push({ id: "rough-1", layerId: 12, layerName: "ラフ", sheetCrop: [0, 0, 400, 600], box: [20, 20, 120, 170] });
     window.__dialogs.push("C:\\out\\ラフ.png", "C:\\out\\ラフ.png", "C:\\out\\ラフ.png");
   });
-  const minis = () => page.evaluate(() => window.__calls.filter((c) => c.command === "write_binary_file" || c.command === "write_pdf").length);
+  const minis = () =>
+    page.evaluate(() => window.__calls.filter((c) => c.command === "write_binary_file" || c.command === "write_pdf").length);
   await page.locator("#name-export").click();
   await page.locator("#ne-kind-mini").click();
   await page.selectOption("#ne-mini-format", "png");
@@ -433,7 +488,10 @@ try {
     roughNote.split("\n")[1] === "・ページ: 2" && roughNote.includes("第4話_ネーム.clip") && roughNote.includes("見つかりません"),
     `the export names the sheet, the page and why (${roughNote.split("\n").slice(0, 2).join(" / ")})`,
   );
-  check((await minis()) === stopped && (await page.evaluate(() => window.__dialogs.length)) === 3, "やめる (roughs): nothing is written, not even a file asked for");
+  check(
+    (await minis()) === stopped && (await page.evaluate(() => window.__dialogs.length)) === 3,
+    "やめる (roughs): nothing is written, not even a file asked for",
+  );
 
   // ネーム用紙を選び直す: the name points at the sheet chosen, the roughs read from it, and it is written.
   await page.evaluate(() => {
@@ -441,28 +499,46 @@ try {
     window.__sheetPicked = "D:\\移した\\第4話_ネーム.clip";
   });
   await page.locator("#ne-run").click();
-  await page.waitForFunction((n) => window.__calls.filter((c) => c.command === "write_binary_file" || c.command === "write_pdf").length > n, stopped);
+  await page.waitForFunction(
+    (n) => window.__calls.filter((c) => c.command === "write_binary_file" || c.command === "write_pdf").length > n,
+    stopped,
+  );
   const relinked = await page.evaluate(() => ({
     sheet: window.nameStudio.workbench.project.source.path,
     read: window.__roughReads.at(-1),
     from: window.__opened?.defaultPath,
   }));
-  check(relinked.sheet === "D:\\移した\\第4話_ネーム.clip" && relinked.read === relinked.sheet, `選び直す: the name keeps the sheet chosen and reads the rough from it (${JSON.stringify(relinked)})`);
+  check(
+    relinked.sheet === "D:\\移した\\第4話_ネーム.clip" && relinked.read === relinked.sheet,
+    `選び直す: the name keeps the sheet chosen and reads the rough from it (${JSON.stringify(relinked)})`,
+  );
   check(relinked.from === "C:\\ネーム\\第4話_ネーム.clip", "the file dialog starts at the sheet the name had");
-  check((await page.locator("#ne-message").textContent()).includes("ミニネームを書き出しました"), "選び直す: the ミニネーム is written with the rough");
+  check(
+    (await page.locator("#ne-message").textContent()).includes("ミニネームを書き出しました"),
+    "選び直す: the ミニネーム is written with the rough",
+  );
   await page.keyboard.press("Escape");
 
   // Undone, the old sheet again: ラフを除いて書き出す writes it, the name keeps its roughs.
   await page.keyboard.press("Control+z");
-  check((await page.evaluate(() => window.nameStudio.workbench.project.source.path)) === "C:\\ネーム\\第4話_ネーム.clip", "choosing the sheet again is one step undone");
+  check(
+    (await page.evaluate(() => window.nameStudio.workbench.project.source.path)) === "C:\\ネーム\\第4話_ネーム.clip",
+    "choosing the sheet again is one step undone",
+  );
   const relinkedCount = await minis();
   await page.evaluate(() => {
     window.__roughChoice = 1;
   });
   await page.locator("#name-export").click();
   await page.locator("#ne-run").click();
-  await page.waitForFunction((n) => window.__calls.filter((c) => c.command === "write_binary_file" || c.command === "write_pdf").length > n, relinkedCount);
-  check((await page.locator("#ne-message").textContent()).includes("ミニネームを書き出しました"), "ラフを除いて書き出す: written without it");
+  await page.waitForFunction(
+    (n) => window.__calls.filter((c) => c.command === "write_binary_file" || c.command === "write_pdf").length > n,
+    relinkedCount,
+  );
+  check(
+    (await page.locator("#ne-message").textContent()).includes("ミニネームを書き出しました"),
+    "ラフを除いて書き出す: written without it",
+  );
   check((await page.evaluate(() => window.nameStudio.workbench.project.pages[1].roughs.length)) === 1, "the name itself keeps the rough");
   await page.keyboard.press("Escape");
 

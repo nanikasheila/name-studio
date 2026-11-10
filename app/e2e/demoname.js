@@ -4,14 +4,14 @@
 // author's own drawings traced into lines (`art`: crops of their finished
 // pages, kept outside the repository; see docs/DEVELOPMENT.md); without them
 // simple figures drawn by code stand in. Imported in the page through Vite.
-import { addAutoTails } from "/src/autotail.ts";
-import { balloonExtent } from "/src/balloon.ts";
-import { addLine, moveLine } from "/src/dialogue.ts";
-import { insidePolygon, rectShape } from "/src/geometry.ts";
-import { basicBox } from "/src/pagebox.ts";
-import { addPanel, cutPanels } from "/src/panels.ts";
-import { newId, newProject } from "/src/project.ts";
-import { addSticky } from "/src/stickies.ts";
+import { addAutoTails } from "/src/domain/autotail.ts";
+import { balloonExtent } from "/src/domain/balloon.ts";
+import { addLine, moveLine } from "/src/domain/dialogue.ts";
+import { insidePolygon, rectShape } from "/src/model/geometry.ts";
+import { basicBox } from "/src/domain/pagebox.ts";
+import { addPanel, cutPanels } from "/src/domain/panels.ts";
+import { newId, newProject } from "/src/domain/project.ts";
+import { addSticky } from "/src/domain/stickies.ts";
 
 let seed = 11;
 const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
@@ -54,36 +54,129 @@ function figure(project, page, cx, top, height, hair, dir = 1, bust = false, wid
   draw(arc(cx, hy, r * 0.92, r, -Math.PI * 0.1, Math.PI * 2.05, 24));
   // Eyes and mouth, turned a little to the side faced.
   const ex = cx + dir * r * 0.18;
-  draw([[ex - r * 0.42, hy + r * 0.05], [ex - r * 0.22, hy + r * 0.02]], 0.35);
-  draw([[ex + r * 0.18, hy + r * 0.02], [ex + r * 0.38, hy + r * 0.05]], 0.35);
-  draw([[ex - r * 0.1, hy + r * 0.5], [ex + r * 0.1, hy + r * 0.52]], 0.3);
+  draw(
+    [
+      [ex - r * 0.42, hy + r * 0.05],
+      [ex - r * 0.22, hy + r * 0.02],
+    ],
+    0.35,
+  );
+  draw(
+    [
+      [ex + r * 0.18, hy + r * 0.02],
+      [ex + r * 0.38, hy + r * 0.05],
+    ],
+    0.35,
+  );
+  draw(
+    [
+      [ex - r * 0.1, hy + r * 0.5],
+      [ex + r * 0.1, hy + r * 0.52],
+    ],
+    0.3,
+  );
   // Hair.
   if (hair === "long") {
     draw(arc(cx, hy - r * 0.1, r * 1.05, r * 1.0, Math.PI * 0.95, Math.PI * 2.05, 16));
-    draw([[cx - r * 1.0, hy], [cx - r * 1.1, hy + r * 1.6], [cx - r * 0.8, hy + r * 2.2]]);
-    draw([[cx + r * 1.0, hy], [cx + r * 1.1, hy + r * 1.6], [cx + r * 0.85, hy + r * 2.1]]);
-    draw([[cx - r * 0.6, hy - r * 0.75], [cx - r * 0.2, hy - r * 0.2], [cx + r * 0.1, hy - r * 0.8]], 0.35);
+    draw([
+      [cx - r * 1.0, hy],
+      [cx - r * 1.1, hy + r * 1.6],
+      [cx - r * 0.8, hy + r * 2.2],
+    ]);
+    draw([
+      [cx + r * 1.0, hy],
+      [cx + r * 1.1, hy + r * 1.6],
+      [cx + r * 0.85, hy + r * 2.1],
+    ]);
+    draw(
+      [
+        [cx - r * 0.6, hy - r * 0.75],
+        [cx - r * 0.2, hy - r * 0.2],
+        [cx + r * 0.1, hy - r * 0.8],
+      ],
+      0.35,
+    );
   } else {
     for (let i = 0; i < 6; i++) {
       const a = Math.PI * (1.05 + i * 0.17);
       const [x0, y0] = [cx + Math.cos(a) * r, hy + Math.sin(a) * r];
-      draw([[x0, y0], [x0 + Math.cos(a) * r * 0.35 + r * 0.15, y0 + Math.sin(a) * r * 0.45]], 0.35);
+      draw(
+        [
+          [x0, y0],
+          [x0 + Math.cos(a) * r * 0.35 + r * 0.15, y0 + Math.sin(a) * r * 0.45],
+        ],
+        0.35,
+      );
     }
   }
   // Neck and shoulders.
   const ny = hy + r;
   const sw = r * (bust ? 2.3 : 1.9);
-  draw([[cx - r * 0.25, ny - r * 0.05], [cx - r * 0.3, ny + r * 0.5]], 0.35);
-  draw([[cx + r * 0.25, ny - r * 0.05], [cx + r * 0.3, ny + r * 0.5]], 0.35);
-  draw([[cx - r * 0.3, ny + r * 0.5], [cx - sw * 0.8, ny + r * 0.8], [cx - sw, ny + r * 1.6], [cx - sw * 1.05, ny + (bust ? r * 2.2 : height * 0.75)]]);
-  draw([[cx + r * 0.3, ny + r * 0.5], [cx + sw * 0.8, ny + r * 0.8], [cx + sw, ny + r * 1.6], [cx + sw * 1.05, ny + (bust ? r * 2.2 : height * 0.75)]]);
-  if (!bust) draw([[cx - sw * 0.6, ny + height * 0.7], [cx + sw * 0.6, ny + height * 0.72]], 0.35);
+  draw(
+    [
+      [cx - r * 0.25, ny - r * 0.05],
+      [cx - r * 0.3, ny + r * 0.5],
+    ],
+    0.35,
+  );
+  draw(
+    [
+      [cx + r * 0.25, ny - r * 0.05],
+      [cx + r * 0.3, ny + r * 0.5],
+    ],
+    0.35,
+  );
+  draw([
+    [cx - r * 0.3, ny + r * 0.5],
+    [cx - sw * 0.8, ny + r * 0.8],
+    [cx - sw, ny + r * 1.6],
+    [cx - sw * 1.05, ny + (bust ? r * 2.2 : height * 0.75)],
+  ]);
+  draw([
+    [cx + r * 0.3, ny + r * 0.5],
+    [cx + sw * 0.8, ny + r * 0.8],
+    [cx + sw, ny + r * 1.6],
+    [cx + sw * 1.05, ny + (bust ? r * 2.2 : height * 0.75)],
+  ]);
+  if (!bust)
+    draw(
+      [
+        [cx - sw * 0.6, ny + height * 0.7],
+        [cx + sw * 0.6, ny + height * 0.72],
+      ],
+      0.35,
+    );
 }
 
 function railing(project, page, [x0, , x1], y) {
-  stroke(project, page, [[x0 + 1, y], [x1 - 1, y + wobble(0.6)]], 0.5);
-  stroke(project, page, [[x0 + 1, y + 4], [x1 - 1, y + 4 + wobble(0.6)]], 0.4);
-  for (let x = x0 + 6; x < x1 - 3; x += 9) stroke(project, page, [[x, y], [x + wobble(0.4), y + 14]], 0.35);
+  stroke(
+    project,
+    page,
+    [
+      [x0 + 1, y],
+      [x1 - 1, y + wobble(0.6)],
+    ],
+    0.5,
+  );
+  stroke(
+    project,
+    page,
+    [
+      [x0 + 1, y + 4],
+      [x1 - 1, y + 4 + wobble(0.6)],
+    ],
+    0.4,
+  );
+  for (let x = x0 + 6; x < x1 - 3; x += 9)
+    stroke(
+      project,
+      page,
+      [
+        [x, y],
+        [x + wobble(0.4), y + 14],
+      ],
+      0.35,
+    );
 }
 
 function cloud(project, page, cx, cy, w) {
@@ -94,7 +187,15 @@ function cloud(project, page, cx, cy, w) {
     points.push(...arc(x, cy, w / bumps / 1.6, w / bumps / 1.9, Math.PI, Math.PI * 2, 8));
   }
   stroke(project, page, points, 0.35);
-  stroke(project, page, [[cx - w / 2 - 1, cy + 1], [cx + w / 2 + 1, cy + 1.5]], 0.35);
+  stroke(
+    project,
+    page,
+    [
+      [cx - w / 2 - 1, cy + 1],
+      [cx + w / 2 + 1, cy + 1.5],
+    ],
+    0.35,
+  );
 }
 
 function town(project, page, [x0, y0, x1, y1], base) {
@@ -126,8 +227,26 @@ const SCENES = {
   door(project, page, [x0, y0, x1, y1]) {
     const w = x1 - x0;
     const h = y1 - y0;
-    stroke(project, page, [[x0 + w * 0.15, y1 - 1], [x0 + w * 0.15, y0 + h * 0.1], [x0 + w * 0.55, y0 + h * 0.1], [x0 + w * 0.55, y1 - 1]], 0.5);
-    stroke(project, page, [[x0 + w * 0.48, y0 + h * 0.55], [x0 + w * 0.5, y0 + h * 0.58]], 0.6);
+    stroke(
+      project,
+      page,
+      [
+        [x0 + w * 0.15, y1 - 1],
+        [x0 + w * 0.15, y0 + h * 0.1],
+        [x0 + w * 0.55, y0 + h * 0.1],
+        [x0 + w * 0.55, y1 - 1],
+      ],
+      0.5,
+    );
+    stroke(
+      project,
+      page,
+      [
+        [x0 + w * 0.48, y0 + h * 0.55],
+        [x0 + w * 0.5, y0 + h * 0.58],
+      ],
+      0.6,
+    );
     figure(project, page, x0 + w * 0.75, y0 + h * 0.25, h * 0.7, "long", -1, false, w * 0.9);
   },
   bustA(project, page, [x0, y0, x1, y1]) {
@@ -145,9 +264,21 @@ const SCENES = {
     const h = y1 - y0;
     cloud(project, page, x0 + w * 0.35, y0 + h * 0.35, Math.min(60, w * 0.5));
     cloud(project, page, x0 + w * 0.72, y0 + h * 0.62, Math.min(40, w * 0.35));
-    for (const [bx, by] of [[0.2, 0.7], [0.27, 0.66]]) {
+    for (const [bx, by] of [
+      [0.2, 0.7],
+      [0.27, 0.66],
+    ]) {
       const [x, y] = [x0 + w * bx, y0 + h * by];
-      stroke(project, page, [[x - 3, y - 1.5], [x, y], [x + 3, y - 1.5]], 0.35);
+      stroke(
+        project,
+        page,
+        [
+          [x - 3, y - 1.5],
+          [x, y],
+          [x + 3, y - 1.5],
+        ],
+        0.35,
+      );
     }
   },
   two(project, page, box) {
@@ -161,8 +292,26 @@ const SCENES = {
   hands(project, page, [x0, y0, x1, y1]) {
     const [cx, cy] = [(x0 + x1) / 2, (y0 + y1) / 2];
     const s = Math.min(x1 - x0, y1 - y0) * 0.35;
-    stroke(project, page, [[cx - s * 1.4, cy + s * 0.3], [cx - s * 0.3, cy], [cx, cy - s * 0.15]], 0.5);
-    stroke(project, page, [[cx + s * 1.4, cy - s * 0.2], [cx + s * 0.3, cy - s * 0.05], [cx, cy - s * 0.1]], 0.5);
+    stroke(
+      project,
+      page,
+      [
+        [cx - s * 1.4, cy + s * 0.3],
+        [cx - s * 0.3, cy],
+        [cx, cy - s * 0.15],
+      ],
+      0.5,
+    );
+    stroke(
+      project,
+      page,
+      [
+        [cx + s * 1.4, cy - s * 0.2],
+        [cx + s * 0.3, cy - s * 0.05],
+        [cx, cy - s * 0.1],
+      ],
+      0.5,
+    );
     stroke(project, page, arc(cx, cy - s * 0.12, s * 0.35, s * 0.22, 0, Math.PI * 2, 16), 0.4);
   },
 };
@@ -184,8 +333,8 @@ function trace(project, page, crop, box, shape, anchor = [0.5, 0.5], flip = fals
   // Cover the panel, but not by cutting most of the drawing away: at most a little past fitting it in.
   const [sx, sy] = [(x1 - x0) / crop.w, (y1 - y0) / crop.h];
   const scale = Math.min(Math.max(sx, sy), Math.min(sx, sy) * 1.35);
-  const ox = x0 + ((x1 - x0) - crop.w * scale) * anchor[0];
-  const oy = y0 + ((y1 - y0) - crop.h * scale) * anchor[1];
+  const ox = x0 + (x1 - x0 - crop.w * scale) * anchor[0];
+  const oy = y0 + (y1 - y0 - crop.h * scale) * anchor[1];
   const mm = ([x, y]) => [ox + (flip ? crop.w - x : x) * scale, oy + y * scale];
   for (const path of crop.paths) {
     let run = [];
@@ -212,8 +361,19 @@ const FALLBACK = (name) =>
  */
 const PAGES = [
   {
-    cuts: [[0, 0.34, 1, 0.34], [0, 0.68, 1, 0.68], [0.5, 0.34, 0.5, 0.68], [0.42, 0.68, 0.42, 1]],
-    panels: [["room_wide", [0.5, 0.6]], ["shelf_girl", [0.6, 0.35]], ["iku_keyboard", [0.3, 0.2]], ["iku_smile", [0.5, 0.3]], ["chibi_hai", [0.5, 0.3]]],
+    cuts: [
+      [0, 0.34, 1, 0.34],
+      [0, 0.68, 1, 0.68],
+      [0.5, 0.34, 0.5, 0.68],
+      [0.42, 0.68, 0.42, 1],
+    ],
+    panels: [
+      ["room_wide", [0.5, 0.6]],
+      ["shelf_girl", [0.6, 0.35]],
+      ["iku_keyboard", [0.3, 0.2]],
+      ["iku_smile", [0.5, 0.3]],
+      ["chibi_hai", [0.5, 0.3]],
+    ],
     lines: [
       [0, 0.9, 0.06, "放課後の部室。", "narration"],
       [1, 0.1, 0.06, "この本\nどこに\n戻すんだろう", "speech", "m"],
@@ -222,8 +382,17 @@ const PAGES = [
     ],
   },
   {
-    cuts: [[0, 0.4, 1, 0.4], [0, 0.72, 1, 0.72], [0.55, 0.4, 0.55, 0.72]],
-    panels: [["group_table", [0.5, 0.4]], ["kohaku_point", [0.5, 0.3]], ["reader_girls", [0.6, 0.4]], ["eyes_close", [0.5, 0.3]]],
+    cuts: [
+      [0, 0.4, 1, 0.4],
+      [0, 0.72, 1, 0.72],
+      [0.55, 0.4, 0.55, 0.72],
+    ],
+    panels: [
+      ["group_table", [0.5, 0.4]],
+      ["kohaku_point", [0.5, 0.3]],
+      ["reader_girls", [0.6, 0.4]],
+      ["eyes_close", [0.5, 0.3]],
+    ],
     lines: [
       [0, 0.9, 0.06, "片付けたら\n練習\nしましょう", "speech", "r"],
       [1, 0.9, 0.06, "あの、\nこれ\n何ですか？", "speech", "m"],
@@ -232,8 +401,17 @@ const PAGES = [
     ],
   },
   {
-    cuts: [[0, 0.45, 1, 0.45], [0.42, 0, 0.42, 0.45], [0, 0.75, 1, 0.75]],
-    panels: [["iku_think", [0.5, 0.2]], ["kohaku_ask", [0.5, 0.3]], ["iku_pointer", [0.5, 0.4]], ["kohaku_face", [0.7, 0.25]]],
+    cuts: [
+      [0, 0.45, 1, 0.45],
+      [0.42, 0, 0.42, 0.45],
+      [0, 0.75, 1, 0.75],
+    ],
+    panels: [
+      ["iku_think", [0.5, 0.2]],
+      ["kohaku_ask", [0.5, 0.3]],
+      ["iku_pointer", [0.5, 0.4]],
+      ["kohaku_face", [0.7, 0.25]],
+    ],
     lines: [
       [0, 0.92, 0.04, "部誌には\n昔の曲が\n残ってるの", "speech", "r"],
       [1, 0.12, 0.05, "え！", "speech", "m"],
@@ -242,8 +420,17 @@ const PAGES = [
     ],
   },
   {
-    cuts: [[0, 0.5, 1, 0.5], [0.5, 0, 0.5, 0.5], [0.38, 0.5, 0.38, 1]],
-    panels: [["glasses_girl", [0.5, 0.3]], ["chibi_q", [0.5, 0.4]], ["iku_keyboard", [0.6, 0.6], true], ["chibi_broom", [0.5, 0.5]]],
+    cuts: [
+      [0, 0.5, 1, 0.5],
+      [0.5, 0, 0.5, 0.5],
+      [0.38, 0.5, 0.38, 1],
+    ],
+    panels: [
+      ["glasses_girl", [0.5, 0.3]],
+      ["chibi_q", [0.5, 0.4]],
+      ["iku_keyboard", [0.6, 0.6], true],
+      ["chibi_broom", [0.5, 0.5]],
+    ],
     lines: [
       [0, 0.9, 0.05, "楽譜なら\nあるよ", "speech", "n"],
       [1, 0.15, 0.05, "ほんと？", "speech", "m"],
@@ -252,8 +439,17 @@ const PAGES = [
     ],
   },
   {
-    cuts: [[0, 0.3, 1, 0.3], [0.6, 0.3, 0.6, 1], [0, 0.65, 0.6, 0.65]],
-    panels: [["iku_point_up", [0.5, 0.3]], ["kohaku_ask", [0.5, 0.2]], ["chibi_oo", [0.5, 0.4]], ["iku_smile", [0.5, 0.3], true]],
+    cuts: [
+      [0, 0.3, 1, 0.3],
+      [0.6, 0.3, 0.6, 1],
+      [0, 0.65, 0.6, 0.65],
+    ],
+    panels: [
+      ["iku_point_up", [0.5, 0.3]],
+      ["kohaku_ask", [0.5, 0.2]],
+      ["chibi_oo", [0.5, 0.4]],
+      ["iku_smile", [0.5, 0.3], true],
+    ],
     lines: [
       [0, 0.1, 0.06, "ミオ、\nその箱は？", "speech", "r"],
       [2, 0.12, 0.06, "奥に\nありました", "speech", "m"],
@@ -261,8 +457,15 @@ const PAGES = [
     ],
   },
   {
-    cuts: [[0, 0.55, 1, 0.55], [0.5, 0.55, 0.5, 1]],
-    panels: [["reader_girls", [0.5, 0.3]], ["kohaku_face", [0.75, 0.3]], ["glasses_girl", [0.5, 0.25]]],
+    cuts: [
+      [0, 0.55, 1, 0.55],
+      [0.5, 0.55, 0.5, 1],
+    ],
+    panels: [
+      ["reader_girls", [0.5, 0.3]],
+      ["kohaku_face", [0.75, 0.3]],
+      ["glasses_girl", [0.5, 0.25]],
+    ],
     lines: [
       [0, 0.5, 0.05, "鍵盤だ！", "speech", "n"],
       [1, 0.12, 0.05, "動くかな", "speech", "m"],
@@ -270,7 +473,11 @@ const PAGES = [
     ],
   },
   {
-    cuts: [[0, 0.36, 1, 0.36], [0, 0.68, 1, 0.68], [0.5, 0, 0.5, 0.36]],
+    cuts: [
+      [0, 0.36, 1, 0.36],
+      [0, 0.68, 1, 0.68],
+      [0.5, 0, 0.5, 0.36],
+    ],
     panels: [["chibi_hai", [0.5, 0.3]], null, ["eyes_close", [0.5, 0.4]], null],
     lines: [
       [0, 0.12, 0.05, "やります！", "speech", "m"],
@@ -278,7 +485,10 @@ const PAGES = [
     ],
   },
   {
-    cuts: [[0, 0.5, 1, 0.5], [0.45, 0.5, 0.45, 1]],
+    cuts: [
+      [0, 0.5, 1, 0.5],
+      [0.45, 0.5, 0.45, 1],
+    ],
     panels: [["iku_pointer", [0.5, 0.4]], null, null],
     lines: [
       [0, 0.1, 0.06, "練習は\n毎日よ", "speech", "r"],

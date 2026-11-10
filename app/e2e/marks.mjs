@@ -27,7 +27,7 @@ try {
   await page.goto(url);
   await page.waitForFunction(() => window.nameStudio);
   await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     window.nameStudio.show(newProject("指示", 2));
     const wb = window.nameStudio.workbench;
     wb.editor.showPage(1);
@@ -134,7 +134,10 @@ try {
     [90, 100],
   ]);
   s = await state();
-  check(s.strokes.length === 1 && s.strokes[0].layer === null, `消す erases the 指示 and leaves the rough line (${JSON.stringify(s.strokes)})`);
+  check(
+    s.strokes.length === 1 && s.strokes[0].layer === null,
+    `消す erases the 指示 and leaves the rough line (${JSON.stringify(s.strokes)})`,
+  );
   await page.keyboard.press("Control+z");
   s = await state();
   check(s.strokes.length === 2, "undo brings the 指示 back");
@@ -165,19 +168,30 @@ try {
   // Shift+R: all 指示 hidden, then shown.
   await page.keyboard.press("Shift+R");
   s = await state();
-  check(s.layers.filter((layer) => layer.marks).every((layer) => layer.hidden), "Shift+R hides every 指示のレイヤー");
+  check(
+    s.layers.filter((layer) => layer.marks).every((layer) => layer.hidden),
+    "Shift+R hides every 指示のレイヤー",
+  );
   check(!red(await pixel([80, 100])), "the 指示 are not drawn");
   check((await page.locator("#marks-shown").getAttribute("aria-pressed")) === "false", "the button shows them hidden");
   await page.keyboard.press("Shift+R");
   s = await state();
-  check(s.layers.filter((layer) => layer.marks).every((layer) => !layer.hidden), "Shift+R shows them again");
+  check(
+    s.layers.filter((layer) => layer.marks).every((layer) => !layer.hidden),
+    "Shift+R shows them again",
+  );
   check(red(await pixel([80, 100])), "drawn again");
 
   // The レイヤー palette: the 指示のレイヤー above the rough's, with their colours.
   if (!(await page.locator("#rough-add").isVisible())) await page.click("#tab-layers-edit");
   await page.waitForSelector("#marks-add", { state: "visible" });
-  const rows = await page.locator(".rough-row").evaluateAll((list) => list.map((row) => ({ id: row.dataset.rough, color: row.dataset.color ?? null })));
-  check(rows.length === 3 && rows[0].id === blue.id && rows[1].id === marks.id && rows[2].color === null, `the palette lists 指示（青）, 指示, then ラフ線 (${JSON.stringify(rows)})`);
+  const rows = await page
+    .locator(".rough-row")
+    .evaluateAll((list) => list.map((row) => ({ id: row.dataset.rough, color: row.dataset.color ?? null })));
+  check(
+    rows.length === 3 && rows[0].id === blue.id && rows[1].id === marks.id && rows[2].color === null,
+    `the palette lists 指示（青）, 指示, then ラフ線 (${JSON.stringify(rows)})`,
+  );
   await page.locator(`.rough-row[data-rough="${marks.id}"] .mark-swatch`).click();
   s = await state();
   check(s.layers.find((layer) => layer.id === marks.id)?.color === "#1e6fd9", "pressing the colour turns 指示 blue");
@@ -198,13 +212,25 @@ try {
 
   // CSP: a 下描き layer each, on top, in its colour.
   const exported = await page.evaluate(async () => {
-    const { exportToCsp } = await import("/src/nameexport.ts");
+    const { exportToCsp } = await import("/src/service/nameexport.ts");
     const pages = [];
     let request = null;
     window.__answer = (command, args) => {
       if (command === "begin_name_export") {
         request = args.request;
-        return { widthPx: 1000, heightPx: 1400, resolution: 100, trimPx: null, basicPx: null, vectorLayers: false, textLayers: false, frameFolders: false, firstPageLeft: null, spread: null, spreadProblem: null };
+        return {
+          widthPx: 1000,
+          heightPx: 1400,
+          resolution: 100,
+          trimPx: null,
+          basicPx: null,
+          vectorLayers: false,
+          textLayers: false,
+          frameFolders: false,
+          firstPageLeft: null,
+          spread: null,
+          spreadProblem: null,
+        };
       }
       if (command === "export_name_page") {
         const body = args instanceof Uint8Array ? args : new Uint8Array(args);
@@ -227,10 +253,24 @@ try {
   });
   const names = exported.withMarks.pages[0].layers.map((layer) => layer.name);
   check(names.slice(-2).join() === "指示,指示（青）", `the 指示のレイヤー go on top (${names})`);
-  check(exported.withMarks.pages[0].layers.at(-1).length > 0 && exported.withMarks.pages[1].layers.at(-1).length === 0, "with a picture where there are 指示, empty on a page without");
-  check(["指示", "指示（青）"].every((name) => exported.withMarks.request.draftLayers.includes(name)), "as 下描き layers");
-  check(exported.withMarks.request.layerLooks?.some((look) => look.name === "指示（青）" && look.hidden), "a hidden one goes hidden");
-  check(["指示", "指示（青）"].every((name) => exported.withMarks.request.layerLooks?.some((look) => look.name === name && look.whole && look.opacity === 1)), "in their colour: at full opacity, not the 下描き half");
+  check(
+    exported.withMarks.pages[0].layers.at(-1).length > 0 && exported.withMarks.pages[1].layers.at(-1).length === 0,
+    "with a picture where there are 指示, empty on a page without",
+  );
+  check(
+    ["指示", "指示（青）"].every((name) => exported.withMarks.request.draftLayers.includes(name)),
+    "as 下描き layers",
+  );
+  check(
+    exported.withMarks.request.layerLooks?.some((look) => look.name === "指示（青）" && look.hidden),
+    "a hidden one goes hidden",
+  );
+  check(
+    ["指示", "指示（青）"].every((name) =>
+      exported.withMarks.request.layerLooks?.some((look) => look.name === name && look.whole && look.opacity === 1),
+    ),
+    "in their colour: at full opacity, not the 下描き half",
+  );
   check(!exported.without[0].some((name) => name.startsWith("指示")), `--no-marks / unchecked leaves them out (${exported.without[0]})`);
 
   check(errors.length === 0, `no page errors (${errors.join("; ")})`);

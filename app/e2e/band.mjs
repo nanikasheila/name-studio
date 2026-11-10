@@ -28,7 +28,7 @@ try {
   await page.waitForFunction(() => window.nameStudio);
   const show = () =>
     page.evaluate(async () => {
-      const { newProject } = await import("/src/project.ts");
+      const { newProject } = await import("/src/domain/project.ts");
       window.nameStudio.show(newProject("帯", 8));
     });
   await show();
@@ -41,7 +41,10 @@ try {
     }));
   const foldButton = page.locator("#page-nav .story-controls button[aria-pressed]").last();
   const first = await heights();
-  check(!first.lanes && first.band < 2, `900 px high, the first time: the strip starts folded (${Math.round(first.stage)} px for the pages)`);
+  check(
+    !first.lanes && first.band < 2,
+    `900 px high, the first time: the strip starts folded (${Math.round(first.stage)} px for the pages)`,
+  );
   await foldButton.click();
   await page.waitForTimeout(200);
   const open = await heights();
@@ -51,7 +54,10 @@ try {
   await foldButton.click();
   await page.waitForTimeout(200);
   const folded = await heights();
-  check(!folded.lanes && folded.band < 2, `and folds it again, its buttons staying in the row under the pages (${Math.round(folded.band)} px)`);
+  check(
+    !folded.lanes && folded.band < 2,
+    `and folds it again, its buttons staying in the row under the pages (${Math.round(folded.band)} px)`,
+  );
   check(folded.stage > open.stage + 60, `and the pages get the room (${Math.round(open.stage)} → ${Math.round(folded.stage)} px)`);
 
   await page.locator("#editor-canvas").click({ position: { x: 5, y: 5 } });
@@ -84,7 +90,9 @@ try {
   const filled = () =>
     page.evaluate(() => {
       const { editor, project } = window.nameStudio.workbench;
-      const [top, bottom] = project.pages.map((p) => [editor.clientOf(p.id, [0, 0]), editor.clientOf(p.id, project.pageFormat.canvasMm)]).find(([a]) => a);
+      const [top, bottom] = project.pages
+        .map((p) => [editor.clientOf(p.id, [0, 0]), editor.clientOf(p.id, project.pageFormat.canvasMm)])
+        .find(([a]) => a);
       return (bottom[1] - top[1]) / document.getElementById("editor-canvas").getBoundingClientRect().height;
     });
   const tabbed = async () => {
@@ -105,21 +113,24 @@ try {
     editor.view.zoom = 1.6;
     editor.draw();
   });
-  const held = await page.evaluate(([cx, cy]) => {
-    const { editor, project } = window.nameStudio.workbench;
-    const [w, h] = project.pageFormat.canvasMm;
-    let best = null;
-    for (const p of project.pages) {
-      const o = editor.clientOf(p.id, [0, 0]);
-      const one = editor.clientOf(p.id, [1, 0]);
-      if (!o || !one) continue;
-      const scale = one[0] - o[0];
-      const point = [(cx - o[0]) / scale, (cy - o[1]) / scale];
-      const far = Math.hypot(Math.max(0, -point[0], point[0] - w), Math.max(0, -point[1], point[1] - h));
-      if (!best || far < best.far) best = { id: p.id, point, far };
-    }
-    return best;
-  }, await middleOf());
+  const held = await page.evaluate(
+    ([cx, cy]) => {
+      const { editor, project } = window.nameStudio.workbench;
+      const [w, h] = project.pageFormat.canvasMm;
+      let best = null;
+      for (const p of project.pages) {
+        const o = editor.clientOf(p.id, [0, 0]);
+        const one = editor.clientOf(p.id, [1, 0]);
+        if (!o || !one) continue;
+        const scale = one[0] - o[0];
+        const point = [(cx - o[0]) / scale, (cy - o[1]) / scale];
+        const far = Math.hypot(Math.max(0, -point[0], point[0] - w), Math.max(0, -point[1], point[1] - h));
+        if (!best || far < best.far) best = { id: p.id, point, far };
+      }
+      return best;
+    },
+    await middleOf(),
+  );
   check(held !== null, `zoomed in, the page nearest the middle (${held && Math.round(held.far)} mm off it)`);
   await tabbed();
   const middle = await middleOf();
@@ -136,12 +147,18 @@ try {
   check(await page.locator("#command-palette").evaluate((d) => d.open), "Ctrl+K opens the palette");
   // With nothing typed it lists every command.
   const labels = await page.locator("#command-palette .cmdp-label").allTextContents();
-  check(labels.length > 20 && !labels.some((label) => label.includes("命令パレット")), `the palette does not list itself (${labels.length} commands)`);
+  check(
+    labels.length > 20 && !labels.some((label) => label.includes("命令パレット")),
+    `the palette does not list itself (${labels.length} commands)`,
+  );
   await page.keyboard.press("Escape");
   // The button by the page bar does what Tab does.
   await page.locator("#focus-mode").click();
   await page.waitForTimeout(300);
-  const focused = await page.evaluate(() => ({ on: document.body.classList.contains("focus-mode"), pressed: document.getElementById("focus-mode").getAttribute("aria-pressed") }));
+  const focused = await page.evaluate(() => ({
+    on: document.body.classList.contains("focus-mode"),
+    pressed: document.getElementById("focus-mode").getAttribute("aria-pressed"),
+  }));
   check(focused.on && focused.pressed === "true", "the ページだけ button hides the palettes and the strip");
   await page.locator("#focus-mode").click();
   await page.waitForTimeout(300);
@@ -161,7 +178,7 @@ try {
   await tall.goto(server.resolvedUrls.local[0]);
   await tall.waitForFunction(() => window.nameStudio);
   await tall.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     window.nameStudio.show(newProject("高い", 8));
   });
   await tall.waitForTimeout(300);
@@ -170,7 +187,10 @@ try {
     band: document.getElementById("story").getBoundingClientRect().height,
     stage: document.getElementById("editor-canvas").getBoundingClientRect().height,
   }));
-  check(tallState.lanes && tallState.stage > 2.5 * tallState.band, `1600×1200 the first time: the strip opens, the pages keep most of the height (${Math.round(tallState.stage)} / ${Math.round(tallState.band)} px)`);
+  check(
+    tallState.lanes && tallState.stage > 2.5 * tallState.band,
+    `1600×1200 the first time: the strip opens, the pages keep most of the height (${Math.round(tallState.stage)} / ${Math.round(tallState.band)} px)`,
+  );
   // Made lower, the strip it sized itself folds away.
   await tall.setViewportSize({ width: 1600, height: 800 });
   await tall.waitForTimeout(400);
@@ -183,7 +203,7 @@ try {
   await low.goto(server.resolvedUrls.local[0]);
   await low.waitForFunction(() => window.nameStudio);
   await low.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
+    const { newProject } = await import("/src/domain/project.ts");
     window.nameStudio.show(newProject("低い", 8));
   });
   await low.waitForTimeout(300);
@@ -192,7 +212,10 @@ try {
     stage: document.getElementById("editor-canvas").getBoundingClientRect().height,
     focus: document.getElementById("focus-mode").getBoundingClientRect().right <= window.innerWidth,
   }));
-  check(!lowState.lanes && lowState.stage > 380, `900×600 the first time: the strip starts folded (${Math.round(lowState.stage)} px for the pages)`);
+  check(
+    !lowState.lanes && lowState.stage > 380,
+    `900×600 the first time: the strip starts folded (${Math.round(lowState.stage)} px for the pages)`,
+  );
   check(lowState.focus, "and the ページだけ button is on screen");
   await low.close();
 
@@ -204,7 +227,7 @@ try {
     await narrow.goto(server.resolvedUrls.local[0]);
     await narrow.waitForFunction(() => window.nameStudio);
     await narrow.evaluate(async () => {
-      const { newProject } = await import("/src/project.ts");
+      const { newProject } = await import("/src/domain/project.ts");
       window.nameStudio.show(newProject("長い", 40));
     });
     // 設定 › 画面の見た目: larger words take more of the row.
@@ -220,9 +243,18 @@ try {
           const r = item.getBoundingClientRect();
           return r.left < box.left - 1 || r.right > box.right + 1 || r.bottom > box.bottom + 1;
         });
-        return { fits: nav.scrollWidth <= nav.clientWidth, out: out.length, height: Math.round(box.height), step: nav.dataset.fit, items: items.length };
+        return {
+          fits: nav.scrollWidth <= nav.clientWidth,
+          out: out.length,
+          height: Math.round(box.height),
+          step: nav.dataset.fit,
+          items: items.length,
+        };
       });
-      check(row.fits && !row.out, `${width} px${text ? `, words ${text} px` : ""}, ${view}: all ${row.items} of the row's switches in sight, no scrolling sideways (look ${row.step}, ${row.height} px high)`);
+      check(
+        row.fits && !row.out,
+        `${width} px${text ? `, words ${text} px` : ""}, ${view}: all ${row.items} of the row's switches in sight, no scrolling sideways (look ${row.step}, ${row.height} px high)`,
+      );
     }
     await narrow.close();
   }

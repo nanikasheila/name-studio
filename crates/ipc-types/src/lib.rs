@@ -1,7 +1,7 @@
 //! The app's commands, and the shapes they take and give, as TypeScript.
 //!
 //! The front end calls the Rust side by name with JSON (`call` in
-//! app/src/backend.ts). What a command is called, what its arguments are
+//! app/src/platform/backend.ts). What a command is called, what its arguments are
 //! called and what comes back used to be written down a second time by hand;
 //! here it is read from the Rust source instead, so the two cannot drift
 //! apart: `cargo run -p ipc-types` writes app/src/generated/ipc.ts, and a
@@ -41,9 +41,9 @@ const CRATES: &[&str] = &["name_studio_app", "clip_core", "name_model", "csp_for
 /// (from app/src/generated): the name data, which its own test checks against
 /// the Rust types (crates/name-model/tests/typescript.rs).
 const EXTERNAL: &[(&str, &str)] = &[
-    ("Project", "../model"),
-    ("Series", "../model"),
-    ("CspToolData", "../model"),
+    ("Project", "../model/model"),
+    ("Series", "../model/model"),
+    ("CspToolData", "../model/model"),
 ];
 
 /// Where the Rust side passes JSON on as it is, or takes plain text, but the

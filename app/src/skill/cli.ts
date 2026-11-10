@@ -3,12 +3,12 @@
 // app, with the same code the app uses, so that an AI (Claude Code, Codex…)
 // can help make a name from the file alone.
 import { copyFileSync, existsSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-import { applyOps, nameBrief, opsGuide, parseOps } from "../assist";
-import type { Project } from "../model";
-import { ISSUE_LABELS, checkName } from "../namecheck";
-import { newProject, normalize, type NameKind } from "../project";
-import { scriptText } from "../scripttext";
-import { validate } from "../validate";
+import { applyOps, nameBrief, opsGuide, parseOps } from "../domain/assist";
+import type { Project } from "../model/model";
+import { ISSUE_LABELS, checkName } from "../domain/namecheck";
+import { newProject, normalize, type NameKind } from "../domain/project";
+import { scriptText } from "../domain/scripttext";
+import { validate } from "../domain/validate";
 
 const USAGE = `使い方（node namestudio.mjs …）:
   brief  <ネーム.namestudio> [--pages 3-5] [--current 3]   ネームの要約（AI が読む形）

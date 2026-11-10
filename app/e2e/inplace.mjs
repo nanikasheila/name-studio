@@ -24,10 +24,10 @@ try {
   await page.waitForFunction(() => window.nameStudio);
   // A page with one panel and one line of dialogue in it.
   const where = await page.evaluate(async () => {
-    const { newProject } = await import("/src/project.ts");
-    const { addPanel } = await import("/src/panels.ts");
-    const { addLine } = await import("/src/dialogue.ts");
-    const { rectShape } = await import("/src/geometry.ts");
+    const { newProject } = await import("/src/domain/project.ts");
+    const { addPanel } = await import("/src/domain/panels.ts");
+    const { addLine } = await import("/src/domain/dialogue.ts");
+    const { rectShape } = await import("/src/model/geometry.ts");
     const project = newProject("その場で書く", 4);
     const first = project.pages[0];
     const panel = addPanel(project, first, rectShape([20, 20, 200, 160]));
@@ -40,7 +40,11 @@ try {
     await new Promise((done) => setTimeout(done, 400));
     const editor = window.nameStudio.workbench.editor;
     const [x0, y0, x1, y1] = line.box;
-    return { pageId: first.id, line: editor.clientOf(first.id, [(x0 + x1) / 2, (y0 + y1) / 2]), inside: editor.clientOf(first.id, [60, 120]) };
+    return {
+      pageId: first.id,
+      line: editor.clientOf(first.id, [(x0 + x1) / 2, (y0 + y1) / 2]),
+      inside: editor.clientOf(first.id, [60, 120]),
+    };
   });
   const state = () =>
     page.evaluate(() => {
@@ -53,9 +57,15 @@ try {
 
   await page.mouse.dblclick(...where.line);
   const field = page.locator("textarea.inline-edit");
-  check((await field.count()) === 1 && (await field.getAttribute("class")).includes("line"), "a double-click on dialogue opens a field over it");
+  check(
+    (await field.count()) === 1 && (await field.getAttribute("class")).includes("line"),
+    "a double-click on dialogue opens a field over it",
+  );
   check((await status()).startsWith("セリフを書いています"), "and the status says how to finish");
-  check((await field.inputValue()) === "セリフ" && (await field.evaluate((f) => f.selectionStart === 0 && f.selectionEnd === 3)), "the placeholder text is picked, to type over");
+  check(
+    (await field.inputValue()) === "セリフ" && (await field.evaluate((f) => f.selectionStart === 0 && f.selectionEnd === 3)),
+    "the placeholder text is picked, to type over",
+  );
   await page.keyboard.type("こんにちは");
   check((await state()).text === "こんにちは", "the page follows each key");
   await page.keyboard.press("Control+Enter");
@@ -67,7 +77,10 @@ try {
   // Off the dialogue first: its action bar sits beside it.
   await page.locator("#editor-canvas").click({ position: { x: 5, y: 5 } });
   await page.mouse.dblclick(...where.inside);
-  check((await field.count()) === 1 && (await field.getAttribute("class")).includes("note"), "a double-click inside a panel opens its memo");
+  check(
+    (await field.count()) === 1 && (await field.getAttribute("class")).includes("note"),
+    "a double-click inside a panel opens its memo",
+  );
   check((await field.getAttribute("placeholder")).startsWith("このコマのメモ"), "with a hint of what goes there");
   await page.keyboard.type("引きの絵");
   check((await state()).note === "引きの絵", "the memo shows as it is typed");
@@ -98,7 +111,10 @@ try {
   await field.waitFor({ timeout: 2000 }).catch(() => undefined);
   check((await field.count()) === 1 && (await lines()) === count + 1, "the text tool places a line and opens a field in it");
   await page.keyboard.press("Escape");
-  check((await field.count()) === 0 && (await lines()) === count && (await undos()) === steps, "Esc takes the new line away again, with no undo step");
+  check(
+    (await field.count()) === 0 && (await lines()) === count && (await undos()) === steps,
+    "Esc takes the new line away again, with no undo step",
+  );
   await page.mouse.click(where.inside[0], where.inside[1] + 40);
   await field.waitFor({ timeout: 2000 }).catch(() => undefined);
   await page.keyboard.type("やあ");
@@ -124,7 +140,10 @@ try {
   await page.keyboard.press("Shift+Tab");
   await field.waitFor({ timeout: 2000 }).catch(() => undefined);
   check((await second()) === "直した" && (await undos()) === steps2 + 1, "what was written is kept as one step");
-  check((await field.count()) === 1 && (await field.inputValue()) === "セリフ" && (await shown()).includes(1), "Shift+Tab goes back to the line before");
+  check(
+    (await field.count()) === 1 && (await field.inputValue()) === "セリフ" && (await shown()).includes(1),
+    "Shift+Tab goes back to the line before",
+  );
   await page.keyboard.press("Tab");
   await field.waitFor({ timeout: 2000 }).catch(() => undefined);
   await page.keyboard.press("Tab");
@@ -137,9 +156,16 @@ try {
   await page.keyboard.type("直し");
   const rows = () => page.locator("#side-script .script-line .text").allTextContents();
   check(JSON.stringify(await rows()) === JSON.stringify(["直した"]), `the 台本 search keeps the matching line (${await rows()})`);
-  check((await page.locator("#side-script .hint").first().textContent()) === "1 件" && (await search.evaluate((f) => document.activeElement === f)), "says how many, and the field keeps the caret");
+  check(
+    (await page.locator("#side-script .hint").first().textContent()) === "1 件" &&
+      (await search.evaluate((f) => document.activeElement === f)),
+    "says how many, and the field keeps the caret",
+  );
   await search.fill("ないことば");
-  check((await rows()).length === 0 && (await page.locator("#side-script .hint").first().textContent()) === "見つかりません", "nothing found says so");
+  check(
+    (await rows()).length === 0 && (await page.locator("#side-script .hint").first().textContent()) === "見つかりません",
+    "nothing found says so",
+  );
   await search.fill("");
   check((await rows()).length === 2, "an empty search shows every line again");
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(" / ")}` : ""}`);

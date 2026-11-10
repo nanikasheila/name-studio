@@ -27,7 +27,7 @@ try {
   const open = async () => {
     await page.waitForFunction(() => window.nameStudio);
     await page.evaluate(async () => {
-      const { newProject } = await import("/src/project.ts");
+      const { newProject } = await import("/src/domain/project.ts");
       window.nameStudio.show(newProject("配置", 8));
     });
   };
@@ -38,13 +38,18 @@ try {
   /** What is on screen: the open palettes of each column, the view, the band. */
   const state = () =>
     page.evaluate(() => {
-      const open = (side) => [...document.querySelectorAll(`#dock-${side} .dock-stack > .palette:not(.folded)`)].map((p) => p.dataset.palette);
+      const open = (side) =>
+        [...document.querySelectorAll(`#dock-${side} .dock-stack > .palette:not(.folded)`)].map((p) => p.dataset.palette);
       const wb = window.nameStudio.workbench;
       return {
         left: open("left"),
         right: open("right"),
         rightNarrow: document.getElementById("dock-right").classList.contains("narrow"),
-        view: document.getElementById("continuous-mode").classList.contains("active") ? "continuous" : document.getElementById("single-mode").classList.contains("active") ? "single" : "spread",
+        view: document.getElementById("continuous-mode").classList.contains("active")
+          ? "continuous"
+          : document.getElementById("single-mode").classList.contains("active")
+            ? "single"
+            : "spread",
         band: wb.board.expanded ? "wide" : wb.board.isFolded ? "folded" : "strip",
         active: [...document.querySelectorAll("#workspace-modes button.active")].map((b) => b.id),
       };
@@ -56,8 +61,14 @@ try {
 
   await page.click("#ws-overview");
   const overview = await state();
-  check(overview.view === "continuous" && overview.band === "strip", `全体: every page on one canvas, the band shown (${overview.view}, ${overview.band})`);
-  check(overview.left.join() === "pages,script,notes" && overview.right.join() === "inspector", `全体: ページ・台本・付箋 and 詳細 (${overview.left} | ${overview.right})`);
+  check(
+    overview.view === "continuous" && overview.band === "strip",
+    `全体: every page on one canvas, the band shown (${overview.view}, ${overview.band})`,
+  );
+  check(
+    overview.left.join() === "pages,script,notes" && overview.right.join() === "inspector",
+    `全体: ページ・台本・付箋 and 詳細 (${overview.left} | ${overview.right})`,
+  );
   check(overview.active.join() === "ws-overview", "its button is the one pressed");
   if (shots) await page.waitForTimeout(500).then(() => page.screenshot({ path: `${shots}/ws-overview.png` }));
 
@@ -65,16 +76,28 @@ try {
   await page.click("#tab-script");
   await page.click("#ws-handoff");
   const handoff = await state();
-  check(handoff.left.join() === "pages,notes,held" && handoff.right.join() === "layers,inspector" && handoff.band === "folded" && handoff.view === "spread", `CSP に渡す: ページ・付箋・保留 | レイヤー・詳細, band folded (${handoff.left} | ${handoff.right}, ${handoff.band})`);
+  check(
+    handoff.left.join() === "pages,notes,held" &&
+      handoff.right.join() === "layers,inspector" &&
+      handoff.band === "folded" &&
+      handoff.view === "spread",
+    `CSP に渡す: ページ・付箋・保留 | レイヤー・詳細, band folded (${handoff.left} | ${handoff.right}, ${handoff.band})`,
+  );
   if (shots) await page.screenshot({ path: `${shots}/ws-handoff.png` });
 
   await page.click("#ws-draw");
   const draw = await state();
-  check(draw.left.join() === mine.left.join() && draw.view === mine.view, `描く: back as it was before, the person's own palettes kept (${draw.left})`);
+  check(
+    draw.left.join() === mine.left.join() && draw.view === mine.view,
+    `描く: back as it was before, the person's own palettes kept (${draw.left})`,
+  );
 
   await page.keyboard.press("Control+2");
   const again = await state();
-  check(again.left.join() === "pages,notes" && again.view === "continuous", `Ctrl+2: 全体 as it was left, 台本 still hidden (${again.left})`);
+  check(
+    again.left.join() === "pages,notes" && again.view === "continuous",
+    `Ctrl+2: 全体 as it was left, 台本 still hidden (${again.left})`,
+  );
 
   // 既定に戻す from the command palette.
   await page.keyboard.press("Control+k");
@@ -88,7 +111,10 @@ try {
   await page.keyboard.type("既定に戻す");
   await page.keyboard.press("Enter");
   const drawn = await state();
-  check(drawn.left.join() === "subtools,layers" && drawn.rightNarrow && drawn.band === "folded", `描く as it comes: サブツール・レイヤー, the right column folded, the band folded (${drawn.left})`);
+  check(
+    drawn.left.join() === "subtools,layers" && drawn.rightNarrow && drawn.band === "folded",
+    `描く as it comes: サブツール・レイヤー, the right column folded, the band folded (${drawn.left})`,
+  );
   if (shots) await page.screenshot({ path: `${shots}/ws-draw.png` });
 
   // Started again: the workspace chosen and the palettes as left.
@@ -96,7 +122,10 @@ try {
   await page.reload();
   await open();
   const reopened = await state();
-  check(reopened.active.join() === "ws-overview" && reopened.left.join() === "pages,script,notes", `started again: 全体, as it was (${reopened.active} ${reopened.left})`);
+  check(
+    reopened.active.join() === "ws-overview" && reopened.left.join() === "pages,script,notes",
+    `started again: 全体, as it was (${reopened.active} ${reopened.left})`,
+  );
 
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(" / ")}` : ""}`);
 } finally {
