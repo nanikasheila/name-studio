@@ -2,7 +2,7 @@
 // 後補正 when it is done), straight with Shift, cut where it crosses onto the
 // facing page (or, 連続, onto other pages).
 import { FULL_SPEED_MM, followFactor, postCorrect, tiltOf as penTilt, usesMotion } from "./brush";
-import type { DragHandler, DragOf, EditorCore, Press } from "./editorcore";
+import type { DragHandler, DragOf, EditorCore, EditorLook, Press } from "./editorcore";
 
 /** A 指示 being drawn: its colour and width, and the 指示のレイヤー it goes on ("": the top one, made if there is none). */
 export type PenMark = NonNullable<DragOf<"pen">["mark"]>;
@@ -175,7 +175,7 @@ const AHEAD_EVENTS = 3;
 const AHEAD_PX = 24;
 
 /** 先読み: the line on through where the pen is predicted to be, smoothed as the line is; not kept. */
-function ahead(editor: EditorCore, drag: DragOf<"pen">, event: PointerEvent, brush: ReturnType<EditorCore["brush"]>): StrokePoint[] | undefined {
+function ahead(editor: EditorLook, drag: DragOf<"pen">, event: PointerEvent, brush: ReturnType<EditorLook["brush"]>): StrokePoint[] | undefined {
   const predicted = event.getPredictedEvents?.() ?? [];
   if (!predicted.length) return undefined;
   const points: StrokePoint[] = [];

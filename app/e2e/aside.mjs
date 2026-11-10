@@ -178,7 +178,7 @@ try {
     return e.slots.map((s) => [s.index, s.y, s.scale]);
   });
   await shot("連続 with the 欄外");
-  const rooms = () => page.evaluate(() => window.nameStudio.workbench.editor.rooms.map((room) => room.map((side) => Math.round(side))));
+  const rooms = () => page.evaluate(() => window.nameStudio.workbench.editor.stage.rooms.map((room) => room.map((side) => Math.round(side))));
   const room = await rooms();
   check(room[1][1] > 30, `連続 keeps room beside page 2 for the sketch and the 付箋 (${room[1].join(", ")} mm)`);
   check([0, 2, 3].every((i) => room[i].every((side) => side === 0)), `and none around the pages with nothing beside them (${JSON.stringify(room)})`);

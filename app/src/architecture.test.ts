@@ -53,7 +53,7 @@ const LAYERS = {
   service: ["autosave", "batch", "flatpage", "nameexport", "picturecheck", "roughcache", "updatereport"],
   /** The screens. */
   ui: [
-    "actions", "altdialog", "assistpanel", "dialogkeys", "board", "boardmenus", "castlist", "heldlist", "listops", "notelist", "scriptlist", "boarddock", "boardemotion", "boardpages", "boardscene", "boardshape", "boardview", "brushdialog", "brusheditor", "brushpad", "brushsource", "controlbar", "cursors", "dock", "dragsort", "drophint", "editor", "editorcore", "exportdialog", "fillbar", "fillsource", "fontpicker", "helpbar", "helpoverlay", "imageimport", "inplace", "inspector",
+    "actions", "altdialog", "assistpanel", "dialogkeys", "board", "boardmenus", "castlist", "heldlist", "listops", "notelist", "scriptlist", "boarddock", "boardemotion", "boardpages", "boardscene", "boardshape", "boardview", "brushdialog", "brusheditor", "brushpad", "brushsource", "controlbar", "cursors", "dock", "dragsort", "drophint", "editor", "editorcore", "editorpaint", "editorpicks", "editorstage", "exportdialog", "fillbar", "fillsource", "fontpicker", "helpbar", "helpoverlay", "imageimport", "inplace", "inspector",
     "layers", "livefields", "lookpane", "markbar", "mdview", "namesaver", "nameedits", "pagelist", "popupmenu", "palette", "palettes", "panefocus", "pendialog", "perfdialog", "reader", "readbackpick", "recoverydialog", "referencebar", "roughpanel", "rowfit", "scriptdialog", "seriespanel", "settingsdialog", "sheetexport", "shortcutdialog", "sidelists", "startscreen", "subtools", "toolaside", "tooleraser", "toolfill",
     "toolmark", "toolpanels", "toolpen", "toolreference", "tools", "toolselect", "toolsticky", "tooltext", "tooltransform", "tour", "updater", "versiondialog", "workspaces",
     "viewer", "workbench",
@@ -105,11 +105,23 @@ describe("module structure", () => {
   it("keeps each tool's press and drags out of the page editor", () => {
     // Tools live in tool*.ts behind tools.ts; editor.ts dispatches, screendraw.ts draws.
     const editor = sources["./editor.ts"];
-    expect(editor.split("\n").length).toBeLessThan(2300);
+    expect(editor.split("\n").length).toBeLessThan(1400);
     expect(editor).not.toMatch(/(?:tool|drag) satisfies never/);
     for (const [path, source] of Object.entries(sources)) {
       if (/^\.\/tool\w*\.ts$/.test(path)) expect(source, path).not.toMatch(/from "\.\/editor"/);
     }
+  });
+
+  it("keeps the page editor's parts apart", () => {
+    // The pages on screen (editorstage), what is picked (editorpicks) and the drawing (editorpaint):
+    // each knows the ones before it, none knows the editor that puts them together and hands out the input.
+    const knows = (file: string) => imports().get(file)?.filter((other) => /^editor(?!core)\w*\.ts$/.test(other)) ?? [];
+    expect(knows("editorstage.ts")).toEqual([]);
+    expect(knows("editorpicks.ts")).toEqual(["editorstage.ts"]);
+    expect(knows("editorpaint.ts").sort()).toEqual(["editorpicks.ts", "editorstage.ts"]);
+    for (const part of ["editorstage", "editorpicks", "editorpaint"]) expect(sources[`./${part}.ts`].split("\n").length, part).toBeLessThan(650);
+    // Only the drawing draws: the other two have no canvas calls of their own.
+    expect(sources["./editorpicks.ts"]).not.toMatch(/\bctx\b/);
   });
 
   it("places every module in a pace layer", () => {

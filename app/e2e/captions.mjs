@@ -45,7 +45,7 @@ try {
       const { editor, project } = window.nameStudio.workbench;
       const slots = editor.slots;
       // Measured as drawn: on the editor's own canvas (a canvas apart may pick another font for the letters).
-      const ctx = editor.ctx;
+      const ctx = editor.painter.ctx;
       ctx.save();
       ctx.font = CAPTION_FONT;
       const [x0, , x1] = trimBox(project.pageFormat);

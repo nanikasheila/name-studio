@@ -68,6 +68,20 @@ CSP のファイルの中（SQLite の表）を書き換えるのは csp-format 
 - この PC に残す設定は `prefs.ts`（中身の決まりは `settings.ts`）。
 - ネームデータの型は Rust（`name-model`）と画面（`model.ts`）の 2 か所にあり、`contract.test.ts`・`modelcheck.test.ts` と Rust の `tests/contract.rs`・`tests/typescript.rs` が揃っていることを確かめます。
 
+### 紙面の編集（`editor*.ts` と `tool*.ts`）
+
+紙面のキャンバスは、役目ごとに分けています。
+
+| モジュール | 役目 | 知らないもの |
+|---|---|---|
+| `editorstage.ts` | 紙面の並びと視点（見開き・単独・連続、ページの位置、拡大・移動・回転、隠しているもの） | ツール・選択・描画 |
+| `editorpicks.ts` | 選択（選んでいるもの、操作の帯、変形の枠、コピー・貼り付け、押したら何が選ばれるか） | 描画 |
+| `editorpaint.ts` | 描画（ページと、その上に重ねるもの）。編集画面の状態を読むだけで、変えません | 入力 |
+| `editor.ts` | 入力の振り分け（ペン・指・ホイール・キー）と、まわりの画面が使う窓口。上の 3 つを組み立てます | |
+| `tool*.ts`（`tools.ts` から） | ツールごとの、押したとき・ドラッグ・終わり | `editor.ts` |
+
+ツールは編集画面を `EditorCore`（`editorcore.ts`）として見ます。中身は 3 つで、調べるだけの関数は `EditorLook`、吸着だけなら `EditorSnap`、変えるものは `EditorChange` を受け取ります。上の 3 つの依存の向き（stage ← picks ← paint、どれも `editor.ts` を知らない）と行数の上限は `architecture.test.ts` が守ります。`editorstage.ts` は画面なしで単体テストできます（`editorstage.test.ts`）。
+
 ### アプリの Rust 側（`app/src-tauri/src`）
 
 | モジュール | 役目 |

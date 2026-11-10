@@ -1,7 +1,7 @@
 // 変形 (Ctrl+T) with the select tool: the frame's squares scale what is
 // selected (the far side staying, or the middle with Alt), the round handle
 // turns it, Ctrl + a corner warps it.
-import { FRAME_HANDLES, type DragHandler, type DragOf, type EditorCore, type Press } from "./editorcore";
+import { FRAME_HANDLES, type DragHandler, type DragOf, type EditorCore, type EditorSnap, type Press } from "./editorcore";
 import type { Point, Project } from "./model";
 import { assignPanels, orderPanels, sortLines } from "./readingorder";
 import { NO_TARGETS } from "./snapping";
@@ -94,7 +94,7 @@ export function scaleFor(drag: DragOf<"scale">, point: Point, free: boolean, fro
  * The point a transform handle is pulled to, snapped so that the panels'
  * side (inside the frame's padding) lands on a line.
  */
-function snappedHandle(editor: EditorCore, drag: DragOf<"scale">, point: Point, free: boolean): Point {
+function snappedHandle(editor: EditorSnap, drag: DragOf<"scale">, point: Point, free: boolean): Point {
   if (drag.targets === NO_TARGETS) return point;
   const pad = 3 / drag.slot.scale;
   // Which way each axis of the handle is from the frame's middle: the padding is outward that way.

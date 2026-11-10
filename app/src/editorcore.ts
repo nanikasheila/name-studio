@@ -1,7 +1,9 @@
 // What the page editor's tools share: the selection and the app around the
 // editor, the drags a tool starts, and the editor as a tool sees it
-// (EditorCore). Each tool's press, drag and finish live in its own module
-// (toolselect.ts, toolpen.ts, ...); editor.ts dispatches to them.
+// (EditorCore: what it may look at, snap to and set going). Each tool's
+// press, drag and finish live in its own module (toolselect.ts, toolpen.ts,
+// ...); editor.ts dispatches to them. At the end, what the editor's own parts
+// share among themselves.
 import type { TailHit, TailPart } from "./hittest";
 import type { Seam } from "./komaedit";
 import type { Slot } from "./layout";
@@ -289,9 +291,11 @@ export interface DragHandler<D extends ToolDrag> {
   end(editor: EditorCore, drag: D, project: Project): void;
 }
 
-/** The page editor as its tools see it. */
-export interface EditorCore {
-  readonly host: EditorHost;
+/**
+ * 調べる: what a tool may look at. The pages on screen, what is picked, the
+ * options in hand, and what lies where.
+ */
+export interface EditorLook {
   /** The pages on screen. */
   readonly slots: readonly Slot[];
   readonly selection: Selection | null;
@@ -308,23 +312,7 @@ export interface EditorCore {
   readonly penWidthMm: number;
   /** The ラフ線のレイヤー the pen draws on. */
   readonly roughLayer: string;
-  guides: Guides | null;
 
-  /** Start a drag: it gets the pointer's moves until it is let go. */
-  startDrag(drag: ToolDrag): void;
-  /** Run once the pointer is up (opening a text field during the press would lose its focus). */
-  afterUp(action: () => void): void;
-  /** Pick the next of overlapping balloons a moment later (a double-click may still come). */
-  pickLater(action: () => void, ms: number): void;
-  select(selection: Selection | null): void;
-  /** Change the selection without telling anyone (the drawing at the end of the drag shows it). */
-  setSelection(selection: Selection | null): void;
-  chooseReference(reference: { pageId: string; id: string } | null): void;
-  forgetHover(): void;
-  requestDraw(): void;
-  requestOverlay(): void;
-  /** Keep the pages as drawn now for a pen line to go over. */
-  captureBase(): void;
   /** The pointer's point on the canvas (px). */
   at(event: MouseEvent): Point;
   slotAt(sx: number, sy: number, project: Project): Slot | null;
@@ -334,7 +322,6 @@ export interface EditorCore {
   brush(kind: "pen" | "eraser"): Brush | undefined;
   eraserRadiusPx(scale: number): number;
 
-  // What is where.
   hit(slot: Slot, point: Point): Selection | null;
   linesAt(slot: Slot, point: Point): string[];
   panelAt(page: Page, point: Point): Panel | undefined;
@@ -351,12 +338,34 @@ export interface EditorCore {
   selectedItems(): ItemRef[];
   frameHandleAt(sx: number, sy: number): number;
   frameGeometry(): { slot: Slot; box: BoxMm } | null;
+}
 
-  // Snapping.
+/** 吸着: what a panel's point snaps to, and the lines it went onto (shown as guides). */
+export interface EditorSnap {
+  guides: Guides | null;
   snapTargetsOn(project: Project, page: Page, exclude?: Iterable<string>): SnapTargets;
   snapped(slot: Slot, point: Point, targets: SnapTargets, free: boolean, beside?: readonly Point[]): Point;
+}
 
-  // Changes.
+/** 変える: what a tool may set going. A drag, the selection, a drawing, a change to the pages. */
+export interface EditorChange {
+  readonly host: EditorHost;
+  /** Start a drag: it gets the pointer's moves until it is let go. */
+  startDrag(drag: ToolDrag): void;
+  /** Run once the pointer is up (opening a text field during the press would lose its focus). */
+  afterUp(action: () => void): void;
+  /** Pick the next of overlapping balloons a moment later (a double-click may still come). */
+  pickLater(action: () => void, ms: number): void;
+  select(selection: Selection | null): void;
+  /** Change the selection without telling anyone (the drawing at the end of the drag shows it). */
+  setSelection(selection: Selection | null): void;
+  chooseReference(reference: { pageId: string; id: string } | null): void;
+  forgetHover(): void;
+  requestDraw(): void;
+  requestOverlay(): void;
+  /** Keep the pages as drawn now for a pen line to go over. */
+  captureBase(): void;
+
   moveSelection(page: Page, dx: number, dy: number, items?: ItemRef[]): void;
   /** Contents carried by the selected panel follow it. */
   follow(page: Page, carried: CarriedContents | undefined): void;
@@ -366,3 +375,27 @@ export interface EditorCore {
   placeCorner(slot: Slot, point: Point, free: boolean): void;
   editInPlace(pageId: string, kind: "note" | "line", id: string, fresh?: boolean): void;
 }
+
+/**
+ * The page editor as its tools see it: what they may look at (EditorLook),
+ * snap to (EditorSnap) and set going (EditorChange). A helper that only looks
+ * takes EditorLook, and so on; a tool's press and drags take all three.
+ */
+export interface EditorCore extends EditorLook, EditorSnap, EditorChange {}
+
+// --- What the editor's own parts share (editor.ts, editorpaint.ts, editorpicks.ts) ---
+
+/** Any drag under way: a tool's, or one of the view itself. */
+export type Drag =
+  | ToolDrag
+  | { kind: "pan"; x: number; y: number }
+  /** Two fingers: `v` is the view point under their middle (independent of zoom), kept under it. */
+  | { kind: "pinch"; ids: [number, number]; dist: number; angle: number; zoom: number; rotation: number; v: Point }
+  | { kind: "turn"; from: number; rotation: number };
+
+/** What the pointer is over with the select tool, shown before anything is pressed. */
+export type Hover =
+  | { kind: "tail"; slot: Slot; hit: TailHit }
+  | { kind: "seam"; slot: Slot; seam: Seam }
+  | { kind: "item"; slot: Slot; target: Selection }
+  | { kind: "handle"; slot: Slot; handle: number };

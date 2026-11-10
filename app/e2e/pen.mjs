@@ -133,8 +133,10 @@ try {
   // A long line: each frame paints what the pen added, so the end costs what the start did.
   await page.evaluate(() => {
     const editor = window.nameStudio.workbench.editor;
-    const draw = editor.draw.bind(editor);
-    editor.draw = () => {
+    // The frames are the painter's (editorpaint.ts): the editor only passes its own draw() on to it.
+    const painter = editor.painter;
+    const draw = painter.draw.bind(painter);
+    painter.draw = () => {
       const start = performance.now();
       draw();
       if (editor.drag?.kind === "pen") window.__frames.push(performance.now() - start);
@@ -203,7 +205,7 @@ try {
     const editor = window.nameStudio.workbench.editor;
     editor.draw();
     const added = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
-    editor.strokeCache.clear();
+    editor.painter.strokeCache.clear();
     // (Pictures drawn anew take a frame each when they are slow: as many frames as pages.)
     for (let i = 0; i < 4; i++) editor.draw();
     const anew = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
