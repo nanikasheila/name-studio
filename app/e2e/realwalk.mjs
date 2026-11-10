@@ -45,19 +45,31 @@ async function launch() {
       // The same WebView data both times: what the page keeps is there at the next start.
       WEBVIEW2_USER_DATA_FOLDER: join(work, "webview"),
     },
-    stdio: "ignore",
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+  let stderr = "";
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", (text) => {
+    stderr += text;
+  });
+  let exited = null;
+  child.on("exit", (code) => {
+    exited = code;
   });
   let browser = null;
-  for (let i = 0; i < 150 && !browser; i++) {
+  // A fresh CI machine takes long to start WebView2 the first time (an export there takes 6–14 s).
+  const until = Date.now() + 120_000;
+  while (!browser && exited === null && Date.now() < until) {
     try {
-      browser = await chromium.connectOverCDP(`http://127.0.0.1:${PORT}`);
+      browser = await chromium.connectOverCDP(`http://127.0.0.1:${PORT}`, { timeout: 5000 });
     } catch {
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
   }
   if (!browser) {
     child.kill();
-    throw new Error("the app's debugging port did not open");
+    const why = exited !== null ? `the app ended (exit ${exited})` : "the app is running, but the port did not open in 120 s";
+    throw new Error(`the app's debugging port did not open: ${why}${stderr ? `\n${stderr}` : ""}`);
   }
   const context = browser.contexts()[0];
   const page = context.pages()[0] ?? (await context.waitForEvent("page"));
