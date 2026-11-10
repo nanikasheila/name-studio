@@ -103,6 +103,35 @@ try {
   const sketch = now.pages[1].strokes[0];
   check(now.pages[1].strokes.length === 1 && sketch.every(([x]) => x > w), "the pen draws in the 欄外 beside page 2, on page 2");
   await shot("sketch beside the page");
+  // What is drawn beside the page is kept as a picture (like the page's own
+  // lines): drawn again as the room it covers grows, the lines stay where they are.
+  const inkAt = async (n, mm) => {
+    const [x, y] = await at(n, mm);
+    return page.evaluate(
+      ([x, y]) => {
+        const canvas = document.getElementById("editor-canvas");
+        const r = canvas.getBoundingClientRect();
+        const [px, py] = [Math.round(((x - r.left) * canvas.width) / r.width), Math.round(((y - r.top) * canvas.height) / r.height)];
+        // Near the point (smoothing moves the line a little).
+        const data = canvas.getContext("2d").getImageData(px - 6, py - 6, 13, 13).data;
+        for (let i = 0; i < data.length; i += 4) if (data[i + 3] > 100 && data[i] < 140) return true;
+        return false;
+      },
+      [x, y],
+    );
+  };
+  check((await inkAt(2, [w + 45, 90])) && !(await inkAt(2, [w + 45, 60])), "the line beside the page shows where it was drawn");
+  await dragMm(2, [
+    [w + 95, 20],
+    [w + 110, 240],
+  ]);
+  check(
+    (await inkAt(2, [w + 45, 90])) && (await inkAt(2, [w + 102.5, 130])),
+    "a line further out shows, and the first one stays where it was",
+  );
+  await page.keyboard.press("Control+z");
+  await settle();
+  check((await inkAt(2, [w + 45, 90])) && !(await inkAt(2, [w + 102.5, 130])), "undone, it is gone again");
 
   await tool("sticky");
   await page.mouse.click(...(await at(2, [w + 20, 200])));

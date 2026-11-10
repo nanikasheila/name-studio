@@ -27,7 +27,10 @@ interface Layer {
   content: Content;
   scale: number;
   pixelScale: number;
-  picture: Picture;
+  /** Where the picture's corner is on the page (mm): 0, 0 but for lines beside the page (欄外). */
+  origin: [number, number];
+  size: [number, number];
+  canvas: HTMLCanvasElement;
   /** The scale asked for last and when that changed (to tell a zoom from a still view). */
   asked: number;
   askedAt: number;
@@ -39,39 +42,18 @@ interface Content {
   lines: string[];
 }
 
-/** A page's lines as pixels: an ImageBitmap where there is OffscreenCanvas, else a canvas element. */
-type Picture = HTMLCanvasElement | ImageBitmap;
-
-/**
- * Somewhere to draw a page's lines picture, and the picture once drawn.
- * Chrome keeps what is drawn on a canvas as a list of commands; a picture
- * that is only ever drawn on (a line added each time the pen lets go) and
- * drawn from kept them all, and the GPU played them again each time the
- * picture was used: on a PC the frame after the pen let go stopped 2.4 ms
- * longer for every line drawn since the picture was made (50–94 ms after
- * 25–40 lines). So each picture is drawn on a new OffscreenCanvas and handed
- * over as an ImageBitmap: pixels, with no commands behind them. A line added
- * is the old picture copied (one image) and the new line over it.
- * Without OffscreenCanvas the canvas element `reuse` (or a new one) is drawn on.
- */
-function surface(width: number, height: number, reuse?: Picture): { ctx: CanvasRenderingContext2D; done: () => Picture } {
-  if (typeof OffscreenCanvas === "function") {
-    const canvas = new OffscreenCanvas(width, height);
-    const ctx = canvas.getContext("2d")! as unknown as CanvasRenderingContext2D;
-    return { ctx, done: () => canvas.transferToImageBitmap() };
-  }
-  const canvas = reuse instanceof HTMLCanvasElement ? reuse : document.createElement("canvas");
-  // (Setting the size, even to the same, makes the canvas anew.)
-  if (canvas.width !== width || canvas.height !== height) [canvas.width, canvas.height] = [width, height];
-  const ctx = canvas.getContext("2d")!;
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  return { ctx, done: () => canvas };
+function sameBox(layer: Layer, size: [number, number], origin: [number, number]): boolean {
+  return layer.size[0] === size[0] && layer.size[1] === size[1] && layer.origin[0] === origin[0] && layer.origin[1] === origin[1];
 }
 
-/** Let a picture go (its memory at once, not when it is collected). */
-function release(picture: Picture): void {
-  if (picture instanceof HTMLCanvasElement) picture.width = 0;
-  else picture.close();
+/** Whether `size` from `origin` (mm) holds all the picture covers. */
+function holds(origin: [number, number], size: [number, number], layer: Layer): boolean {
+  return (
+    origin[0] <= layer.origin[0] &&
+    origin[1] <= layer.origin[1] &&
+    origin[0] + size[0] >= layer.origin[0] + layer.size[0] &&
+    origin[1] + size[1] >= layer.origin[1] + layer.size[1]
+  );
 }
 
 function sameContent(a: Content, b: Content): boolean {
@@ -94,6 +76,8 @@ export class StrokeCache {
   private tips = 0;
   private settle = 0;
   private clock = 0;
+  /** The clock when the frame began. */
+  private frameStart = 0;
   /** Time spent this frame drawing pictures of pages seen for the first time. */
   private spent = 0;
 
@@ -111,11 +95,12 @@ export class StrokeCache {
   /** A frame begins: pages new to it get their share of time again. */
   startFrame(): void {
     this.spent = 0;
+    this.frameStart = this.clock;
   }
 
-  /** Forget pages not drawn since `keep` (the pages on screen are kept). */
-  forget(keep: Set<string>): void {
-    for (const key of this.layers.keys()) if (!keep.has(key.slice(0, key.indexOf("|")))) this.layers.delete(key);
+  /** Forget the pictures not drawn since the frame began (those on screen are kept). */
+  forget(): void {
+    for (const [key, layer] of this.layers) if (layer.used <= this.frameStart) this.layers.delete(key);
   }
 
   clear(): void {
@@ -125,7 +110,7 @@ export class StrokeCache {
   /** The pictures kept: how many, and their device pixels together. */
   get kept(): { pictures: number; pixels: number } {
     let pixels = 0;
-    for (const layer of this.layers.values()) pixels += layer.picture.width * layer.picture.height;
+    for (const layer of this.layers.values()) pixels += layer.canvas.width * layer.canvas.height;
     return { pictures: this.layers.size, pixels };
   }
 
@@ -133,6 +118,8 @@ export class StrokeCache {
    * Draw the page's lines that go under (or over) the panel borders, as
    * `drawStrokes` would, at `m` on `ctx` (whose transform maps to device pixels).
    * `layer` keeps the picture of each ラフ線のレイヤー apart, with only its lines.
+   * The picture covers `size` (mm) from `origin` on the page: the page, or
+   * the room beside it that lines reaching off the page cover.
    */
   draw(
     ctx: CanvasRenderingContext2D,
@@ -143,6 +130,7 @@ export class StrokeCache {
     style: StrokeStyle,
     layerId = "",
     only?: Stroke[],
+    origin: [number, number] = [0, 0],
   ): void {
     const strokes = (only ?? page.strokes).filter((stroke) => !!stroke.over === over);
     if (!strokes.length) return;
@@ -161,10 +149,18 @@ export class StrokeCache {
       layer.asked = m.scale;
       layer.askedAt = now;
     }
-    const fresh = !!layer && sameContent(layer.content, content) && layer.pixelScale === pixelScale;
-    if (layer && !fresh && layer.scale === m.scale && layer.pixelScale === pixelScale && added(layer.content, content)) {
-      // Lines drawn on top (the pen let go): only they are painted onto the picture.
+    const fresh = !!layer && sameContent(layer.content, content) && layer.pixelScale === pixelScale && sameBox(layer, size, origin);
+    if (
+      layer &&
+      !fresh &&
+      layer.scale === m.scale &&
+      layer.pixelScale === pixelScale &&
+      added(layer.content, content) &&
+      holds(origin, size, layer)
+    ) {
+      // Lines drawn on top (the pen let go): only they are painted onto the picture (made larger first when they reach past it).
       const start = this.now();
+      if (!sameBox(layer, size, origin)) this.grow(layer, size, origin);
       this.paintAdded(layer, strokes.slice(layer.content.lines.length), content, style);
       this.spent += this.now() - start;
     } else if (!layer || !fresh || layer.scale !== m.scale) {
@@ -177,19 +173,19 @@ export class StrokeCache {
         if (!layer) return;
       } else {
         const start = this.now();
-        layer = this.paint(key, layer, strokes, size, m.scale, pixelScale, content, style);
+        layer = this.paint(key, layer, strokes, size, origin, m.scale, pixelScale, content, style);
         this.spent += this.now() - start;
       }
     }
     layer.used = ++this.clock;
     // Pictures sit on whole device pixels, so they are as sharp as drawing directly.
-    let [x, y] = [m.x, m.y];
+    let [x, y] = [m.x + layer.origin[0] * m.scale, m.y + layer.origin[1] * m.scale];
     if (t.b === 0 && t.c === 0) {
       x = (Math.round(t.a * x + t.e) - t.e) / t.a;
       y = (Math.round(t.d * y + t.f) - t.f) / t.d;
     }
     const k = m.scale / layer.scale;
-    ctx.drawImage(layer.picture, x, y, (layer.picture.width / layer.pixelScale) * k, (layer.picture.height / layer.pixelScale) * k);
+    ctx.drawImage(layer.canvas, x, y, (layer.canvas.width / layer.pixelScale) * k, (layer.canvas.height / layer.pixelScale) * k);
   }
 
   private content(strokes: Stroke[], style: StrokeStyle): Content {
@@ -204,24 +200,31 @@ export class StrokeCache {
     return { shared: shared.join(";"), lines };
   }
 
+  /** The picture made to cover `size` from `origin` (mm), holding what it had where it was. */
+  private grow(layer: Layer, size: [number, number], origin: [number, number]): void {
+    const k = layer.scale * layer.pixelScale;
+    const canvas = document.createElement("canvas");
+    [canvas.width, canvas.height] = [Math.max(1, Math.ceil(size[0] * k)), Math.max(1, Math.ceil(size[1] * k))];
+    const ctx = canvas.getContext("2d")!;
+    // On whole pixels, so the lines stay as sharp (they move by under half a pixel at most).
+    ctx.drawImage(layer.canvas, Math.round((layer.origin[0] - origin[0]) * k), Math.round((layer.origin[1] - origin[1]) * k));
+    layer.canvas.width = 0;
+    [layer.canvas, layer.size, layer.origin] = [canvas, size, origin];
+  }
+
   /** Paint lines added on top of those in the picture, as drawing all of them would. */
   private paintAdded(layer: Layer, strokes: Stroke[], content: Content, style: StrokeStyle): void {
-    const before = layer.picture;
-    const { ctx, done } = surface(before.width, before.height, before);
-    // The lines so far as they are (unless this is the same canvas, which has them).
-    if (!(before instanceof HTMLCanvasElement)) ctx.drawImage(before, 0, 0);
+    const ctx = layer.canvas.getContext("2d")!;
     ctx.setTransform(layer.pixelScale, 0, 0, layer.pixelScale, 0, 0);
     drawStrokes(
       ctx,
       { strokes } as Page,
-      { scale: layer.scale, x: 0, y: 0 },
+      { scale: layer.scale, x: -layer.origin[0] * layer.scale, y: -layer.origin[1] * layer.scale },
       !!strokes[0]?.over,
       style.color,
       style.minWidthPx,
       style.brushes,
     );
-    layer.picture = done();
-    if (layer.picture !== before) release(before);
     layer.content = content;
   }
 
@@ -230,19 +233,29 @@ export class StrokeCache {
     old: Layer | undefined,
     strokes: Stroke[],
     size: [number, number],
+    origin: [number, number],
     scale: number,
     pixelScale: number,
     content: Content,
     style: StrokeStyle,
   ): Layer {
+    const canvas = old?.canvas ?? document.createElement("canvas");
     const [width, height] = [Math.max(1, Math.ceil(size[0] * scale * pixelScale)), Math.max(1, Math.ceil(size[1] * scale * pixelScale))];
-    const { ctx, done } = surface(width, height, old?.picture);
+    // (Setting the size, even to the same, makes the canvas anew.)
+    if (canvas.width !== width || canvas.height !== height) [canvas.width, canvas.height] = [width, height];
+    const ctx = canvas.getContext("2d")!;
     ctx.setTransform(pixelScale, 0, 0, pixelScale, 0, 0);
-    ctx.clearRect(0, 0, width, height);
-    drawStrokes(ctx, { strokes } as Page, { scale, x: 0, y: 0 }, !!strokes[0]?.over, style.color, style.minWidthPx, style.brushes);
-    const picture = done();
-    if (old && old.picture !== picture) release(old.picture);
-    const layer: Layer = { content, scale, pixelScale, picture, asked: scale, askedAt: old?.askedAt ?? 0, used: ++this.clock };
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawStrokes(
+      ctx,
+      { strokes } as Page,
+      { scale, x: -origin[0] * scale, y: -origin[1] * scale },
+      !!strokes[0]?.over,
+      style.color,
+      style.minWidthPx,
+      style.brushes,
+    );
+    const layer: Layer = { content, scale, pixelScale, origin, size, canvas, asked: scale, askedAt: old?.askedAt ?? 0, used: ++this.clock };
     this.layers.set(key, layer);
     this.keepBudget();
     return layer;
@@ -250,13 +263,13 @@ export class StrokeCache {
 
   private keepBudget(): void {
     let total = 0;
-    for (const layer of this.layers.values()) total += layer.picture.width * layer.picture.height;
+    for (const layer of this.layers.values()) total += layer.canvas.width * layer.canvas.height;
     if (total <= BUDGET_PIXELS) return;
     const oldest = [...this.layers.entries()].sort((a, b) => a[1].used - b[1].used);
     for (const [key, layer] of oldest) {
       if (total <= BUDGET_PIXELS) break;
-      total -= layer.picture.width * layer.picture.height;
-      release(layer.picture);
+      total -= layer.canvas.width * layer.canvas.height;
+      layer.canvas.width = 0;
       this.layers.delete(key);
     }
   }
