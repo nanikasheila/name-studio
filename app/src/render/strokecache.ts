@@ -27,6 +27,9 @@ interface Layer {
   content: Content;
   scale: number;
   pixelScale: number;
+  /** Where the picture's corner is on the page (mm): 0, 0 but for lines beside the page (欄外). */
+  origin: [number, number];
+  size: [number, number];
   canvas: HTMLCanvasElement;
   /** The scale asked for last and when that changed (to tell a zoom from a still view). */
   asked: number;
@@ -37,6 +40,20 @@ interface Layer {
 interface Content {
   shared: string;
   lines: string[];
+}
+
+function sameBox(layer: Layer, size: [number, number], origin: [number, number]): boolean {
+  return layer.size[0] === size[0] && layer.size[1] === size[1] && layer.origin[0] === origin[0] && layer.origin[1] === origin[1];
+}
+
+/** Whether `size` from `origin` (mm) holds all the picture covers. */
+function holds(origin: [number, number], size: [number, number], layer: Layer): boolean {
+  return (
+    origin[0] <= layer.origin[0] &&
+    origin[1] <= layer.origin[1] &&
+    origin[0] + size[0] >= layer.origin[0] + layer.size[0] &&
+    origin[1] + size[1] >= layer.origin[1] + layer.size[1]
+  );
 }
 
 function sameContent(a: Content, b: Content): boolean {
@@ -59,6 +76,8 @@ export class StrokeCache {
   private tips = 0;
   private settle = 0;
   private clock = 0;
+  /** The clock when the frame began. */
+  private frameStart = 0;
   /** Time spent this frame drawing pictures of pages seen for the first time. */
   private spent = 0;
 
@@ -76,11 +95,12 @@ export class StrokeCache {
   /** A frame begins: pages new to it get their share of time again. */
   startFrame(): void {
     this.spent = 0;
+    this.frameStart = this.clock;
   }
 
-  /** Forget pages not drawn since `keep` (the pages on screen are kept). */
-  forget(keep: Set<string>): void {
-    for (const key of this.layers.keys()) if (!keep.has(key.slice(0, key.indexOf("|")))) this.layers.delete(key);
+  /** Forget the pictures not drawn since the frame began (those on screen are kept). */
+  forget(): void {
+    for (const [key, layer] of this.layers) if (layer.used <= this.frameStart) this.layers.delete(key);
   }
 
   clear(): void {
@@ -98,6 +118,8 @@ export class StrokeCache {
    * Draw the page's lines that go under (or over) the panel borders, as
    * `drawStrokes` would, at `m` on `ctx` (whose transform maps to device pixels).
    * `layer` keeps the picture of each ラフ線のレイヤー apart, with only its lines.
+   * The picture covers `size` (mm) from `origin` on the page: the page, or
+   * the room beside it that lines reaching off the page cover.
    */
   draw(
     ctx: CanvasRenderingContext2D,
@@ -108,6 +130,7 @@ export class StrokeCache {
     style: StrokeStyle,
     layerId = "",
     only?: Stroke[],
+    origin: [number, number] = [0, 0],
   ): void {
     const strokes = (only ?? page.strokes).filter((stroke) => !!stroke.over === over);
     if (!strokes.length) return;
@@ -126,10 +149,18 @@ export class StrokeCache {
       layer.asked = m.scale;
       layer.askedAt = now;
     }
-    const fresh = !!layer && sameContent(layer.content, content) && layer.pixelScale === pixelScale;
-    if (layer && !fresh && layer.scale === m.scale && layer.pixelScale === pixelScale && added(layer.content, content)) {
-      // Lines drawn on top (the pen let go): only they are painted onto the picture.
+    const fresh = !!layer && sameContent(layer.content, content) && layer.pixelScale === pixelScale && sameBox(layer, size, origin);
+    if (
+      layer &&
+      !fresh &&
+      layer.scale === m.scale &&
+      layer.pixelScale === pixelScale &&
+      added(layer.content, content) &&
+      holds(origin, size, layer)
+    ) {
+      // Lines drawn on top (the pen let go): only they are painted onto the picture (made larger first when they reach past it).
       const start = this.now();
+      if (!sameBox(layer, size, origin)) this.grow(layer, size, origin);
       this.paintAdded(layer, strokes.slice(layer.content.lines.length), content, style);
       this.spent += this.now() - start;
     } else if (!layer || !fresh || layer.scale !== m.scale) {
@@ -142,13 +173,13 @@ export class StrokeCache {
         if (!layer) return;
       } else {
         const start = this.now();
-        layer = this.paint(key, layer, strokes, size, m.scale, pixelScale, content, style);
+        layer = this.paint(key, layer, strokes, size, origin, m.scale, pixelScale, content, style);
         this.spent += this.now() - start;
       }
     }
     layer.used = ++this.clock;
     // Pictures sit on whole device pixels, so they are as sharp as drawing directly.
-    let [x, y] = [m.x, m.y];
+    let [x, y] = [m.x + layer.origin[0] * m.scale, m.y + layer.origin[1] * m.scale];
     if (t.b === 0 && t.c === 0) {
       x = (Math.round(t.a * x + t.e) - t.e) / t.a;
       y = (Math.round(t.d * y + t.f) - t.f) / t.d;
@@ -169,6 +200,18 @@ export class StrokeCache {
     return { shared: shared.join(";"), lines };
   }
 
+  /** The picture made to cover `size` from `origin` (mm), holding what it had where it was. */
+  private grow(layer: Layer, size: [number, number], origin: [number, number]): void {
+    const k = layer.scale * layer.pixelScale;
+    const canvas = document.createElement("canvas");
+    [canvas.width, canvas.height] = [Math.max(1, Math.ceil(size[0] * k)), Math.max(1, Math.ceil(size[1] * k))];
+    const ctx = canvas.getContext("2d")!;
+    // On whole pixels, so the lines stay as sharp (they move by under half a pixel at most).
+    ctx.drawImage(layer.canvas, Math.round((layer.origin[0] - origin[0]) * k), Math.round((layer.origin[1] - origin[1]) * k));
+    layer.canvas.width = 0;
+    [layer.canvas, layer.size, layer.origin] = [canvas, size, origin];
+  }
+
   /** Paint lines added on top of those in the picture, as drawing all of them would. */
   private paintAdded(layer: Layer, strokes: Stroke[], content: Content, style: StrokeStyle): void {
     const ctx = layer.canvas.getContext("2d")!;
@@ -176,7 +219,7 @@ export class StrokeCache {
     drawStrokes(
       ctx,
       { strokes } as Page,
-      { scale: layer.scale, x: 0, y: 0 },
+      { scale: layer.scale, x: -layer.origin[0] * layer.scale, y: -layer.origin[1] * layer.scale },
       !!strokes[0]?.over,
       style.color,
       style.minWidthPx,
@@ -190,6 +233,7 @@ export class StrokeCache {
     old: Layer | undefined,
     strokes: Stroke[],
     size: [number, number],
+    origin: [number, number],
     scale: number,
     pixelScale: number,
     content: Content,
@@ -202,8 +246,16 @@ export class StrokeCache {
     const ctx = canvas.getContext("2d")!;
     ctx.setTransform(pixelScale, 0, 0, pixelScale, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawStrokes(ctx, { strokes } as Page, { scale, x: 0, y: 0 }, !!strokes[0]?.over, style.color, style.minWidthPx, style.brushes);
-    const layer: Layer = { content, scale, pixelScale, canvas, asked: scale, askedAt: old?.askedAt ?? 0, used: ++this.clock };
+    drawStrokes(
+      ctx,
+      { strokes } as Page,
+      { scale, x: -origin[0] * scale, y: -origin[1] * scale },
+      !!strokes[0]?.over,
+      style.color,
+      style.minWidthPx,
+      style.brushes,
+    );
+    const layer: Layer = { content, scale, pixelScale, origin, size, canvas, asked: scale, askedAt: old?.askedAt ?? 0, used: ++this.clock };
     this.layers.set(key, layer);
     this.keepBudget();
     return layer;

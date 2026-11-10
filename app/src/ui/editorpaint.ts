@@ -237,14 +237,14 @@ export class EditorPainter {
     if (!this.scene.drag) this.stage.keepRoom(project);
     this.stage.arrange(project);
     this.strokeCache.startFrame();
-    const drawn = new Set<string>();
+    const drawn = new Set<Slot>();
     for (const slot of this.stage.slots) {
       if (!this.stage.onCanvas(project, slot)) continue;
       this.drawPage(project, slot);
-      drawn.add(slot.page.id);
+      drawn.add(slot);
     }
-    this.strokeCache.forget(drawn);
     drawAside(this.ctx, project, this.stage.slots, {
+      lineCache: (slot) => (drawn.has(slot) ? this.strokeCache : null),
       visible: (page) => this.stage.visiblePage(page),
       selected: (page, kind, id) => this.picks.isSelected(page, kind, id),
       stickyHandle: this.scene.tool === "select" || this.scene.tool === "sticky" ? LINK_HANDLE : null,
@@ -252,6 +252,7 @@ export class EditorPainter {
       redraw: () => this.requestDraw(),
       referenceFrames: this.scene.tool === "reference" ? (slot) => this.drawReferenceFrames(slot) : undefined,
     });
+    this.strokeCache.forget();
     this.drawSpreadMarks(project);
     this.drawDragged(project);
     this.drawOverflow(project);

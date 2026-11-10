@@ -4,7 +4,7 @@
 // on top, as cut-outs and notes put down beside the sheet.
 import { heldBeside, heldBox, reachesOff, strokeBox } from "../domain/aside";
 import { bounds } from "../model/geometry";
-import type { HeldPanel, Page, Project } from "../model/model";
+import type { HeldPanel, Page, Project, Stroke } from "../model/model";
 import type { Slot } from "../editing/layout";
 import { ACCENT, drawSticky } from "./notedraw";
 import {
@@ -20,6 +20,7 @@ import {
   type MmToPx,
 } from "./pagedraw";
 import { pictureOf } from "./pictures";
+import type { StrokeCache } from "./strokecache";
 import { drawGoingTo } from "./screendraw";
 import { imageOf, opacityOf } from "../domain/references";
 import { markColor, markLayersOf, opacityOfLayer, roughLayersOf, strokesOn, withoutMarks } from "../domain/roughlayers";
@@ -38,6 +39,25 @@ export interface AsideMarks {
   redraw(): void;
   /** The 資料 tool: the pictures' outlines (and the chosen one's corners). */
   referenceFrames?(slot: Slot): void;
+  /** Where a page's lines beside it are kept as a picture while they do not change (pages on screen; null: drawn each time). */
+  lineCache?(slot: Slot): StrokeCache | null;
+}
+
+/** The room beside a page that lines are kept in a picture of grows in steps this size (mm): a line a little further out does not paint all of them again. */
+const ROOM_STEP_MM = 50;
+
+/** The box (mm) that lines cover with their widths, out to whole steps. */
+function roomOf(strokes: readonly Stroke[]): { origin: [number, number]; size: [number, number] } {
+  let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const stroke of strokes) {
+    const [a, b, c, d] = strokeBox(stroke);
+    const pad = stroke.widthMm * 2 + 1;
+    [x0, y0, x1, y1] = [Math.min(x0, a - pad), Math.min(y0, b - pad), Math.max(x1, c + pad), Math.max(y1, d + pad)];
+  }
+  const down = (v: number) => Math.floor(v / ROOM_STEP_MM) * ROOM_STEP_MM;
+  const up = (v: number) => Math.ceil(v / ROOM_STEP_MM) * ROOM_STEP_MM;
+  [x0, y0, x1, y1] = [down(x0), down(y0), up(x1), up(y1)];
+  return { origin: [x0, y0], size: [x1 - x0, y1 - y0] };
 }
 
 /** Colour of what is 保留. */
@@ -92,7 +112,14 @@ function drawUnder(ctx: CanvasRenderingContext2D, project: Project, slot: Slot, 
     if (!strokes.length) continue;
     ctx.globalAlpha = opacityOfLayer(layer);
     const ink = layer.marks ? (stroke: { id: string }) => (marks.selected(page, "stroke", stroke.id) ? ACCENT : markColor(layer)) : color;
-    for (const over of [false, true]) drawStrokes(ctx, { ...page, strokes }, m, over, ink, 0.7, project.brushes ?? []);
+    const brushes = project.brushes ?? [];
+    const cache = marks.lineCache?.(slot);
+    if (cache) {
+      // Kept as a picture like the page's own lines: drawn line by line each time the pages are, these were most of the frame after the pen let go.
+      const { origin, size } = roomOf(strokes);
+      for (const over of [false, true])
+        cache.draw(ctx, page, size, m, over, { color: ink, minWidthPx: 0.7, brushes }, `aside:${layer.id}`, strokes, origin);
+    } else for (const over of [false, true]) drawStrokes(ctx, { ...page, strokes }, m, over, ink, 0.7, brushes);
   }
   ctx.globalAlpha = 1;
 }
