@@ -32,6 +32,7 @@ Name Studio がどう組み立ててあるかを、1 か所で読めるように
 | [csp-format](https://github.com/nanikasheila/csp-format) | CSP の .clip / .cmc / .sut の形式。仕様は `docs/spec` | Name Studio を知らない |
 
 依存は上から下への一方向です。`name-model` が CSP の形式にもアプリにも依存しないことは `crates/clip-core/tests/layering.rs` が確かめます。
+CSP のファイルの中（SQLite の表）を書き換えるのは csp-format の関数だけで、`clip-core`・`name-cli`・アプリが SQL を直接書いていないことも同じテストが確かめます。
 
 ## 変わる速さで分ける（ペースレイヤリング）
 

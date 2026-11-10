@@ -6,24 +6,25 @@
 //! hidden ノンブル) come twice, the right page's marked with
 //! `ComicStoryInfoForRightPage` = 1. Everything sized by the canvas (render
 //! offscreens, layer thumbnails' canvas size, the preview) is widened; see
-//! docs/csp-spread-format.md.
+//! csp-format docs/spec/10-spread.md for the format, docs/csp-spread-format.md
+//! for how it is used here.
 
 use std::path::Path;
 
 use csp_format::ClipFile;
 use csp_format::copy::CopyLayer;
-use csp_format::database::{Row, has_table, select, value_as_text};
+use csp_format::database::{Row, select, value_as_text};
+use csp_format::edit::{preview_png, set_preview};
 use csp_format::offscreen::{Attribute, BlockData, Offscreen, Parameter, PixelKind, encode};
+use csp_format::rusqlite::Connection;
+use csp_format::rusqlite::types::Value;
 use csp_format::story::{
-    FOR_RIGHT_PAGE, LEFT_PAGE_FLAG, NOMBRE_INFO, RIGHT_PAGE_FLAG, STORY_INFO, canvas_value, drop_render_cache,
-    edit_text_blocks, map_bbox_x, story_layers,
+    FOR_RIGHT_PAGE, NOMBRE_INFO, STORY_INFO, canvas_value, drop_render_cache, edit_text_blocks, map_bbox_x,
+    story_layers,
 };
-use rusqlite::Connection;
-use rusqlite::types::Value;
 use serde::Serialize;
 
-use super::layers::{save, set_row_value};
-use super::page::has_column;
+use super::layers::{csp_image, save, set_row_value};
 use crate::RgbaImage;
 use crate::clip::{ClipDocument, round_half_even};
 use crate::error::{CspError, Result};
@@ -31,14 +32,6 @@ use crate::raster::{Filter, decode_png, resize};
 
 /// Offscreen blocks are 256 px square.
 const BLOCK_SIZE: u32 = 256;
-/// CropFrameOptionFlag of the spreads CSP EX 5 makes (no page side bit).
-const SPREAD_FRAME_FLAG: i64 = 17;
-/// Canvas columns CSP sets once a spread has its right page's story info layers.
-const SPREAD_CANVAS_FLAGS: [&str; 3] = [
-    "ComicStoryRightLayerCreated",
-    "ComicNombreRightLayerCreated",
-    "ComicNombreLayerCreated",
-];
 
 /// Where single-page content goes on the spread, in template px.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -73,22 +66,9 @@ pub fn spread_layout(single: &ClipDocument) -> Result<SpreadLayout> {
     })
 }
 
-fn canvas_size(db: &Connection) -> Result<(f64, f64, i64)> {
-    Ok(db.query_row(
-        "SELECT CanvasWidth, CanvasResolution, CanvasUnit FROM Canvas",
-        [],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-    )?)
-}
-
 /// The width in px of a canvas twice as wide as the single page's.
 fn spread_width_px(db: &Connection) -> Result<i64> {
-    let (width, resolution, unit) = canvas_size(db)?;
-    Ok(round_half_even(super::page::canvas_width_px(
-        2.0 * width,
-        resolution,
-        unit,
-    )))
+    Ok(round_half_even(2.0 * super::page::canvas_width(db)?))
 }
 
 /// Write a spread template made from the single page `single` to `output`.
@@ -108,52 +88,14 @@ pub fn make_spread_template(single: &Path, output: &Path) -> Result<SpreadLayout
         canvas_value(file.database(), "ComicIsLeftPage")?,
         Some(Value::Integer(1))
     );
-    set_spread_canvas(file.database())?;
+    // The canvas settings and the canvas size the layer thumbnails are kept for.
+    file.make_double_page()?;
     widen_offscreens(&mut file, (old_width, old_height), layout.width_px as i64)?;
-    for column in ["ThumbnailCanvasWidth", "ThumbnailCanvasHeight"] {
-        if has_column(file.database(), "LayerThumbnail", column)? {
-            let value = if column.ends_with("Width") {
-                layout.width_px
-            } else {
-                layout.height_px
-            };
-            file.database()
-                .execute(&format!("UPDATE LayerThumbnail SET \"{column}\" = ?1"), [value])?;
-        }
-    }
     widen_preview(file.database(), old_width, layout.width_px as i64)?;
     file.reload()?;
     add_right_story_layers(&mut file, &source, old_width, was_left, &layout)?;
     save(&file, output)?;
     Ok(layout)
-}
-
-fn add_column(db: &Connection, table: &str, column: &str) -> Result<()> {
-    if !has_column(db, table, column)? {
-        db.execute(&format!("ALTER TABLE \"{table}\" ADD COLUMN \"{column}\""), [])?;
-    }
-    Ok(())
-}
-
-fn set_spread_canvas(db: &Connection) -> Result<()> {
-    db.execute("UPDATE Canvas SET CanvasWidth = CanvasWidth * 2", [])?;
-    add_column(db, "Canvas", "CanvasDoublePage")?;
-    db.execute("UPDATE Canvas SET CanvasDoublePage = 1", [])?;
-    if has_column(db, "Canvas", "ComicIsLeftPage")? {
-        db.execute("UPDATE Canvas SET ComicIsLeftPage = 0", [])?;
-    }
-    if let Some(Value::Integer(flag)) = canvas_value(db, "CropFrameOptionFlag")? {
-        let flag = (flag & !(LEFT_PAGE_FLAG | RIGHT_PAGE_FLAG)) | SPREAD_FRAME_FLAG;
-        db.execute("UPDATE Canvas SET CropFrameOptionFlag = ?1", [flag])?;
-    }
-    if has_column(db, "Layer", "ComicStoryInfoType")? {
-        for column in SPREAD_CANVAS_FLAGS {
-            add_column(db, "Canvas", column)?;
-            db.execute(&format!("UPDATE Canvas SET \"{column}\" = 1"), [])?;
-        }
-        add_column(db, "Layer", FOR_RIGHT_PAGE)?;
-    }
-    Ok(())
 }
 
 /// Mipmap level sizes from a base size: each level is half of the one
@@ -239,10 +181,7 @@ fn widen_offscreens(file: &mut ClipFile, (width, height): (i64, i64), new_width:
             .values;
         values[..4].copy_from_slice(&[resized.width, resized.height, resized.blocks_x, resized.blocks_y]);
         attribute.set_block_sizes(&data.record_sizes());
-        file.database().execute(
-            "UPDATE Offscreen SET Attribute = ?1 WHERE MainId = ?2",
-            (attribute.to_bytes(), row.int("MainId")),
-        )?;
+        file.set_offscreen(row.int("MainId"), &attribute, None)?;
         if stored.is_some() {
             file.set_external(&external, data.to_bytes());
         }
@@ -252,17 +191,7 @@ fn widen_offscreens(file: &mut ClipFile, (width, height): (i64, i64), new_width:
 
 /// A blank (white) preview as wide as the spread, at the template's scale.
 fn widen_preview(db: &Connection, old_width: i64, new_width: i64) -> Result<()> {
-    if !has_table(db, "CanvasPreview")? {
-        return Ok(());
-    }
-    let row: Option<(i64, Option<Vec<u8>>)> = db
-        .query_row(
-            "SELECT rowid, ImageData FROM CanvasPreview ORDER BY rowid LIMIT 1",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .ok();
-    let Some((row_id, Some(png))) = row else {
+    let Some(png) = preview_png(db)? else {
         return Ok(());
     };
     let Ok(preview) = decode_png(&png) else {
@@ -275,18 +204,7 @@ fn widen_preview(db: &Connection, old_width: i64, new_width: i64) -> Result<()> 
         pixels: [255, 255, 255, 255].repeat(width as usize * preview.height as usize),
     };
     wide.paste(&resize(&preview, preview.width, preview.height, Filter::Box), 0, 0);
-    db.execute(
-        "UPDATE CanvasPreview SET ImageData = ?1 WHERE rowid = ?2",
-        (wide.to_png()?, row_id),
-    )?;
-    for (column, value) in [("ImageWidth", width), ("ImageHeight", preview.height)] {
-        if has_column(db, "CanvasPreview", column)? {
-            db.execute(
-                &format!("UPDATE CanvasPreview SET \"{column}\" = ?1 WHERE rowid = ?2"),
-                (value, row_id),
-            )?;
-        }
-    }
+    set_preview(db, &csp_image(&wide))?;
     Ok(())
 }
 
@@ -352,9 +270,7 @@ fn add_right_story_layers(
 }
 
 fn layer_value(db: &Connection, layer_id: i64, column: &str) -> Result<Value> {
-    Ok(db.query_row(
-        &format!("SELECT \"{column}\" FROM Layer WHERE MainId = ?1"),
-        [layer_id],
-        |row| row.get(0),
-    )?)
+    csp_format::database::row(db, "Layer", layer_id)?
+        .and_then(|row| row.get(column).cloned())
+        .ok_or_else(|| CspError::format(format!("Layer {layer_id} has no {column}")))
 }

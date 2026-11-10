@@ -17,7 +17,7 @@ pub mod spread;
 pub mod update;
 pub mod verify;
 
-use rusqlite::types::Value;
+use csp_format::rusqlite::types::Value;
 
 /// One row as (column, value) pairs, in the table's column order.
 pub type Values = Vec<(String, Value)>;

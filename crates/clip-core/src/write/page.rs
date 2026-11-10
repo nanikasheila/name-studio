@@ -11,15 +11,17 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use csp_format::ClipFile;
-use csp_format::database::Row;
-use csp_format::story::{drop_render_cache, move_run_length};
-use rusqlite::types::Value;
-use rusqlite::{Connection, OptionalExtension};
+use csp_format::database::{Row, first_row};
+use csp_format::edit::{preview_png, set_preview};
+use csp_format::model::Unit;
+use csp_format::rusqlite::Connection;
+use csp_format::rusqlite::types::Value;
+use csp_format::story::{STORY_INFO, layer_text, set_layer_text, story_layers};
 
 use super::layers::{copy_layer, csp_image, format_error, raster_like, save, set_row_value};
 use super::{Values, value_of};
 use crate::clip::{ClipDocument, LayerKind, round_half_even};
-use crate::error::Result;
+use crate::error::{CspError, Result};
 use crate::plan::{CellTransform, PlannedContent, PlannedPage};
 use crate::raster::{Filter, decode_png, resize};
 use crate::text::{split_attribute_array, transform_text_attributes};
@@ -225,10 +227,6 @@ fn transform_array(blob: &[u8], scale: f64, dx: f64, dy: f64, column: &str, warn
     }
 }
 
-pub(crate) fn has_column(db: &Connection, table: &str, column: &str) -> Result<bool> {
-    Ok(csp_format::database::has_column(db, table, column)?)
-}
-
 /// Set the page position and side (left / right) on the copied canvas.
 ///
 fn is_digit(character: char) -> bool {
@@ -263,57 +261,19 @@ fn replace_episode(text: &str, old: i64, new: i64) -> String {
 /// character count of its single style run (TLV 0x0b) follows the change,
 /// and the cached rendering of the text (TLV 0x32) is cleared.
 fn replace_story_index(db: &Connection, old: i64, new: i64) -> Result<()> {
-    if !has_column(db, "Layer", "ComicStoryInfoType")? {
-        return Ok(());
-    }
-    let rows: Vec<(i64, Value, Value)> = {
-        let mut statement =
-            db.prepare("SELECT MainId, TextLayerString, TextLayerAttributes FROM Layer WHERE ComicStoryInfoType = 1")?;
-        statement
-            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
-            .collect::<std::result::Result<_, _>>()?
-    };
-    for (layer_id, string, attributes) in rows {
-        let (text, as_blob) = match string {
-            Value::Blob(bytes) => (String::from_utf8_lossy(&bytes).into_owned(), true),
-            Value::Text(text) => (text, false),
-            _ => continue,
-        };
-        let changed = replace_episode(&text, old, new);
-        if changed == text {
-            continue;
+    for (layer_id, _) in story_layers(db, STORY_INFO)? {
+        if let Some(text) = layer_text(db, layer_id)? {
+            set_layer_text(db, layer_id, &replace_episode(&text, old, new))?;
         }
-        let stored = if as_blob {
-            Value::Blob(changed.clone().into_bytes())
-        } else {
-            Value::Text(changed.clone())
-        };
-        db.execute(
-            "UPDATE Layer SET TextLayerString = ?1 WHERE MainId = ?2",
-            (stored, layer_id),
-        )?;
-        if let Value::Blob(attributes) = attributes {
-            let delta = changed.chars().count() as i64 - text.chars().count() as i64;
-            let moved = move_run_length(&attributes, delta)?;
-            db.execute(
-                "UPDATE Layer SET TextLayerAttributes = ?1 WHERE MainId = ?2",
-                (moved, layer_id),
-            )?;
-        }
-        drop_render_cache(db, layer_id)?;
     }
     Ok(())
 }
 
-pub(crate) fn canvas_width_px(width: f64, resolution: f64, unit: i64) -> f64 {
-    let per_inch = match unit {
-        2 => 25.4,
-        1 => 2.54,
-        3 => 1.0,
-        5 => 72.0,
-        _ => return width,
-    };
-    width * resolution / per_inch
+/// The canvas width in px as its unit and resolution give it (not rounded).
+pub(crate) fn canvas_width(db: &Connection) -> Result<f64> {
+    let canvas = first_row(db, "Canvas")?.ok_or_else(|| CspError::format("Canvas の行がありません"))?;
+    let unit = Unit::from_code(canvas.int("CanvasUnit"));
+    Ok(unit.to_pixels(canvas.real("CanvasWidth"), canvas.real("CanvasResolution")))
 }
 
 /// Draw the page's part of the sheet preview onto the page preview.
@@ -326,28 +286,13 @@ fn update_preview(db: &Connection, sheet: &ClipDocument, page: &PlannedPage) -> 
     let Some(sheet_png) = &sheet.preview_png else {
         return Ok(());
     };
-    if !csp_format::database::has_table(db, "CanvasPreview")? {
-        return Ok(());
-    }
-    let row: Option<(i64, Option<Vec<u8>>)> = db
-        .query_row(
-            "SELECT rowid, ImageData FROM CanvasPreview ORDER BY rowid LIMIT 1",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .optional()?;
-    let Some((row_id, Some(preview_png))) = row else {
+    let Some(preview_png) = preview_png(db)? else {
         return Ok(());
     };
-    let (width, resolution, unit): (f64, f64, i64) = db.query_row(
-        "SELECT CanvasWidth, CanvasResolution, CanvasUnit FROM Canvas",
-        [],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-    )?;
     let (Ok(mut preview), Ok(source)) = (decode_png(&preview_png), decode_png(sheet_png)) else {
         return Ok(());
     };
-    let page_width = canvas_width_px(width, resolution, unit);
+    let page_width = canvas_width(db)?;
     if page_width <= 0.0 || sheet.canvas.width_px <= 0 {
         return Ok(());
     }
@@ -372,35 +317,19 @@ fn update_preview(db: &Connection, sheet: &ClipDocument, page: &PlannedPage) -> 
         round_half_even(x0),
         round_half_even(y0),
     );
-    db.execute(
-        "UPDATE CanvasPreview SET ImageData = ?1 WHERE rowid = ?2",
-        (preview.to_png()?, row_id),
-    )?;
+    set_preview(db, &csp_image(&preview))?;
     Ok(())
 }
 
 /// Replace the page preview with `image` (the whole page) shrunk to its size.
 pub(crate) fn replace_preview(db: &Connection, image: &crate::RgbaImage) -> Result<()> {
-    if !csp_format::database::has_table(db, "CanvasPreview")? {
-        return Ok(());
-    }
-    let row: Option<(i64, Option<Vec<u8>>)> = db
-        .query_row(
-            "SELECT rowid, ImageData FROM CanvasPreview ORDER BY rowid LIMIT 1",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .optional()?;
-    let Some((row_id, Some(preview_png))) = row else {
+    let Some(preview_png) = preview_png(db)? else {
         return Ok(());
     };
     let Ok(preview) = decode_png(&preview_png) else {
         return Ok(());
     };
     let shrunk = resize(image, preview.width, preview.height, Filter::Box);
-    db.execute(
-        "UPDATE CanvasPreview SET ImageData = ?1 WHERE rowid = ?2",
-        (shrunk.to_png()?, row_id),
-    )?;
+    set_preview(db, &csp_image(&shrunk))?;
     Ok(())
 }

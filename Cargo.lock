@@ -344,7 +344,6 @@ dependencies = [
  "csp-format",
  "name-model",
  "rayon",
- "rusqlite",
  "serde",
  "serde_json",
  "tempfile",
@@ -491,8 +490,8 @@ dependencies = [
 
 [[package]]
 name = "csp-assets"
-version = "0.1.0"
-source = "git+https://github.com/nanikasheila/csp-format?rev=fdc57314dc8aa99caedee5ef206749b7c38a0656#fdc57314dc8aa99caedee5ef206749b7c38a0656"
+version = "0.2.0"
+source = "git+https://github.com/nanikasheila/csp-format?rev=f787f2f63fa97d6d228ad96584ba3dbac1b2efe0#f787f2f63fa97d6d228ad96584ba3dbac1b2efe0"
 dependencies = [
  "csp-format",
  "encoding_rs",
@@ -504,8 +503,8 @@ dependencies = [
 
 [[package]]
 name = "csp-format"
-version = "0.1.0"
-source = "git+https://github.com/nanikasheila/csp-format?rev=fdc57314dc8aa99caedee5ef206749b7c38a0656#fdc57314dc8aa99caedee5ef206749b7c38a0656"
+version = "0.2.0"
+source = "git+https://github.com/nanikasheila/csp-format?rev=f787f2f63fa97d6d228ad96584ba3dbac1b2efe0#f787f2f63fa97d6d228ad96584ba3dbac1b2efe0"
 dependencies = [
  "flate2",
  "libc",

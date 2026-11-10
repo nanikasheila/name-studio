@@ -7,7 +7,7 @@ use clip_core::text::{
 };
 use clip_core::vector::{parse_vector_data, select_vector_objects, transform_vector_data};
 use clip_core::{ClipDocument, LayerKind};
-use rusqlite::Connection;
+use csp_format::rusqlite::Connection;
 
 fn be32(value: u32) -> [u8; 4] {
     value.to_be_bytes()
@@ -195,7 +195,7 @@ fn sample_clip(folder: &std::path::Path) -> std::path::PathBuf {
     database
         .execute(
             "UPDATE Layer SET TextLayerAttributes = ?1, TextLayerAttributesArray = ?2 WHERE MainId = 6",
-            rusqlite::params![text_attributes([40, 50, 60, 150], 8.0, "Font"), {
+            csp_format::rusqlite::params![text_attributes([40, 50, 60, 150], 8.0, "Font"), {
                 let block = text_attributes([70, 80, 90, 180], 9.0, "源ノ角ゴシック");
                 let mut array = (block.len() as u32).to_le_bytes().to_vec();
                 array.extend(block);
@@ -206,13 +206,13 @@ fn sample_clip(folder: &std::path::Path) -> std::path::PathBuf {
     database
         .execute(
             "INSERT INTO Offscreen VALUES(1, ?1, ?2)",
-            rusqlite::params![csp_attribute(600, 300), RASTER_ID.as_bytes()],
+            csp_format::rusqlite::params![csp_attribute(600, 300), RASTER_ID.as_bytes()],
         )
         .unwrap();
     database
         .execute(
             "INSERT INTO VectorObjectList VALUES(1, 5, ?1)",
-            rusqlite::params![VECTOR_ID.as_bytes()],
+            csp_format::rusqlite::params![VECTOR_ID.as_bytes()],
         )
         .unwrap();
     let vectors = vector_payload(&[

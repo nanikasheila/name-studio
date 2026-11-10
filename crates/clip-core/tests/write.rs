@@ -273,7 +273,7 @@ fn scales_text_with_the_page() {
     let output = folder.path().join("text.clip");
     let values = vec![(
         "ComicStoryStoryName".to_owned(),
-        rusqlite::types::Value::Text("第4話".into()),
+        csp_format::rusqlite::types::Value::Text("第4話".into()),
     )];
     clip_core::write::page::write_page(&template_path, &sheet, page, &output, Some(5), &values).unwrap();
     let document = ClipDocument::read(&output).unwrap();
@@ -391,7 +391,7 @@ fn splits_a_sheet_into_a_work() {
         .1
         .to_vec();
     assert_eq!(cache, 0u32.to_le_bytes());
-    let work = rusqlite::Connection::open(out.join("第1話.cmc")).unwrap();
+    let work = csp_format::rusqlite::Connection::open(out.join("第1話.cmc")).unwrap();
     let story_index: i64 = work
         .query_row("SELECT ComicStoryStoryIndex FROM Project", [], |row| row.get(0))
         .unwrap();
@@ -669,7 +669,7 @@ fn writes_vector_and_text_layers_copied_from_the_sheet() {
     assert_eq!(said.kind, LayerKind::Text);
     assert_eq!(page.text_strings(&said), vec!["こんにちは\r\nせかい".to_owned()]);
     // CSP shows garbage for text stored as TEXT instead of a blob.
-    let stored: rusqlite::types::Value = page
+    let stored: csp_format::rusqlite::types::Value = page
         .database()
         .query_row(
             "SELECT TextLayerString FROM Layer WHERE MainId = ?1",
@@ -677,7 +677,7 @@ fn writes_vector_and_text_layers_copied_from_the_sheet() {
             |row| row.get(0),
         )
         .unwrap();
-    assert!(matches!(stored, rusqlite::types::Value::Blob(_)));
+    assert!(matches!(stored, csp_format::rusqlite::types::Value::Blob(_)));
     let attributes = &page.text_blocks(&said).unwrap()[0];
     assert_eq!(attributes.font_size_pt, Some(7.5));
     assert_eq!(attributes.bbox, Some((300, 60, 340, 200)));

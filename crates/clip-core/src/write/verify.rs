@@ -11,6 +11,9 @@
 
 use std::path::{Path, PathBuf};
 
+use csp_format::database::row;
+use csp_format::rusqlite::types::Value;
+use csp_format::story::canvas_value;
 use serde::Serialize;
 
 use super::raster_page::{PageLayer, TemplateCanvas};
@@ -485,14 +488,11 @@ fn check_document(document: &ClipDocument, check: &mut FileCheck) {
             },
             LayerKind::Text => {
                 check.texts += 1;
-                let stored: Option<rusqlite::types::Value> = database
-                    .query_row(
-                        "SELECT TextLayerString FROM Layer WHERE MainId = ?1",
-                        [layer.main_id],
-                        |row| row.get(0),
-                    )
-                    .ok();
-                if matches!(stored, Some(rusqlite::types::Value::Text(_))) {
+                let stored = row(database, "Layer", layer.main_id).ok().flatten();
+                if matches!(
+                    stored.as_ref().and_then(|row| row.get("TextLayerString")),
+                    Some(Value::Text(_))
+                ) {
                     check.problems.push(format!(
                         "テキストレイヤー「{}」の文字が TEXT 型です（CSP では文字化けします）",
                         layer.name
@@ -503,19 +503,11 @@ fn check_document(document: &ClipDocument, check: &mut FileCheck) {
         }
     }
     if !brush_styles.is_empty() {
-        let manager: Option<i64> = database
-            .query_row("SELECT BrushStyleManager FROM Canvas", [], |row| row.get(0))
-            .ok()
-            .flatten();
-        let managed = manager.is_some_and(|id| {
-            database
-                .query_row(
-                    "SELECT COUNT(*) FROM BrushStyleManager WHERE MainId = ?1",
-                    [id],
-                    |row| row.get::<_, i64>(0),
-                )
-                .is_ok_and(|count| count == 1)
-        });
+        let has_row = |table: &str, id: i64| row(database, table, id).is_ok_and(|row| row.is_some());
+        let managed = matches!(
+            canvas_value(database, "BrushStyleManager"),
+            Ok(Some(Value::Integer(id))) if has_row("BrushStyleManager", id)
+        );
         if !managed {
             check
                 .problems
@@ -524,12 +516,7 @@ fn check_document(document: &ClipDocument, check: &mut FileCheck) {
         brush_styles.sort_unstable();
         brush_styles.dedup();
         for style in brush_styles {
-            let found = database
-                .query_row("SELECT COUNT(*) FROM BrushStyle WHERE MainId = ?1", [style], |row| {
-                    row.get::<_, i64>(0)
-                })
-                .is_ok_and(|count| count > 0);
-            if !found {
+            if !has_row("BrushStyle", style.into()) {
                 check.problems.push(format!(
                     "ベクターの線が使うブラシ（BrushStyle {style}）がファイルにありません"
                 ));

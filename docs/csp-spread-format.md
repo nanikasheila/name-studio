@@ -1,41 +1,33 @@
-# CSP の見開きページの形式
+# CSP の見開きページ（Name Studio での使い方）
 
-CSP EX 5.1.4 が作った見開きページ（作品のページ管理で「見開きページに変更」したもの）と、
-同じ作品の単ページを中の SQLite で比べた結果です（2026-10-23）。`clip-core` の
-`write::spread` は、この形に合わせて単ページのひな形から見開きのひな形を作ります。
+見開きページの形式そのもの（キャンバスの列、両ページの作品情報、大きさで決まるもの）は、
+[csp-format の仕様 10 章「見開きのページ」](https://github.com/nanikasheila/csp-format/blob/main/docs/spec/10-spread.md)が正本です。
+作品（.cmc）の側（`PageFlag`、`LinkWidth`、ページの番号が 2 つ進むこと）は同じ仕様の 07 章にあります。
+形式について新しく分かったことは、そちらに書いてください。
 
-## キャンバス
+ここには、Name Studio（`clip-core` の `write::spread`）がそれをどう使うかだけを書きます。
 
-- `CanvasWidth` が単ページの 2 倍（297 mm → 594 mm、600 dpi で 7016 px → 14031 px。px は mm から丸め直す）。
-  高さは同じ。
-- `CanvasDoublePage` = 1、`ComicIsLeftPage` = 0、`ComicPageIndex` は右開きなら右ページ（番号の若いほう）の位置。
-- `ComicStoryRightLayerCreated` / `ComicNombreRightLayerCreated` = 1（単ページには列がない）。
-- 枠の値（`CropFrameWidth/Height`、`CropFrameInner*`、裁ち落とし）は **1 ページ分のまま**。
-  2 ページの仕上がり枠はノド（キャンバスの真ん中）で合わさる。
-  左ページの仕上がりは `ceil((W2 - 2T) / 2)` から、右ページはノド `= その値 + T` から始まる（T は 1 ページの仕上がり幅 px）。
-- `CropFrameOptionFlag`: 単ページの左右の印（2 = 左、4 = 右）が消え、5.1.4 で作り直した見開きは 17。
+## 単ページのひな形から見開きのひな形を作る
 
-## 作品情報・ノンブル
+見開きのひな形をユーザーに用意してもらわずに済むよう、単ページのひな形から作ります（`make_spread_template`）。
 
-- `ComicStoryInfoType` 1（作品情報）と 2（ノンブル）のテキストレイヤーが各ページに 1 組、計 2 組。
-- 右ページ用は Layer の `ComicStoryInfoForRightPage` = 1、左ページ用は NULL（単ページには列がない）。
-  レイヤー名は 4 つとも単ページと同じ「(作品情報)」「(ノンブル)」。
-- 文字ブロックの bbox（TLV 0x2A、レイヤー座標。`LayerOffsetX` を足すとキャンバス座標）は単ページの位置を
-  各ページの仕上がりまでずらしたもの。ノンブルはノド側にある（左ページは右端、右ページは左端 = ノド）。
-- テキストの描画キャッシュ（TLV 0x32 → Offscreen）は CSP が開くときに作り直す。
+1. キャンバスを見開きにする（csp-format の `ClipFile::make_double_page`）。
+2. キャンバスの大きさのオフスクリーンを、全部の段で広げる。画素のあるものは、もとの絵を左に残して右にも繰り返す（白い用紙は両方のページで白いまま）。
+   画素のないものは、ないままにする（`widen_offscreens`）。
+3. プレビューを同じ縮尺のまま横に広げる（足した分は白。ページを書くときに描き直す）。
+4. 作品情報とノンブルのレイヤーを左のページの位置へずらし、右のページ用に 1 組ずつ写して `ComicStoryInfoForRightPage` を 1 にする（`add_right_story_layers`）。
+   ノンブルはノド側の端に置くので、ひな形と左右が逆になるページの分は鏡に映した位置にする（右のページのノンブルは、左のページのノンブルが終わる所の 1 px 内側から始まる）。
 
-## ピクセルの入れ物
+## どこに何を置くか（`SpreadLayout`）
 
-- Offscreen の `Attribute` は、先頭 16 バイトが BE の u32 で [16, Parameter 節の長さ, InitColor 節の長さ, BlockSize 節の長さ]。
-  - Parameter 節: 名前、width, height, blocks_x, blocks_y, 0x21, 1, 4, 5、そのあと大きさに関係しない 38 バイト。
-  - InitColor 節: 用紙だけ白（flag 1、ffffffff）。
-  - BlockSize 節: 名前、12、ブロック数 n、4、ブロックごとの u32 が n 個（ペイロードの各ブロックレコードの長さ。空は 0x68）。
-- ミップマップは 8 段、各段は前の段の半分（切り捨て）。ルートはキャンバスちょうど、ほかのレイヤーは 256 の倍数に切り上げた大きさ。
-- 多くの段は外部チャンクがない（ID だけ）。CSP が開くときに作る。
-- `LayerThumbnail` の `ThumbnailCanvasWidth/Height` はキャンバスの大きさ。サムネイル自体は 512×512 のまま。
-- `CanvasPreview` はキャンバスの 1/8（見開きなら 1753×1240）。
+仕上がりの幅を T px、見開きの幅を W2 px として、
 
-## 作品（.cmc）
+- 左のページの仕上がりは `ceil((W2 − 2T) / 2)` から、右のページはノド（その値 + T）から始まる。
+- 単ページのひな形に合わせて作った紙面は、左のページでは `left_dx`、右のページでは `right_dx` だけ横にずらして置く。
+- 見開きのコマ（ノドをまたぐコマ）は、両方のページの紙面を 1 枚にしてから置く。
 
-- `CanvasNode` は見開きも 1 行。`PageFlag` = 1、`LinkWidth` が 2 倍（594）。
-- ページファイルの番号は見開きで 2 つ進む（page0002 が見開きなら次は page0004）。
+右綴じなら、番号の若いページが右に来ます。どちらが右かは作品の綴じ方から決めます（`name-model` の `spreads`）。
+
+## 確かめ方
+
+`clip-core` のテスト（合成したひな形）と、CI の実アプリの書き出しで確かめます。CSP で開いての確認は、正式版に上げる前に行います（[release.md](release.md)）。

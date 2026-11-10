@@ -35,8 +35,8 @@ use csp_assets::subtool::blob::{
 /// The 入り抜き影響先 item of the brush size.
 const IN_OUT_SIZE: u32 = 1001;
 use csp_assets::subtool::{Cells, MaterialFile, Node, SubToolDb, SutParts};
+use csp_format::rusqlite::types::Value;
 use name_model::{CspMaterial, CspToolData, CspValue};
-use rusqlite::types::Value;
 use serde::Serialize;
 
 use crate::RgbaImage;
@@ -509,7 +509,7 @@ fn kind_of(node: &Node, variant: &Row) -> SubToolKind {
 /// Whether the column exists and is not NULL.
 fn present(row: &Row, column: &str) -> bool {
     row.get(column)
-        .is_some_and(|value| !matches!(value, rusqlite::types::Value::Null))
+        .is_some_and(|value| !matches!(value, csp_format::rusqlite::types::Value::Null))
 }
 
 fn real_or(row: &Row, column: &str, default: f64) -> f64 {
@@ -930,7 +930,7 @@ mod tests {
 
     /// A .sut like the ones CSP writes: one node, its variant, one material.
     fn sut(name: &str, input: i64, composite: i64, vector_eraser: Option<i64>) -> Vec<u8> {
-        let connection = rusqlite::Connection::open_in_memory().unwrap();
+        let connection = csp_format::rusqlite::Connection::open_in_memory().unwrap();
         connection
             .execute_batch(
                 "CREATE TABLE Manager(_PW_ID INTEGER PRIMARY KEY AUTOINCREMENT, ToolType INTEGER, Version INTEGER, RootUuid BLOB);
@@ -949,7 +949,7 @@ mod tests {
         connection
             .execute(
                 "INSERT INTO Node(NodeUuid, NodeName, NodeInputOp, NodeOutputOp, NodeFirstChildUuid, NodeNextUuid, NodeVariantID) VALUES (?1, ?2, ?3, ?3, X'00', X'00', 87)",
-                rusqlite::params![&uuid[..], name, input],
+                csp_format::rusqlite::params![&uuid[..], name, input],
             )
             .unwrap();
         let path = ".:91:20:abc:data:material_0.layer";
@@ -957,7 +957,7 @@ mod tests {
         connection
             .execute(
                 "INSERT INTO Variant VALUES (NULL, 87, 80, ?1, 6, 5.0, 0, ?2, 100, 1, ?3, 1, 20.0, 0, 1, 1.5, 2, ?4, ?5, 1, 1, 30)",
-                rusqlite::params![
+                csp_format::rusqlite::params![
                     composite,
                     effector(48, 0x10, 10, &[[0.0, 0.0], [0.6, 0.1], [1.0, 1.0]]),
                     pattern,
@@ -972,7 +972,7 @@ mod tests {
         connection
             .execute(
                 "INSERT INTO MaterialFile(InstallFolder, OriginalPath, FileData) VALUES (0, ?1, ?2)",
-                rusqlite::params![path, tar(&[("thumbnail/thumbnail.png", &tip_png())])],
+                csp_format::rusqlite::params![path, tar(&[("thumbnail/thumbnail.png", &tip_png())])],
             )
             .unwrap();
         csp_format::database::serialize(&connection).unwrap()
