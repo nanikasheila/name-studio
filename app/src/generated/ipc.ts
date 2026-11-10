@@ -801,6 +801,13 @@ export interface Commands {
    * the tips and papers it uses are packed from.
    */
   write_csp_sub_tool: [{ path: string; tool: CspToolData; name: string; materials?: string | null }, WrittenSubTool];
+  /**
+   * Shows `path` in the computer's file manager: a file in its folder, chosen
+   * there (Explorer on Windows); a folder opened. A path that is not there
+   * (a save that failed before the file was made) opens the nearest folder
+   * above it that is. Only shows: nothing is opened with a program or changed.
+   */
+  show_in_folder: [{ path: string }, void];
   // fonts.rs
   /** The fonts in the system and user font folders, by name. */
   list_fonts: [void, FontFace[]];

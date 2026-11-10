@@ -316,6 +316,7 @@ body:has(#viewer.start) .viewer-only { display: none; }
 .alert.info { background: var(--panel); color: var(--text); border-color: var(--accent); }
 .alert p { margin: 0; flex: 1; white-space: pre-line; }
 .alert button { border: 0; background: transparent; color: inherit; font-size: calc(16 * var(--px)); line-height: 1; cursor: pointer; padding: 2px 4px; }
+.alert-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; max-width: 60%; }
 .alert button.alert-action { font-size: calc(12 * var(--px)); padding: 2px 8px; border: 1px solid currentColor; border-radius: 4px; white-space: nowrap; }
 dialog.export {
   width: min(560px, calc(100vw - 32px)); border: 1px solid var(--line); border-radius: 10px;
@@ -346,6 +347,8 @@ dialog.image-import { width: min(820px, 94vw); }
 .name-check-list button:hover { background: var(--hover); }
 .name-check-list button.fix { align-self: flex-start; border: 1px solid var(--warn-line); border-radius: 4px; background: var(--panel); color: var(--text); padding: 3px 8px; margin-bottom: 4px; }
 .export .message.error { color: var(--danger); }
+.export .message-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 6px; }
+.export .message-actions[hidden] { display: none; }
 .export .actions { display: flex; justify-content: flex-end; gap: 8px; }
 /* What 書き出す makes, the messages and the buttons stay at the bottom while the settings scroll. */
 .export .ne-footer { position: sticky; bottom: -20px; margin: 8px -20px -20px; padding: 8px 20px 16px; background: var(--panel); border-top: 1px solid var(--line); }

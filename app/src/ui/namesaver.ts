@@ -15,6 +15,7 @@ import type { SaveFacts } from "../editing/savestate";
 import type { Session } from "../editing/session";
 import { fail } from "../platform/status";
 import { explain } from "../platform/errortext";
+import { folderStep } from "../platform/reveal";
 
 export const PROJECT_EXTENSION = "namestudio";
 
@@ -108,11 +109,12 @@ export class NameSaver {
     return true;
   }
 
-  async save(saveAs = false): Promise<boolean> {
+  /** Save the open name: to its file, or (`saveAs`, or none yet) where the person picks; `target`: to that file (もう一度). */
+  async save(saveAs = false, target?: string): Promise<boolean> {
     const session = this.host.session;
     const project = session.project;
     if (!project) return false;
-    let path = session.path;
+    let path = target ?? session.path;
     if (!path || saveAs) {
       const suggested =
         project.source?.path.replace(/\.clip$/i, `.${PROJECT_EXTENSION}`) ?? `${project.title || "ネーム"}.${PROJECT_EXTENSION}`;
@@ -164,7 +166,15 @@ export class NameSaver {
       }
       if (session.id === id) this.kept.failed = String(error);
       this.host.changed();
-      showAlert("save", `保存できませんでした。\n${path}\n${explain(error).text}`, "error");
+      if (session.id === id) {
+        const again = path;
+        // What can be done next: the same place again (once the cause is dealt with), another place, or a look at the folder.
+        showAlert("save", `保存できませんでした。\n${path}\n${explain(error).text}`, "error", undefined, [
+          { label: "もう一度", run: () => void (session.id === id ? this.save(false, again) : undefined) },
+          { label: "別の場所に保存", run: () => void (session.id === id ? this.save(true) : undefined) },
+          folderStep(path),
+        ]);
+      } else showAlert("save", `保存できませんでした。\n${path}\n${explain(error).text}`, "error", undefined, folderStep(path));
       return false;
     }
   }
@@ -269,7 +279,10 @@ export class NameSaver {
       this.kept.failed = String(error);
       this.host.changed();
       fail("自動保存できませんでした", error, true);
-      showAlert("autosave", `自動保存できませんでした（次の変更でもう一度試します）。\n${explain(error).text}`, "error");
+      showAlert("autosave", `自動保存できませんでした（次の変更でもう一度試します）。\n${explain(error).text}`, "error", undefined, [
+        { label: "今すぐもう一度", run: () => void (session.id === id ? this.autosaver.flush() : undefined) },
+        ...(path ? [{ label: "別の場所に保存", run: () => void (session.id === id ? this.save(true) : undefined) }, folderStep(path)] : []),
+      ]);
       throw error;
     }
   }

@@ -203,6 +203,7 @@ pub fn run() {
             files::csp_tool_locations,
             files::read_csp_sub_tools,
             files::write_csp_sub_tool,
+            files::show_in_folder,
             fonts::list_fonts,
             is_release_build,
             started_at,

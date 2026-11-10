@@ -204,6 +204,63 @@ fn add_record(file: &Path, entry: &str) -> Result<(), String> {
     write_through_temporary(file, &bytes)
 }
 
+/// Shows `path` in the computer's file manager: a file in its folder, chosen
+/// there (Explorer on Windows); a folder opened. A path that is not there
+/// (a save that failed before the file was made) opens the nearest folder
+/// above it that is. Only shows: nothing is opened with a program or changed.
+#[tauri::command]
+pub(crate) async fn show_in_folder(path: String) -> Result<(), String> {
+    let path = Path::new(&path);
+    if !path.is_absolute() {
+        return Err(format!("フォルダーの場所がわかりません: {}", path.display()));
+    }
+    let place = shown_place(path).ok_or_else(|| format!("フォルダーが見つかりません: {}", path.display()))?;
+    open_in_file_manager(&place).map_err(|error| format!("フォルダーを開けませんでした: {error}"))
+}
+
+/// What the file manager shows for `path`: a file (chosen in its folder) or a folder.
+#[derive(Debug, PartialEq)]
+enum Place {
+    File(std::path::PathBuf),
+    Folder(std::path::PathBuf),
+}
+
+fn shown_place(path: &Path) -> Option<Place> {
+    if path.is_file() {
+        return Some(Place::File(path.to_path_buf()));
+    }
+    path.ancestors().find(|folder| folder.is_dir()).map(|folder| Place::Folder(folder.to_path_buf()))
+}
+
+fn open_in_file_manager(place: &Place) -> std::io::Result<()> {
+    use std::process::Command;
+    let mut command = if cfg!(target_os = "windows") {
+        let mut explorer = Command::new("explorer");
+        match place {
+            // One argument as Explorer reads it ("/select," and the path, no space between).
+            Place::File(file) => explorer.arg(format!("/select,{}", file.display())),
+            Place::Folder(folder) => explorer.arg(folder),
+        };
+        explorer
+    } else if cfg!(target_os = "macos") {
+        let mut open = Command::new("open");
+        match place {
+            Place::File(file) => open.arg("-R").arg(file),
+            Place::Folder(folder) => open.arg(folder),
+        };
+        open
+    } else {
+        let mut open = Command::new("xdg-open");
+        match place {
+            Place::File(file) => open.arg(file.parent().unwrap_or(file)),
+            Place::Folder(folder) => open.arg(folder),
+        };
+        open
+    };
+    // Explorer's exit code says nothing about whether the window opened: started is enough.
+    command.spawn().map(|_| ())
+}
+
 fn write_through_temporary(path: &Path, bytes: &[u8]) -> Result<(), String> {
     name_model::atomic::write(path, bytes).map_err(|error| error.to_string())
 }
@@ -211,6 +268,18 @@ fn write_through_temporary(path: &Path, bytes: &[u8]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_file_is_shown_in_its_folder_and_a_missing_one_by_the_nearest_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("ネーム.namestudio");
+        std::fs::write(&file, b"{}").unwrap();
+        assert_eq!(shown_place(&file), Some(Place::File(file.clone())));
+        assert_eq!(shown_place(dir.path()), Some(Place::Folder(dir.path().to_path_buf())));
+        // A save that failed: the file (and the folder it was to go in) are not there.
+        let missing = dir.path().join("消えたフォルダー").join("ネーム.namestudio");
+        assert_eq!(shown_place(&missing), Some(Place::Folder(dir.path().to_path_buf())));
+    }
 
     #[test]
     fn the_update_record_grows_one_entry_at_a_time() {

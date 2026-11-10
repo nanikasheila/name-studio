@@ -156,7 +156,9 @@ async function install(update: Update, host: UpdateHost): Promise<void> {
     await relaunch();
   } catch (error) {
     button.disabled = false;
-    fail("更新できませんでした（次の起動でもう一度試します）", error);
+    fail("更新できませんでした（次の起動でもう一度試します）", error, false, [
+      { label: "もう一度", run: () => void install(update, host) },
+    ]);
   }
 }
 

@@ -3,7 +3,7 @@
 
 const shown = new Map<string, HTMLElement>();
 
-/** A button on an alert that deals with it (try again). */
+/** A button on an alert that deals with it: the next step (try again, save elsewhere, open the folder). */
 export interface AlertAction {
   label: string;
   run: () => void;
@@ -18,7 +18,7 @@ export function showAlert(
   message: string,
   kind: "error" | "warning" | "info" = "error",
   seconds?: number,
-  action?: AlertAction,
+  action?: AlertAction | readonly AlertAction[],
 ): void {
   const host = document.getElementById("alerts");
   if (!host) return;
@@ -34,17 +34,21 @@ export function showAlert(
   alert.className = `alert ${kind}`;
   alert.setAttribute("role", "alert");
   alert.append(text);
-  if (action) {
+  const steps = action ? (Array.isArray(action) ? action : [action as AlertAction]) : [];
+  const actions = document.createElement("div");
+  actions.className = "alert-actions";
+  for (const step of steps) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "alert-action";
-    button.textContent = action.label;
+    button.textContent = step.label;
     button.addEventListener("click", () => {
       clearAlert(key);
-      action.run();
+      step.run();
     });
-    alert.append(button);
+    actions.append(button);
   }
+  if (steps.length) alert.append(actions);
   alert.append(close);
   host.append(alert);
   shown.set(key, alert);

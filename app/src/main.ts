@@ -38,6 +38,7 @@ import { panelAt, panelBadge } from "./editing/hittest";
 import { perfMeter } from "./platform/perfmeter";
 import { applyLook, readLook } from "./platform/look";
 import { fail, showStatus, installStatus } from "./platform/status";
+import { folderStep } from "./platform/reveal";
 
 // 画面の見た目 before anything is shown (設定 › 画面の見た目). The user's CSS waits for the
 // Rust side to say the app was not started with Shift held (lookpane.ts).
@@ -162,7 +163,7 @@ async function openName(path: string): Promise<string | null> {
     showWorkspace("editor");
     return null;
   } catch (error) {
-    fail("開けませんでした", error);
+    fail("開けませんでした", error, false, [{ label: "別のファイルを開く", run: () => void openFile() }, folderStep(path)]);
     return String(error);
   }
 }
