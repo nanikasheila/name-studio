@@ -2,7 +2,7 @@
 // handle, a panel's memo, a しっぽ, a panel's corner, the gutter, a panel to
 // swap, things to pick around) and how each of those drags goes and ends.
 import { defaultTailStyle, insideBalloon, resolvedShape, tailGeometry, tailRootAt } from "./balloon";
-import type { DragHandler, DragOf, EditorCore, MoveSnap, Press, Selection } from "./editorcore";
+import type { DragHandler, DragOf, EditorCore, EditorSnap, MoveSnap, Press, Selection } from "./editorcore";
 import { moveSeam, seamAt, seamBase, snapSeam } from "./komaedit";
 import { toPage } from "./layout";
 import { bounds } from "./geometry";
@@ -210,7 +210,7 @@ export function pressSelect(editor: EditorCore, { event, project, slot, point, s
 }
 
 /** Moving panels (among `items`) snap by their box; nothing to snap when no panel moves. */
-function moveSnap(editor: EditorCore, project: Project, page: Page, origin: Point, items: readonly ItemRef[]): MoveSnap | undefined {
+function moveSnap(editor: EditorSnap, project: Project, page: Page, origin: Point, items: readonly ItemRef[]): MoveSnap | undefined {
   const ids = items.filter((item) => item.kind === "panel").map((item) => item.id);
   const shapes = page.panels.filter((panel) => ids.includes(panel.id)).map((panel) => panel.shape);
   if (!shapes.length) return undefined;

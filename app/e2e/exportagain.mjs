@@ -155,7 +155,7 @@ try {
   await settle();
   const shown = await page.evaluate(() => {
     const workbench = window.nameStudio.workbench;
-    return workbench.project.pages.findIndex((p) => p.id === workbench.editor.focusedPageId) + 1;
+    return workbench.project.pages.findIndex((p) => p.id === workbench.editor.stage.focusedPageId) + 1;
   });
   check(!(await dialog.evaluate((d) => d.open)) && shown === 4, `a page pressed closes the dialog and shows that page (${shown})`);
 

@@ -61,7 +61,7 @@ try {
         selection: wb.editor.selection,
         tool: wb.editor.tool,
         activeButton: document.querySelector("#editor-tools .active")?.id ?? null,
-        frame: !!wb.editor.frameGeometry(),
+        frame: !!wb.editor.picks.frameGeometry(),
         pages: wb.editor.currentPages(),
         panels: page.panels.map((p) => ({ id: p.id, shape: p.shape })),
         stroke: page.strokes.find((s) => s.id === "stroke-a")?.points.map(([x, y]) => [x, y]),

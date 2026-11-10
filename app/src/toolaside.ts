@@ -4,7 +4,7 @@
 // dragged about, or onto a page to put them on it.
 import { heldBox } from "./aside";
 import { heldAt } from "./asidedraw";
-import type { DragHandler, DragOf, EditorCore, Tool } from "./editorcore";
+import type { DragHandler, DragOf, EditorCore, EditorLook, Tool } from "./editorcore";
 import { placeHeld } from "./hold";
 import { nearestSlot, toPage, type Slot } from "./layout";
 import type { Point, Project } from "./model";
@@ -51,7 +51,7 @@ export function pressHeld(editor: EditorCore, project: Project, sx: number, sy: 
 }
 
 /** The page under a screen point (on it, not just near), if any. */
-function pageUnder(editor: EditorCore, project: Project, [sx, sy]: Point): Slot | null {
+function pageUnder(editor: EditorLook, project: Project, [sx, sy]: Point): Slot | null {
   const pageH = project.pageFormat.canvasMm[1];
   return (
     editor.slots.find((slot) => {
