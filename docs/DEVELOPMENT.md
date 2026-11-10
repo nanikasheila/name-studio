@@ -86,7 +86,14 @@ Rust の版は `rust-toolchain.toml` で固定しています（rustup が自動
 
 ## ネームデータの型と画面の層
 
-ネームデータの型は Rust（`crates/name-model/src/model.rs`）と画面（`app/src/model.ts`）の 2 か所にあります。項目や選択肢を足すときは両方に足し、`app/src/contract.test.ts` の全項目の見本にも足して `(cd app && npx vitest run -u src/contract.test.ts)` で `crates/name-model/tests/fixtures` を書き直してください。Rust の型を変えたら `UPDATE_TS=1 cargo test -p name-model --features ts --test typescript` で `app/src/generated/name-model.ts`（Rust の型を TypeScript にしたもの）を書き直してください。`app/src/modelcheck.test.ts` が型ごとに model.ts と突き合わせ、Rust にあって model.ts にない項目や、Rust が送る値が model.ts の型に合わないところを型チェックで落とします。片方に足し忘れると、型チェックか `cargo test`（`tests/contract.rs`・`tests/typescript.rs`）が落ちます。Rust 側にコマンドを足したら `app/src/backend.ts` の `Commands` にも書いてください（`backend.test.ts` が `lib.rs` と突き合わせます）。
+ネームデータの型は Rust（`crates/name-model/src/model.rs`）と画面（`app/src/model.ts`）の 2 か所にあります。項目や選択肢を足すときは両方に足し、`app/src/contract.test.ts` の全項目の見本にも足して `(cd app && npx vitest run -u src/contract.test.ts)` で `crates/name-model/tests/fixtures` を書き直してください。Rust の型を変えたら `UPDATE_TS=1 cargo test -p name-model --features ts --test typescript` で `app/src/generated/name-model.ts`（Rust の型を TypeScript にしたもの）を書き直してください。`app/src/modelcheck.test.ts` が型ごとに model.ts と突き合わせ、Rust にあって model.ts にない項目や、Rust が送る値が model.ts の型に合わないところを型チェックで落とします。片方に足し忘れると、型チェックか `cargo test`（`tests/contract.rs`・`tests/typescript.rs`）が落ちます。
+
+Rust 側のコマンド（`#[tauri::command]`）を足したり、引数や結果の型を変えたりしたら、`cargo run -p ipc-types` で `app/src/generated/ipc.ts` を作り直してください。これは Rust のソースを読んで、コマンドの名前・引数・結果と、そこに出てくる構造体や列挙を TypeScript に書き出すものです（`crates/ipc-types`）。作り直し忘れると `cargo test` の `ipc-types` が落ち、作り直したあと画面側の使い方が合わなければ型チェックが落ちます。
+
+- serde の属性は、使っているもの（`rename_all`・`default`・`flatten`・`skip…`・`untagged`・`tag`）だけ読みます。知らない属性は当て推量にせずエラーにします。
+- Rust 側が中身を見ずに通す JSON（`serde_json::Value`・`RawValue`）は `unknown` になります。画面側が中身を知っているものは、`crates/ipc-types/src/lib.rs` の `OVERRIDES` か `app/src/backend.ts` の `Known` に書きます。
+- ネームデータ（`Project` など）は書き出さず、`model.ts` のものを使います（上の `modelcheck.test.ts` が Rust と突き合わせています）。
+- csp-format の型（ページ設定の `PageSetup`）も、`Cargo.lock` が指す版のソースから書き出します。csp-format を上げたときも作り直してください。
 
 画面の色はすべて `app/src/styles.css` の先頭の CSS 変数（明るい・暗いを `light-dark()` で 1 行に）で書き、配色（`look.ts` の `THEMES`）はそれを上書きします。新しい色は変数を使うか足してください（紙面とその代わりの色は `--paper`・`--paper-ink` で、配色では変えません）。文字の大きさは 14 px のときの値を `calc(12 * var(--px))` のように書きます（設定の「画面の文字の大きさ」に合わせて変わります。`look.test.ts` が px のままの文字の大きさと `prefers-color-scheme` を落とします）。
 

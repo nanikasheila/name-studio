@@ -12,7 +12,7 @@ use tauri_plugin_dialog::{DialogExt, FileDialogBuilder};
 use crate::paths::Chosen;
 
 #[derive(Debug, Clone, Deserialize)]
-pub(crate) struct Filter {
+pub(crate) struct FileFilter {
     name: String,
     extensions: Vec<String>,
 }
@@ -22,7 +22,7 @@ pub(crate) struct Filter {
 pub(crate) struct OpenOptions {
     title: Option<String>,
     #[serde(default)]
-    filters: Vec<Filter>,
+    filters: Vec<FileFilter>,
     /// Several files at once.
     #[serde(default)]
     multiple: bool,
@@ -37,7 +37,7 @@ pub(crate) struct OpenOptions {
 pub(crate) struct SaveOptions {
     title: Option<String>,
     #[serde(default)]
-    filters: Vec<Filter>,
+    filters: Vec<FileFilter>,
     default_path: Option<PathBuf>,
 }
 
@@ -72,7 +72,7 @@ fn start_at(builder: FileDialogBuilder<tauri::Wry>, path: PathBuf) -> FileDialog
 fn dialog(
     window: &Window,
     title: Option<String>,
-    filters: Vec<Filter>,
+    filters: Vec<FileFilter>,
     default_path: Option<PathBuf>,
 ) -> FileDialogBuilder<tauri::Wry> {
     let mut builder = window.app_handle().dialog().file().set_parent(window);
@@ -126,7 +126,7 @@ pub(crate) async fn choose_open(
 
 /// `file` with the first of `filters`' extensions when it has none of them (a
 /// name typed without one where the dialog does not complete it).
-fn with_extension(file: PathBuf, filters: &[Filter]) -> PathBuf {
+fn with_extension(file: PathBuf, filters: &[FileFilter]) -> PathBuf {
     let extensions: Vec<&str> = filters
         .iter()
         .flat_map(|filter| filter.extensions.iter().map(String::as_str))
@@ -174,8 +174,8 @@ pub(crate) fn place_chosen(chosen: tauri::State<'_, Chosen>, path: String) -> bo
 mod tests {
     use super::*;
 
-    fn filters(extensions: &[&str]) -> Vec<Filter> {
-        vec![Filter {
+    fn filters(extensions: &[&str]) -> Vec<FileFilter> {
+        vec![FileFilter {
             name: "x".to_owned(),
             extensions: extensions.iter().map(|extension| (*extension).to_owned()).collect(),
         }]

@@ -14,6 +14,7 @@ const page = (pages: number[], over: Partial<DialogueUpdateReport> = {}): Dialog
   notFound: [],
   conflicts: [],
   notes: false,
+  marks: [],
   problems: [],
   pages,
   ...over,

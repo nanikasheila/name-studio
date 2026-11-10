@@ -5,6 +5,9 @@
 // (listed by the Rust side) tell how to draw each on the canvas and the
 // PostScript name CSP keeps beside it.
 import type { FontRole, Line, LineFonts, Project } from "./model";
+import type { FontFace } from "./generated/ipc";
+
+export type { FontFace } from "./generated/ipc";
 
 export const FONT_ROLE_LABELS: Record<FontRole, string> = {
   speech: "通常（セリフ）",
@@ -20,16 +23,6 @@ export const APP_FONT_LABEL = "アプリの既定（游ゴシック）";
 
 /** What a line is drawn in when no font is chosen, or the chosen one is not on this computer. */
 export const APP_FONT = '"Yu Gothic", "Hiragino Sans", "Noto Sans JP", sans-serif';
-
-/** A font face on this computer (fonts.rs `FontFace`). */
-export interface FontFace {
-  name: string;
-  families: string[];
-  postscript: string;
-  weight: number;
-  italic: boolean;
-  japanese: boolean;
-}
 
 /**
  * Usual Japanese fonts, offered when the computer's own list cannot be read

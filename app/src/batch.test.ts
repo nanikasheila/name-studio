@@ -47,7 +47,22 @@ vi.mock("./nameexport", () => ({
   ROUGH_LAYERS: ["ラフ線"],
 }));
 
+import type { BatchExport } from "./backend";
 import { runBatchExport } from "./batch";
+
+/** A task as the command line gives it with none of its switches (batch.rs `from_args`). */
+const task = (asked: Pick<BatchExport, "project" | "template" | "outDir" | "workTemplate" | "workName" | "storyIndex" | "report"> & Partial<BatchExport>): BatchExport => ({
+  builtin: false,
+  donors: [],
+  draftRough: true,
+  frameFolders: false,
+  panelMasks: false,
+  notes: true,
+  marks: true,
+  updateDialogue: false,
+  readDialogue: false,
+  ...asked,
+});
 
 describe("runBatchExport", () => {
   beforeEach(() => {
@@ -63,7 +78,7 @@ describe("runBatchExport", () => {
 
   it("reports a failure after the check as a failure, with the exit code", async () => {
     failLate = true;
-    await runBatchExport({ project: "a.namestudio", template: "t.clip", outDir: "out", workTemplate: null, workName: null, storyIndex: null, report: "out/r.json" }, () => undefined);
+    await runBatchExport(task({ project: "a.namestudio", template: "t.clip", outDir: "out", workTemplate: null, workName: null, storyIndex: null, report: "out/r.json" }), () => undefined);
     const written = calls.find((c) => c.command === "write_text_file");
     expect(JSON.parse(written?.args.text as string)).toEqual({ ok: false, error: "Error: late" });
     expect(calls.at(-1)).toEqual({ command: "end_batch_export", args: { code: 1, message: "書き出せませんでした: Error: late\n結果レポート: out/r.json" } });
@@ -71,7 +86,7 @@ describe("runBatchExport", () => {
 
   it("does not end as a success when the report cannot be written, and says what was written", async () => {
     reportFails = true;
-    await runBatchExport({ project: "a.namestudio", template: "t.clip", outDir: "out", workTemplate: null, workName: null, storyIndex: null, report: "gone/r.json" }, () => undefined);
+    await runBatchExport(task({ project: "a.namestudio", template: "t.clip", outDir: "out", workTemplate: null, workName: null, storyIndex: null, report: "gone/r.json" }), () => undefined);
     // The pages went out and read back fine: only the record of it is missing.
     expect(exported).toHaveLength(1);
     const end = calls.at(-1);
@@ -85,7 +100,7 @@ describe("runBatchExport", () => {
 
   it("stops before writing when the export folder cannot be looked into", async () => {
     targetFails = true;
-    await runBatchExport({ project: "a.namestudio", template: "t.clip", outDir: "out", workTemplate: null, workName: null, storyIndex: null, report: "out/r.json" }, () => undefined);
+    await runBatchExport(task({ project: "a.namestudio", template: "t.clip", outDir: "out", workTemplate: null, workName: null, storyIndex: null, report: "out/r.json" }), () => undefined);
     expect(exported).toHaveLength(0);
     const written = calls.find((c) => c.command === "write_text_file");
     expect(JSON.parse(written?.args.text as string)).toEqual({ ok: false, error: "書き出し先 out の中を確かめられません: アクセスが拒否されました。 (os error 5)" });
@@ -94,7 +109,7 @@ describe("runBatchExport", () => {
 
   it("says first in the report when the name holds parts a newer version added", async () => {
     unknownFields = ["pages.strokes.wobble"];
-    await runBatchExport({ project: "a.namestudio", template: "t.clip", outDir: "out", workTemplate: null, workName: null, storyIndex: null, report: "out/r.json" }, () => undefined);
+    await runBatchExport(task({ project: "a.namestudio", template: "t.clip", outDir: "out", workTemplate: null, workName: null, storyIndex: null, report: "out/r.json" }), () => undefined);
     const written = calls.find((c) => c.command === "write_text_file");
     const report = JSON.parse(written?.args.text as string) as { ok: boolean; summary: string[] };
     expect(report).not.toHaveProperty("error");
@@ -105,7 +120,7 @@ describe("runBatchExport", () => {
   it("puts what the export left out in the report, after what the name itself is told", async () => {
     unknownFields = ["pages.strokes.wobble"];
     exportWarnings = ["読めない画像 1 枚は書き出していません: 1 ページ「資料」"];
-    await runBatchExport({ project: "a.namestudio", template: "t.clip", outDir: "out", workTemplate: null, workName: null, storyIndex: null, report: "out/r.json" }, () => undefined);
+    await runBatchExport(task({ project: "a.namestudio", template: "t.clip", outDir: "out", workTemplate: null, workName: null, storyIndex: null, report: "out/r.json" }), () => undefined);
     const written = calls.find((c) => c.command === "write_text_file");
     const report = JSON.parse(written?.args.text as string) as { ok: boolean; summary: string[] };
     expect(report.ok).toBe(true);
@@ -113,10 +128,7 @@ describe("runBatchExport", () => {
   });
 
   it("fills in the lists a saved name leaves out before exporting", async () => {
-    await runBatchExport(
-      { project: "a.namestudio", template: "t.clip", outDir: "out", workTemplate: null, workName: null, storyIndex: null, report: "out/r.json" },
-      () => undefined,
-    );
+    await runBatchExport(task({ project: "a.namestudio", template: "t.clip", outDir: "out", workTemplate: null, workName: null, storyIndex: null, report: "out/r.json" }), () => undefined);
     const project = exported[0] as { brushes: unknown[]; characters: unknown[]; pages: { roughs?: unknown[] }[] };
     expect(project.brushes).toEqual([]);
     expect(project.characters).toEqual([]);
@@ -126,10 +138,7 @@ describe("runBatchExport", () => {
   });
 
   it("makes the template from the name's settings with --builtin", async () => {
-    await runBatchExport(
-      { project: "a.namestudio", template: null, builtin: true, outDir: "out", workTemplate: null, workName: "作品", storyIndex: 2, report: "out/r.json" },
-      () => undefined,
-    );
+    await runBatchExport(task({ project: "a.namestudio", template: null, builtin: true, outDir: "out", workTemplate: null, workName: "作品", storyIndex: 2, report: "out/r.json" }), () => undefined);
     const prepare = calls.find((call) => call.command === "prepare_builtin_template");
     const setup = prepare?.args.setup as { canvasMm: number[]; trimMm: number[]; title: string; storyIndex: number; rightBinding: boolean };
     expect(setup.canvasMm).toEqual([257, 364]);

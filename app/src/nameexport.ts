@@ -465,6 +465,11 @@ export async function encode(canvas: HTMLCanvasElement, type: "image/png" | "ima
   return new Uint8Array(await blob.arrayBuffer());
 }
 
+/** A written file read back, with the name pages (1-based) in it: two for a 見開き page. */
+export interface PageCheck extends FileCheck {
+  pages?: number[];
+}
+
 export interface CspExportReport {
   pages: string[];
   work: string | null;
@@ -472,7 +477,7 @@ export interface CspExportReport {
   vectorLayers: boolean;
   textLayers: boolean;
   /** 自己確認 of each page, in page order. */
-  checks: FileCheck[];
+  checks: PageCheck[];
   workCheck: FileCheck | null;
   /** Pages that could not go as they were asked to (a 見開き written as two pages). */
   warnings?: string[];
@@ -658,7 +663,7 @@ export async function exportToCsp(
     if (vector && !masks && request.frameFolders && !start.frameFolders) warnings.push(NO_FRAME_FOLDER);
     // Pictures that could not be read (the dialog asked first; the batch export says so here).
     const unread = new Set<string>();
-    const checks: FileCheck[] = [];
+    const checks: PageCheck[] = [];
     // One drawing canvas for the widest page; each page is drawn at its own size.
     const widest = Math.max(start.widthPx, ...(units.some((unit) => unit.length > 1) && start.spread && pieces === 1 ? [start.spread.widthPx] : []));
     const factor = Math.min(1, Math.sqrt(MAX_LAYER_PIXELS / (widest * start.heightPx)));
@@ -908,7 +913,7 @@ export async function updateCspDialogue(
   // 指示 drawn since are redrawn in their layers too (a page without them gets them); hidden ones are left be.
   const markSet = request.marks === false ? [] : markLayersOf(project).filter((layer) => !layer.hidden);
   const names = layerNames(project);
-  const start = await call("begin_name_export", { request: { ...request, frameFolders: false, notes: false } });
+  const start = await call("begin_name_export", { request: { ...request, frameFolders: false } });
   try {
     if (!start.textLayers) throw new Error("テキストのレイヤーの見本が見つかりません。書き出しと同じひな形・見本のページを選んでください");
     const vector = start.vectorLayers;
@@ -1010,7 +1015,7 @@ export async function updateCspDialogue(
  * CSP has it now), each text on its page of the name in mm.
  */
 export async function readCspDialogue(project: Project, request: CspExportRequest, progress: (message: string) => void): Promise<ReadUnit[]> {
-  const start = await call("begin_name_export", { request: { ...request, frameFolders: false, notes: false } });
+  const start = await call("begin_name_export", { request: { ...request, frameFolders: false } });
   try {
     const full = projectToTemplate(project, start);
     const { units } = exportUnits(project, start.firstPageLeft, start.spread ? null : start.spreadProblem);

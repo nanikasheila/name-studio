@@ -1,6 +1,7 @@
 // Writing the open sheet out as page files and a CSP EX work (.cmc).
+import type { ExportRequest, SplitReport as ExportReport, Fit, OverwriteCheck } from "./generated/ipc";
 
-export type Fit = "basic" | "trim" | "cell";
+export type { ExportRequest, Fit, OverwriteCheck, SplitReport as ExportReport } from "./generated/ipc";
 
 export interface ExportForm {
   template: string;
@@ -10,23 +11,6 @@ export interface ExportForm {
   workTemplate: string;
   workName: string;
   storyIndex: string;
-}
-
-/** What `export_pages` takes (src-tauri/src/lib.rs `ExportRequest`). */
-export interface ExportRequest {
-  template: string;
-  outDir: string;
-  fit: Fit;
-  workTemplate: string | null;
-  workName: string | null;
-  storyIndex: number | null;
-}
-
-/** What `export_pages` returns (clip-core `SplitReport`). */
-export interface ExportReport {
-  pages: { number: number; path: string; layers: number; warnings: string[] }[];
-  work: string | null;
-  warnings: string[];
 }
 
 /** Folder of a path, for both Windows and POSIX separators. */
@@ -80,14 +64,6 @@ export function summarize(report: ExportReport): string[] {
     for (const warning of page.warnings) lines.push(`${page.number} ページ: ${warning}`);
   }
   return lines.concat(report.warnings);
-}
-
-/** CSP files already in the export folder (clip-core `manifest::OverwriteCheck`). */
-export interface OverwriteCheck {
-  existing: string[];
-  changed: string[];
-  unknown: string[];
-  lastExportMs: number | null;
 }
 
 const listed = (names: string[]) => (names.length > 6 ? `${names.slice(0, 6).join("、")} ほか ${names.length - 6} 件` : names.join("、"));

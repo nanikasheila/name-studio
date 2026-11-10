@@ -4,16 +4,9 @@
 // events of each turn into the entries the palette shows.
 import { nameBrief, OPS_FENCE, opsGuide } from "./assist";
 import type { Project } from "./model";
+import type { AiEvent, AiKind, AiModel } from "./generated/ipc";
 
-/** Who is talked to. */
-export type AiKind = "claude" | "codex" | "local";
-
-/** What a turn says, as it says it (ai/mod.rs `AiEvent`). */
-export interface AiEvent {
-  run: number;
-  kind: "session" | "delta" | "text" | "tool" | "done" | "error";
-  text: string;
-}
+export type { AiEvent, AiKind, AiModel } from "./generated/ipc";
 
 export const AI_LABELS: Record<AiKind, string> = {
   claude: "Claude Code",
@@ -67,18 +60,6 @@ export function readAssistSettings(kept: unknown): AssistSettings {
   }
   if (typeof from.pictures === "boolean") out.pictures = from.pictures;
   return out;
-}
-
-/** A model as Claude Code, Codex or the local LLM lists it (ai/models.rs `AiModel`). */
-export interface AiModel {
-  /** What is asked for ("": the tool's own default). */
-  value: string;
-  label: string;
-  description: string;
-  /** The efforts it takes (none: no choice). */
-  efforts: string[];
-  defaultEffort: string | null;
-  isDefault: boolean;
 }
 
 /** The model a choice means: the one named, or for "" the tool's default. */

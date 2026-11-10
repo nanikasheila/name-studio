@@ -8,7 +8,7 @@
 // Every version CI lets through is first a 試験版; it becomes a 正式版 once
 // checked in CSP (docs/release.md). Copies get 正式版 only unless set to take
 // 試験版 too.
-import { call, type UpdateChannel } from "./backend";
+import { call, type FoundUpdate, type UpdateChannel } from "./backend";
 import { getVersion } from "@tauri-apps/api/app";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { Update } from "@tauri-apps/plugin-updater";
@@ -62,6 +62,15 @@ export async function appVersion(): Promise<string> {
   }
 }
 
+/**
+ * What `check_update` found as the updater's own `Update` takes it: the Rust
+ * side sends what the plugin's `check` would (updates.rs `FoundUpdate`), with
+ * `null` where the plugin's types say "left out", which `Update` reads the same.
+ */
+function asMetadata(found: FoundUpdate): ConstructorParameters<typeof Update>[0] {
+  return found as unknown as ConstructorParameters<typeof Update>[0];
+}
+
 /** What one look for a new version found. */
 export type UpdateCheck =
   | { kind: "found"; update: Update }
@@ -79,7 +88,7 @@ export async function lookForUpdate(): Promise<UpdateCheck> {
   }
   try {
     const found = await call("check_update", { channel: updateChannel(), timeoutMs: 15000 });
-    return found ? { kind: "found", update: new Update(found) } : { kind: "latest" };
+    return found ? { kind: "found", update: new Update(asMetadata(found)) } : { kind: "latest" };
   } catch (error) {
     // Offline, or no release with an update key yet: try again next start.
     console.warn("update check failed", error);
