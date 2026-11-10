@@ -11,8 +11,7 @@ on:
         required: false
         default: ""
 
-permissions:
-  contents: write
+permissions: {}
 
 concurrency:
   group: release
@@ -22,8 +21,10 @@ jobs:
   promote:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Promote
         env:

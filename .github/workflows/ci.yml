@@ -15,8 +15,11 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  # Python reference implementation (name_splitter/csp) used by tools/compare_with_python.py.
-  REFERENCE_REF: main
+  # The Python reference (csp-name-splitter's name_splitter/csp) that
+  # tools/compare_with_python.py compares with: one commit, so that a change
+  # there cannot fail (or quietly change) this repository's checks. It is a
+  # reference only: the format's truth is csp-format's docs/spec and CSP itself.
+  REFERENCE_REF: 2d85ca9fcda4649190729bc5ade41373e3ae2af6
   CARGO_TERM_COLOR: always
 
 # The checks run side by side, each job as short as it can be. The Rust that
@@ -31,7 +34,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install WebView build dependencies
         if: runner.os == 'Linux'
@@ -42,11 +45,11 @@ jobs:
       - name: Rust (the version in rust-toolchain.toml)
         run: rustup toolchain install
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
@@ -79,13 +82,13 @@ jobs:
       - name: Build CLI
         run: cargo build --release -p name-cli
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: nanikasheila/csp-name-splitter
           ref: ${{ env.REFERENCE_REF }}
           path: reference
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
 
@@ -101,9 +104,9 @@ jobs:
     name: The app in a browser (walk-through, skill)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
@@ -131,9 +134,9 @@ jobs:
     name: Speed, the pen and a long session
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
@@ -169,7 +172,7 @@ jobs:
         # side by side with this run), so it is not built twice.
         os: ${{ github.event_name == 'push' && fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest", "windows-latest"]') }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install WebView dependencies
         if: runner.os == 'Linux'
@@ -181,12 +184,12 @@ jobs:
         run: rustup toolchain install
 
       # The same cache as the Windows release build (build-app.yml).
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           shared-key: app-release
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
@@ -216,10 +219,10 @@ jobs:
     name: Known vulnerabilities in the Rust libraries
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Rust (the version in rust-toolchain.toml)
         run: rustup toolchain install
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
         with:
           tool: cargo-audit
       # RustSec advisories against Cargo.lock: a vulnerability fails; unmaintained/unsound
