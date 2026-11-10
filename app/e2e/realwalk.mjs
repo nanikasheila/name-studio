@@ -42,6 +42,8 @@ async function launch() {
     env: {
       ...process.env,
       WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${PORT}`,
+      // The app opens the port itself (WebView2 can leave the variable above out).
+      NAME_STUDIO_DEBUG_PORT: String(PORT),
       // The same WebView data both times: what the page keeps is there at the next start.
       WEBVIEW2_USER_DATA_FOLDER: join(work, "webview"),
     },

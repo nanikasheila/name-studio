@@ -44,6 +44,8 @@ async function start({ holdShift = false } = {}) {
     env: {
       ...process.env,
       WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${PORT}`,
+      // The app opens the port itself (WebView2 can leave the variable above out).
+      NAME_STUDIO_DEBUG_PORT: String(PORT),
       WEBVIEW2_USER_DATA_FOLDER: join(work, "webview"),
     },
     stdio: "ignore",

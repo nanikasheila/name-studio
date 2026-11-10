@@ -142,6 +142,34 @@ fn end_batch_export(app: tauri::AppHandle, code: i32, message: Option<String>) {
     app.exit(code);
 }
 
+/// The arguments the WebView takes without being asked (wry's own), kept when
+/// more are added.
+const WEBVIEW_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection";
+
+/// The window as tauri.conf.json describes it. With NAME_STUDIO_DEBUG_PORT set
+/// (a number), its WebView also opens that debugging port on this computer:
+/// for the walk-throughs of the built app (e2e/realwalk.mjs, feel.mjs), which
+/// drive it as a person would. WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS is not
+/// enough: a WebView2 that is given arguments by the app may leave it out.
+fn open_window(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let config = app
+        .config()
+        .app
+        .windows
+        .first()
+        .cloned()
+        .ok_or("tauri.conf.json has no window")?;
+    let mut window = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?;
+    if let Some(port) = std::env::var("NAME_STUDIO_DEBUG_PORT")
+        .ok()
+        .and_then(|port| port.parse::<u16>().ok())
+    {
+        window = window.additional_browser_args(&format!("{WEBVIEW_ARGS} --remote-debugging-port={port}"));
+    }
+    window.build()?;
+    Ok(())
+}
+
 pub fn run() {
     STARTED.get_or_init(std::time::SystemTime::now);
     SAFE_LOOK.get_or_init(|| std::env::args().any(|arg| arg == "--safe-look") || shift_held());
@@ -164,6 +192,7 @@ pub fn run() {
                 chosen.file_once(Path::new(&task.report));
             }
             app.manage(chosen);
+            open_window(app)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
