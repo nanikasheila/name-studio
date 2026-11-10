@@ -229,7 +229,9 @@ fn shown_place(path: &Path) -> Option<Place> {
     if path.is_file() {
         return Some(Place::File(path.to_path_buf()));
     }
-    path.ancestors().find(|folder| folder.is_dir()).map(|folder| Place::Folder(folder.to_path_buf()))
+    path.ancestors()
+        .find(|folder| folder.is_dir())
+        .map(|folder| Place::Folder(folder.to_path_buf()))
 }
 
 fn open_in_file_manager(place: &Place) -> std::io::Result<()> {
