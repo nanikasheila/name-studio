@@ -37,6 +37,8 @@ import { pagePictures } from "./flatpage";
 import { markdownView } from "./mdview";
 import type { Project, RoughImage } from "./model";
 import { readJson, writeText } from "./settings";
+import { fail } from "./status";
+import { failureText } from "./errortext";
 
 /** Codex's sandbox can be chosen only where it has more than one (Windows). */
 const WINDOWS = typeof navigator !== "undefined" && navigator.userAgent.includes("Windows");
@@ -414,7 +416,7 @@ export class AssistPanel {
           this.host.status(this.hasKey ? "API キーを Windows の資格情報マネージャーに保存しました" : "API キーを消しました");
           this.renderSettings();
         } catch (error) {
-          this.host.status(`API キーを保存できません: ${error}`);
+          fail("API キーを保存できません", error);
         }
       });
       keep.title = "入れたキーを保存する（空のまま押すと消す）。キーはファイルに書かず、システムの資格情報の保管庫に入れます";
@@ -434,7 +436,7 @@ export class AssistPanel {
           const where = await call("ai_install_skill", { target, folder });
           this.host.status(`スキル name-studio を入れました: ${where}`);
         } catch (error) {
-          this.host.status(`スキルを入れられません: ${error}`);
+          fail("スキルを入れられません", error);
         }
       });
     more.push(
@@ -546,7 +548,7 @@ export class AssistPanel {
     try {
       await call("ai_history_save", { talk: saved });
     } catch (error) {
-      this.host.status(`相談を残せません: ${error}`);
+      fail("相談を残せません", error);
     }
     if (!this.part("history").hidden) void this.renderHistory();
   }
@@ -558,7 +560,7 @@ export class AssistPanel {
     try {
       talks = await call("ai_history_list");
     } catch (error) {
-      box.replaceChildren(element("p", { class: "hint assist-warn" }, `前の相談を読めません: ${error}`));
+      box.replaceChildren(element("p", { class: "hint assist-warn" }, failureText("前の相談を読めません", error)));
       return;
     }
     const name = this.host.path() ?? "";
@@ -584,7 +586,7 @@ export class AssistPanel {
         }
         void call("ai_history_delete", { id: talk.id })
           .then(() => this.renderHistory())
-          .catch((error) => this.host.status(`相談を消せません: ${error}`));
+          .catch((error) => fail("相談を消せません", error));
       });
       remove.title = "この相談を一覧から消す（もう一度押して確かめる）";
       return element("li", { class: now ? "now" : "" }, open, remove);
@@ -605,7 +607,7 @@ export class AssistPanel {
     try {
       talk = readSavedTalk(await call("ai_history_load", { id }));
     } catch (error) {
-      this.host.status(`相談を開けません: ${error}`);
+      fail("相談を開けません", error);
       return;
     }
     if (!talk) {
@@ -739,7 +741,7 @@ export class AssistPanel {
     } catch (error) {
       talk.conversation.entries.push({ role: "user", text: question }, { role: "error", text: String(error) });
       void this.keep(talk);
-      this.host.status(`相談を始められません: ${error}`);
+      fail("相談を始められません", error);
     } finally {
       this.preparing = false;
     }

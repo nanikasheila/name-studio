@@ -22,6 +22,8 @@ import {
   withEpisode,
   withoutEpisode,
 } from "./series";
+import { fail } from "./status";
+import { explain, failureText } from "./errortext";
 
 export interface SeriesHost {
   project(): Project | null;
@@ -82,7 +84,7 @@ export class SeriesPanel {
       applyShared(project, data.shared);
       return `（シリーズ「${data.title}」の人物・設定に合わせました）`;
     } catch (error) {
-      return `（シリーズのファイルを読めなかったので、ネームに残っている人物・設定のまま開きました: ${error}）`;
+      return `（シリーズのファイルを読めなかったので、ネームに残っている人物・設定のまま開きました: ${explain(error).text}）`;
     }
   }
 
@@ -148,7 +150,7 @@ export class SeriesPanel {
       current.written = text;
       return null;
     } catch (error) {
-      return `シリーズのファイルに書けませんでした: ${error}`;
+      return failureText("シリーズのファイルに書けませんでした", error);
     }
   }
 
@@ -293,7 +295,7 @@ export class SeriesPanel {
     try {
       data = await call("load_series", { path: picked });
     } catch (error) {
-      this.host.status(`シリーズのファイルを読めませんでした: ${error}`);
+      fail("シリーズのファイルを読めませんでした", error);
       return;
     }
     const shared = joinedShared(project, data.shared);

@@ -57,6 +57,12 @@
   color: var(--text);
   background: var(--bg);
 }
+/* 大きめ (設定 › 画面の見た目): what is pressed is 28px or more each way (the words grow by --text-size). */
+[data-density="large"] :is(button, select, summary, textarea, [role="button"], [role="tab"], input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"])) { min-height: 28px; }
+[data-density="large"] :is(button, summary, [role="button"], [role="tab"]) { min-width: 28px; }
+[data-density="large"] input:is([type="checkbox"], [type="radio"]) { width: 20px; height: 20px; }
+[data-density="large"] input[type="range"] { min-height: 28px; }
+[data-density="large"] .palette > header button.icon-button { min-height: 28px; }
 [data-theme="light"] { color-scheme: light; }
 [data-theme="dark"] { color-scheme: dark; }
 /* 目にやさしい: warm paper, soft contrast, little blue. */
@@ -195,6 +201,17 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   background: var(--panel); border-top: 1px solid var(--line); min-height: 26px;
 }
 .status { flex: 0 1 auto; max-width: 50%; margin-left: auto; padding: 4px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 欄を巡る (F8): the part the keyboard went to, for a moment. */
+.pane-arrived { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* A failure: its own colour and mark, and a click (or Enter) opens all of it. */
+.status.error { color: var(--danger); font-weight: 600; cursor: pointer; border-radius: 4px; }
+.status.error::before { content: "⚠ "; }
+.status.error:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.status.error.open {
+  position: fixed; right: 8px; bottom: 32px; z-index: 20; max-width: min(640px, calc(100vw - 32px)); max-height: 50vh; overflow: auto;
+  padding: 8px 12px; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; cursor: text; font-weight: 400; line-height: 1.5;
+  background: var(--error-bg); color: var(--error-text); border: 1px solid var(--error-line); border-radius: 8px; box-shadow: 0 4px 14px rgb(0 0 0 / 0.18);
+}
 .help-bar { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 6px; }
 .help-bar[hidden] { display: none; }
 .help-bar-text { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 14px; white-space: nowrap; overflow: hidden; mask-image: linear-gradient(to left, transparent, #000 24px); }

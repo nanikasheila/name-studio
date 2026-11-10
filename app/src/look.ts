@@ -30,6 +30,8 @@ export interface Look {
   font: string | null;
   /** The size of the screen's words, in px (the app's sizes are written at 14). */
   sizePx: number;
+  /** 大きめ: what is pressed is 28px or more each way and the words a step larger (a pen tablet, a dense screen). */
+  large: boolean;
   /** The user's own CSS, kept even while it is off. */
   css: string;
   cssOn: boolean;
@@ -38,7 +40,9 @@ export interface Look {
 export const DEFAULT_SIZE_PX = 14;
 export const MIN_SIZE_PX = 11;
 export const MAX_SIZE_PX = 20;
-export const DEFAULT_LOOK: Look = { theme: "system", font: null, sizePx: DEFAULT_SIZE_PX, css: "", cssOn: false };
+/** How much larger the words are with 大きめ, in px. */
+export const LARGE_STEP_PX = 2;
+export const DEFAULT_LOOK: Look = { theme: "system", font: null, sizePx: DEFAULT_SIZE_PX, large: false, css: "", cssOn: false };
 
 /** The fonts after the one chosen, as at the top of styles.css. */
 export const UI_FONT_STACK = '"Yu Gothic UI", "Hiragino Sans", "Noto Sans JP", sans-serif';
@@ -56,7 +60,7 @@ export function lookFrom(value: unknown): Look {
   const size = Number(kept.sizePx);
   const sizePx = Number.isFinite(size) ? clampSize(size) : DEFAULT_SIZE_PX;
   const css = typeof kept.css === "string" ? kept.css : "";
-  return { theme, font, sizePx, css, cssOn: kept.cssOn === true && css.trim() !== "" };
+  return { theme, font, sizePx, large: kept.large === true, css, cssOn: kept.cssOn === true && css.trim() !== "" };
 }
 
 /** A size in whole px from the smallest to the largest. */
@@ -185,8 +189,11 @@ export function applyLook(look: Look, root: HTMLElement = document.documentEleme
   else root.dataset.theme = look.theme;
   if (look.font) root.style.setProperty("--ui-font", fontStack(look.font));
   else root.style.removeProperty("--ui-font");
-  if (look.sizePx !== DEFAULT_SIZE_PX) root.style.setProperty("--text-size", `${look.sizePx}px`);
+  const size = look.sizePx + (look.large ? LARGE_STEP_PX : 0);
+  if (size !== DEFAULT_SIZE_PX) root.style.setProperty("--text-size", `${size}px`);
   else root.style.removeProperty("--text-size");
+  if (look.large) root.dataset.density = "large";
+  else root.removeAttribute("data-density");
   setUserCss(look.cssOn ? look.css : null);
 }
 

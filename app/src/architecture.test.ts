@@ -46,15 +46,15 @@ const LAYERS = {
     "assistchat", "brushpicks", "inkon", "markdown", "callouts", "commands", "fillsettings", "helptopics", "history", "hittest", "layout", "pageaxis", "pen", "recent", "savestate", "session", "shortcuts", "snapshot", "springtool", "tooldefs", "viewport",
   ],
   /** This computer and the Rust side: storage, settings, commands, the page's elements. */
-  platform: ["backend", "dialogs", "dom", "errorlog", "look", "perfmeter", "prefs", "settings"],
+  platform: ["alerts", "backend", "dialogs", "dom", "errorlog", "errortext", "look", "perfmeter", "prefs", "settings", "status"],
   /** Drawing a name on a canvas (the screen and the export share it). */
   render: ["asidedraw", "glyph", "notedraw", "pagedraw", "pagethumb", "pictures", "render", "screendraw", "strokecache"],
   /** Work done for the screens: saving in the background, writing out. */
   service: ["autosave", "batch", "flatpage", "nameexport", "picturecheck", "roughcache", "updatereport"],
   /** The screens. */
   ui: [
-    "actions", "alerts", "altdialog", "assistpanel", "dialogkeys", "board", "boardmenus", "castlist", "heldlist", "listops", "notelist", "scriptlist", "boarddock", "boardemotion", "boardpages", "boardscene", "boardshape", "boardview", "brushdialog", "brusheditor", "brushpad", "brushsource", "controlbar", "cursors", "dock", "dragsort", "drophint", "editor", "editorcore", "exportdialog", "fillbar", "fillsource", "fontpicker", "helpbar", "helpoverlay", "imageimport", "inplace", "inspector",
-    "layers", "livefields", "lookpane", "markbar", "mdview", "namesaver", "nameedits", "pagelist", "popupmenu", "palette", "palettes", "pendialog", "perfdialog", "reader", "readbackpick", "recoverydialog", "referencebar", "roughpanel", "rowfit", "scriptdialog", "seriespanel", "settingsdialog", "sheetexport", "shortcutdialog", "sidelists", "startscreen", "subtools", "toolaside", "tooleraser", "toolfill",
+    "actions", "altdialog", "assistpanel", "dialogkeys", "board", "boardmenus", "castlist", "heldlist", "listops", "notelist", "scriptlist", "boarddock", "boardemotion", "boardpages", "boardscene", "boardshape", "boardview", "brushdialog", "brusheditor", "brushpad", "brushsource", "controlbar", "cursors", "dock", "dragsort", "drophint", "editor", "editorcore", "exportdialog", "fillbar", "fillsource", "fontpicker", "helpbar", "helpoverlay", "imageimport", "inplace", "inspector",
+    "layers", "livefields", "lookpane", "markbar", "mdview", "namesaver", "nameedits", "pagelist", "popupmenu", "palette", "palettes", "panefocus", "pendialog", "perfdialog", "reader", "readbackpick", "recoverydialog", "referencebar", "roughpanel", "rowfit", "scriptdialog", "seriespanel", "settingsdialog", "sheetexport", "shortcutdialog", "sidelists", "startscreen", "subtools", "toolaside", "tooleraser", "toolfill",
     "toolmark", "toolpanels", "toolpen", "toolreference", "tools", "toolselect", "toolsticky", "tooltext", "tooltransform", "tour", "updater", "versiondialog", "workspaces",
     "viewer", "workbench",
   ],

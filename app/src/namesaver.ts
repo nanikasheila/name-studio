@@ -6,7 +6,6 @@ import { call } from "./backend";
 import { message, save } from "./dialogs";
 import { Autosaver, Written, autosaveToFile } from "./autosave";
 import { clearAlert, showAlert } from "./alerts";
-import { logError } from "./errorlog";
 import type { Project } from "./model";
 import { rememberName } from "./prefs";
 import { projectBody } from "./projectjson";
@@ -14,6 +13,8 @@ import { savedForm } from "./references";
 import { repair } from "./repair";
 import type { SaveFacts } from "./savestate";
 import type { Session } from "./session";
+import { fail } from "./status";
+import { explain } from "./errortext";
 
 export const PROJECT_EXTENSION = "namestudio";
 
@@ -147,14 +148,13 @@ export class NameSaver {
       return true;
     } catch (error) {
       if (session.id !== id) {
-        this.host.setStatus(`前に開いていたネームを保存できませんでした: ${error}`);
+        fail("前に開いていたネームを保存できませんでした", error, true);
       } else {
-        this.host.setStatus(`保存できませんでした: ${error}`);
+        fail("保存できませんでした", error, true);
       }
       if (session.id === id) this.kept.failed = String(error);
       this.host.changed();
-      showAlert("save", `保存できませんでした。\n${path}\n${error}`, "error");
-      void logError(`save: ${error}`);
+      showAlert("save", `保存できませんでした。\n${path}\n${explain(error).text}`, "error");
       return false;
     }
   }
@@ -252,9 +252,8 @@ export class NameSaver {
       if (session.id !== id) return;
       this.kept.failed = String(error);
       this.host.changed();
-      this.host.setStatus(`自動保存できませんでした: ${error}`);
-      showAlert("autosave", `自動保存できませんでした（次の変更でもう一度試します）。\n${error}`, "error");
-      void logError(`autosave: ${error}`);
+      fail("自動保存できませんでした", error, true);
+      showAlert("autosave", `自動保存できませんでした（次の変更でもう一度試します）。\n${explain(error).text}`, "error");
       throw error;
     }
   }

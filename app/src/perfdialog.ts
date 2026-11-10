@@ -3,6 +3,7 @@
 // and send when something feels slow).
 import { element, plainButton } from "./dom";
 import type { PerfReport, Spread } from "./perfmeter";
+import { fail } from "./status";
 
 const ms = (value: number) => `${value < 10 ? value.toFixed(1) : Math.round(value)} ms`;
 const spread = (s: Spread) => `ふだん ${ms(s.median)}・遅いとき ${ms(s.p95)}・最大 ${ms(s.max)}`;
@@ -100,7 +101,7 @@ export class PerfDialog {
       await navigator.clipboard.writeText(text);
       this.status("動作の記録をコピーしました");
     } catch (error) {
-      this.status(`コピーできませんでした: ${error}`);
+      fail("コピーできませんでした", error);
     }
   }
 }

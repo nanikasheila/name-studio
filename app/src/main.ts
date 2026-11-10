@@ -34,14 +34,16 @@ import { ImageImportDialog } from "./imageimport";
 import { panelAt, panelBadge } from "./hittest";
 import { perfMeter } from "./perfmeter";
 import { applyLook, readLook } from "./look";
+import { fail, showStatus, installStatus } from "./status";
 
 // 画面の見た目 before anything is shown (設定 › 画面の見た目). The user's CSS waits for the
 // Rust side to say the app was not started with Shift held (lookpane.ts).
 applyLook({ ...readLook(), cssOn: false });
 
 function setStatus(message: string): void {
-  $("status").textContent = message;
+  showStatus(message);
 }
+installStatus();
 
 let workspace: "viewer" | "editor" = "viewer";
 
@@ -133,7 +135,7 @@ async function openName(path: string): Promise<string | null> {
     showWorkspace("editor");
     return null;
   } catch (error) {
-    setStatus(`開けませんでした: ${error}`);
+    fail("開けませんでした", error);
     return String(error);
   }
 }
@@ -284,7 +286,7 @@ $("import-project").addEventListener("click", async () => {
     await workbench.importSheet(viewer.sheetPath);
   } catch (error) {
     showWorkspace("viewer");
-    setStatus(`取り込めませんでした: ${error}`);
+    fail("取り込めませんでした", error);
   }
 });
 
@@ -302,7 +304,7 @@ const recoveryDialog = new RecoveryDialog({
     if (note) showAlert("unknown-fields", note, "warning");
   },
   remove: async (file) => {
-    await call("remove_recovery", { file }).catch((error) => setStatus(`控えを消せませんでした: ${error}`));
+    await call("remove_recovery", { file }).catch((error) => fail("控えを消せませんでした", error));
   },
 });
 

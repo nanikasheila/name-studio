@@ -64,3 +64,10 @@ export function svg<K extends keyof SVGElementTagNameMap>(tag: K, attributes: Re
   node.append(...children);
   return node;
 }
+
+/** The button with this id when it is on screen and can be pressed, else null. */
+export function pressable(id: string): HTMLButtonElement | null {
+  const target = document.getElementById(id);
+  if (!(target instanceof HTMLButtonElement) || target.disabled || target.closest("[hidden]")) return null;
+  return target;
+}

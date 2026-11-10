@@ -8,7 +8,9 @@ describe("画面の見た目 kept on this computer", () => {
   it("reads back what was kept, and the default for what does not read", () => {
     expect(lookFrom(null)).toEqual(DEFAULT_LOOK);
     expect(lookFrom({ theme: "neon", font: "  ", sizePx: "big", css: 3, cssOn: true })).toEqual(DEFAULT_LOOK);
-    expect(lookFrom({ theme: "sepia", font: " メイリオ ", sizePx: 16.4, css: "a{}", cssOn: true })).toEqual({ theme: "sepia", font: "メイリオ", sizePx: 16, css: "a{}", cssOn: true });
+    expect(lookFrom({ theme: "sepia", font: " メイリオ ", sizePx: 16.4, large: true, css: "a{}", cssOn: true })).toEqual({ theme: "sepia", font: "メイリオ", sizePx: 16, large: true, css: "a{}", cssOn: true });
+    // 大きめ is on only when it was turned on.
+    expect(lookFrom({ large: "yes" }).large).toBe(false);
   });
 
   it("keeps the size between the smallest and the largest", () => {

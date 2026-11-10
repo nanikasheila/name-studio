@@ -5,6 +5,8 @@ import { open } from "./dialogs";
 import { call } from "./backend";
 import { $ } from "./dom";
 import { buildRequest, folderOf, summarize, type ExportForm, type Fit } from "./export";
+import { fail } from "./status";
+import { failureText } from "./errortext";
 
 export class SheetExport {
   private readonly form: ExportForm = {
@@ -62,7 +64,7 @@ export class SheetExport {
       if (!this.form.workTemplate && defaults.workTemplate) this.form.workTemplate = defaults.workTemplate;
       this.form.workName ||= defaults.workName;
     } catch (error) {
-      this.setStatus(String(error));
+      fail("書き出しの設定を読めませんでした", error);
     }
     this.show();
     this.message("");
@@ -106,7 +108,7 @@ export class SheetExport {
       this.message(summarize(report).join("\n"));
       this.setStatus(`${report.pages.length} ページを ${form.outDir} に書き出しました（${seconds} 秒）`);
     } catch (error) {
-      this.message(String(error), true);
+      this.message(failureText("書き出せませんでした", error), true);
     } finally {
       button.disabled = false;
     }

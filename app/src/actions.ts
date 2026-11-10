@@ -7,6 +7,7 @@ import type { PaletteId } from "./dock";
 import { ERASE_MODE_LABELS, type EditorEraseMode, type PageEditor, type PanelMode, type Tool } from "./editor";
 import type { FillWay } from "./fillsettings";
 import type { HelpKind } from "./helptopics";
+import { movePane } from "./panefocus";
 import { TOOL_IDS, TOOLS } from "./tooldefs";
 import { WORKSPACES, type WorkspaceId } from "./workspaces";
 
@@ -75,6 +76,12 @@ export interface CommandHost {
   canClick(buttonId: string): boolean;
   /** ヘルプ: the help over the whole screen, the first-time guide, the help bar shown or hidden. */
   help(kind: HelpKind): void;
+}
+
+/** Say which part of the screen the keyboard went to (欄を巡る); false when there was nowhere to go. */
+function arrived(host: CommandHost, name: string | null): boolean {
+  if (name) host.status(`${name} に移りました（F8 で次の欄、Shift+F8 で前の欄。中は Tab と矢印キーで）`);
+  return name !== null;
 }
 
 /** Every command, in the order the key settings and the palette show them. */
@@ -347,6 +354,22 @@ export function buildCommands(host: CommandHost): Command[] {
     })),
     { id: "workspace.reset", label: "今の配置を既定に戻す（欄・見せ方・物語の帯）", group: "画面", keys: [], words: "作業の配置 ワークスペース リセット", available: named, run: always(() => host.useWorkspace("reset")) },
     { id: "view.focus", label: "左右の欄と物語の帯を隠してページを大きく（もう一度で戻す）", group: "画面", keys: ["Tab"], available: named, run: always(() => host.toggleFocus()) },
+    {
+      id: "view.nextPane",
+      label: "次の欄へ（キーボードで画面の部分を巡る）",
+      group: "画面",
+      keys: ["F8"],
+      words: "フォーカス 移る 欄 パネル キーボード 巡る アクセシビリティ",
+      run: () => arrived(host, movePane(1)),
+    },
+    {
+      id: "view.previousPane",
+      label: "前の欄へ（キーボードで画面の部分を巡る）",
+      group: "画面",
+      keys: ["Shift+F8"],
+      words: "フォーカス 移る 欄 パネル キーボード 巡る 戻る アクセシビリティ",
+      run: () => arrived(host, movePane(-1)),
+    },
     palette("pages", "ページ", "一覧 並べ替え"),
     palette("script", "台本", "台本 プロット 取り込み markdown"),
     palette("cast", "人物", "登場人物 キャラ"),

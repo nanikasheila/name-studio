@@ -2,6 +2,7 @@
 // crop: read once, kept while the name is open, drawn when they come.
 import { call } from "./backend";
 import type { RoughImage } from "./model";
+import { fail } from "./status";
 
 const ROUGH_MAX_HEIGHT = 1600;
 
@@ -70,7 +71,7 @@ export class RoughCache {
       return image;
     } catch (error) {
       images.set(key, { failed: String(error) });
-      this.host.status(`ラフ画像を読めませんでした（元のネーム用紙が必要です）: ${error}`);
+      fail("ラフ画像を読めませんでした（元のネーム用紙が必要です）", error);
       return null;
     }
   }
