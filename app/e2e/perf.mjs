@@ -85,8 +85,9 @@ try {
   const opened = await openHeavyName(page, { pages: 32, strokes: 200, show: 10 });
   await page.evaluate(() => {
     const wb = window.nameStudio.workbench;
-    window.__meter.wrap(wb.editor, "draw");
-    window.__meter.wrap(wb.editor, "drawOverlay");
+    // The page editor's drawing part draws every frame (editor.draw only hands over to it).
+    window.__meter.wrap(wb.editor.painter, "draw");
+    window.__meter.wrap(wb.editor.painter, "drawOverlay");
   });
   results.open = opened;
   await page.waitForTimeout(500);
