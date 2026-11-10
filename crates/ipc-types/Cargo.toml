@@ -1,0 +1,11 @@
+[package]
+name = "ipc-types"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+description = "アプリの Rust 側のコマンドと、その引数・結果の型を TypeScript に書き出す（app/src/generated/ipc.ts）"
+publish = false
+
+[dependencies]
+serde_json = "1"
+syn = { version = "2", features = ["full"] }

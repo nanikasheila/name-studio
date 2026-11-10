@@ -2,32 +2,9 @@
 // on without a CSP-made template. The Rust side makes them from settings
 // (clip-core write::blank) out of a blank page CSP saved, built into the app.
 import type { CspPage, CspStory, PageFormat, Project } from "./model";
+import type { PageSetup } from "./generated/ipc";
 
-/** What `prepare_builtin_template` takes (clip-core `PageSetup`). */
-export interface PageSetup {
-  canvasMm: [number, number];
-  resolution: number;
-  trimMm: [number, number];
-  bleedMm: number;
-  basicMm: [number, number];
-  basicOffsetMm: [number, number];
-  rightBinding: boolean;
-  firstPageLeft: boolean;
-  title: string;
-  storyIndex: number | null;
-  author: string;
-  nombreStart: number;
-  font: { name: string; postscript: string } | null;
-  /** clip-core `StoryLayout`: what is not given is CSP's default. */
-  story?: CspStory;
-}
-
-/** Where `prepare_builtin_template` put the page, the layers to copy and the work. */
-export interface BuiltTemplate {
-  page: string;
-  parts: string;
-  work: string;
-}
+export type { BuiltTemplate, PageSetup } from "./generated/ipc";
 
 /** The usual bleed (裁ち落とし) of a commercial manuscript. */
 const USUAL_BLEED_MM = 5;
@@ -188,7 +165,8 @@ export function setupProblem(setup: PageSetup): string | null {
   if (setup.trimMm[0] > setup.canvasMm[0] + 1e-9 || setup.trimMm[1] > setup.canvasMm[1] + 1e-9) return "仕上がりがキャンバスより大きくなっています";
   if (!(Number.isFinite(setup.bleedMm) && setup.bleedMm >= 0)) return "裁ち落とし幅は 0 以上にしてください";
   if (!positive(setup.basicMm)) return "基本枠の幅と高さを入れてください";
-  const [ox, oy] = setup.basicOffsetMm;
+  // What is left out is what the Rust side fills in: no offset, numbers from 1.
+  const [ox, oy] = setup.basicOffsetMm ?? [0, 0];
   if (
     !Number.isFinite(ox) ||
     !Number.isFinite(oy) ||
@@ -200,14 +178,14 @@ export function setupProblem(setup: PageSetup): string | null {
   const px = (mm: number) => Math.round((mm * setup.resolution) / 25.4);
   if (px(setup.canvasMm[0]) > MAX_SIDE_PX || px(setup.canvasMm[1]) > MAX_SIDE_PX) return "キャンバスが大きすぎます（解像度を下げてください）";
   if (!setup.title.trim()) return "作品名を入れてください";
-  if ((setup.storyIndex ?? 0) < 0 || setup.nombreStart < 0) return "話数とノンブルの開始番号は 0 以上にしてください";
+  if ((setup.storyIndex ?? 0) < 0 || (setup.nombreStart ?? 1) < 0) return "話数とノンブルの開始番号は 0 以上にしてください";
   const story = setup.story;
   if (story?.pageNumber && !(story.pageNumber.start >= 0)) return "ページ番号の開始番号は 0 以上にしてください";
   const nombre = story?.nombre;
   if (nombre) {
     const size = nombre.sizePt ?? 9;
     if (!(size >= 4 && size <= 72)) return "ノンブルの大きさは 4〜72 pt にしてください";
-    if (nombre.edgeMm !== undefined && !(nombre.edgeMm >= 0 && nombre.edgeMm <= 5)) return "ノンブルのフチは 0〜5 mm にしてください";
+    if (nombre.edgeMm != null && !(nombre.edgeMm >= 0 && nombre.edgeMm <= 5)) return "ノンブルのフチは 0〜5 mm にしてください";
     if (!(nombre.offsetMm ?? [0, 5]).every((offset) => Math.abs(offset) <= 100)) return "ノンブルの基本枠との間隔は ±100 mm までにしてください";
   }
   return null;

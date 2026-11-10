@@ -1,59 +1,12 @@
 // Pens and erasers: taking them over from CLIP STUDIO PAINT sub tools
 // (crates/clip-core/src/subtool.rs reads the files), and how a brush turns
 // pen pressure and the stroke's length into width and opacity.
-import type { Brush, CspToolData, PressureCurve, Project, Stroke, StrokePoint } from "./model";
+import type { Brush, PressureCurve, Project, Stroke, StrokePoint } from "./model";
 import { newId } from "./project";
+import type { Dynamics as CspDynamics, Length as CspLength, SubTool as CspSubTool } from "./generated/ipc";
 
-/** What the Rust side reads from a .sut or CSP's tool database. */
-export interface CspLength {
-  value: number;
-  /** px10: CSP's unit 2, tens of pixels (CSP draws 1.2 as wide as 12 px, at any resolution). */
-  unit: "px" | "px10";
-}
-
-export interface CspDynamics {
-  pressure: boolean;
-  pressureMin: number;
-  pressureCurve: [number, number][];
-  tilt: boolean;
-  tiltMin: number;
-  tiltCurve: [number, number][];
-  velocity: boolean;
-  velocityMin: number;
-  velocityCurve: [number, number][];
-  random: boolean;
-  randomMin: number;
-}
-
-export interface CspSubTool {
-  name: string;
-  group: string[];
-  kind: "pen" | "eraser" | "other";
-  size: CspLength | null;
-  sizeDynamics: CspDynamics | null;
-  opacity: number;
-  opacityDynamics: CspDynamics | null;
-  flow: number;
-  flowDynamics: CspDynamics | null;
-  hardness: number;
-  antiAlias: number;
-  stabilization: number;
-  stabilizationBySpeed?: boolean;
-  postCorrection?: number;
-  /** 入り・抜き, only when they change the size (入り抜きの影響先). */
-  taperIn: CspLength | null;
-  taperOut: CspLength | null;
-  /** The width they start and end at, 0..1. */
-  taperMin?: number;
-  interval: number;
-  thickness: number;
-  rotation: number;
-  tipMaterial: string | null;
-  tip: { width: number; height: number; pngBase64: string } | null;
-  vectorErase: "touched" | "intersection" | "whole" | null;
-  /** Every setting as CSP keeps it (its `dpi` is set when the brush is made). */
-  csp?: CspToolData;
-}
+/** What the Rust side reads from a .sut or CSP's tool database (clip-core subtool.rs). */
+export type { Dynamics as CspDynamics, Length as CspLength, SubTool as CspSubTool } from "./generated/ipc";
 
 /** Resolution CSP brush sizes in pixels are measured at, unless chosen otherwise. */
 export const DEFAULT_BRUSH_DPI = 600;
@@ -98,7 +51,7 @@ export function brushFromSubTool(tool: CspSubTool, dpi: number, id: string): Bru
     rotation: tool.rotation,
     source: sourceLabel(tool),
   };
-  if (tool.csp) brush.csp = { ...tool.csp, dpi };
+  brush.csp = { ...tool.csp, dpi };
   const keys = { pressure: "Pressure", tilt: "Tilt", velocity: "Speed", random: "Random" } as const;
   for (const input of ["pressure", "tilt", "velocity", "random"] as const) {
     const size = inputOf(tool.sizeDynamics, input);

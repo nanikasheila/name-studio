@@ -228,6 +228,7 @@ describe("dialogueUpdateSummary", () => {
     notFound: [],
     conflicts: [],
     notes: false,
+    marks: [],
     problems: [],
     pages,
     ...changes,

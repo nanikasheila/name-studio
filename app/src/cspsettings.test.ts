@@ -217,5 +217,9 @@ function subTool(): CspSubTool {
     tipMaterial: null,
     tip: null,
     vectorErase: null,
+    stabilizationBySpeed: false,
+    postCorrection: 0,
+    taperMin: 0,
+    csp: { settings: {}, dpi: 0 },
   };
 }

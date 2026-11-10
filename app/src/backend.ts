@@ -1,344 +1,71 @@
-// The Rust side of the app (app/src-tauri): every command it offers, with
-// what it takes and what it gives back. All calls go through `call`, so a
-// misspelt command or a wrong argument is a type error, and the shapes the
-// Rust side sends are written down once, here.
+// The Rust side of the app (app/src-tauri). All calls go through `call`, so
+// a misspelt command or a wrong argument is a type error. What each command
+// takes and gives is not written here: generated/ipc.ts has it, made from the
+// Rust source (`cargo run -p ipc-types`), so the two sides cannot drift apart.
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { Update } from "@tauri-apps/plugin-updater";
-import type { CspSubTool } from "./brush";
-import type { ExportReport, ExportRequest, OverwriteCheck } from "./export";
-import type { BuiltTemplate, PageSetup } from "./csppage";
-import type { FontFace } from "./fonts";
-import type { AiEvent, AiKind, AiModel, SavedTalk, TalkSummary } from "./assistchat";
-import type { CspToolData, Project, Series } from "./model";
-import type { SheetView } from "./types";
+import type { AiEvent, Commands as RustCommands, NameExportRequest } from "./generated/ipc";
+import type { SavedTalk, TalkSummary } from "./assistchat";
 
-/** The template page as `begin_name_export` reports it (clip-core `TemplateCanvas`). */
-export interface TemplateCanvas {
-  widthPx: number;
-  heightPx: number;
-  resolution: number;
-  trimPx: [number, number, number, number] | null;
-  basicPx: [number, number, number, number] | null;
-}
+export type {
+  AiEvent,
+  AiKind,
+  AiModel,
+  AiTools,
+  AiTurn,
+  BatchExport,
+  BuiltTemplate,
+  ChatMessage,
+  CspPageDialogue,
+  CspToolLocations,
+  DialogueUpdateReport,
+  FileCheck,
+  FileFilter,
+  FoundTool,
+  FoundUpdate,
+  KeptRecovery,
+  LayerLook,
+  NameExportStart,
+  OpenOptions,
+  RawBody,
+  Recovery,
+  SaveOptions,
+  SessionFile,
+  SpreadLayout,
+  TemplateCanvas,
+  VersionInfo,
+  VersionKind,
+} from "./generated/ipc";
+export type { SavedTalk, TalkSummary };
 
-/** Where pages go on a CSP 見開き page (clip-core `SpreadLayout`), in template px. */
-export interface SpreadLayout {
-  widthPx: number;
-  heightPx: number;
-  gutterPx: number;
-  leftDx: number;
-  rightDx: number;
-}
-
-/** `begin_name_export`: the canvas, and which parts can be editable layers. */
-export interface NameExportStart extends TemplateCanvas {
-  vectorLayers: boolean;
-  textLayers: boolean;
-  /** Whether a コマ枠フォルダー was found to copy (only looked for when asked). */
-  frameFolders: boolean;
-  /** Whether the book's first page is a left page (from the template); null when unknown. */
-  firstPageLeft: boolean | null;
-  spread: SpreadLayout | null;
-  /** Why 見開き pages cannot be written, when they cannot. */
-  spreadProblem: string | null;
-}
-
-/** How a layer looks in CSP: its opacity (0..1, times the 下描き half) and whether it is hidden. */
-export interface LayerLook {
-  name: string;
-  opacity: number;
-  hidden: boolean;
-  /** The opacity as is, not times the 下描き half (指示 keep their colour). */
-  whole?: boolean;
-}
-
-export interface CspExportRequest {
-  template: string;
-  outDir: string;
-  workTemplate: string | null;
-  workName: string | null;
-  storyIndex: number | null;
-  inputs: string[];
-  /** .clip files (the name sheet) to copy CSP's vector / text layers from. */
-  donors: string[];
-  /** Layers (by name) written as 下描き layers at half opacity: `ROUGH_LAYERS` to ink over the rough. */
-  draftLayers?: string[];
-  /** Layers (by name) written hidden or fainter: the ラフ線のレイヤー as set in the name. */
-  layerLooks?: LayerLook[];
-  /** Panels as a コマ枠フォルダー (copied from a finished page among the donors), with an empty layer in it to ink on. */
-  frameFolders?: boolean;
-  /** The name's binding (true: right-bound), written over the template's in the work and its pages. */
-  rightBinding?: boolean;
+/** What `begin_name_export` takes, and what the app itself writes into the pages (not the Rust side). */
+export interface CspExportRequest extends NameExportRequest {
   /** Each panel as a folder with a レイヤーマスク, holding its rough and an empty layer to ink on (instead of `frameFolders`). */
   panelMasks?: boolean;
   /** The name's memos as a 下描き image layer on top (on unless false). */
   notes?: boolean;
-  /** 指示: each 指示のレイヤー as a 下描き image layer in its colour, over everything (on unless false; written by the app, not the Rust side). */
+  /** 指示: each 指示のレイヤー as a 下描き image layer in its colour, over everything (on unless false). */
   marks?: boolean;
 }
-
-/** A written file read back (clip-core `verify::FileCheck`). */
-export interface FileCheck {
-  path: string;
-  /** The name pages (1-based) in this file: two for a 見開き page. */
-  pages?: number[];
-  /** Empty when the file holds what was written. */
-  problems: string[];
-  layers: number;
-  vectorLines: number;
-  texts: number;
-}
-
-/** One page brought up to date (clip-core `update::DialogueUpdateReport`). */
-export interface DialogueUpdateReport {
-  path: string;
-  backup: string | null;
-  kept: number;
-  retired: string[];
-  added: string[];
-  foreign: number;
-  leftAsInCsp: number;
-  replaced: string[];
-  notFound: string[];
-  /** Swapped layers that had been changed in CSP too. */
-  conflicts: string[];
-  /** Whether the memos layer was redrawn. */
-  notes: boolean;
-  /** The 指示 layers redrawn (or added). */
-  marks?: string[];
-  problems: string[];
-}
-
-export type VersionKind = "saved" | "auto" | "beforeRestore";
-
-export interface VersionInfo {
-  id: string;
-  timeMs: number;
-  kind: VersionKind;
-  title: string;
-  pages: number;
-  bytes: number;
-}
-
-export interface BatchExport {
-  project: string;
-  /** The page template; null with --builtin. */
-  template: string | null;
-  /** Pages from the name's CSP page settings, without a template (--builtin). */
-  builtin?: boolean;
-  outDir: string;
-  workTemplate: string | null;
-  workName: string | null;
-  storyIndex: number | null;
-  /** 見本のページ: .clip files to copy text and vector layers from. */
-  donors?: string[];
-  /** The rough as 下描き layers (on unless --no-draft-rough). */
-  draftRough?: boolean;
-  /** Panels as a コマ枠フォルダー (--frame-folders). */
-  frameFolders?: boolean;
-  /** Each panel as a folder with a レイヤーマスク (--panel-masks). */
-  panelMasks?: boolean;
-  /** The name's memos as a 下描き layer (on unless --no-notes). */
-  notes?: boolean;
-  /** 指示のレイヤー as 下描き layers (on unless --no-marks). */
-  marks?: boolean;
-  /** Bring the dialogue into the pages there instead (--update-dialogue). */
-  updateDialogue?: boolean;
-  /** Take the dialogue changed in CSP back into the name, and save it (--read-dialogue). */
-  readDialogue?: boolean;
-  report: string;
-}
-
-export interface Recovery {
-  path: string | null;
-  timeMs: number;
-  project: Project;
-  /** What the save check found wrong with it (mended when it is brought back). */
-  problems?: string[];
-}
-
-/** A project kept by autosave, as the start offers it (`pending_recoveries`). */
-export interface KeptRecovery {
-  /** Its file name in the recovery folder (what `remove_recovery` names). */
-  file: string;
-  timeMs: number;
-  recovery: Recovery | null;
-  /** Fields a newer version added that this one does not show. */
-  unknownFields?: string[];
-  /** Why it cannot be brought back. */
-  unreadable: string | null;
-}
-
-export interface CspToolLocations {
-  tools: string | null;
-  materials: string | null;
-}
-
-/** A page's dialogue as CSP holds it (`read_name_dialogue`). */
-export interface CspPageDialogue {
-  path: string;
-  dialogue: { texts: { text: string; bbox: number[] | null }[]; written: string[] | null; adoptedFrom: string[] | null } | null;
-}
-
-/**
- * A request body of `[u32 little-endian JSON length][JSON][bytes]` (see
- * `packBody` and `projectBody`): images and the project text travel as bytes.
- */
-export type RawBody = Uint8Array;
 
 /** Where new versions come from: 正式版 only, or 試験版 (every version CI let through) too. */
-export type UpdateChannel = "stable" | "beta";
+export type UpdateChannel = RustCommands["check_update"][0]["channel"];
 
-/** A newer version found by `check_update`, as `new Update(…)` takes it. */
-export type FoundUpdate = ConstructorParameters<typeof Update>[0];
-
-/** Which files a file dialog shows: a name for the kind and its extensions (no dot). */
-export interface FileFilter {
-  name: string;
-  extensions: string[];
-}
-
-/** A dialog to pick a file to open (dialogs.rs `OpenOptions`). */
-export interface OpenOptions {
-  title?: string;
-  filters?: FileFilter[];
-  /** Start here: in this folder, or in this file's folder with its name filled in. */
-  defaultPath?: string;
-  /** Pick a folder, not a file. */
-  directory?: boolean;
-  /** Pick several files. */
-  multiple?: boolean;
-}
-
-/** A dialog to pick where a file is saved (dialogs.rs `SaveOptions`). */
-export interface SaveOptions {
-  title?: string;
-  filters?: FileFilter[];
-  defaultPath?: string;
-}
+/**
+ * Where the Rust side passes JSON on without looking into it (the kept
+ * conversations), what it is: the commands named must be ones the Rust side has.
+ */
+type Known<K extends keyof RustCommands, T extends Record<K, [unknown, unknown]>> = Omit<RustCommands, K> & T;
 
 /** Each command: its arguments (`void`: none) and its result. */
-export interface Commands {
-  // The open name sheet (viewer.rs)
-  open_sheet: [{ path: string }, SheetView];
-  layer_overview: [{ layerId: number; factor: number }, ArrayBuffer];
-  layer_region: [{ layerId: number; region: number[] }, ArrayBuffer];
-  export_defaults: [void, { workTemplate: string | null; workName: string }];
-  export_pages: [{ request: ExportRequest }, ExportReport];
-  import_project: [{ path: string }, { project: Project; warnings: string[] }];
-  rough_image: [{ sheet: string; layerId: number; crop: [number, number, number, number]; maxHeight: number }, ArrayBuffer];
-  // The name data (project_io.rs)
-  log_error: [{ message: string }, void];
-  load_project: [{ path: string }, Project];
-  unknown_project_fields: [{ path: string }, string[]];
-  save_project: [RawBody, VersionInfo | null];
-  load_series: [{ path: string }, Series];
-  save_series: [{ path: string; text: string }, void];
-  autosave_project: [RawBody, { savedToFile: boolean; version: VersionInfo | null; problems: string[] }];
-  list_versions: [{ path: string | null }, VersionInfo[]];
-  load_version: [{ path: string | null; id: string }, Project];
-  record_version: [RawBody, VersionInfo | null];
-  pending_recoveries: [void, KeptRecovery[]];
-  discard_recovery: [{ path: string | null }, void];
-  remove_recovery: [{ file: string }, void];
-  // CSP pages and works (name_export.rs)
-  begin_name_export: [{ request: CspExportRequest }, NameExportStart];
-  export_name_page: [RawBody, FileCheck];
-  update_name_dialogue: [RawBody, DialogueUpdateReport];
-  read_name_dialogue: [{ spread: boolean }, CspPageDialogue];
-  adopt_name_dialogue: [{ paths: string[] }, void];
-  finish_name_export: [void, { pages: string[]; work: string | null; workCheck: FileCheck | null }];
-  cancel_name_export: [void, number];
-  check_export_target: [{ outDir: string }, OverwriteCheck];
-  prepare_builtin_template: [{ setup: PageSetup }, BuiltTemplate];
-  // Other files (files.rs)
-  write_pdf: [RawBody, void];
-  write_binary_file: [RawBody, void];
-  write_text_file: [{ path: string; text: string }, void];
-  record_dialogue_update: [{ outDir: string; entry: string }, void];
-  csp_tool_locations: [void, CspToolLocations];
-  read_csp_sub_tools: [{ path: string; materials: string | null }, CspSubTool[]];
-  write_csp_sub_tool: [{ path: string; tool: CspToolData; name: string; materials: string | null }, { missingMaterials: string[] }];
-  // The file dialogs, and which places were picked in them (dialogs.rs; dialogs.ts asks)
-  choose_open: [{ options: OpenOptions }, string | string[] | null];
-  choose_save: [{ options: SaveOptions }, string | null];
-  place_chosen: [{ path: string }, boolean];
-  // The fonts on the computer (fonts.rs)
-  list_fonts: [void, FontFace[]];
-  // The app (lib.rs)
-  is_release_build: [void, boolean];
-  /** When the app's process began (ms since 1970), for 動作の記録. */
-  started_at: [void, number];
-  /** Start with the screen's look as it comes, this time only (`--safe-look`, or Shift held as the app starts). */
-  safe_look: [void, boolean];
-  // 前の版に戻す (updates.rs)
-  check_update: [{ channel: UpdateChannel; timeoutMs: number }, FoundUpdate | null];
-  install_release: [{ version: string }, void];
-  batch_export_task: [void, BatchExport | null];
-  end_batch_export: [{ code: number; message?: string | null }, void];
-  // AI に相談 (ai/)
-  ai_detect: [{ claude: string | null; codex: string | null }, AiTools];
-  ai_prepare_session: [{ dir: string | null; files: SessionFile[] }, string];
-  ai_install_skill: [{ target: "claude" | "codex" | "folder"; folder: string | null }, string];
-  ai_turn: [{ turn: AiTurn }, number];
-  ai_stop: [{ run: number }, void];
-  ai_save_key: [{ key: string | null }, void];
-  ai_has_key: [void, boolean];
-  ai_local_models: [{ endpoint: string }, string[]];
-  ai_models: [{ kind: AiKind; program: string | null; endpoint: string | null }, AiModel[]];
-  /** Past conversations (app data ai-history/), to go on with one. */
-  ai_history_save: [{ talk: SavedTalk }, void];
-  ai_history_list: [void, TalkSummary[]];
-  ai_history_load: [{ id: string }, unknown];
-  ai_history_delete: [{ id: string }, void];
-}
-
-/** A program found on this computer (`ai_detect`). */
-export interface FoundTool {
-  path: string;
-  version: string;
-}
-
-export interface AiTools {
-  claude: FoundTool | null;
-  codex: FoundTool | null;
-  node: FoundTool | null;
-}
-
-/** A file of a conversation's folder: text, or bytes in base64. */
-export interface SessionFile {
-  path: string;
-  text?: string;
-  base64?: string;
-}
-
-/** One message of a conversation with a local LLM. */
-export interface ChatMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
-  /** Pictures (files in the conversation's folder) shown with it. */
-  images?: string[];
-}
-
-/** One turn of a conversation (ai/mod.rs `AiTurn`). */
-export interface AiTurn {
-  kind: AiKind;
-  dir: string;
-  prompt: string;
-  resume: string | null;
-  model: string | null;
-  /** One the model offers (empty or null: its default). */
-  effort?: string | null;
-  /** Codex's Windows sandbox (null: mxc; "config": its config.toml). */
-  sandbox?: string | null;
-  program: string | null;
-  images: string[];
-  endpoint: string | null;
-  messages: ChatMessage[];
-}
-
-export type { AiEvent, AiKind, AiModel, SavedTalk, TalkSummary };
+export type Commands = Known<
+  "ai_history_save" | "ai_history_list",
+  {
+    /** Past conversations (app data ai-history/), to go on with one. */
+    ai_history_save: [{ talk: SavedTalk }, void];
+    ai_history_list: [void, TalkSummary[]];
+  }
+>;
 
 /** Hear what AI turns say; returns how to stop hearing. */
 export function onAiEvent(heard: (event: AiEvent) => void): Promise<() => void> {

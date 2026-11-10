@@ -157,7 +157,7 @@ export class SheetViewer {
     if (this.regions.has(key)) return;
     this.regions.set(key, "loading");
     const box = cell.rect;
-    const region = [Math.floor(box.x0), Math.floor(box.y0), Math.ceil(box.x1), Math.ceil(box.y1)];
+    const region: [number, number, number, number] = [Math.floor(box.x0), Math.floor(box.y0), Math.ceil(box.x1), Math.ceil(box.y1)];
     const sheet = this.sheetView;
     call("layer_region", { layerId: layer.id, region })
       .then(pngToImage)

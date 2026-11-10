@@ -63,7 +63,7 @@ CSP のファイルの中（SQLite の表）を書き換えるのは csp-format 
 
 入口を 1 か所にしているもの（どれもテストが守ります）:
 
-- Rust 側を呼ぶのは `backend.ts` の `call()` だけ。コマンドの名前・引数・戻り値は `Commands` に書き、`backend.test.ts` が Rust 側の一覧（`lib.rs`）と突き合わせます。
+- Rust 側を呼ぶのは `backend.ts` の `call()` だけ。コマンドの名前・引数・戻り値の型は手で書かず、Rust のソースから作ります（`cargo run -p ipc-types` が `app/src/generated/ipc.ts` を書く）。Rust 側を変えて作り直し忘れると `cargo test`（`crates/ipc-types/tests/fresh.rs`）が落ち、画面側が合わなくなったところは型チェックが落とします。
 - システムのダイアログ（ファイルを選ぶ・聞く・知らせる）は `dialogs.ts` だけ。
 - この PC に残す設定は `prefs.ts`（中身の決まりは `settings.ts`）。
 - ネームデータの型は Rust（`name-model`）と画面（`model.ts`）の 2 か所にあり、`contract.test.ts`・`modelcheck.test.ts` と Rust の `tests/contract.rs`・`tests/typescript.rs` が揃っていることを確かめます。
