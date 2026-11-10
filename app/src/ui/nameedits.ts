@@ -33,13 +33,17 @@ import {
   setRoughLayer,
 } from "../domain/roughlayers";
 import { markPen } from "./toolmark";
-import { copySelection, type ItemRef, pasteClip, withContents } from "../domain/transform";
+import { copySelection, type ItemRef, pasteClip } from "../domain/transform";
+import { overPages, pickedOf } from "../editing/pickpages";
+import { pickedSummary } from "./editor";
 
-/** The rough lines in a selection. */
-export function pickedStrokes(s: Selection | null): string[] {
+/** The rough lines in a selection, each with its page (a 範囲選択 may lie over a 見開き). */
+export function pickedStrokes(s: Selection | null): { pageId: string; id: string }[] {
   if (!s) return [];
-  if (s.kind === "stroke") return [s.id];
-  return s.kind === "group" ? (s.items ?? []).filter((item) => item.kind === "stroke").map((item) => item.id) : [];
+  if (s.kind === "stroke") return [{ pageId: s.pageId, id: s.id }];
+  return s.kind === "group"
+    ? (s.items ?? []).filter((item) => item.kind === "stroke").map((item) => ({ pageId: item.pageId ?? s.pageId, id: item.id }))
+    : [];
 }
 
 /** What the changes need from the editor around them. */
@@ -142,9 +146,12 @@ export class NameEdits {
           break;
         }
         case "takeSelected": {
-          const pageId = this.editor.selection?.pageId;
-          const page = p.pages.find((one) => one.id === pageId);
-          const count = page ? moveStrokesToLayer(p, page, pickedStrokes(this.editor.selection), change.id) : 0;
+          const picked = pickedStrokes(this.editor.selection);
+          let count = 0;
+          for (const page of p.pages) {
+            const ids = picked.filter((stroke) => stroke.pageId === page.id).map((stroke) => stroke.id);
+            if (ids.length) count += moveStrokesToLayer(p, page, ids, change.id);
+          }
           message = `ラフ線 ${count} 本をレイヤー「${layerOf(p, { layer: change.id }).name}」へ移しました`;
           break;
         }
@@ -153,10 +160,10 @@ export class NameEdits {
     // Lines that went hidden or locked cannot stay picked.
     const picked = pickedStrokes(this.editor.selection);
     if (picked.length && this.editor.selection) {
-      const page = project.pages.find((one) => one.id === this.editor.selection?.pageId);
-      const stuck = page?.strokes.some(
-        (stroke) => picked.includes(stroke.id) && (layerOf(project, stroke).hidden || layerOf(project, stroke).locked),
-      );
+      const stuck = picked.some(({ pageId, id }) => {
+        const stroke = project.pages.find((one) => one.id === pageId)?.strokes.find((x) => x.id === id);
+        return !!stroke && (layerOf(project, stroke).hidden || layerOf(project, stroke).locked);
+      });
       if (stuck) this.editor.select(null);
     }
     if (message) this.status(message);
@@ -190,20 +197,19 @@ export class NameEdits {
   selectRefs(refs: readonly LayerRef[]): void {
     const pageId = refs[0]?.pageId;
     if (!pageId) return;
-    const items: ItemRef[] = refs
-      .filter((ref) => ref.pageId === pageId)
-      .flatMap((ref): ItemRef[] =>
-        ref.kind === "strokes"
-          ? ref.ids.map((id) => ({ kind: "stroke" as const, id }))
-          : ref.kind === "sticky"
-            ? []
-            : [{ kind: ref.kind, id: ref.id }],
-      );
-    if (!items.length) return;
-    this.editor.select(
-      items.length === 1 ? { kind: items[0].kind, pageId, id: items[0].id } : { kind: "group", pageId, id: "group", items },
+    // Rows of several pages are picked together too (each thing named with its page).
+    const items: ItemRef[] = refs.flatMap((ref): ItemRef[] =>
+      ref.kind === "strokes"
+        ? ref.ids.map((id) => ({ kind: "stroke" as const, id, pageId: ref.pageId }))
+        : ref.kind === "sticky"
+          ? []
+          : [{ kind: ref.kind, id: ref.id, pageId: ref.pageId }],
     );
-    if (refs.some((ref) => ref.pageId !== pageId)) this.status("一緒に選べるのは同じページのものだけです");
+    const picked = pickedOf(items, pageId);
+    if (!picked) return;
+    this.editor.select(picked);
+    if (picked.kind === "group" && overPages(picked))
+      this.status(`${pickedSummary(picked.items ?? [])}を選びました。動かせるのは画面に出ているページのものです`);
     this.host.renderAll();
   }
 
@@ -213,28 +219,34 @@ export class NameEdits {
     const s = this.editor.selection;
     const page = project?.pages.find((p) => p.id === s?.pageId);
     if (!project || !s || !page) return false;
+    // Each page's own onto that page (a 範囲選択 may lie over a 見開き).
     const panel = s.kind === "panel" ? page.panels.find((p) => p.id === s.id) : undefined;
-    const source = s.kind === "group" ? { ...s, items: withContents(page, s.items ?? [], this.editor.panelCarries) } : s;
-    const clip = copySelection(page, source, panel ? panelContents(page, panel) : undefined);
-    if (!clip) return false;
-    let items: ItemRef[] = [];
+    const clips =
+      s.kind === "group"
+        ? this.editor.picks
+            .parts(true)
+            .map((part) => ({ pageId: part.page.id, clip: copySelection(part.page, { ...s, items: part.items }) }))
+        : [{ pageId: page.id, clip: copySelection(page, s, panel ? panelContents(page, panel) : undefined) }];
+    if (!clips.some(({ clip }) => clip)) return false;
+    const items: ItemRef[] = [];
     this.edit((p) => {
-      const target = p.pages.find((one) => one.id === page.id);
-      if (!target) return;
-      const pasted = pasteClip(p, target, clip, [5, 5]);
-      items = [
-        ...pasted.panels.map((id) => ({ kind: "panel" as const, id })),
-        ...pasted.strokes.map((id) => ({ kind: "stroke" as const, id })),
-        ...pasted.lines.map((id) => ({ kind: "line" as const, id })),
-        ...pasted.fills.map((id) => ({ kind: "fill" as const, id })),
-        ...pasted.breakouts.map((id) => ({ kind: "breakout" as const, id })),
-      ];
+      for (const { pageId, clip } of clips) {
+        const target = p.pages.find((one) => one.id === pageId);
+        if (!target || !clip) continue;
+        const pasted = pasteClip(p, target, clip, [5, 5]);
+        items.push(
+          ...pasted.panels.map((id) => ({ kind: "panel" as const, id, pageId })),
+          ...pasted.strokes.map((id) => ({ kind: "stroke" as const, id, pageId })),
+          ...pasted.lines.map((id) => ({ kind: "line" as const, id, pageId })),
+          ...pasted.fills.map((id) => ({ kind: "fill" as const, id, pageId })),
+          ...pasted.breakouts.map((id) => ({ kind: "breakout" as const, id, pageId })),
+        );
+      }
     });
     const panels = items.filter((item) => item.kind === "panel");
-    if (panels.length === 1 && items.every((item) => item.kind !== "fill" && item.kind !== "breakout"))
+    if (panels.length === 1 && items.every((item) => item.kind !== "fill" && item.kind !== "breakout" && item.pageId === page.id))
       this.editor.select({ kind: "panel", pageId: page.id, id: panels[0].id });
-    else if (items.length > 1) this.editor.select({ kind: "group", pageId: page.id, id: "group", items });
-    else if (items.length) this.editor.select({ kind: items[0].kind, pageId: page.id, id: items[0].id });
+    else this.editor.select(pickedOf(items, page.id));
     this.status("複製しました（元に戻すは Ctrl+Z）");
     this.host.renderAll();
     return true;
@@ -341,7 +353,7 @@ export class NameEdits {
         : selection.kind === "panel"
           ? [selection.id]
           : selection.kind === "group"
-            ? (selection.items ?? []).filter((item) => item.kind === "panel").map((item) => item.id)
+            ? (selection.items ?? []).filter((item) => item.kind === "panel" && !item.pageId).map((item) => item.id)
             : [];
     const targets = panelsToTidy(page, chosen);
     if (!targets.length) {

@@ -12,6 +12,7 @@ import {
   densify,
   straightEnd,
   copySelection,
+  joinClips,
   moveItems,
   pasteClip,
   rotation,
@@ -19,6 +20,8 @@ import {
   toggleItem,
   transformBase,
   transformItems,
+  warpFrom,
+  warpPoint,
   withContents,
 } from "./transform";
 
@@ -337,5 +340,50 @@ describe("picking several things", () => {
     expect(pasted.panels).toHaveLength(1);
     expect(pasted.breakouts).toHaveLength(1);
     expect(pasted.fills).toHaveLength(1);
+  });
+});
+
+describe("over a 見開き", () => {
+  it("gives a transform in the terms of a page lying elsewhere on the canvas", () => {
+    // The facing page lies 200 mm to the left: its point (150, 50) is (-50, 50) on the own page.
+    const offset: Point = [-200, 0];
+    const w = scaling(2, 2, [0, 0]);
+    for (const p of [
+      [150, 50],
+      [10, 90],
+    ] as Point[]) {
+      const there = warpPoint(w, [p[0] + offset[0], p[1] + offset[1]]);
+      const here = warpPoint(warpFrom(w, offset), p);
+      expect(here[0]).toBeCloseTo(there[0] - offset[0]);
+      expect(here[1]).toBeCloseTo(there[1] - offset[1]);
+    }
+    const quad = {
+      box: [0, 0, 10, 10] as [number, number, number, number],
+      corners: [
+        [0, 0],
+        [12, 0],
+        [12, 12],
+        [0, 10],
+      ] as [Point, Point, Point, Point],
+    };
+    const p: Point = [205, 5];
+    const there = warpPoint(quad, [p[0] + offset[0], p[1] + offset[1]]);
+    const here = warpPoint(warpFrom(quad, offset), p);
+    expect(here[0]).toBeCloseTo(there[0] - offset[0]);
+    expect(here[1]).toBeCloseTo(there[1] - offset[1]);
+    expect(warpFrom(w, [0, 0])).toBe(w);
+  });
+
+  it("joins clips of two pages in the first's terms", () => {
+    const project = newProject("t", 3);
+    const [, right, left] = project.pages;
+    const a = addLine(project, right, [50, 50], "右");
+    const b = addLine(project, left, [150, 50], "左");
+    const first = copySelection(right, { kind: "line", pageId: right.id, id: a.id })!;
+    const other = copySelection(left, { kind: "line", pageId: left.id, id: b.id })!;
+    const joined = joinClips(first, [{ clip: other, offset: [-200, 0] }]);
+    expect(joined.lines.map((line) => Math.round((line.box[0] + line.box[2]) / 2))).toEqual([50, -50]);
+    // The pages' own things stay where they are.
+    expect(Math.round((b.box[0] + b.box[2]) / 2)).toBe(150);
   });
 });

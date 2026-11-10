@@ -91,8 +91,9 @@ export const TOOL_TOPICS: Record<ToolId, HelpTopic> & Record<string, HelpTopic> 
     what: "コマ・セリフ・ラフ線・塗り・付箋を選んで動かす",
     steps: [
       { input: "クリック", does: "選ぶ" },
-      { input: "ドラッグ（何もない所）", does: "囲んで選ぶ" },
-      { input: "Shift+クリック", does: "選択に足す・外す" },
+      { input: "ドラッグ（何もない所）", does: "囲んで選ぶ（見開きの両ページにまたがってもよい）" },
+      { input: "ドラッグ（選んだ枠の中）", does: "選んだものをまとめて動かす（ものの間を押しても）" },
+      { input: "Shift+クリック", does: "選択に足す・外す（向かいのページのものも）" },
       { command: "selectAll", does: "ページを全部選ぶ" },
       { command: "deselect", does: "選択を外す" },
       ...VIEW_STEPS,
@@ -265,9 +266,9 @@ export const HOVER_TOPICS: Record<string, HelpTopic> = {
   "item.stroke": {
     name: "ラフ線・指示",
     steps: [
-      { input: "ドラッグ", does: "動かす" },
+      { input: "ドラッグ（枠の中）", does: "動かす" },
+      { input: "枠の四角・丸をドラッグ", does: "拡大縮小・回転（線の太さも一緒に）。Ctrl + 角で自由変形" },
       { input: "Shift+クリック", does: "選択に足す" },
-      { command: "transform", does: "変形" },
       { command: "delete", does: "消す" },
     ],
   },
@@ -302,10 +303,11 @@ export const HOVER_TOPICS: Record<string, HelpTopic> = {
   },
   "item.group": {
     name: "選んだもの（まとめて）",
+    what: "見開きの両ページにまたがっても、まとめて動かし・変形し・コピーし・消せる",
     steps: [
-      { input: "ドラッグ", does: "まとめて動かす" },
+      { input: "ドラッグ（枠の中ならどこでも）", does: "まとめて動かす" },
+      { input: "枠の四角・丸をドラッグ", does: "拡大縮小・回転（ラフ線は太さも）。Ctrl + 角で自由変形" },
       { input: "Shift+クリック", does: "足す・外す" },
-      { command: "transform", does: "変形" },
       { command: "copy", does: "コピー" },
       { command: "delete", does: "消す" },
     ],

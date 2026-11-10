@@ -2,6 +2,7 @@
 // selection: what can be changed about the selected panel, line, sticky,
 // fill, line drawing or the page in view.
 import { ask } from "../platform/dialogs";
+import { overPages } from "../editing/pickpages";
 import { alternativesOf } from "../domain/alternatives";
 import { wantsTail } from "../domain/autotail";
 import { SHAPE_LABELS, TAIL_LABELS, defaultTailStyle, resolvedShape } from "../domain/balloon";
@@ -288,7 +289,7 @@ export class Inspector {
         element("h2", { textContent: "範囲選択" }),
         element("p", {
           className: "hint",
-          textContent: `${pickedSummary(s.items ?? [])}。ドラッグや矢印キーでまとめて動かせます（コマは中に描いたものと一緒に）。枠の四角で大きさ（Shift で縦横別々、Alt で中心から）、上の丸で向き（Shift で 15° ずつ）、Ctrl + 角で自由変形。Shift + クリックで足す・外す。Ctrl+C / Ctrl+V でほかのページへも写せます。`,
+          textContent: `${pickedSummary(s.items ?? [])}${overPages(s) ? "（ページをまたいで）" : ""}。枠の中ならどこをドラッグしても（ものの間でも）まとめて動かせます。矢印キーでも（コマは中に描いたものと一緒に）。枠の四角で大きさ（Shift で縦横別々、Alt で中心から）、上の丸で向き（Shift で 15° ずつ）、Ctrl + 角で自由変形。Shift + クリックで足す・外す（向かいのページのものも）。Ctrl+C / Ctrl+V でほかのページへも写せます。`,
         }),
         ...this.transformButtons(),
         remove,

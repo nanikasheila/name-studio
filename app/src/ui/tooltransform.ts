@@ -1,11 +1,12 @@
 // 変形 (Ctrl+T) with the select tool: the frame's squares scale what is
 // selected (the far side staying, or the middle with Alt), the round handle
 // turns it, Ctrl + a corner warps it.
-import { FRAME_HANDLES, type DragHandler, type DragOf, type EditorCore, type EditorSnap, type Press } from "./editorcore";
+import { FRAME_HANDLES, type DragHandler, type DragOf, type EditorCore, type EditorSnap, type OtherBase, type Press } from "./editorcore";
+import { slotOffset } from "../editing/pickpages";
 import type { Point, Project } from "../model/model";
 import { assignPanels, orderPanels, sortLines } from "../domain/readingorder";
 import { NO_TARGETS } from "../domain/snapping";
-import { rotation, scaling, transformBase, transformItems, type Affine } from "../domain/transform";
+import { rotation, scaling, transformBase, transformItems, warpFrom, type Affine, type Warp } from "../domain/transform";
 
 /** A press on the transform frame starts scaling, turning or warping; false when it is not on the frame. */
 export function pressFrame(editor: EditorCore, { event, project, point, sx, sy }: Press): boolean {
@@ -15,7 +16,17 @@ export function pressFrame(editor: EditorCore, { event, project, point, sx, sy }
   const items = editor.selectedItems();
   // A balloon on its own grows with its text, or (as set) changes alone around it.
   const lone = editor.selection?.kind === "line" ? (editor.balloonTextFollows ? "withText" : "balloonOnly") : undefined;
-  const base = transformBase(frame.slot.page, items, lone);
+  const base = transformBase(
+    frame.slot.page,
+    items.filter((item) => !item.pageId),
+    lone,
+  );
+  // What lies on the facing page (a 範囲選択 over a 見開き) turns and grows about the same middle.
+  const others: OtherBase[] = [];
+  for (const slot of editor.slots) {
+    const there = items.filter((item) => item.pageId === slot.page.id);
+    if (there.length) others.push({ page: slot.page, base: transformBase(slot.page, there), offset: slotOffset(slot, frame.slot) });
+  }
   editor.host.begin();
   if (handle < 4 && (event.ctrlKey || event.metaKey)) {
     const [x0, y0, x1, y1] = frame.box;
@@ -30,6 +41,7 @@ export function pressFrame(editor: EditorCore, { event, project, point, sx, sy }
       slot: frame.slot,
       handle,
       base,
+      others,
       box: frame.box,
       corners,
       moved: false,
@@ -41,6 +53,7 @@ export function pressFrame(editor: EditorCore, { event, project, point, sx, sy }
       kind: "rotate",
       slot: frame.slot,
       base,
+      others,
       centre,
       start: Math.atan2(point[1] - centre[1], point[0] - centre[0]),
       moved: false,
@@ -54,6 +67,7 @@ export function pressFrame(editor: EditorCore, { event, project, point, sx, sy }
       slot: frame.slot,
       handle,
       base,
+      others,
       box: frame.box,
       moved: false,
       targets,
@@ -127,19 +141,27 @@ function finish(editor: EditorCore, drag: DragOf<"scale" | "warp" | "rotate">, p
     editor.host.cancel();
     return;
   }
-  if (drag.base.panels) {
-    orderPanels(drag.slot.page, project.binding);
-    editor.spanPanels(project, drag.slot.page.id);
+  for (const { page, base } of [{ page: drag.slot.page, base: drag.base }, ...drag.others]) {
+    if (base.panels) {
+      orderPanels(page, project.binding);
+      editor.spanPanels(project, page.id);
+    }
+    assignPanels(page);
+    sortLines(page, editor.binding());
   }
-  assignPanels(drag.slot.page);
-  sortLines(drag.slot.page, editor.binding());
   editor.host.commit();
+}
+
+/** Put what is transformed where `w` (in the selection's own page's terms) takes it, on each page it lies on. */
+function transformAll(drag: DragOf<"scale" | "warp" | "rotate">, w: Warp): void {
+  transformItems(drag.slot.page, drag.base, w);
+  for (const other of drag.others) transformItems(other.page, other.base, warpFrom(w, other.offset));
 }
 
 const scale: DragHandler<DragOf<"scale">> = {
   move(editor, drag, { event, point }) {
     const m = scaleFor(drag, snappedHandle(editor, drag, point, event.altKey), event.shiftKey, event.altKey);
-    transformItems(drag.slot.page, drag.base, m);
+    transformAll(drag, m);
     drag.moved = true;
     editor.host.status(`大きさ ${Math.round(m[0] * 100)}% × ${Math.round(m[3] * 100)}%（Shift で縦横別々、Alt で中心から）`);
   },
@@ -149,10 +171,7 @@ const scale: DragHandler<DragOf<"scale">> = {
 const warp: DragHandler<DragOf<"warp">> = {
   move(editor, drag, { point }) {
     drag.corners[drag.handle] = point;
-    transformItems(drag.slot.page, drag.base, {
-      box: drag.box,
-      corners: drag.corners,
-    });
+    transformAll(drag, { box: drag.box, corners: drag.corners });
     drag.moved = true;
     editor.host.status("自由変形: 角をそれぞれ動かしています（Ctrl を押したまま角をドラッグ）");
   },
@@ -164,7 +183,7 @@ const rotate: DragHandler<DragOf<"rotate">> = {
     let angle = Math.atan2(point[1] - drag.centre[1], point[0] - drag.centre[0]) - drag.start;
     const step = Math.PI / 12;
     if (event.shiftKey) angle = Math.round(angle / step) * step;
-    transformItems(drag.slot.page, drag.base, rotation(angle, drag.centre));
+    transformAll(drag, rotation(angle, drag.centre));
     drag.moved = true;
     const degrees = (((Math.round((angle * 180) / Math.PI) % 360) + 540) % 360) - 180;
     editor.host.status(`${degrees}° 回しています（Shift で 15° ずつ）`);

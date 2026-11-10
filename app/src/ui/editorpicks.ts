@@ -17,20 +17,21 @@ import {
   type Tool,
 } from "./editorcore";
 import type { EditorStage } from "./editorstage";
-import { bounds, insideBox, insidePolygon } from "../model/geometry";
+import { bounds } from "../model/geometry";
 import { cornerAt, HANDLE, pickAt, tailAt } from "../editing/hittest";
 import { holdPanel, placeHeld } from "../domain/hold";
 import { nearestSlot, toPage, type Slot } from "../editing/layout";
+import { namedItems, pageOfItem, pageParts, partItems, partsBox, pickedOf, type PagePart } from "../editing/pickpages";
 import type { Binding, BoxMm, Page, Point, Project } from "../model/model";
 import { type CarriedContents, carryContents, followPanel, panelContents } from "../domain/panels";
 import { assignPanels, orderPanels, sortLines } from "../domain/readingorder";
 import { strokeEditable } from "../domain/roughlayers";
 import { settleSticky } from "../domain/stickies";
-import { strokeHit } from "../domain/strokes";
 import { pickedSummary } from "./toolselect";
 import {
   baseBounds,
   copySelection,
+  joinClips,
   moveItems,
   pasteClip,
   rotation,
@@ -38,6 +39,7 @@ import {
   selectionBox,
   transformBase,
   transformItems,
+  warpFrom,
   withContents,
   type Clip,
   type ItemRef,
@@ -73,6 +75,9 @@ export class EditorPicks {
   private clip: Clip | null = null;
 
   private pastes = 0;
+
+  /** The clip was picked over several pages: once pasted, what lies over another page goes there. */
+  private clipOverPages = false;
 
   /** The small bar of actions beside the selection. */
   private readonly bar: HTMLDivElement;
@@ -130,7 +135,7 @@ export class EditorPicks {
     const s = this.selection;
     const slot = s && this.stage.slots.find((x) => x.page.id === s.pageId);
     if (!s || !slot) return null;
-    const box = selectionBox(slot.page, s.kind, s.id, this.pickedItems());
+    const box = s.kind === "group" ? partsBox(this.parts(true)) : selectionBox(slot.page, s.kind, s.id, this.pickedItems());
     if (!box) return null;
     const corners = [
       [box[0], box[1]],
@@ -184,19 +189,26 @@ export class EditorPicks {
    * lines past the gutter, or (連続) onto any page on the canvas, and a panel
    * with what is in it.
    */
-  carryToPageUnder(project: Project, slot: Slot): void {
+  carryToPageUnder(project: Project): void {
     const s = this.selection;
-    if (!s || s.pageId !== slot.page.id) return;
+    const slot = s && this.stage.slots.find((x) => x.page.id === s.pageId);
+    if (!s || !slot) return;
     // Over another page, or off every page: the page whose 欄外 it now lies in.
-    const nearest = ([x, y]: Point) =>
-      nearestSlot(this.stage.slots, project.pageFormat, [slot.x + x * slot.scale, slot.y + y * slot.scale]);
-    const slotUnder = (point: Point) =>
-      this.stage.otherPageUnder(project, slot, point) ??
-      (offPage([...point, ...point], project.pageFormat) && nearest(point) !== slot ? nearest(point) : null);
-    const under = (point: Point): Destination | null => {
-      const to = slotUnder(point);
-      return to && { page: to.page, offset: [(slot.x - to.x) / slot.scale, (slot.y - to.y) / slot.scale] };
+    const underFrom = (from: Slot) => {
+      const nearest = ([x, y]: Point) =>
+        nearestSlot(this.stage.slots, project.pageFormat, [from.x + x * from.scale, from.y + y * from.scale]);
+      const slotUnder = (point: Point) =>
+        this.stage.otherPageUnder(project, from, point) ??
+        (offPage([...point, ...point], project.pageFormat) && nearest(point) !== from ? nearest(point) : null);
+      return {
+        slotUnder,
+        under: (point: Point): Destination | null => {
+          const to = slotUnder(point);
+          return to && { page: to.page, offset: [(from.x - to.x) / from.scale, (from.y - to.y) / from.scale] };
+        },
+      };
     };
+    const { slotUnder, under } = underFrom(slot);
     const slotOf = (page: Page) => this.stage.slots.find((x) => x.page === page)!;
     if (s.kind === "sticky") {
       const sticky = slot.page.stickies?.find((n) => n.id === s.id);
@@ -222,22 +234,36 @@ export class EditorPicks {
       this.host.status(`コマを中身ごと ${to.index + 1} ページへ移しました（コマ ${moved.order}）`);
       return;
     }
-    const all: ItemRef[] =
-      s.kind === "group" ? (s.items ?? []) : s.kind === "line" || s.kind === "stroke" ? [{ kind: s.kind, id: s.id }] : [];
-    const { moved, to } = carryItems(project, slot.page, all, under);
-    if (!moved.length) return;
-    const targets = [...to].map(slotOf);
+    // Dialogue and rough lines, each from its own page (a 範囲選択 may lie over a 見開き); the rest stays.
+    const all = s.kind === "group" ? namedItems(s.items ?? [], s.pageId) : [{ kind: s.kind, id: s.id, pageId: s.pageId }];
+    const after: ItemRef[] = [];
+    const targets = new Set<Slot>();
+    let count = 0;
+    for (const item of all) {
+      const from = this.stage.slots.find((x) => x.page.id === item.pageId);
+      const { moved, to } =
+        from && (item.kind === "line" || item.kind === "stroke")
+          ? carryItems(project, from.page, [item], underFrom(from).under)
+          : { moved: [], to: new Set<Page>() };
+      const there = [...to][0];
+      if (moved.length && there) {
+        after.push({ ...item, pageId: there.id });
+        targets.add(slotOf(there));
+        count += 1;
+      } else after.push(item);
+    }
+    if (!count) return;
+    const next = pickedOf(after, s.pageId);
+    this.selection = next && s.kind !== "group" ? { ...s, pageId: next.pageId } : next;
+    const one = [...targets];
     // The selection follows when everything went to one page.
-    if (moved.length === all.length && targets.length === 1) this.selection = { ...s, pageId: targets[0].page.id };
-    else if (s.kind === "group") this.selection = { ...s, items: all.filter((item) => !moved.includes(item)) };
-    else this.selection = null;
-    if (this.selection?.pageId === targets[0].page.id) this.focusOn(targets[0]);
+    if (count === all.length && one.length === 1 && this.selection?.pageId === one[0].page.id) this.focusOn(one[0]);
     else this.host.selectionChanged(this.selection);
-    const pages = targets
+    const pages = one
       .map((t) => t.index + 1)
       .sort((a, b) => a - b)
       .join("・");
-    this.host.status(`${moved.length} 個を ${pages} ページへ移しました`);
+    this.host.status(`${count} 個を ${pages} ページへ移しました`);
   }
 
   /** What is picked, as things to move or turn: a panel (and a group's panels) with what is drawn in it (コマ枠フォルダ). */
@@ -245,7 +271,21 @@ export class EditorPicks {
     const s = this.selection;
     const page = s && this.host.project()?.pages.find((p) => p.id === s.pageId);
     if (!s || !page || s.kind === "sticky") return [];
-    return withContents(page, s.kind === "group" ? (s.items ?? []) : [{ kind: s.kind, id: s.id }], this.scene.panelCarries);
+    if (s.kind === "group") return partItems(this.parts(true), s.pageId);
+    return withContents(page, [{ kind: s.kind, id: s.id }], this.scene.panelCarries);
+  }
+
+  /**
+   * What is picked page by page, the selection's own page first, each with how
+   * far it lies from that page on the canvas; `contents`: panels with what is
+   * drawn in them (as set). `items`: these instead of the selection's own.
+   */
+  parts(contents: boolean, items?: readonly ItemRef[]): PagePart[] {
+    const s = this.selection;
+    const project = this.host.project();
+    if (!s || !project || s.kind === "sticky") return [];
+    const picked = items ?? (s.kind === "group" ? (s.items ?? []) : [{ kind: s.kind, id: s.id }]);
+    return pageParts(project, s.pageId, picked, this.stage.slots, contents ? this.scene.panelCarries : undefined);
   }
 
   /** What the transform frame works on: with the select tool, what has no handles of its own, or anything with 変形 on. */
@@ -287,8 +327,10 @@ export class EditorPicks {
     const slot = this.stage.slots.find((s) => s.page.id === this.selection!.pageId);
     if (!items.length || !slot) return null;
     // A panel's frame is the panel's own box; what is in it just goes along.
-    const own = this.selection.kind === "group" ? (this.selection.items ?? []) : items[0].kind === "panel" ? items.slice(0, 1) : items;
-    const box = baseBounds(transformBase(slot.page, own));
+    const box =
+      this.selection.kind === "group"
+        ? partsBox(this.parts(false))
+        : baseBounds(transformBase(slot.page, items[0].kind === "panel" ? items.slice(0, 1) : items));
     if (!box) return null;
     const pad = 3 / slot.scale;
     const [x0, y0, x1, y1] = [box[0] - pad, box[1] - pad, box[2] + pad, box[3] + pad];
@@ -308,6 +350,21 @@ export class EditorPicks {
     return { slot, box: [x0, y0, x1, y1], handles, rotate: [sx(cx), sy(y0) - ROTATE_GAP] };
   }
 
+  /** The selection's own page on screen. */
+  selectionSlot(): Slot | null {
+    const s = this.selection;
+    return (s && this.stage.slots.find((slot) => slot.page.id === s.pageId)) ?? null;
+  }
+
+  /** Whether a screen point is inside the transform frame (a press there moves what is picked). */
+  insideFrame(sx: number, sy: number): boolean {
+    const frame = this.frameGeometry();
+    if (!frame) return false;
+    const [x, y] = toPage(frame.slot, sx, sy);
+    const [x0, y0, x1, y1] = frame.box;
+    return x >= x0 && x <= x1 && y >= y0 && y <= y1;
+  }
+
   /** The frame handle at a screen point: 0..7, 8 for turning, or -1. */
   frameHandleAt(sx: number, sy: number): number {
     const frame = this.frameGeometry();
@@ -324,11 +381,10 @@ export class EditorPicks {
       this.host.status("見開きのコマは反転・回転できません。頂点や間白で形を変えてください");
       return false;
     }
-    // Whatever is picked, 変形 on or not; a panel with what is drawn in it.
-    const items = this.pickedItems();
-    if (!page || !items.length) return false;
-    const base = transformBase(page, items);
-    const box = baseBounds(base);
+    // Whatever is picked, 変形 on or not; a panel with what is drawn in it; on each page it lies on.
+    const parts = this.parts(true);
+    if (!page || !parts.some((part) => part.items.length)) return false;
+    const box = partsBox(parts);
     if (!box) return false;
     const centre: Point = [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2];
     const m =
@@ -338,9 +394,11 @@ export class EditorPicks {
           ? scaling(1, -1, centre)
           : rotation(((how === "right" ? 1 : -1) * Math.PI) / 2, centre);
     this.host.begin();
-    transformItems(page, base, m);
-    assignPanels(page);
-    sortLines(page, this.scene.binding());
+    for (const part of parts) {
+      transformItems(part.page, transformBase(part.page, part.items), warpFrom(m, part.offset));
+      assignPanels(part.page);
+      sortLines(part.page, this.scene.binding());
+    }
     this.host.commit();
     this.scene.draw();
     return true;
@@ -351,12 +409,11 @@ export class EditorPicks {
     const page = this.focusPage();
     const s = this.selection;
     if (!page || !s) return false;
-    const panel = s.kind === "panel" ? page.panels.find((p) => p.id === s.id) : undefined;
-    const source = s.kind === "group" ? { ...s, items: withContents(page, s.items ?? [], this.scene.panelCarries) } : s;
-    const clip = copySelection(page, source, panel ? panelContents(page, panel) : undefined);
+    const clip = this.clipOfSelection();
     if (!clip) return false;
     this.clip = clip;
     this.pastes = 0;
+    this.clipOverPages = s.kind === "group" && this.parts(false).length > 1;
     const count =
       clip.panels.length +
       clip.strokes.length +
@@ -368,6 +425,30 @@ export class EditorPicks {
       `${clip.panels.length ? "コマと中身" : `${count} 個`}をコピーしました。Ctrl+V で、ポインターのあるページに貼り付けます`,
     );
     return true;
+  }
+
+  /** What is selected as a clip: a panel with what is in it; a 範囲選択 over several pages in its own page's terms. */
+  clipOfSelection(): Clip | null {
+    const page = this.focusPage();
+    const s = this.selection;
+    if (!page || !s) return null;
+    if (s.kind === "group") {
+      const clips = this.parts(true).flatMap(({ page, items, offset }) => {
+        const clip = copySelection(page, { ...s, pageId: page.id, items });
+        return clip ? [{ clip, offset }] : [];
+      });
+      // In the terms of the first page copied from.
+      const [first, ...rest] = clips;
+      const from = (offset: Point): Point => [offset[0] - first.offset[0], offset[1] - first.offset[1]];
+      return first
+        ? joinClips(
+            first.clip,
+            rest.map(({ clip, offset }) => ({ clip, offset: from(offset) })),
+          )
+        : null;
+    }
+    const panel = s.kind === "panel" ? page.panels.find((p) => p.id === s.id) : undefined;
+    return copySelection(page, s, panel ? panelContents(page, panel) : undefined);
   }
 
   get canPaste(): boolean {
@@ -406,7 +487,6 @@ export class EditorPicks {
     const shift = page.id === this.clip.pageId ? this.pastes * 5 : 0;
     this.host.begin();
     const pasted = pasteClip(project, page, this.clip, [shift, shift]);
-    this.host.commit();
     const items: ItemRef[] = [
       ...pasted.strokes.map((id) => ({ kind: "stroke" as const, id })),
       ...pasted.lines.map((id) => ({ kind: "line" as const, id })),
@@ -420,7 +500,11 @@ export class EditorPicks {
     else if (items.length > 1) this.select({ kind: "group", pageId: page.id, id: "group", items });
     else if (items.length) this.select({ kind: items[0].kind, pageId: page.id, id: items[0].id });
     else if (pasted.stickies.length) this.select({ kind: "sticky", pageId: page.id, id: pasted.stickies[0] });
+    // Picked over a 見開き: what lies over the facing page goes there (one step to undo with the paste).
+    if (this.clipOverPages && this.selection?.kind === "group") this.carryToPageUnder(project);
+    this.host.commit();
     this.host.status(`${slot.index + 1} ページに貼り付けました`);
+    this.scene.draw();
     return true;
   }
 
@@ -447,27 +531,9 @@ export class EditorPicks {
 
   isSelected(page: Page, kind: Selection["kind"], id: string): boolean {
     const s = this.selection;
-    if (!s || s.pageId !== page.id) return false;
-    if (s.kind === "group") return !!s.items?.some((item) => item.kind === kind && item.id === id);
-    return s.kind === kind && s.id === id;
-  }
-
-  /** Whether `point` is on one of the picked lines, inside a picked text, or inside a picked panel, fill or はみ出し. */
-  groupHit(page: Page, point: Point, tolerance: number): boolean {
-    for (const item of this.selection?.items ?? []) {
-      if (item.kind === "stroke") {
-        const stroke = page.strokes.find((x) => x.id === item.id);
-        if (stroke && strokeHit(stroke, point, tolerance + stroke.widthMm)) return true;
-      } else if (item.kind === "line") {
-        const line = page.lines.find((l) => l.id === item.id);
-        if (line && insideBox(line.box, point)) return true;
-      } else {
-        const list = item.kind === "panel" ? page.panels : item.kind === "fill" ? (page.fills ?? []) : page.breakouts;
-        const shape = list.find((x) => x.id === item.id)?.shape;
-        if (shape && insidePolygon(shape, point)) return true;
-      }
-    }
-    return false;
+    if (s?.kind === "group")
+      return !!s.items?.some((item) => item.kind === kind && item.id === id && pageOfItem(item, s.pageId) === page.id);
+    return !!s && s.pageId === page.id && s.kind === kind && s.id === id;
   }
 
   /** What a click at `point` picks on the page as shown (what is hidden cannot be picked). */
@@ -507,7 +573,10 @@ export class EditorPicks {
       const sticky = page.stickies?.find((n) => n.id === s.id);
       // On its page or in its 欄外 once let go (carryToPageUnder).
       if (sticky) sticky.at = [sticky.at[0] + dx, sticky.at[1] + dy];
-    } else if (s) moveItems(page, s.kind === "group" ? (items ?? this.pickedItems()) : [{ kind: s.kind, id: s.id }], dx, dy);
+    } else if (s?.kind === "group") {
+      // Each page's own (a 範囲選択 may lie over a 見開き).
+      for (const part of this.parts(false, items ?? this.pickedItems())) moveItems(part.page, part.items, dx, dy);
+    } else if (s) moveItems(page, [{ kind: s.kind, id: s.id }], dx, dy);
   }
 
   /** Contents carried by the selected panel follow it. */
@@ -529,10 +598,13 @@ export class EditorPicks {
     this.follow(page, carried);
     const sticky = this.selection.kind === "sticky" ? page.stickies?.find((n) => n.id === this.selection!.id) : undefined;
     if (sticky) settleSticky(this.host.project()!, sticky);
-    if (this.selection.kind === "panel" || this.selection.items?.some((item) => item.kind === "panel"))
-      orderPanels(page, this.host.project()!.binding);
-    assignPanels(page);
-    sortLines(page, this.scene.binding());
+    const pages =
+      this.selection.kind === "group" ? this.parts(false) : [{ page, items: [{ kind: this.selection.kind, id: this.selection.id }] }];
+    for (const part of pages) {
+      if (part.items.some((item) => item.kind === "panel")) orderPanels(part.page, this.host.project()!.binding);
+      assignPanels(part.page);
+      sortLines(part.page, this.scene.binding());
+    }
     this.host.commit();
     this.scene.draw();
     return true;
