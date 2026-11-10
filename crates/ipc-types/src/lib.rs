@@ -41,9 +41,9 @@ const CRATES: &[&str] = &["name_studio_app", "clip_core", "name_model", "csp_for
 /// (from app/src/generated): the name data, which its own test checks against
 /// the Rust types (crates/name-model/tests/typescript.rs).
 const EXTERNAL: &[(&str, &str)] = &[
-    ("Project", "../model"),
-    ("Series", "../model"),
-    ("CspToolData", "../model"),
+    ("Project", "../model/model"),
+    ("Series", "../model/model"),
+    ("CspToolData", "../model/model"),
 ];
 
 /// Where the Rust side passes JSON on as it is, or takes plain text, but the

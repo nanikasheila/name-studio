@@ -242,6 +242,6 @@ describe("what the Rust side reads", () => {
       { op: "movePage", page: 5, to: 4 },
     ]);
     expect(result.problems).toEqual([]);
-    await expect(`${JSON.stringify(project, null, 2)}\n`).toMatchFileSnapshot("../../crates/name-model/tests/fixtures/assist-made.json");
+    await expect(`${JSON.stringify(project, null, 2)}\n`).toMatchFileSnapshot("../../../crates/name-model/tests/fixtures/assist-made.json");
   });
 });

@@ -97,7 +97,7 @@ Rust 側のコマンド（`#[tauri::command]`）を足したり、引数や結�
 
 画面の色はすべて `app/src/styles.css` の先頭の CSS 変数（明るい・暗いを `light-dark()` で 1 行に）で書き、配色（`look.ts` の `THEMES`）はそれを上書きします。新しい色は変数を使うか足してください（紙面とその代わりの色は `--paper`・`--paper-ink` で、配色では変えません）。文字の大きさは 14 px のときの値を `calc(12 * var(--px))` のように書きます（設定の「画面の文字の大きさ」に合わせて変わります。`look.test.ts` が px のままの文字の大きさと `prefers-color-scheme` を落とします）。
 
-画面側（`app/src`）のモジュールは、変わる速さで層に分けています（遅い順に 型・計算・仕組み・描画・書き出し・画面・起動）。どの層かは `app/src/architecture.test.ts` の `LAYERS` に書き、上の層から import すると落ちます。計算の層（ネームの操作）はブラウザ・保存場所・Rust 側に触らず、この PC に残す設定は `prefs.ts`（中身は `settings.ts`）、画像の読み込みは `pictures.ts`、キャンバスへの描画は `pagedraw.ts` を通します。ファイルを足したら `LAYERS` にも書いてください。
+画面側（`app/src`）のモジュールは、変わる速さで層に分けています（遅い順に 型・計算・仕組み・描画・書き出し・画面・起動）。層はフォルダーで（`app/src/model/`・`domain/`・`editing/`・`platform/`・`render/`・`service/`・`ui/`）、上の層から import すると `app/src/architecture.test.ts` が落ちます。計算の層（ネームの操作）はブラウザ・保存場所・Rust 側に触らず、この PC に残す設定は `prefs.ts`（中身は `settings.ts`）、画像の読み込みは `pictures.ts`、キャンバスへの描画は `pagedraw.ts` を通します。ファイルを足すときは、その層のフォルダーに置いてください（テストは同じフォルダーに）。
 
 ## README の画像
 

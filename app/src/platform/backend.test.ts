@@ -20,6 +20,6 @@ describe("the commands of the Rust side", () => {
   it("are typed from the name data and nothing above it", () => {
     // generated/ipc.ts sits with model.ts at the bottom: any module may use its types.
     const imports = [...generated.matchAll(/^import\b[^;]*?from "([^"]+)"/gm)].map((m) => m[1]);
-    expect(imports).toEqual(["../model"]);
+    expect(imports).toEqual(["../model/model"]);
   });
 });

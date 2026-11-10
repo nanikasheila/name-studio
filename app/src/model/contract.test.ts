@@ -319,14 +319,14 @@ export const CHOICES: { [K in string]: string[] } = {
 
 describe("the name data as Rust reads it", () => {
   it("has every field in the fixture for the Rust test", async () => {
-    await expect(`${JSON.stringify(FULL_PROJECT, null, 2)}\n`).toMatchFileSnapshot("../../crates/name-model/tests/fixtures/full-project.json");
+    await expect(`${JSON.stringify(FULL_PROJECT, null, 2)}\n`).toMatchFileSnapshot("../../../crates/name-model/tests/fixtures/full-project.json");
   });
 
   it("has every field of a series in the fixture for the Rust test", async () => {
-    await expect(`${JSON.stringify(FULL_SERIES, null, 2)}\n`).toMatchFileSnapshot("../../crates/name-model/tests/fixtures/full-series.json");
+    await expect(`${JSON.stringify(FULL_SERIES, null, 2)}\n`).toMatchFileSnapshot("../../../crates/name-model/tests/fixtures/full-series.json");
   });
 
   it("has every value of each choice in the fixture for the Rust test", async () => {
-    await expect(`${JSON.stringify(CHOICES, null, 2)}\n`).toMatchFileSnapshot("../../crates/name-model/tests/fixtures/choices.json");
+    await expect(`${JSON.stringify(CHOICES, null, 2)}\n`).toMatchFileSnapshot("../../../crates/name-model/tests/fixtures/choices.json");
   });
 });

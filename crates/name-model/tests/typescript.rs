@@ -1,6 +1,6 @@
 //! The name data as TypeScript, from the Rust types (`--features ts`): written
 //! to app/src/generated/name-model.ts, which the app's type check compares with
-//! its own model.ts (app/src/modelcheck.ts). A type changed here without the
+//! its own model.ts (app/src/model/modelcheck.test.ts). A type changed here without the
 //! generated file fails this test; `UPDATE_TS=1 cargo test -p name-model
 //! --features ts --test typescript` writes it again.
 #![cfg(feature = "ts")]
@@ -72,7 +72,7 @@ fn declarations() -> String {
     ];
     let mut text = String::from(
         "// Generated from crates/name-model (cargo test -p name-model --features ts --test typescript). Do not edit.\n\
-         // app/src/modelcheck.ts checks it against model.ts.\n\n\
+         // app/src/model/modelcheck.test.ts checks it against model.ts.\n\n\
          export type StrokePoint = [number, number, number] | [number, number, number, number, number];\n",
     );
     for decl in decls {
