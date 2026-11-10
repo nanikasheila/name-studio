@@ -33,7 +33,7 @@ const work = mkdtempSync(join(tmpdir(), "name-studio-feel-"));
 // The heavy name as a file.
 const server = await createServer({ root, logLevel: "error", server: { middlewareMode: true } });
 const m = {};
-for (const module of ["project", "panels", "dialogue", "geometry", "pagebox"])
+for (const module of ["domain/project", "domain/panels", "domain/dialogue", "model/geometry", "domain/pagebox"])
   Object.assign(m, await server.ssrLoadModule(`/src/${module}.ts`));
 const { projectJson } = await server.ssrLoadModule("/src/domain/projectjson.ts");
 await server.close();
