@@ -49,6 +49,9 @@ try {
           if (window.__seriesFails) throw new Error("読み取り専用です");
           window.__files[args.path] = args.text;
           return null;
+        case "show_in_folder":
+          window.__shown = [...(window.__shown ?? []), args.path];
+          return null;
         case "discard_recovery":
           window.__discarded = (window.__discarded ?? 0) + 1;
           return null;
@@ -129,9 +132,35 @@ try {
   const failedState = page.locator("#save-state[data-tone=error]");
   check((await failedState.textContent()) === "保存できませんでした", "a failed save shows in the save state, after other messages too");
   check((await failedState.getAttribute("title")).includes("ディスクがいっぱいです"), "with why, on hover");
-  await page.evaluate(() => (window.__saveFails = false));
+  // The alert says what can be done next, as buttons.
+  const saveAlert = page.locator(".alert.error", { hasText: "保存できませんでした" }).first();
+  const steps = await saveAlert.locator("button.alert-action").allTextContents();
+  check(steps.join("／") === "もう一度／別の場所に保存／フォルダーを開く", `the failed save offers the next steps (${steps.join("／")})`);
+  await saveAlert.locator("button.alert-action", { hasText: "フォルダーを開く" }).click();
+  const shown = await page.evaluate(() => window.__shown ?? []);
+  check(shown.length === 1 && shown[0] === "C:\\ネーム\\B.namestudio", `フォルダーを開く shows the file in its folder (${shown})`);
+  // The cause dealt with, もう一度 saves it there.
+  await page.evaluate(() => {
+    window.__saveFails = false;
+    window.nameStudio.workbench.save();
+  });
+  await page.evaluate(() => {
+    const wb = window.nameStudio.workbench;
+    wb.begin();
+    wb.project.title = "B1+";
+    wb.commit();
+    window.__saveFails = true;
+  });
   await page.evaluate(() => window.nameStudio.workbench.save());
-  check((await saveState()).startsWith("保存済み"), `the next save that works clears it (${await saveState()})`);
+  await page.evaluate(() => (window.__saveFails = false));
+  await page
+    .locator(".alert.error", { hasText: "保存できませんでした" })
+    .first()
+    .locator("button.alert-action", { hasText: "もう一度" })
+    .click();
+  await settle();
+  check((await saveState()).startsWith("保存済み"), `もう一度 on the alert saves it (${await saveState()})`);
+  check((await file(B))?.title === "B1+", "to the same file");
 
   // Saves one after another: the later one lands last.
   await page.evaluate(() => {

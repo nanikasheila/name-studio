@@ -28,6 +28,10 @@ try {
     window.__answer = (command, args) => {
       switch (command) {
         case "write_text_file":
+          if (window.__writeFails) throw new Error("アクセスが拒否されました");
+          return null;
+        case "show_in_folder":
+          window.__shown = [...(window.__shown ?? []), args.path];
           return null;
         case "choose_save":
         case "choose_open": {
@@ -71,6 +75,10 @@ try {
   await page.locator("#ne-run").click();
   await settle();
   check((await calls("write_text_file")).at(-1)?.path === "C:\\out\\第4話_台本.txt", "the script is written where it was asked");
+  const steps = page.locator("#ne-message-actions button");
+  check((await steps.allTextContents()).join("／") === "フォルダーを開く", "after it, a button opens its folder");
+  await steps.first().click();
+  check((await page.evaluate(() => window.__shown ?? [])).at(-1) === "C:\\out\\第4話_台本.txt", "showing the file written");
   const kept = await page.evaluate(() => JSON.parse(localStorage.getItem("namestudio.exportMemory")));
   const mine = kept["c:/ネーム/第4話.namestudio"];
   check(mine?.kind === "text" && mine.files.text === "C:\\out\\第4話_台本.txt", "how the name was written out is kept for it");
@@ -96,6 +104,22 @@ try {
   check((await calls("choose_save")).length === asked + 1, "a place not picked in a dialog is asked for again");
   check((await calls("choose_save")).at(-1)?.options.defaultPath === "C:\\out\\第4話_台本.txt", "starting from where it was written last");
   check((await calls("write_text_file")).at(-1)?.path === "C:\\out\\選び直した_台本.txt", "and written where it was picked");
+  await page.keyboard.press("Escape");
+
+  // An export that fails says what can be done next: the same again, or a look at where it was going.
+  await page.evaluate(() => (window.__writeFails = true));
+  await page.keyboard.press("Control+Shift+E");
+  await settle();
+  check((await message()).startsWith("書き出せませんでした"), "a failed export says so");
+  check(
+    (await steps.allTextContents()).join("／") === "もう一度／書き出し先を開く",
+    `with the next steps (${await steps.allTextContents()})`,
+  );
+  await page.evaluate(() => (window.__writeFails = false));
+  const before = (await calls("write_text_file")).length;
+  await steps.first().click();
+  await settle();
+  check((await calls("write_text_file")).length === before + 1 && (await message()).startsWith("書き出しました"), "もう一度 writes it");
   await page.keyboard.press("Escape");
 
   // Another name starts from its own last export, never from this one's folder.

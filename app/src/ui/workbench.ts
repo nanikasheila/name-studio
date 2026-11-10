@@ -60,6 +60,7 @@ import { Reader } from "./reader";
 import { SpringTool } from "../editing/springtool";
 import { ControlBar } from "./controlbar";
 import { fail } from "../platform/status";
+import { folderStep } from "../platform/reveal";
 import { explain } from "../platform/errortext";
 
 /** After a line drawn with the pen, what lies around the pages is drawn again once the pen has rested this long (ms). */
@@ -175,7 +176,7 @@ export class Workbench {
       try {
         await this.load(path);
       } catch (error) {
-        fail("開けませんでした", error);
+        fail("開けませんでした", error, false, [folderStep(path)]);
       }
     },
     refresh: () => {

@@ -72,6 +72,9 @@ cargo audit
 (cd app && npx tauri build --no-bundle)
 cargo run -p clip-core --features fixtures --example fixture_page -- /tmp/app-check/page.clip
 (cd app && node e2e/realapp.mjs /tmp/app-check)
+# 実アプリの窓を人の操作のとおりに（Windows。見本で試す・ペン・元に戻す・命令パレット・配色・自動保存の控え・保存せず止めて起動し直すと復元）。
+# PC で使っている Name Studio と分けるため、別の identifier でビルドしてから
+(cd app && npx tauri build --no-bundle --config '{"identifier":"com.nanikasheila.namestudio.feel"}' && node e2e/realwalk.mjs)
 # 実アプリの画面の見た目（Windows の WebView2：配色・カスタム CSS が残るか、Shift を押しての起動、Ctrl+Shift+Alt+R。撮った画面を指定のフォルダーに）
 (cd app && npx tauri build --no-bundle --config '{"identifier":"com.nanikasheila.namestudio.look"}' && node e2e/lookapp.mjs ../look-shots)
 # AI 用スキルの CLI を作り直して試す（app/src の計算の層を変えたら。CI は差分があると落ちる）

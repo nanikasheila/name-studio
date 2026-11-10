@@ -105,33 +105,40 @@ try {
   await shot("sketch beside the page");
   // What is drawn beside the page is kept as a picture (like the page's own
   // lines): drawn again as the room it covers grows, the lines stay where they are.
+  /** Ink on the screen near `mm` on page `n`: the darkest opaque red channel near it (255: none). */
   const inkAt = async (n, mm) => {
+    await settle();
     const [x, y] = await at(n, mm);
     return page.evaluate(
       ([x, y]) => {
         const canvas = document.getElementById("editor-canvas");
         const r = canvas.getBoundingClientRect();
         const [px, py] = [Math.round(((x - r.left) * canvas.width) / r.width), Math.round(((y - r.top) * canvas.height) / r.height)];
-        // Near the point (smoothing moves the line a little).
-        const data = canvas.getContext("2d").getImageData(px - 6, py - 6, 13, 13).data;
-        for (let i = 0; i < data.length; i += 4) if (data[i + 3] > 100 && data[i] < 140) return true;
-        return false;
+        const data = canvas.getContext("2d").getImageData(px - 3, py - 3, 7, 7).data;
+        let darkest = 255;
+        for (let i = 0; i < data.length; i += 4) if (data[i + 3] > 100) darkest = Math.min(darkest, data[i]);
+        return darkest;
       },
       [x, y],
     );
   };
-  check((await inkAt(2, [w + 45, 90])) && !(await inkAt(2, [w + 45, 60])), "the line beside the page shows where it was drawn");
+  const inked = (darkest) => darkest < 140;
+  // A point the line went through (as kept, after smoothing), and one well away from it.
+  const onFirst = sketch[Math.floor(sketch.length / 2)];
+  let ink = [await inkAt(2, onFirst), await inkAt(2, [w + 75, 40])];
+  check(inked(ink[0]) && !inked(ink[1]), `the line beside the page shows where it was drawn (${ink})`);
   await dragMm(2, [
     [w + 95, 20],
     [w + 110, 240],
   ]);
-  check(
-    (await inkAt(2, [w + 45, 90])) && (await inkAt(2, [w + 102.5, 130])),
-    "a line further out shows, and the first one stays where it was",
-  );
+  const further = (await state()).pages[1].strokes[1];
+  const onSecond = further[Math.floor(further.length / 2)];
+  ink = [await inkAt(2, onFirst), await inkAt(2, onSecond)];
+  check(inked(ink[0]) && inked(ink[1]), `a line further out shows, and the first one stays where it was (${ink})`);
   await page.keyboard.press("Control+z");
   await settle();
-  check((await inkAt(2, [w + 45, 90])) && !(await inkAt(2, [w + 102.5, 130])), "undone, it is gone again");
+  ink = [await inkAt(2, onFirst), await inkAt(2, onSecond)];
+  check(inked(ink[0]) && !inked(ink[1]), `undone, it is gone again (${ink})`);
 
   await tool("sticky");
   await page.mouse.click(...(await at(2, [w + 20, 200])));

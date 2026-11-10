@@ -53,6 +53,8 @@ import { hasMarks } from "../domain/roughlayers";
 import { unreadableNote, unreadablePictures, unreadableRoughs, unreadableRoughsNote, withoutRoughs } from "../service/picturecheck";
 import { isNamePicture } from "../domain/references";
 import { failureText, explain } from "../platform/errortext";
+import type { AlertAction } from "../platform/alerts";
+import { folderStep } from "../platform/reveal";
 
 export interface ExportDialogHost {
   project(): Project | null;
@@ -669,10 +671,22 @@ export class ExportDialog {
     );
   }
 
-  private message(text: string, error = false): void {
+  /** Say how the export went, with what can be done next as buttons (もう一度, フォルダーを開く). */
+  private message(text: string, error = false, steps: readonly AlertAction[] = []): void {
     const node = $("ne-message");
     node.textContent = text;
     node.classList.toggle("error", error);
+    const actions = $("ne-message-actions");
+    actions.replaceChildren(
+      ...steps.map((step) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = step.label;
+        button.addEventListener("click", () => step.run());
+        return button;
+      }),
+    );
+    actions.hidden = !steps.length;
   }
 
   private async pick(field: "template" | "workTemplate" | "outDir"): Promise<void> {
@@ -904,6 +918,8 @@ export class ExportDialog {
       this.message(text);
       this.host.status(text);
     };
+    /** The file being written (the PDF, the script, the ミニネーム), for its folder when it fails. */
+    let target: string | null = null;
     try {
       this.busy = true;
       button.disabled = true;
@@ -978,7 +994,7 @@ export class ExportDialog {
         }
         const check = checkSummary(report);
         lines.push(...check.lines);
-        this.message(lines.join("\n"), !check.ok);
+        this.message(lines.join("\n"), !check.ok, [folderStep(report.work ?? this.form.outDir, "書き出し先を開く")]);
         this.remember();
         this.host.status(
           check.ok
@@ -1008,6 +1024,7 @@ export class ExportDialog {
                 filters: [{ name: filter, extensions: extension === "jpg" ? ["jpg", "jpeg"] : [extension] }],
               });
         if (!path) return;
+        target = path;
         if (this.sources().some((source) => source.toLowerCase() === path.toLowerCase())) {
           this.message("元のファイルには上書きできません", true);
           return;
@@ -1037,6 +1054,8 @@ export class ExportDialog {
           const note = result.reduced ? `。大きすぎるので ${result.dpi} dpi に下げました` : "";
           this.message(
             `ミニネームを書き出しました（${result.widthPx}×${result.heightPx} px・横に ${result.columns}${note}・${seconds()} 秒）: ${path}`,
+            false,
+            [folderStep(path)],
           );
           this.remember(path);
           this.host.status(`ミニネームを書き出しました: ${path}`);
@@ -1044,7 +1063,7 @@ export class ExportDialog {
         } else {
           await call("write_text_file", { path, text: scriptText(project) });
         }
-        this.message(`書き出しました（${seconds()} 秒）: ${path}`);
+        this.message(`書き出しました（${seconds()} 秒）: ${path}`, false, [folderStep(path)]);
         this.remember(path);
         this.host.status(`書き出しました: ${path}`);
       }
@@ -1055,7 +1074,14 @@ export class ExportDialog {
           : "書き出しをやめました（何も書き換えていません）";
         this.message(text);
         this.host.status(text);
-      } else this.message(failureText("書き出せませんでした", error), true);
+      } else {
+        // What can be done next: the same again (once the cause is dealt with), and a look at where it was going.
+        const place = this.kind === "csp" ? this.form.outDir : target;
+        this.message(failureText("書き出せませんでした", error), true, [
+          { label: "もう一度", run: () => void this.run(again) },
+          ...(place ? [folderStep(place, "書き出し先を開く")] : []),
+        ]);
+      }
     } finally {
       this.busy = false;
       button.disabled = false;

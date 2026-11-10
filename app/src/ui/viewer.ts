@@ -7,6 +7,7 @@ import { dialogueByPage, effectiveVisibility, initiallyHidden, spreads } from ".
 import { drawSheet, type PlacedImage, type Transform } from "../render/render";
 import type { LayerView, PageCell, SheetView } from "../model/types";
 import { fail } from "../platform/status";
+import { folderStep } from "../platform/reveal";
 
 const OVERVIEW_MAX_WIDTH = 4096;
 const MARGIN = 24;
@@ -102,7 +103,7 @@ export class SheetViewer {
       const warnings = sheet.warnings.length ? ` ／ ${sheet.warnings.join(" ／ ")}` : "";
       this.setStatus(`${sheet.cells.length} ページ、レイヤー ${sheet.layers.length} 枚（${seconds} 秒）${warnings}`);
     } catch (error) {
-      fail("開けませんでした", error);
+      fail("開けませんでした", error, false, [folderStep(path)]);
     }
   }
 

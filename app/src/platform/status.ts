@@ -3,7 +3,7 @@
 // what to do in words (errortext.ts), stays until the next message, and opens
 // on a click to show all of it with the error as it came. It is also shown
 // over the page for a few seconds, as the corner is easy to miss.
-import { showAlert } from "./alerts";
+import { type AlertAction, showAlert } from "./alerts";
 import { $ } from "./dom";
 import { logError } from "./errorlog";
 import { explain, rawText } from "./errortext";
@@ -48,13 +48,15 @@ const ALERT_SECONDS = 8;
  * `what` did not work ("保存できませんでした"), because of `error`: said in the
  * status line as a failure and over the page for a few seconds, and noted in
  * the error log as it came. `quiet`: the status line only (the caller shows
- * an alert of its own). Returns the message shown.
+ * an alert of its own). `steps`: what can be done next, as buttons on the
+ * alert (もう一度, 別のファイルを開く, フォルダーを開く). Returns the message shown.
  */
-export function fail(what: string, error: unknown, quiet = false): string {
+export function fail(what: string, error: unknown, quiet = false, steps?: readonly AlertAction[]): string {
   const { text, detail } = explain(error);
   const message = `${what}: ${text}`;
   showStatus(message, "error", detail ?? "");
-  if (!quiet) showAlert("status-failure", message, "error", ALERT_SECONDS);
+  // With steps to take it stays until closed or a step is taken (a button that leaves by itself is missed).
+  if (!quiet) showAlert("status-failure", message, "error", steps?.length ? undefined : ALERT_SECONDS, steps);
   void logError(`${what}: ${rawText(error)}`);
   return message;
 }

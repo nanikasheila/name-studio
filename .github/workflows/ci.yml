@@ -215,6 +215,13 @@ jobs:
             node e2e/realapp.mjs "$RUNNER_TEMP/app-check"
           fi
 
+      # The real window walked as a person does: 見本で試す, the pen, undo, the palette, a theme,
+      # autosave through Rust, then a restart that offers the copy back (Windows: WebView2's debugging port).
+      - name: Walk the built app's window, stop it unsaved and start it again
+        if: runner.os == 'Windows'
+        working-directory: app
+        run: node e2e/realwalk.mjs
+
   audit:
     name: Known vulnerabilities in the Rust libraries
     runs-on: ubuntu-latest
