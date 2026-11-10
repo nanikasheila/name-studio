@@ -33,6 +33,7 @@ import { installedFont } from "./fonts";
 import { hasMarks } from "./roughlayers";
 import { unreadableNote, unreadablePictures, unreadableRoughs, unreadableRoughsNote, withoutRoughs } from "./picturecheck";
 import { isNamePicture } from "./references";
+import { failureText, explain } from "./errortext";
 
 export interface ExportDialogHost {
   project(): Project | null;
@@ -754,7 +755,7 @@ export class ExportDialog {
     try {
       return await call("check_export_target", { outDir });
     } catch (error) {
-      this.message(`${error}\n何も書き換えていません。フォルダーがあるか、開けるかを確かめるか、別のフォルダーを選んでください。`, true);
+      this.message(`${failureText("書き出し先を確かめられませんでした", error)}\n何も書き換えていません。フォルダーがあるか、開けるかを確かめるか、別のフォルダーを選んでください。`, true);
       this.host.status("書き出し先を確かめられないので、やめました");
       return false;
     }
@@ -957,7 +958,7 @@ export class ExportDialog {
           : "書き出しをやめました（何も書き換えていません）";
         this.message(text);
         this.host.status(text);
-      } else this.message(`書き出せませんでした: ${error}`, true);
+      } else this.message(failureText("書き出せませんでした", error), true);
     } finally {
       this.busy = false;
       button.disabled = false;
@@ -1023,14 +1024,14 @@ export class ExportDialog {
       const recorded = update.rows.length
         ? await call("record_dialogue_update", { outDir: request.outDir, entry: updateRecord(summary, project.title, result.lines[0], new Date(update.timeMs)) }).then(
             () => `記録: ${request.outDir}\\${UPDATE_RECORD}`,
-            (error) => `記録を書けませんでした: ${error}`,
+            (error) => failureText("記録を書けませんでした", error),
           )
         : null;
       this.message([...result.lines, ...(recorded ? [recorded] : [])].join("\n"), !result.ok);
       this.showUpdated(update, "ページを押すと、そのページに移ります");
       this.host.status(result.lines[0]);
     } catch (error) {
-      this.message(`反映できませんでした: ${error}`, true);
+      this.message(failureText("反映できませんでした", error), true);
     } finally {
       this.busy = false;
       button.disabled = false;
@@ -1088,14 +1089,14 @@ export class ExportDialog {
       // From now on these texts count as the name's: セリフだけ反映 leaves them as they are.
       const recorded = await call("adopt_name_dialogue", { paths: plan.paths }).then(
         () => null,
-        (error) => `ただし書き出し先に記録できませんでした（${error}）。次のセリフだけ反映で、CSP のセリフが「（旧）」になることがあります`,
+        (error) => `ただし書き出し先に記録できませんでした（${explain(error).text}）。次のセリフだけ反映で、CSP のセリフが「（旧）」になることがあります`,
       );
       const left = changes - picked.retyped.length - picked.added.length - picked.removed.length;
       const done = `CSP のセリフを読み戻しました（直した ${picked.retyped.length}・足した ${picked.added.length}・消した ${picked.removed.length}${left ? `。ネームのままにしたもの ${left}` : ""}）。元に戻すは Ctrl+Z${recorded ? `。${recorded}` : ""}`;
       this.message([done, ...summary.filter((line) => !/^CSP で(直した|足した|消した)/.test(line))].join("\n"));
       this.host.status(done);
     } catch (error) {
-      this.message(`読み戻せませんでした: ${error}`, true);
+      this.message(failureText("読み戻せませんでした", error), true);
     } finally {
       this.busy = false;
       button.disabled = false;

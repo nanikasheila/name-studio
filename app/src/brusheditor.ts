@@ -32,6 +32,7 @@ import { CSP_COLUMNS, type CspColumn } from "./generated/csp-columns";
 import type { Brush, BrushKind, CspToolData, CspValue, Project } from "./model";
 import { saveToLibrary } from "./prefs";
 import { newId } from "./project";
+import { failureText } from "./errortext";
 
 export interface BrushEditorHost {
   project(): Project | null;
@@ -312,7 +313,7 @@ export class BrushEditor {
         : "";
       this.message(`書き出しました: ${path}\nCSP のサブツールパレットのメニュー「サブツールの読み込み」で読み込めます。${missing}`);
     } catch (error) {
-      this.message(`書き出せませんでした: ${error}`, true);
+      this.message(failureText("書き出せませんでした", error), true);
     }
   }
 

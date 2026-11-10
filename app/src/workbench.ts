@@ -6,7 +6,7 @@
 import { call } from "./backend";
 import { useFonts } from "./fonts";
 import { useStyle } from "./style";
-import { $, isTextEntry, isTyping, noDialogBut } from "./dom";
+import { $, isTextEntry, isTyping, noDialogBut, pressable } from "./dom";
 import { Inspector } from "./inspector";
 import { ask } from "./dialogs";
 import { heldNear } from "./hold";
@@ -59,6 +59,8 @@ import { RoughCache } from "./roughcache";
 import { Reader } from "./reader";
 import { SpringTool } from "./springtool";
 import { ControlBar } from "./controlbar";
+import { fail } from "./status";
+import { explain } from "./errortext";
 
 /** After a line drawn with the pen, what lies around the pages is drawn again once the pen has rested this long (ms). */
 const PEN_REST_MS = 500;
@@ -165,7 +167,7 @@ export class Workbench {
       try {
         await this.load(path);
       } catch (error) {
-        this.setStatus(`開けませんでした: ${error}`);
+        fail("開けませんでした", error);
       }
     },
     refresh: () => {
@@ -685,7 +687,8 @@ export class Workbench {
    * note goes to the log.
    */
   failed(error: unknown): void {
-    const message = error instanceof Error ? error.message : String(error);
+    const { text, detail } = explain(error);
+    const message = detail ? `${text}\n${detail}` : text;
     const undone = this.rollBack();
     showAlert(
       "failure",
@@ -961,6 +964,8 @@ export class Workbench {
     }
     // Undo and redo work from a checkbox or a slider just used, and in the pen editor (it shows the name as undo leaves it).
     if ((action === "undo" || action === "redo") && !isTextEntry(event) && noDialogBut("brush-editor")) return this.run(action);
+    // 欄を巡る works from a field too (not while its text is being composed): it is how the keyboard leaves it.
+    if ((action === "view.nextPane" || action === "view.previousPane") && !event.isComposing && !document.querySelector("dialog[open]")) return this.run(action);
     if (isTyping(event) || document.querySelector("dialog[open]")) return false;
     // Arrows move what is selected (資料: the chosen picture; Shift: further) before anything else.
     const step = event.shiftKey ? 5 : 0.5;
@@ -985,11 +990,4 @@ export class Workbench {
   run(action: ActionId): boolean {
     return this.commands.find((command) => command.id === action)?.run() ?? false;
   }
-}
-
-/** The button with this id when it is on screen and can be pressed, else null. */
-function pressable(id: string): HTMLButtonElement | null {
-  const target = document.getElementById(id);
-  if (!(target instanceof HTMLButtonElement) || target.disabled || target.closest("[hidden]")) return null;
-  return target;
 }

@@ -28,6 +28,7 @@ import {
   userCssRules,
   writeLook,
 } from "./look";
+import { fail } from "./status";
 
 /** How long CSS is tried before it is put back by itself. */
 export const TRIAL_SECONDS = 15;
@@ -52,6 +53,11 @@ export class LookPane {
       const text = $<HTMLInputElement>("st-ui-size").value.trim();
       this.change({ sizePx: text === "" ? DEFAULT_SIZE_PX : clampSize(Number(text) || DEFAULT_SIZE_PX) });
       this.status(`画面の文字の大きさを ${this.kept.sizePx} px にしました`);
+    });
+    $<HTMLInputElement>("st-ui-large").addEventListener("change", (event) => {
+      const large = (event.target as HTMLInputElement).checked;
+      this.change({ large });
+      this.status(large ? "ボタンや入力欄を大きめにしました" : "ボタンや入力欄をふつうの大きさに戻しました");
     });
     $("st-ui-size-reset").addEventListener("click", () => {
       this.change({ sizePx: DEFAULT_SIZE_PX });
@@ -78,7 +84,7 @@ export class LookPane {
         this.showNotes();
         this.status(`${file.name} を読み込みました。「当てて試す」で画面に当てます`);
       } catch (error) {
-        this.status(`${file.name} を読めませんでした: ${error}`);
+        fail(`${file.name} を読めませんでした`, error);
       }
     });
     $("st-css-template").addEventListener("click", () => {
@@ -124,6 +130,7 @@ export class LookPane {
     const size = $<HTMLInputElement>("st-ui-size");
     if (document.activeElement !== size) size.value = String(look.sizePx);
     $<HTMLButtonElement>("st-ui-size-reset").disabled = look.sizePx === DEFAULT_SIZE_PX;
+    $<HTMLInputElement>("st-ui-large").checked = look.large;
     $<HTMLInputElement>("st-css-on").checked = look.cssOn;
     // Filled once: after that it holds what is being written, also CSS that was tried and put back.
     if (!this.editorFilled) $<HTMLTextAreaElement>("st-css").value = look.css;

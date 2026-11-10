@@ -6,6 +6,7 @@ import { $ } from "./dom";
 import { dialogueByPage, effectiveVisibility, initiallyHidden, spreads } from "./pages";
 import { drawSheet, type PlacedImage, type Transform } from "./render";
 import type { LayerView, PageCell, SheetView } from "./types";
+import { fail } from "./status";
 
 const OVERVIEW_MAX_WIDTH = 4096;
 const MARGIN = 24;
@@ -95,7 +96,7 @@ export class SheetViewer {
       const warnings = sheet.warnings.length ? ` ／ ${sheet.warnings.join(" ／ ")}` : "";
       this.setStatus(`${sheet.cells.length} ページ、レイヤー ${sheet.layers.length} 枚（${seconds} 秒）${warnings}`);
     } catch (error) {
-      this.setStatus(`開けませんでした: ${error}`);
+      fail("開けませんでした", error);
     }
   }
 
@@ -166,7 +167,7 @@ export class SheetViewer {
         this.regions.set(key, { image, box: { x0, y0, x1, y1 } });
         this.draw();
       })
-      .catch((error) => this.setStatus(`画像を読めませんでした: ${error}`));
+      .catch((error) => fail("画像を読めませんでした", error));
   }
 
   private stageSize(): { width: number; height: number } {

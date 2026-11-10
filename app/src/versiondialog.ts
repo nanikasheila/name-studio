@@ -4,6 +4,7 @@ export type { VersionInfo, VersionKind } from "./backend";
 import { ask } from "./dialogs";
 import { autosaveToFile, formatTime, setAutosaveToFile } from "./autosave";
 import { $ } from "./dom";
+import { failureText } from "./errortext";
 
 export const KIND_NAMES: Record<VersionKind, string> = {
   saved: "保存",
@@ -44,7 +45,7 @@ export class VersionDialog {
     try {
       versions = await call("list_versions", { path });
     } catch (error) {
-      this.message(`履歴を読めませんでした: ${error}`, true);
+      this.message(failureText("履歴を読めませんでした", error), true);
       return;
     }
     this.message(versions.length ? "" : "まだ版がありません。保存するか、しばらく編集すると残ります。");
@@ -79,7 +80,7 @@ export class VersionDialog {
       await this.host.restore(version);
       $<HTMLDialogElement>("version-dialog").close();
     } catch (error) {
-      this.message(`戻せませんでした: ${error}`, true);
+      this.message(failureText("戻せませんでした", error), true);
     }
   }
 

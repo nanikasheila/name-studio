@@ -6,6 +6,7 @@ import { DEFAULT_BRUSH_DPI, addBrushes, brushFromSubTool, lengthMm, type CspSubT
 import { saveToLibrary } from "./prefs";
 import type { Brush, Project } from "./model";
 import { $ } from "./dom";
+import { failureText } from "./errortext";
 
 export interface BrushDialogHost {
   project(): Project | null;
@@ -65,7 +66,7 @@ export class BrushDialog {
         materials: this.locations?.materials ?? null,
       });
     } catch (error) {
-      this.message(`読み込めませんでした: ${error}`, true);
+      this.message(failureText("読み込めませんでした", error), true);
       return;
     }
     this.selected.clear();

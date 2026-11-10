@@ -10,6 +10,7 @@ import type { Page, Point, Project, StoredImage } from "./model";
 import { readImage } from "./pictures";
 import { newId } from "./project";
 import { addReference, opacityOf, removeReference } from "./references";
+import { failureText } from "./errortext";
 
 /** What the 資料 bar needs from the editor around it. */
 export interface ReferenceBarHost {
@@ -107,7 +108,7 @@ export class ReferenceBar {
       this.host.status(`${number} ページに資料画像を貼りました。ドラッグで動かし、角で大きさを変えます`);
       return true;
     } catch (error) {
-      showAlert("reference", `画像を貼れませんでした: ${error instanceof Error ? error.message : String(error)}`, "error", 8);
+      showAlert("reference", failureText("画像を貼れませんでした", error), "error", 8);
       logError(error);
       return false;
     }

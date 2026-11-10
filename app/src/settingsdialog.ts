@@ -33,6 +33,7 @@ import {
   setStyleLine,
   type StyleLine,
 } from "./style";
+import { explain } from "./errortext";
 
 export interface SettingsHost {
   readonly editor: PageEditor;
@@ -503,7 +504,7 @@ export class SettingsDialog {
     } catch (error) {
       this.releasesLoaded = false;
       select.replaceChildren(element("option", { value: "", textContent: "（版の一覧を読めませんでした）" }));
-      note.textContent = `${error}`;
+      note.textContent = explain(error).text;
     }
   }
 

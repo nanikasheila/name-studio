@@ -14,6 +14,7 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { Update } from "@tauri-apps/plugin-updater";
 import { $ } from "./dom";
 import { readFlag, readText, writeText } from "./settings";
+import { fail } from "./status";
 
 /** Before the three ways, a flag: on meant 「notify」. */
 const PAUSED_KEY = "namestudio.updatesPaused";
@@ -147,7 +148,7 @@ async function install(update: Update, host: UpdateHost): Promise<void> {
     await relaunch();
   } catch (error) {
     button.disabled = false;
-    host.status(`更新できませんでした（次の起動でもう一度試します）: ${error}`);
+    fail("更新できませんでした（次の起動でもう一度試します）", error);
   }
 }
 
@@ -197,6 +198,6 @@ export async function installRelease(version: string, host: Pick<UpdateHost, "st
     await call("install_release", { version });
     await relaunch();
   } catch (error) {
-    host.status(`版 ${version} を入れられませんでした: ${error}`);
+    fail(`版 ${version} を入れられませんでした`, error);
   }
 }

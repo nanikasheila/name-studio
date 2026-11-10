@@ -32,6 +32,7 @@ import {
 import { MAX_NAME_PICTURE_PX, placeNamePictures } from "./references";
 import { grayOf } from "./pictures";
 import { defaultPageFormat } from "./project";
+import { failureText } from "./errortext";
 
 export interface ImageImportHost {
   /** The open name, or null on the start screen (the picture makes a new name). */
@@ -177,7 +178,7 @@ export class ImageImportDialog {
       this.message("");
       this.find(true);
     } catch (error) {
-      this.message(`画像を読めませんでした: ${error instanceof Error ? error.message : String(error)}`, true);
+      this.message(failureText("画像を読めませんでした", error), true);
       logError(error);
     }
   }
@@ -466,7 +467,7 @@ export class ImageImportDialog {
         this.host.opened(made, `ネーム画像から ${images.length} ページのネーム「${title}」を作りました${how}。資料ツール（I）で動かす・濃さを変えられます`);
       }
     } catch (error) {
-      this.message(`取り込めませんでした: ${error instanceof Error ? error.message : String(error)}`, true);
+      this.message(failureText("取り込めませんでした", error), true);
       logError(error);
     } finally {
       this.busy = false;
