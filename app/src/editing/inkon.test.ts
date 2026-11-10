@@ -28,7 +28,8 @@ describe("words on a colour of the name", () => {
   it("stands out on any colour at all", () => {
     for (let v = 0; v <= 255; v += 5) {
       const hex = v.toString(16).padStart(2, "0");
-      for (const color of [`#${hex}${hex}${hex}`, `#${hex}0000`, `#00${hex}00`, `#0000${hex}`, `#${hex}${hex}00`]) expect(contrast(color, inkOn(color)), color).toBeGreaterThanOrEqual(4.5);
+      for (const color of [`#${hex}${hex}${hex}`, `#${hex}0000`, `#00${hex}00`, `#0000${hex}`, `#${hex}${hex}00`])
+        expect(contrast(color, inkOn(color)), color).toBeGreaterThanOrEqual(4.5);
     }
   });
 });

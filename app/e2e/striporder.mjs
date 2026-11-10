@@ -39,17 +39,23 @@ try {
   const cards = () =>
     page.evaluate(() => {
       const nodes = [...document.querySelectorAll("#story .board-page")];
-      return nodes.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left).map((node) => Number(node.querySelector(".board-page-head span").textContent));
+      return nodes
+        .sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left)
+        .map((node) => Number(node.querySelector(".board-page-head span").textContent));
     });
-  const box = (selector) => page.evaluate((selector) => {
-    const r = document.querySelector(selector)?.getBoundingClientRect();
-    return r ? { left: r.left, right: r.right, top: r.top, bottom: r.bottom } : null;
-  }, selector);
-  const cardBox = (number) => page.evaluate((number) => {
-    const node = [...document.querySelectorAll("#story .board-page")].find((n) => n.querySelector(".board-page-head span").textContent === String(number));
-    const r = node.getBoundingClientRect();
-    return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
-  }, number);
+  const box = (selector) =>
+    page.evaluate((selector) => {
+      const r = document.querySelector(selector)?.getBoundingClientRect();
+      return r ? { left: r.left, right: r.right, top: r.top, bottom: r.bottom } : null;
+    }, selector);
+  const cardBox = (number) =>
+    page.evaluate((number) => {
+      const node = [...document.querySelectorAll("#story .board-page")].find(
+        (n) => n.querySelector(".board-page-head span").textContent === String(number),
+      );
+      const r = node.getBoundingClientRect();
+      return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+    }, number);
   const choose = async (order) => {
     await page.evaluate(() => document.getElementById("settings").click());
     await page.locator("#st-search").fill("並び");
@@ -72,15 +78,24 @@ try {
 
   const { shown, was } = await choose("binding");
   check(shown && was === "left", "設定 › 表示 shows the choice (found by 並び), 左から右 at first");
-  check((await page.evaluate(() => localStorage.getItem("namestudio.stripOrder"))) === "binding", "編集画面と同じ is kept on this computer");
+  check(
+    (await page.evaluate(() => localStorage.getItem("namestudio.stripOrder"))) === "binding",
+    "編集画面と同じ is kept on this computer",
+  );
   check(JSON.stringify(await cards()) === "[6,5,4,3,2,1]", `編集画面と同じ: a 右綴じ name's page 1 is at the right end (${await cards()})`);
 
   // The scene of pages 1–2 sits over those pages; the frame of the pages shown too.
   const [one, two] = [await cardBox(1), await cardBox(2)];
   const scene = await box("#story rect.scene");
-  check(scene && Math.abs(scene.left - two.left) < 8 && Math.abs(scene.right - one.right) < 8, "the scene of pages 1–2 lies over pages 1 and 2");
+  check(
+    scene && Math.abs(scene.left - two.left) < 8 && Math.abs(scene.right - one.right) < 8,
+    "the scene of pages 1–2 lies over pages 1 and 2",
+  );
   const frame = await box("#story .board-current");
-  check(frame && frame.left >= two.left - 8 && frame.right <= one.right + 8 && frame.right > one.left, "the frame of the pages shown is over page 1");
+  check(
+    frame && frame.left >= two.left - 8 && frame.right <= one.right + 8 && frame.right > one.left,
+    "the frame of the pages shown is over page 1",
+  );
 
   // Page 1 dragged by its number strip to the left of page 3: it goes after page 3 (reading order).
   const ids = () => page.evaluate(() => window.nameStudio.workbench.project.pages.map((p) => p.id));
@@ -92,7 +107,10 @@ try {
   await page.mouse.up();
   await settle();
   const after = await ids();
-  check(JSON.stringify(after) === JSON.stringify([before[1], before[2], before[0], ...before.slice(3)]), "page 1 dragged to the left of page 3 goes after page 3");
+  check(
+    JSON.stringify(after) === JSON.stringify([before[1], before[2], before[0], ...before.slice(3)]),
+    "page 1 dragged to the left of page 3 goes after page 3",
+  );
   await page.keyboard.press("Control+z");
   await settle();
 

@@ -63,7 +63,11 @@ export class Shortcuts {
   bind(id: ActionId, combo: string): ActionId | null {
     const previous = this.actionFor(combo);
     if (previous === id) return null;
-    if (previous) this.set(previous, this.keys(previous).filter((key) => key !== combo));
+    if (previous)
+      this.set(
+        previous,
+        this.keys(previous).filter((key) => key !== combo),
+      );
     // A pen not in this name keeps its keys here: one given away now does not come back with it.
     for (const [other, keys] of Object.entries(this.custom)) {
       if (other !== id && keys?.includes(combo)) this.custom[other] = keys.filter((key) => key !== combo);
@@ -73,7 +77,10 @@ export class Shortcuts {
   }
 
   unbind(id: ActionId, combo: string): void {
-    this.set(id, this.keys(id).filter((key) => key !== combo));
+    this.set(
+      id,
+      this.keys(id).filter((key) => key !== combo),
+    );
   }
 
   reset(): void {

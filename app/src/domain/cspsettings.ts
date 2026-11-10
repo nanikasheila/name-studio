@@ -158,7 +158,17 @@ export function effectorBytes(effector: Effector): Uint8Array {
 
 /** An effector with nothing on, offering what CSP's pens offer. */
 export function newEffector(): Effector {
-  return { headerSize: 48, offered: 0x1f0, inputs: 0, minimum: [0, 0, 0, 0], word7: 0, word10: 100, pressure: null, tilt: null, speed: null };
+  return {
+    headerSize: 48,
+    offered: 0x1f0,
+    inputs: 0,
+    minimum: [0, 0, 0, 0],
+    word7: 0,
+    word10: 100,
+    pressure: null,
+    tilt: null,
+    speed: null,
+  };
 }
 
 export function effectorOf(tool: CspToolData, column: string): Effector | null {
@@ -251,7 +261,16 @@ function inputCurve(effector: Effector | null, input: Input): PressureCurve | un
   const curve: PressureCurve = { min: Math.min(1, Math.max(0, effector.minimum[index] / 100)) };
   // Without a speed graph CSP thins the line as the pen speeds up.
   const points =
-    input === "random" ? [] : input === "speed" ? (effector.speed ? curvePoints(effector.speed) : [[0, 1], [1, 0]]) : curvePoints(effector[input]);
+    input === "random"
+      ? []
+      : input === "speed"
+        ? effector.speed
+          ? curvePoints(effector.speed)
+          : [
+              [0, 1],
+              [1, 0],
+            ]
+        : curvePoints(effector[input]);
   if (points.length) curve.curve = points as [number, number][];
   return curve;
 }
@@ -353,7 +372,12 @@ function effectorFrom(curves: { pressure?: PressureCurve; tilt?: PressureCurve; 
     if (!curve) return;
     effector.inputs |= bit;
     effector.minimum[index] = Math.round(curve.min * 100);
-    const points: Graph = curve.curve?.length ? curve.curve : [[0, 0], [1, 1]];
+    const points: Graph = curve.curve?.length
+      ? curve.curve
+      : [
+          [0, 0],
+          [1, 1],
+        ];
     if (input === "pressure") effector.pressure = points;
     if (input === "tilt") effector.tilt = points;
     if (input === "speed") effector.speed = points;
@@ -399,15 +423,23 @@ export function cspSettingsFor(brush: Brush): CspToolData {
       BrushRevision: brush.postCorrection ?? 0,
       BrushSharpenCorner: 0,
     },
-    node: eraser ? { NodeInputOp: 12, NodeOutputOp: 12, NodeRangeOp: 0, NodeIcon: 106 } : { NodeInputOp: 11, NodeOutputOp: 11, NodeRangeOp: 0, NodeIcon: 101 },
+    node: eraser
+      ? { NodeInputOp: 12, NodeOutputOp: 12, NodeRangeOp: 0, NodeIcon: 106 }
+      : { NodeInputOp: 11, NodeOutputOp: 11, NodeRangeOp: 0, NodeIcon: 101 },
     manager: { ToolType: 0, Version: 145 },
     dpi,
   };
-  setSetting(tool, "BrushSizeEffector", effectorBytes(effectorFrom({ pressure: brush.sizePressure, tilt: brush.sizeTilt, speed: brush.sizeSpeed, random: brush.sizeRandom })));
+  setSetting(
+    tool,
+    "BrushSizeEffector",
+    effectorBytes(effectorFrom({ pressure: brush.sizePressure, tilt: brush.sizeTilt, speed: brush.sizeSpeed, random: brush.sizeRandom })),
+  );
   setSetting(
     tool,
     "BrushOpacityEffector",
-    effectorBytes(effectorFrom({ pressure: brush.opacityPressure, tilt: brush.opacityTilt, speed: brush.opacitySpeed, random: brush.opacityRandom })),
+    effectorBytes(
+      effectorFrom({ pressure: brush.opacityPressure, tilt: brush.opacityTilt, speed: brush.opacitySpeed, random: brush.opacityRandom }),
+    ),
   );
   const targets = defaultInOutTargets();
   targets[0].min = Math.round((brush.taperMin ?? 0) * 100);

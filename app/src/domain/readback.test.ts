@@ -31,7 +31,11 @@ describe("CSP のセリフを読み戻す", () => {
         { text: "……", page: 0, box: [30, 90, 40, 110] },
       ],
     };
-    const plan = planTakeBack(project, [unit, { pages: [1], path: "out/page0002.clip", found: true, written: null, texts: [] }, { pages: [2], path: "out/page0003.clip", found: false, written: null, texts: [] }]);
+    const plan = planTakeBack(project, [
+      unit,
+      { pages: [1], path: "out/page0002.clip", found: true, written: null, texts: [] },
+      { pages: [2], path: "out/page0003.clip", found: false, written: null, texts: [] },
+    ]);
     expect(plan.retyped.map((r) => r.to)).toEqual(["今夜も星が見えないね"]);
     expect(plan.removed.map((r) => r.text)).toEqual(["ねえ"]);
     expect(plan.added.map((a) => a.text)).toEqual(["……"]);
@@ -87,7 +91,13 @@ describe("CSP のセリフを読み戻す", () => {
     const project = newProject("t", 1);
     const line = addLine(project, project.pages[0], [140, 50], "明日行こう");
     const box = line.box.slice() as typeof line.box;
-    const unit: ReadUnit = { pages: [0], path: "out/page0001.clip", found: true, written: ["明日行こう"], texts: [{ text: "明後日行こう", page: 0, box }] };
+    const unit: ReadUnit = {
+      pages: [0],
+      path: "out/page0001.clip",
+      found: true,
+      written: ["明日行こう"],
+      texts: [{ text: "明後日行こう", page: 0, box }],
+    };
     const plan = planTakeBack(project, [unit]);
     expect(plan.retyped.map((r) => r.to)).toEqual(["明後日行こう"]);
     applyTakeBack(project, plan);

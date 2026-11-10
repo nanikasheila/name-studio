@@ -62,7 +62,10 @@ export class ScriptList {
         const project = this.host.project();
         if (!project) return [];
         return [
-          ...project.characters.map((character) => ({ label: `話者を「${character.name}」に`, run: () => this.setSpeaker(ids, character.id) })),
+          ...project.characters.map((character) => ({
+            label: `話者を「${character.name}」に`,
+            run: () => this.setSpeaker(ids, character.id),
+          })),
           { label: "話者をなしに", run: () => this.setSpeaker(ids, null) },
           SEPARATOR,
           ...KINDS.map((kind) => ({ label: `${KIND_LABELS[kind]}にする`, run: () => this.setKind(ids, kind) })),
@@ -84,7 +87,12 @@ export class ScriptList {
     const words = this.query.trim().toLowerCase().split(/\s+/).filter(Boolean);
     return project.pages.flatMap((page, index) =>
       page.lines
-        .map((line) => ({ page, index, line, who: line.kind === "narration" ? "N" : line.kind === "sfx" ? "音" : (names.get(line.speaker ?? "") ?? "？") }))
+        .map((line) => ({
+          page,
+          index,
+          line,
+          who: line.kind === "narration" ? "N" : line.kind === "sfx" ? "音" : (names.get(line.speaker ?? "") ?? "？"),
+        }))
         .filter(({ line, who }) => {
           const hay = `${who} ${line.text.replace(/\s+/g, "")}`.toLowerCase();
           return words.every((word) => hay.includes(word));
@@ -103,21 +111,31 @@ export class ScriptList {
     const project = this.host.project();
     if (!project || !ids.length) return;
     const ok = await copyText(linesText(project, ids));
-    this.host.status(ok ? `セリフ ${ids.length} 件を台本の形でコピーしました（ほかのアプリに貼り付けられます）` : "クリップボードに入れられませんでした");
+    this.host.status(
+      ok ? `セリフ ${ids.length} 件を台本の形でコピーしました（ほかのアプリに貼り付けられます）` : "クリップボードに入れられませんでした",
+    );
   }
 
   private async copyAll(): Promise<void> {
     const project = this.host.project();
     if (!project) return;
     const ok = await copyText(scriptText(project));
-    this.host.status(ok ? "台本をすべてコピーしました（「台本・プロットを取り込む」でも読めます）" : "クリップボードに入れられませんでした");
+    this.host.status(
+      ok ? "台本をすべてコピーしました（「台本・プロットを取り込む」でも読めます）" : "クリップボードに入れられませんでした",
+    );
   }
 
   private async remove(ids: string[]): Promise<void> {
     const project = this.host.project();
     if (!project || !ids.length) return;
-    if (ids.length > 1 && !(await ask(`セリフ ${ids.length} 件を消しますか？（元に戻すで戻せます）`, { title: "Name Studio", kind: "warning" }))) return;
-    const where = project.pages.flatMap((page) => page.lines.filter((line) => ids.includes(line.id)).map((line) => ({ pageId: page.id, id: line.id })));
+    if (
+      ids.length > 1 &&
+      !(await ask(`セリフ ${ids.length} 件を消しますか？（元に戻すで戻せます）`, { title: "Name Studio", kind: "warning" }))
+    )
+      return;
+    const where = project.pages.flatMap((page) =>
+      page.lines.filter((line) => ids.includes(line.id)).map((line) => ({ pageId: page.id, id: line.id })),
+    );
     this.host.edit((p) => {
       for (const { pageId, id } of where) removePicked(p, { kind: "line", pageId, id });
     });
@@ -154,7 +172,10 @@ export class ScriptList {
   }
 
   render(project: Project): void {
-    const take = element("button", { textContent: "台本・プロットを取り込む…", title: "Markdown の台本（コマとセリフ）か、プロット（ページごとの文）を取り込む" });
+    const take = element("button", {
+      textContent: "台本・プロットを取り込む…",
+      title: "Markdown の台本（コマとセリフ）か、プロット（ページごとの文）を取り込む",
+    });
     take.addEventListener("click", () => this.host.openScript());
     const search = element("input", { type: "search", className: "script-search", value: this.query, placeholder: "セリフ・話す人で探す" });
     const rows = element("div", { className: "script-rows" });
@@ -174,8 +195,19 @@ export class ScriptList {
     const picked = this.picker.targets();
     const tools = toolRow(
       [
-        { id: "script-copy", text: "コピー", title: "選んだセリフ（なければ全部）を台本の形でコピー（Ctrl+C）", run: () => void (picked.length ? this.copy(picked) : this.copyAll()) },
-        { id: "script-delete", text: "削除", title: "選んだセリフを消す（Delete・元に戻すで戻せます）", run: () => void this.remove(picked), disabled: !picked.length },
+        {
+          id: "script-copy",
+          text: "コピー",
+          title: "選んだセリフ（なければ全部）を台本の形でコピー（Ctrl+C）",
+          run: () => void (picked.length ? this.copy(picked) : this.copyAll()),
+        },
+        {
+          id: "script-delete",
+          text: "削除",
+          title: "選んだセリフを消す（Delete・元に戻すで戻せます）",
+          run: () => void this.remove(picked),
+          disabled: !picked.length,
+        },
       ],
       picked.length > 1 ? `${picked.length} 件選択中` : "",
     );
@@ -196,7 +228,10 @@ export class ScriptList {
       const selected = picked?.kind === "line" && picked.id === line.id;
       const row = element(
         "div",
-        { className: `script-line ${line.kind}${selected ? " current" : ""}`, title: "押すとこのセリフへ（F2 でその場で直す・右クリックで話者・種類・コピー・削除）" },
+        {
+          className: `script-line ${line.kind}${selected ? " current" : ""}`,
+          title: "押すとこのセリフへ（F2 でその場で直す・右クリックで話者・種類・コピー・削除）",
+        },
         element("span", { className: "who", textContent: who }),
         element("span", { className: "text", textContent: line.text.replace(/\s+/g, " ") }),
       );
@@ -204,7 +239,8 @@ export class ScriptList {
       children.push(this.picker.row(row, line.id));
     }
     if (words) children.unshift(element("p", { className: "hint", textContent: shown.length ? `${shown.length} 件` : "見つかりません" }));
-    else if (!children.length) children.push(element("p", { className: "hint", textContent: project.pages.length ? "セリフがありません" : "ページがありません" }));
+    else if (!children.length)
+      children.push(element("p", { className: "hint", textContent: project.pages.length ? "セリフがありません" : "ページがありません" }));
     return children;
   }
 }

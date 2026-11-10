@@ -21,11 +21,30 @@ import { ISSUE_LABELS, checkName, issueSummary } from "../domain/namecheck";
 import { tidyPanels } from "../domain/tidy";
 import { $, element } from "../platform/dom";
 import { readText, writeText } from "../platform/settings";
-import { compactStory, cspPageOf, firstPageLeft, joinedPage, pageSetup, piecesPerPage, pixelSize, presetOf, PRESETS, setupProblem, withPreset } from "../domain/csppage";
+import {
+  compactStory,
+  cspPageOf,
+  firstPageLeft,
+  joinedPage,
+  pageSetup,
+  piecesPerPage,
+  pixelSize,
+  presetOf,
+  PRESETS,
+  setupProblem,
+  withPreset,
+} from "../domain/csppage";
 import type { CspPage, CspStory, NombrePlace, Project, RoughImage, StoryPosition } from "../model/model";
 import { fontField } from "./fontpicker";
 import { chooseTakeBack } from "./readbackpick";
-import { againSummary, exportSummary, type ExportKind, type ExportMemory, type PanelExport, type TemplateMode } from "../domain/exportmemory";
+import {
+  againSummary,
+  exportSummary,
+  type ExportKind,
+  type ExportMemory,
+  type PanelExport,
+  type TemplateMode,
+} from "../domain/exportmemory";
 import { keepExportMemory, keepLastUpdate, loadExportMemory, loadLastUpdate, type LastDialogueUpdate } from "../platform/prefs";
 import { updateRecord, updatedPages } from "../service/updatereport";
 import { formatTime } from "../service/autosave";
@@ -170,7 +189,11 @@ function readStory(): CspStory | undefined {
     titlePosition: value("ne-title-pos") as StoryPosition,
     authorPosition: value("ne-author-pos") as StoryPosition,
   };
-  if (checked("ne-page-number")) story.pageNumber = { start: Math.max(0, Math.round(number("ne-page-number-start", 1))), position: value("ne-page-number-pos") as StoryPosition };
+  if (checked("ne-page-number"))
+    story.pageNumber = {
+      start: Math.max(0, Math.round(number("ne-page-number-start", 1))),
+      position: value("ne-page-number-pos") as StoryPosition,
+    };
   const place = value("ne-nombre-place");
   if (place !== "hidden") {
     story.nombre = {
@@ -225,7 +248,6 @@ interface Templates {
   /** 縦スクロール, joined: pieces on each page of the built-in template. */
   pieces?: number;
 }
-
 
 export class ExportDialog {
   private kind: Kind = "csp";
@@ -329,7 +351,8 @@ export class ExportDialog {
       this.showPage();
     });
     for (const [id] of PAGE_FIELDS) $(id).addEventListener("input", () => this.pageChanged());
-    for (const id of ["ne-dpi", "ne-first-side", "ne-nombre-start", "ne-join-pieces", ...STORY_FIELDS]) $(id).addEventListener("change", () => this.pageChanged());
+    for (const id of ["ne-dpi", "ne-first-side", "ne-nombre-start", "ne-join-pieces", ...STORY_FIELDS])
+      $(id).addEventListener("change", () => this.pageChanged());
     $("ne-run").addEventListener("click", () => void this.run());
     $("ne-stop").addEventListener("click", () => {
       this.stopping = true;
@@ -492,9 +515,14 @@ export class ExportDialog {
         return item;
       }),
     );
-    if (issues.length > 60) list.append(Object.assign(document.createElement("p"), { className: "hint", textContent: `ほか ${issues.length - 60} 件` }));
+    if (issues.length > 60)
+      list.append(Object.assign(document.createElement("p"), { className: "hint", textContent: `ほか ${issues.length - 60} 件` }));
     if (drafts) {
-      const fix = Object.assign(document.createElement("button"), { type: "button", className: "fix", textContent: `仮のコマ ${drafts} 個を全部整える（線をそろえ、コマ間を設定の幅に）` });
+      const fix = Object.assign(document.createElement("button"), {
+        type: "button",
+        className: "fix",
+        textContent: `仮のコマ ${drafts} 個を全部整える（線をそろえ、コマ間を設定の幅に）`,
+      });
       fix.addEventListener("click", () => {
         this.host.edit((p) => {
           for (const page of p.pages) {
@@ -509,7 +537,11 @@ export class ExportDialog {
       list.prepend(fix);
     }
     if (issues.some((issue) => issue.kind === "tail")) {
-      const fix = Object.assign(document.createElement("button"), { type: "button", className: "fix", textContent: "しっぽのないセリフ全部にしっぽを付ける（コマのラフの人物へ向ける）" });
+      const fix = Object.assign(document.createElement("button"), {
+        type: "button",
+        className: "fix",
+        textContent: "しっぽのないセリフ全部にしっぽを付ける（コマのラフの人物へ向ける）",
+      });
       fix.addEventListener("click", () => {
         this.host.addTails();
         const updated = this.host.project();
@@ -518,7 +550,11 @@ export class ExportDialog {
       list.prepend(fix);
     }
     if (issues.some((issue) => issue.kind === "face")) {
-      const fix = Object.assign(document.createElement("button"), { type: "button", className: "fix", textContent: "顔にかかるセリフをずらす（よけきれないコマは並べ直す）" });
+      const fix = Object.assign(document.createElement("button"), {
+        type: "button",
+        className: "fix",
+        textContent: "顔にかかるセリフをずらす（よけきれないコマは並べ直す）",
+      });
       fix.addEventListener("click", () => {
         this.host.clearFaces();
         const updated = this.host.project();
@@ -527,7 +563,11 @@ export class ExportDialog {
       list.prepend(fix);
     }
     if (issues.some((issue) => issue.kind === "spill")) {
-      const fix = Object.assign(document.createElement("button"), { type: "button", className: "fix", textContent: "はみ出したセリフのコマを並べ直す（改行し直して細く）" });
+      const fix = Object.assign(document.createElement("button"), {
+        type: "button",
+        className: "fix",
+        textContent: "はみ出したセリフのコマを並べ直す（改行し直して細く）",
+      });
       fix.addEventListener("click", () => {
         this.host.fitSpills();
         const updated = this.host.project();
@@ -561,7 +601,15 @@ export class ExportDialog {
     const builtin = this.mode === "builtin";
     for (const mode of ["builtin", "file"] as const) $(`ne-mode-${mode}`).classList.toggle("active", mode === this.mode);
     $("ne-builtin").hidden = !builtin;
-    for (const id of ["ne-template-label", "ne-template", "ne-pick-template", "ne-template-hint", "ne-work-template-label", "ne-work-template", "ne-pick-work-template"]) {
+    for (const id of [
+      "ne-template-label",
+      "ne-template",
+      "ne-pick-template",
+      "ne-template-hint",
+      "ne-work-template-label",
+      "ne-work-template",
+      "ne-pick-work-template",
+    ]) {
       $(id).hidden = builtin;
     }
     $<HTMLInputElement>("ne-story-index").placeholder = builtin ? "なし" : "ひな形のまま";
@@ -586,7 +634,11 @@ export class ExportDialog {
       ? "このネームは縦スクロールです。区切りごとに CSP のページになり、ページはひな形の基本枠に合わせて置かれます。区切りと同じ縦横比（幅 120 × 高さ 240 mm など）で作った CSP のページをひな形にしてください。作品（.cmc）は区切りを順に並べたものになります。"
       : "このネームは左綴じです。作品の綴じ方はひな形の作品のままになるので、CSP で左綴じにして保存した作品をひな形に選んでください（ページの中身は左から右へ読む並びで書き出します）。";
     $("ne-pdf-binding").textContent = left ? "左綴じ" : "右綴じ";
-    $("ne-mini-binding").textContent = project?.scroll ? "縦スクロールは上から下へ、列は左から右" : left ? "左綴じは左上から右へ" : "右綴じは右上から左へ";
+    $("ne-mini-binding").textContent = project?.scroll
+      ? "縦スクロールは上から下へ、列は左から右"
+      : left
+        ? "左綴じは左上から右へ"
+        : "右綴じは右上から左へ";
     $("ne-mini-columns-label").textContent = project?.scroll ? "列の数" : "横に並べる見開き";
     $<HTMLInputElement>("ne-work-name").value = this.form.workName;
     $<HTMLInputElement>("ne-story-index").value = this.form.storyIndex;
@@ -602,7 +654,12 @@ export class ExportDialog {
     $("ne-updated-heading").textContent = update?.rows.length ? heading : "";
     list.replaceChildren(
       ...(update?.rows ?? []).map((row) => {
-        const go = element("button", { type: "button", className: row.attention ? "attention" : "", textContent: row.text, title: "このページに移る" });
+        const go = element("button", {
+          type: "button",
+          className: row.attention ? "attention" : "",
+          textContent: row.text,
+          title: "このページに移る",
+        });
         go.addEventListener("click", () => {
           $<HTMLDialogElement>("name-export-dialog").close();
           this.host.showPage(row.pages[0]);
@@ -639,7 +696,11 @@ export class ExportDialog {
 
   private async pickDonor(): Promise<void> {
     const start = folderOf(this.donor || this.form.template || this.sources()[0] || "");
-    const path = await open({ multiple: false, defaultPath: start || undefined, filters: [{ name: "CLIP STUDIO PAINT のページ", extensions: ["clip"] }] });
+    const path = await open({
+      multiple: false,
+      defaultPath: start || undefined,
+      filters: [{ name: "CLIP STUDIO PAINT のページ", extensions: ["clip"] }],
+    });
     if (typeof path === "string") this.setDonor(path);
   }
 
@@ -698,13 +759,23 @@ export class ExportDialog {
     showStory(page.story);
     for (const row of document.querySelectorAll<HTMLElement>(".ne-join")) row.hidden = !project.scroll;
     $<HTMLInputElement>("ne-author").value = this.author;
-    $("ne-binding-label").textContent = project.scroll ? "縦スクロール（左綴じとして作ります）" : project.binding === "left" ? "左綴じ（ネームの綴じ方）" : "右綴じ（ネームの綴じ方）";
+    $("ne-binding-label").textContent = project.scroll
+      ? "縦スクロール（左綴じとして作ります）"
+      : project.binding === "left"
+        ? "左綴じ（ネームの綴じ方）"
+        : "右綴じ（ネームの綴じ方）";
     $("ne-story-font").replaceChildren(
-      fontField(page.font ?? "", "ＭＳ ゴシック（内蔵の既定）", (name) => {
-        if (!this.page) return;
-        if (name) this.page.font = name;
-        else delete this.page.font;
-      }, "作品情報（作品名・話数・作者名）とノンブルの書体", "作品名 1話"),
+      fontField(
+        page.font ?? "",
+        "ＭＳ ゴシック（内蔵の既定）",
+        (name) => {
+          if (!this.page) return;
+          if (name) this.page.font = name;
+          else delete this.page.font;
+        },
+        "作品情報（作品名・話数・作者名）とノンブルの書体",
+        "作品名 1話",
+      ),
     );
     this.pageChanged();
   }
@@ -720,7 +791,10 @@ export class ExportDialog {
     const project = this.host.project();
     const pieces = project ? piecesPerPage(project, this.page) : 1;
     this.showSummary();
-    $("ne-join-info").textContent = pieces > 1 ? `${pieces} 区切りで 1 ページ（${w} × ${pixelSize(joinedPage(this.page, pieces))[1]} px、${Math.ceil(project!.pages.length / pieces)} ページ）` : "";
+    $("ne-join-info").textContent =
+      pieces > 1
+        ? `${pieces} 区切りで 1 ページ（${w} × ${pixelSize(joinedPage(this.page, pieces))[1]} px、${Math.ceil(project!.pages.length / pieces)} ページ）`
+        : "";
   }
 
   /**
@@ -731,7 +805,12 @@ export class ExportDialog {
     if (this.mode === "file" || !this.page) return { template: this.form.template, workTemplate: this.form.workTemplate, donors: [] };
     const storyIndex = this.form.storyIndex.trim() ? Number(this.form.storyIndex) : null;
     if (storyIndex !== null && !(Number.isInteger(storyIndex) && storyIndex >= 0)) return "話数は 0 以上の整数で入力してください";
-    const setup = pageSetup(project, this.page, { title: this.form.workName, storyIndex, author: this.author }, (name) => installedFont(name)?.postscript);
+    const setup = pageSetup(
+      project,
+      this.page,
+      { title: this.form.workName, storyIndex, author: this.author },
+      (name) => installedFont(name)?.postscript,
+    );
     const problem = setupProblem(setup);
     if (problem) return problem;
     const built = await call("prepare_builtin_template", { setup });
@@ -755,7 +834,10 @@ export class ExportDialog {
     try {
       return await call("check_export_target", { outDir });
     } catch (error) {
-      this.message(`${failureText("書き出し先を確かめられませんでした", error)}\n何も書き換えていません。フォルダーがあるか、開けるかを確かめるか、別のフォルダーを選んでください。`, true);
+      this.message(
+        `${failureText("書き出し先を確かめられませんでした", error)}\n何も書き換えていません。フォルダーがあるか、開けるかを確かめるか、別のフォルダーを選んでください。`,
+        true,
+      );
       this.host.status("書き出し先を確かめられないので、やめました");
       return false;
     }
@@ -832,7 +914,10 @@ export class ExportDialog {
       const seconds = () => ((performance.now() - started) / 1000).toFixed(1);
       if (this.kind === "csp") {
         const templates = await this.templates(project);
-        const request = typeof templates === "string" ? templates : buildRequest({ ...this.form, template: templates.template, workTemplate: templates.workTemplate }, this.sources());
+        const request =
+          typeof templates === "string"
+            ? templates
+            : buildRequest({ ...this.form, template: templates.template, workTemplate: templates.workTemplate }, this.sources());
         if (typeof request === "string" || typeof templates === "string") {
           this.message(String(request), true);
           return;
@@ -877,7 +962,9 @@ export class ExportDialog {
           templates.pieces,
         );
         if (!report) {
-          this.message("書き出しをやめました。「見本のページ」に、CSP でテキストとベクター線を描いて保存したページ（.clip）を選んでください。");
+          this.message(
+            "書き出しをやめました。「見本のページ」に、CSP でテキストとベクター線を描いて保存したページ（.clip）を選んでください。",
+          );
           this.host.status("書き出しをやめました");
           return;
         }
@@ -938,9 +1025,19 @@ export class ExportDialog {
             progress,
           );
         } else if (this.kind === "mini") {
-          const result = await exportMiniName(written, path, mini, mini.format, this.host.firstAlone(), (rough) => this.host.rough(rough), progress);
+          const result = await exportMiniName(
+            written,
+            path,
+            mini,
+            mini.format,
+            this.host.firstAlone(),
+            (rough) => this.host.rough(rough),
+            progress,
+          );
           const note = result.reduced ? `。大きすぎるので ${result.dpi} dpi に下げました` : "";
-          this.message(`ミニネームを書き出しました（${result.widthPx}×${result.heightPx} px・横に ${result.columns}${note}・${seconds()} 秒）: ${path}`);
+          this.message(
+            `ミニネームを書き出しました（${result.widthPx}×${result.heightPx} px・横に ${result.columns}${note}・${seconds()} 秒）: ${path}`,
+          );
           this.remember(path);
           this.host.status(`ミニネームを書き出しました: ${path}`);
           return;
@@ -972,7 +1069,10 @@ export class ExportDialog {
     if (!project || this.busy) return;
     this.readFields();
     const templates = await this.templates(project);
-    const request = typeof templates === "string" ? templates : buildRequest({ ...this.form, template: templates.template, workTemplate: templates.workTemplate }, this.sources());
+    const request =
+      typeof templates === "string"
+        ? templates
+        : buildRequest({ ...this.form, template: templates.template, workTemplate: templates.workTemplate }, this.sources());
     if (typeof request === "string" || typeof templates === "string") {
       this.message(String(request), true);
       return;
@@ -1017,12 +1117,20 @@ export class ExportDialog {
         },
       );
       const result = dialogueUpdateSummary(summary);
-      const update: LastDialogueUpdate = { timeMs: Date.now(), outDir: request.outDir, first: result.lines[0], rows: updatedPages(summary) };
+      const update: LastDialogueUpdate = {
+        timeMs: Date.now(),
+        outDir: request.outDir,
+        first: result.lines[0],
+        rows: updatedPages(summary),
+      };
       const path = this.host.projectPath();
       if (path) keepLastUpdate(path, update);
       // Kept with the CSP pages too, run after run, to look back on.
       const recorded = update.rows.length
-        ? await call("record_dialogue_update", { outDir: request.outDir, entry: updateRecord(summary, project.title, result.lines[0], new Date(update.timeMs)) }).then(
+        ? await call("record_dialogue_update", {
+            outDir: request.outDir,
+            entry: updateRecord(summary, project.title, result.lines[0], new Date(update.timeMs)),
+          }).then(
             () => `記録: ${request.outDir}\\${UPDATE_RECORD}`,
             (error) => failureText("記録を書けませんでした", error),
           )
@@ -1044,7 +1152,10 @@ export class ExportDialog {
     if (!project || this.busy) return;
     this.readFields();
     const templates = await this.templates(project);
-    const request = typeof templates === "string" ? templates : buildRequest({ ...this.form, template: templates.template, workTemplate: templates.workTemplate }, this.sources());
+    const request =
+      typeof templates === "string"
+        ? templates
+        : buildRequest({ ...this.form, template: templates.template, workTemplate: templates.workTemplate }, this.sources());
     if (typeof request === "string" || typeof templates === "string") {
       this.message(String(request), true);
       return;
@@ -1089,7 +1200,8 @@ export class ExportDialog {
       // From now on these texts count as the name's: セリフだけ反映 leaves them as they are.
       const recorded = await call("adopt_name_dialogue", { paths: plan.paths }).then(
         () => null,
-        (error) => `ただし書き出し先に記録できませんでした（${explain(error).text}）。次のセリフだけ反映で、CSP のセリフが「（旧）」になることがあります`,
+        (error) =>
+          `ただし書き出し先に記録できませんでした（${explain(error).text}）。次のセリフだけ反映で、CSP のセリフが「（旧）」になることがあります`,
       );
       const left = changes - picked.retyped.length - picked.added.length - picked.removed.length;
       const done = `CSP のセリフを読み戻しました（直した ${picked.retyped.length}・足した ${picked.added.length}・消した ${picked.removed.length}${left ? `。ネームのままにしたもの ${left}` : ""}）。元に戻すは Ctrl+Z${recorded ? `。${recorded}` : ""}`;

@@ -69,8 +69,23 @@ describe("ラフの顔を避ける", () => {
     const panel = addPanel(project, page, rectShape([fx + 10, fy + 10, fx + 130, fy + 90]));
     // A stick figure on the right, its head near the top of the panel.
     const [hx, hy] = [fx + 120, fy + 20];
-    const head: Point[] = Array.from({ length: 12 }, (_, i) => [hx + 4 * Math.cos((i / 12) * 2 * Math.PI), hy + 4 * Math.sin((i / 12) * 2 * Math.PI)]);
-    for (const stroke of [head, [[hx, hy + 4], [hx, hy + 35]] as Point[]]) addStroke(project, page, stroke.map(([x, y]) => [x, y, 0.5]), 0.5);
+    const head: Point[] = Array.from({ length: 12 }, (_, i) => [
+      hx + 4 * Math.cos((i / 12) * 2 * Math.PI),
+      hy + 4 * Math.sin((i / 12) * 2 * Math.PI),
+    ]);
+    for (const stroke of [
+      head,
+      [
+        [hx, hy + 4],
+        [hx, hy + 35],
+      ] as Point[],
+    ])
+      addStroke(
+        project,
+        page,
+        stroke.map(([x, y]) => [x, y, 0.5]),
+        0.5,
+      );
     const line = addLine(project, page, [fx + 60, fy + 60], "えっ");
     arrangePanel(project, page, panel);
     expect(overlaps(balloonExtent(line), [hx - 4, hy - 4, hx + 4, hy + 4])).toBe(false);

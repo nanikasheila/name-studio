@@ -5,7 +5,17 @@
 // is in editorpaint.ts.
 import { carryItems, carrySticky, type Destination } from "../domain/carry";
 import { offPage } from "../domain/aside";
-import { FRAME_HANDLES, framedAtOnce, toolHolds, type Drag, type EditorHost, type Hover, type Selection, type TailHit, type Tool } from "./editorcore";
+import {
+  FRAME_HANDLES,
+  framedAtOnce,
+  toolHolds,
+  type Drag,
+  type EditorHost,
+  type Hover,
+  type Selection,
+  type TailHit,
+  type Tool,
+} from "./editorcore";
 import type { EditorStage } from "./editorstage";
 import { bounds, insideBox, insidePolygon } from "../model/geometry";
 import { cornerAt, HANDLE, pickAt, tailAt } from "../editing/hittest";
@@ -18,7 +28,20 @@ import { strokeEditable } from "../domain/roughlayers";
 import { settleSticky } from "../domain/stickies";
 import { strokeHit } from "../domain/strokes";
 import { pickedSummary } from "./toolselect";
-import { baseBounds, copySelection, moveItems, pasteClip, rotation, scaling, selectionBox, transformBase, transformItems, withContents, type Clip, type ItemRef } from "../domain/transform";
+import {
+  baseBounds,
+  copySelection,
+  moveItems,
+  pasteClip,
+  rotation,
+  scaling,
+  selectionBox,
+  transformBase,
+  transformItems,
+  withContents,
+  type Clip,
+  type ItemRef,
+} from "../domain/transform";
 
 /** How far above the transform frame its turning handle is (px). */
 const ROTATE_GAP = 22;
@@ -82,7 +105,12 @@ export class EditorPicks {
     // What the tool in hand does not keep is picked with the select tool (from a list, a paste, Ctrl+A).
     if (selection && !toolHolds(this.scene.tool, selection.kind)) this.host.useTool("select");
     if (selection?.kind === "sticky" && !this.stage.showStickies) this.scene.showStickies();
-    const same = selection && this.selection && selection.kind === this.selection.kind && selection.id === this.selection.id && selection.pageId === this.selection.pageId;
+    const same =
+      selection &&
+      this.selection &&
+      selection.kind === this.selection.kind &&
+      selection.id === this.selection.id &&
+      selection.pageId === this.selection.pageId;
     if (!same) this.transforming = false;
     this.selection = selection;
     if (!quiet) this.host.selectionChanged(selection);
@@ -137,7 +165,10 @@ export class EditorPicks {
       const page = project.pages.find((p) => p.id === this.selection!.pageId);
       if (page) return page;
     }
-    const shown = this.stage.currentPages().map((number) => project.pages[number - 1]).filter(Boolean);
+    const shown = this.stage
+      .currentPages()
+      .map((number) => project.pages[number - 1])
+      .filter(Boolean);
     return shown.find((page) => page.id === this.stage.focusedPageId) ?? shown[0] ?? null;
   }
 
@@ -157,8 +188,11 @@ export class EditorPicks {
     const s = this.selection;
     if (!s || s.pageId !== slot.page.id) return;
     // Over another page, or off every page: the page whose 欄外 it now lies in.
-    const nearest = ([x, y]: Point) => nearestSlot(this.stage.slots, project.pageFormat, [slot.x + x * slot.scale, slot.y + y * slot.scale]);
-    const slotUnder = (point: Point) => this.stage.otherPageUnder(project, slot, point) ?? (offPage([...point, ...point], project.pageFormat) && nearest(point) !== slot ? nearest(point) : null);
+    const nearest = ([x, y]: Point) =>
+      nearestSlot(this.stage.slots, project.pageFormat, [slot.x + x * slot.scale, slot.y + y * slot.scale]);
+    const slotUnder = (point: Point) =>
+      this.stage.otherPageUnder(project, slot, point) ??
+      (offPage([...point, ...point], project.pageFormat) && nearest(point) !== slot ? nearest(point) : null);
     const under = (point: Point): Destination | null => {
       const to = slotUnder(point);
       return to && { page: to.page, offset: [(slot.x - to.x) / slot.scale, (slot.y - to.y) / slot.scale] };
@@ -188,7 +222,8 @@ export class EditorPicks {
       this.host.status(`コマを中身ごと ${to.index + 1} ページへ移しました（コマ ${moved.order}）`);
       return;
     }
-    const all: ItemRef[] = s.kind === "group" ? (s.items ?? []) : s.kind === "line" || s.kind === "stroke" ? [{ kind: s.kind, id: s.id }] : [];
+    const all: ItemRef[] =
+      s.kind === "group" ? (s.items ?? []) : s.kind === "line" || s.kind === "stroke" ? [{ kind: s.kind, id: s.id }] : [];
     const { moved, to } = carryItems(project, slot.page, all, under);
     if (!moved.length) return;
     const targets = [...to].map(slotOf);
@@ -198,7 +233,10 @@ export class EditorPicks {
     else this.selection = null;
     if (this.selection?.pageId === targets[0].page.id) this.focusOn(targets[0]);
     else this.host.selectionChanged(this.selection);
-    const pages = targets.map((t) => t.index + 1).sort((a, b) => a - b).join("・");
+    const pages = targets
+      .map((t) => t.index + 1)
+      .sort((a, b) => a - b)
+      .join("・");
     this.host.status(`${moved.length} 個を ${pages} ページへ移しました`);
   }
 
@@ -237,9 +275,7 @@ export class EditorPicks {
     this.renderBar();
     this.scene.draw();
     this.host.status(
-      on
-        ? "変形: 四角をドラッグで拡大縮小（Shift で縦横別々、Alt で中心から）、丸で回転、Ctrl + 角で自由変形。Enter で終わる"
-        : "",
+      on ? "変形: 四角をドラッグで拡大縮小（Shift で縦横別々、Alt で中心から）、丸で回転、Ctrl + 角で自由変形。Enter で終わる" : "",
     );
     return true;
   }
@@ -296,7 +332,11 @@ export class EditorPicks {
     if (!box) return false;
     const centre: Point = [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2];
     const m =
-      how === "flipH" ? scaling(-1, 1, centre) : how === "flipV" ? scaling(1, -1, centre) : rotation(((how === "right" ? 1 : -1) * Math.PI) / 2, centre);
+      how === "flipH"
+        ? scaling(-1, 1, centre)
+        : how === "flipV"
+          ? scaling(1, -1, centre)
+          : rotation(((how === "right" ? 1 : -1) * Math.PI) / 2, centre);
     this.host.begin();
     transformItems(page, base, m);
     assignPanels(page);
@@ -317,8 +357,16 @@ export class EditorPicks {
     if (!clip) return false;
     this.clip = clip;
     this.pastes = 0;
-    const count = clip.panels.length + clip.strokes.length + clip.lines.length + clip.breakouts.length + clip.stickies.length + (clip.fills?.length ?? 0);
-    this.host.status(`${clip.panels.length ? "コマと中身" : `${count} 個`}をコピーしました。Ctrl+V で、ポインターのあるページに貼り付けます`);
+    const count =
+      clip.panels.length +
+      clip.strokes.length +
+      clip.lines.length +
+      clip.breakouts.length +
+      clip.stickies.length +
+      (clip.fills?.length ?? 0);
+    this.host.status(
+      `${clip.panels.length ? "コマと中身" : `${count} 個`}をコピーしました。Ctrl+V で、ポインターのあるページに貼り付けます`,
+    );
     return true;
   }
 
@@ -335,7 +383,10 @@ export class EditorPicks {
   pasteTarget(): { page: Page; point?: Point } | null {
     const project = this.host.project();
     if (!project) return null;
-    const under = this.scene.pointer && (this.stage.slotAt(this.scene.pointer[0], this.scene.pointer[1], project) ?? nearestSlot(this.stage.slots, project.pageFormat, this.scene.pointer));
+    const under =
+      this.scene.pointer &&
+      (this.stage.slotAt(this.scene.pointer[0], this.scene.pointer[1], project) ??
+        nearestSlot(this.stage.slots, project.pageFormat, this.scene.pointer));
     if (under) return { page: under.page, point: toPage(under, this.scene.pointer![0], this.scene.pointer![1]) };
     const page = this.focusPage();
     return page ? { page } : null;
@@ -347,7 +398,8 @@ export class EditorPicks {
     const under = this.scene.pointer && this.stage.slotAt(this.scene.pointer[0], this.scene.pointer[1], project);
     const selected = this.selection && this.stage.slots.find((slot) => slot.page.id === this.selection!.pageId);
     const focused = this.focusPage();
-    const slot = under || selected || this.stage.slots.find((s) => s.page === focused) || [...this.stage.slots].sort((a, b) => b.x - a.x)[0];
+    const slot =
+      under || selected || this.stage.slots.find((s) => s.page === focused) || [...this.stage.slots].sort((a, b) => b.x - a.x)[0];
     if (!slot) return false;
     const page = slot.page;
     if (page.id === this.clip.pageId) this.pastes += 1;
@@ -363,7 +415,8 @@ export class EditorPicks {
       ...pasted.breakouts.map((id) => ({ kind: "breakout" as const, id })),
     ];
     // One panel goes on with what is in it; more things are picked together.
-    if (pasted.panels.length === 1 && !pasted.fills.length && !pasted.breakouts.length) this.select({ kind: "panel", pageId: page.id, id: pasted.panels[0] });
+    if (pasted.panels.length === 1 && !pasted.fills.length && !pasted.breakouts.length)
+      this.select({ kind: "panel", pageId: page.id, id: pasted.panels[0] });
     else if (items.length > 1) this.select({ kind: "group", pageId: page.id, id: "group", items });
     else if (items.length) this.select({ kind: items[0].kind, pageId: page.id, id: items[0].id });
     else if (pasted.stickies.length) this.select({ kind: "sticky", pageId: page.id, id: pasted.stickies[0] });
@@ -383,7 +436,11 @@ export class EditorPicks {
       ...page.breakouts.map((b) => ({ kind: "breakout" as const, id: b.id })),
     ];
     if (!items.length) return false;
-    this.select(items.length === 1 ? { kind: items[0].kind, pageId: page.id, id: items[0].id } : { kind: "group", pageId: page.id, id: "group", items });
+    this.select(
+      items.length === 1
+        ? { kind: items[0].kind, pageId: page.id, id: items[0].id }
+        : { kind: "group", pageId: page.id, id: "group", items },
+    );
     this.host.status(`${pickedSummary(items)}を選びました。枠の四角で大きさ、丸で向き、Ctrl + 角で自由変形`);
     return true;
   }
@@ -418,7 +475,8 @@ export class EditorPicks {
     const page = this.stage.visiblePage(slot.page);
     const project = this.host.project();
     const found = pickAt(page, point, slot.scale, {
-      open: (sticky) => this.isSelected(page, "sticky", sticky.id) || (this.scene.hover?.kind === "item" && this.scene.hover.target.id === sticky.id),
+      open: (sticky) =>
+        this.isSelected(page, "sticky", sticky.id) || (this.scene.hover?.kind === "item" && this.scene.hover.target.id === sticky.id),
       selectedLine: this.selection?.kind === "line" && this.selection.pageId === page.id ? this.selection.id : null,
       editable: (stroke) => !project || strokeEditable(project, stroke),
     });
@@ -471,12 +529,12 @@ export class EditorPicks {
     this.follow(page, carried);
     const sticky = this.selection.kind === "sticky" ? page.stickies?.find((n) => n.id === this.selection!.id) : undefined;
     if (sticky) settleSticky(this.host.project()!, sticky);
-    if (this.selection.kind === "panel" || this.selection.items?.some((item) => item.kind === "panel")) orderPanels(page, this.host.project()!.binding);
+    if (this.selection.kind === "panel" || this.selection.items?.some((item) => item.kind === "panel"))
+      orderPanels(page, this.host.project()!.binding);
     assignPanels(page);
     sortLines(page, this.scene.binding());
     this.host.commit();
     this.scene.draw();
     return true;
   }
-
 }

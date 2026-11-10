@@ -8,8 +8,6 @@ import { bounds } from "../model/geometry";
 import { trimBox } from "../domain/pagebox";
 import { svg } from "../platform/dom";
 
-
-
 /** Characters of dialogue in each panel of `page` (lines not in a panel are left out). */
 export function textByPanel(page: Page): Map<string, number> {
   const amounts = new Map<string, number>();
@@ -42,7 +40,9 @@ export function pageGlyph(project: Project, page: Page, width = 34): SVGSVGEleme
   }
   for (const sticky of page.stickies ?? []) {
     const [x, y] = sticky.at;
-    root.append(svg("rect", { class: "sticky", x: Math.min(Math.max(x, x0), x1 - 18), y: Math.min(Math.max(y, y0), y1 - 18), width: 18, height: 18 }));
+    root.append(
+      svg("rect", { class: "sticky", x: Math.min(Math.max(x, x0), x1 - 18), y: Math.min(Math.max(y, y0), y1 - 18), width: 18, height: 18 }),
+    );
   }
   return root;
 }
@@ -64,7 +64,16 @@ export function heldThumbnail(project: Project, held: HeldPanel, width = 116): H
   ctx.scale(ratio, ratio);
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, width, height);
-  const page: Page = { id: "", memo: "", panels: [held.panel], lines: held.lines, strokes: held.strokes, roughs: [], breakouts: [], fills: held.fills };
+  const page: Page = {
+    id: "",
+    memo: "",
+    panels: [held.panel],
+    lines: held.lines,
+    strokes: held.strokes,
+    roughs: [],
+    breakouts: [],
+    fills: held.fills,
+  };
   const m = { scale, x: pad - x0 * scale, y: pad - y0 * scale };
   drawPageFills(ctx, page, m, undefined, true);
   drawStrokes(ctx, page, m, false, () => "#3a3834", 0.4, project.brushes);

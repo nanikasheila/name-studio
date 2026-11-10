@@ -37,8 +37,22 @@ try {
     const page = project.pages[1];
     const boxes = { wide: [x0, y0, x1, y0 + 60], tall: [x0, y0 + 66, x0 + 50, y1], rest: [x0 + 56, y0 + 66, x1, y1] };
     const ids = Object.fromEntries(Object.entries(boxes).map(([name, box]) => [name, addPanel(project, page, rectShape(box)).id]));
-    page.strokes.push({ id: "a", points: [[x0 + 10, y0 + 10, 1], [x0 + 30, y0 + 10, 1]], widthMm: 0.4 });
-    page.strokes.push({ id: "b", points: [[x1 - 30, y0 + 50, 1], [x1 - 10, y0 + 50, 1]], widthMm: 0.4 });
+    page.strokes.push({
+      id: "a",
+      points: [
+        [x0 + 10, y0 + 10, 1],
+        [x0 + 30, y0 + 10, 1],
+      ],
+      widthMm: 0.4,
+    });
+    page.strokes.push({
+      id: "b",
+      points: [
+        [x1 - 30, y0 + 50, 1],
+        [x1 - 10, y0 + 50, 1],
+      ],
+      widthMm: 0.4,
+    });
     window.nameStudio.show(project);
     const wb = window.nameStudio.workbench;
     wb.editor.showPage(2);
@@ -51,7 +65,8 @@ try {
   const { boxes, ids } = panels;
 
   const settle = () => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-  const at = (mm) => page.evaluate((mm) => window.nameStudio.workbench.editor.clientOf(window.nameStudio.workbench.project.pages[1].id, mm), mm);
+  const at = (mm) =>
+    page.evaluate((mm) => window.nameStudio.workbench.editor.clientOf(window.nameStudio.workbench.project.pages[1].id, mm), mm);
   async function drag(points) {
     await page.mouse.move(...points[0]);
     await page.mouse.down();
@@ -107,7 +122,10 @@ try {
   // Out of the box: a swap spreads the contents over the tall panel (the gap stretched apart in x and y).
   await drag([await badge(ids.wide), await at(centreOf(boxes.tall))]);
   let now = await lines();
-  check(near(now.gap[0], start.gap[0] * (tw / ww)) && near(now.gap[1], start.gap[1] * (th / wh)), "out of the box, a swap fits the contents to the new panel's width and height");
+  check(
+    near(now.gap[0], start.gap[0] * (tw / ww)) && near(now.gap[1], start.gap[1] * (th / wh)),
+    "out of the box, a swap fits the contents to the new panel's width and height",
+  );
   await page.keyboard.press("Control+z");
   await settle();
 
@@ -122,10 +140,16 @@ try {
   await drag([await badge(ids.wide), await at(centreOf(boxes.tall))]);
   now = await lines();
   let s = Math.min(tw / ww, th / wh);
-  check(near(now.gap[0], start.gap[0] * s) && near(now.gap[1], start.gap[1] * s), "with 縦横比を保つ, a swap scales the contents alike (the gap keeps its direction)");
+  check(
+    near(now.gap[0], start.gap[0] * s) && near(now.gap[1], start.gap[1] * s),
+    "with 縦横比を保つ, a swap scales the contents alike (the gap keeps its direction)",
+  );
   const mid = (start.a[1] + start.b[1]) / 2 - (boxes.wide[1] + wh / 2);
   check(near((now.a[1] + now.b[1]) / 2, centreOf(boxes.tall)[1] + mid * s), "and puts them in the middle of the panel's height");
-  check([now.a, now.b].every(([x, y]) => x > boxes.tall[0] && x < boxes.tall[2] && y > boxes.tall[1] && y < boxes.tall[3]), "inside the panel");
+  check(
+    [now.a, now.b].every(([x, y]) => x > boxes.tall[0] && x < boxes.tall[2] && y > boxes.tall[1] && y < boxes.tall[3]),
+    "inside the panel",
+  );
   await page.keyboard.press("Control+z");
   await settle();
   now = await lines();
@@ -143,7 +167,10 @@ try {
   now = await lines();
   s = Math.min(rw / ww, rh / wh);
   check(near(now.gap[0], start.gap[0] * s) && near(now.gap[1], start.gap[1] * s), "a 保留 panel dropped into a panel keeps the 縦横比 too");
-  check(near((now.a[0] + now.b[0]) / 2, centreOf(boxes.rest)[0] + ((start.a[0] + start.b[0]) / 2 - centreOf(boxes.wide)[0]) * s), "in the middle of that panel");
+  check(
+    near((now.a[0] + now.b[0]) / 2, centreOf(boxes.rest)[0] + ((start.a[0] + start.b[0]) / 2 - centreOf(boxes.wide)[0]) * s),
+    "in the middle of that panel",
+  );
 
   // Back to 入れ替え先に合わせる: the drop stretches again.
   await page.keyboard.press("Control+z");
@@ -152,7 +179,10 @@ try {
   const again = await page.evaluate(() => window.nameStudio.workbench.project.held?.[0]);
   await drag([await at([again.at[0] + 30, again.at[1] + 30]), await at(centreOf(boxes.rest))]);
   now = await lines();
-  check(near(now.gap[0], start.gap[0] * (rw / ww)) && near(now.gap[1], start.gap[1] * (rh / wh)), "set back, a dropped 保留 panel is fitted to the panel's width and height");
+  check(
+    near(now.gap[0], start.gap[0] * (rw / ww)) && near(now.gap[1], start.gap[1] * (rh / wh)),
+    "set back, a dropped 保留 panel is fitted to the panel's width and height",
+  );
 
   check(errors.length === 0, `no errors (${errors.join(" / ")})`);
 } finally {

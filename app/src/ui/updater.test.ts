@@ -22,7 +22,11 @@ vi.mock("@tauri-apps/plugin-updater", () => ({
 
 function storage(): Map<string, string> {
   const items = new Map<string, string>();
-  vi.stubGlobal("localStorage", { getItem: (key: string) => items.get(key) ?? null, setItem: (key: string, value: string) => void items.set(key, value), removeItem: (key: string) => void items.delete(key) });
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => items.get(key) ?? null,
+    setItem: (key: string, value: string) => void items.set(key, value),
+    removeItem: (key: string) => void items.delete(key),
+  });
   return items;
 }
 
@@ -75,14 +79,40 @@ describe("前の版に戻す", () => {
   it("offers the signed releases (with their latest.json), newest first as GitHub lists them", () => {
     const asset = (name: string) => ({ name });
     const list = installableReleases([
-      { tag_name: "v0.2.60", published_at: "2026-10-25T10:00:00Z", body: "マスク付きフォルダー\n\n詳しく", draft: false, assets: [asset("NameStudio_0.2.60_x64-setup.exe"), asset("latest.json")] },
-      { tag_name: "v0.2.59", published_at: "2026-10-25T09:00:00Z", body: null, draft: false, prerelease: true, assets: [asset("latest.json")] },
+      {
+        tag_name: "v0.2.60",
+        published_at: "2026-10-25T10:00:00Z",
+        body: "マスク付きフォルダー\n\n詳しく",
+        draft: false,
+        assets: [asset("NameStudio_0.2.60_x64-setup.exe"), asset("latest.json")],
+      },
+      {
+        tag_name: "v0.2.59",
+        published_at: "2026-10-25T09:00:00Z",
+        body: null,
+        draft: false,
+        prerelease: true,
+        assets: [asset("latest.json")],
+      },
       // Not draft-published, unsigned (before the update key) or not a version.
       { tag_name: "v0.2.61", published_at: null, body: "", draft: true, assets: [asset("latest.json")] },
-      { tag_name: "v0.2.20", published_at: "2026-10-22T00:00:00Z", body: "", draft: false, assets: [asset("NameStudio_0.2.20_x64-setup.exe")] },
+      {
+        tag_name: "v0.2.20",
+        published_at: "2026-10-22T00:00:00Z",
+        body: "",
+        draft: false,
+        assets: [asset("NameStudio_0.2.20_x64-setup.exe")],
+      },
       { tag_name: "nightly", published_at: "2026-10-22T00:00:00Z", body: "", draft: false, assets: [asset("latest.json")] },
       // The 試験版 channel's own release, which only points at the newest one.
-      { tag_name: "channel-beta", published_at: "2026-10-25T10:00:00Z", body: "", draft: false, prerelease: true, assets: [asset("latest.json")] },
+      {
+        tag_name: "channel-beta",
+        published_at: "2026-10-25T10:00:00Z",
+        body: "",
+        draft: false,
+        prerelease: true,
+        assets: [asset("latest.json")],
+      },
     ]);
     expect(list).toEqual([
       { version: "0.2.60", date: "2026-10-25", title: "マスク付きフォルダー", beta: false },

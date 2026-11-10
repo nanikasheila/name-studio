@@ -84,7 +84,12 @@ export class AltDialog {
         this.host.shown(set);
         this.render();
       });
-      const remove = Object.assign(document.createElement("button"), { type: "button", className: "danger", textContent: "消す", disabled: inUse });
+      const remove = Object.assign(document.createElement("button"), {
+        type: "button",
+        className: "danger",
+        textContent: "消す",
+        disabled: inUse,
+      });
       remove.addEventListener("click", () => {
         this.host.edit((p) => removeAlternative(p, set.id, option.id));
         this.render();

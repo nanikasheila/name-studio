@@ -7,9 +7,12 @@ import { TOOLS } from "../editing/tooldefs";
 
 const DOT_CURSOR = `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="9" height="9"><circle cx="4.5" cy="4.5" r="2" fill="#222" stroke="#fff" stroke-width="1"/></svg>')}") 4 4, crosshair`;
 
-
 /** What the select tool would do under the pointer. */
-export type HoverLook = { kind: "seam"; seam: Seam } | { kind: "handle"; handle: number } | { kind: "tail"; part: string } | { kind: "item" };
+export type HoverLook =
+  | { kind: "seam"; seam: Seam }
+  | { kind: "handle"; handle: number }
+  | { kind: "tail"; part: string }
+  | { kind: "item" };
 
 export interface CursorState {
   tool: Tool;
@@ -28,7 +31,8 @@ export function editorCursor(state: CursorState): string {
   if (state.erasing) return state.lasso ? "crosshair" : "none";
   if (state.tool === "select" && state.hover) return hoverCursor(state.hover);
   // The 指示 pen has no brush to show: a dot or a cross.
-  if (state.tool === "pen" || state.tool === "mark") return state.penLook === "dot" ? DOT_CURSOR : state.penLook === "brush" && state.tool === "pen" ? "none" : "crosshair";
+  if (state.tool === "pen" || state.tool === "mark")
+    return state.penLook === "dot" ? DOT_CURSOR : state.penLook === "brush" && state.tool === "pen" ? "none" : "crosshair";
   return TOOLS[state.tool].cursor;
 }
 
@@ -46,5 +50,7 @@ function seamCursor(seam: Seam): string {
 }
 
 function handleCursor(handle: number): string {
-  return handle === FRAME_HANDLES ? "grab" : ["nwse-resize", "nesw-resize", "nwse-resize", "nesw-resize", "ns-resize", "ew-resize", "ns-resize", "ew-resize"][handle];
+  return handle === FRAME_HANDLES
+    ? "grab"
+    : ["nwse-resize", "nesw-resize", "nwse-resize", "nesw-resize", "ns-resize", "ew-resize", "ns-resize", "ew-resize"][handle];
 }

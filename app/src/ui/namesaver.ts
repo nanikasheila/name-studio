@@ -45,7 +45,10 @@ export class NameSaver {
   private readonly written = new Written();
 
   constructor(private readonly host: NameSaverHost) {
-    this.autosaver = new Autosaver(() => this.autosave(), () => host.session.inStep).followSettings();
+    this.autosaver = new Autosaver(
+      () => this.autosave(),
+      () => host.session.inStep,
+    ).followSettings();
   }
 
   /** What the save state shows, but for the path and whether it is dirty. */
@@ -93,7 +96,11 @@ export class NameSaver {
     if (session.dirty && session.path && autosaveToFile()) await this.autosaver.flush();
     if (!session.dirty) return true;
     const [keep, discard] = ["保存して続ける", "保存しないで続ける"];
-    const choice = await message("保存していない変更があります。", { title: "Name Studio", kind: "warning", buttons: { yes: keep, no: discard, cancel: "戻る" } });
+    const choice = await message("保存していない変更があります。", {
+      title: "Name Studio",
+      kind: "warning",
+      buttons: { yes: keep, no: discard, cancel: "戻る" },
+    });
     if (choice === keep || choice === "Yes") return this.save();
     if (choice !== discard && choice !== "No") return false;
     this.autosaver.reset();
@@ -107,7 +114,8 @@ export class NameSaver {
     if (!project) return false;
     let path = session.path;
     if (!path || saveAs) {
-      const suggested = project.source?.path.replace(/\.clip$/i, `.${PROJECT_EXTENSION}`) ?? `${project.title || "ネーム"}.${PROJECT_EXTENSION}`;
+      const suggested =
+        project.source?.path.replace(/\.clip$/i, `.${PROJECT_EXTENSION}`) ?? `${project.title || "ネーム"}.${PROJECT_EXTENSION}`;
       const picked = await save({
         defaultPath: path ?? suggested,
         filters: [{ name: "ネームデータ", extensions: [PROJECT_EXTENSION] }],
@@ -143,7 +151,9 @@ export class NameSaver {
       this.host.changed();
       clearAlert("save");
       if (mended.length) clearAlert("autosave");
-      const note = mended.length ? `（保存の前に ${mended.length} か所直しました: ${mended.slice(0, 2).join("／")}${mended.length > 2 ? " ほか" : ""}。元に戻すは Ctrl+Z）` : "";
+      const note = mended.length
+        ? `（保存の前に ${mended.length} か所直しました: ${mended.slice(0, 2).join("／")}${mended.length > 2 ? " ほか" : ""}。元に戻すは Ctrl+Z）`
+        : "";
       this.host.setStatus(series ? `ネームは保存しました（シリーズには未反映）: ${path}` : `保存しました: ${path}${note}`);
       return true;
     } catch (error) {
@@ -183,10 +193,16 @@ export class NameSaver {
     this.kept.seriesBehind = !!problem;
     this.host.changed();
     if (problem) {
-      showAlert("series", `ネームは保存しました。シリーズのファイルには反映できていません（次の保存でもう一度試します）。\n${problem}`, "warning", undefined, {
-        label: "もう一度",
-        run: () => void this.retrySeries(),
-      });
+      showAlert(
+        "series",
+        `ネームは保存しました。シリーズのファイルには反映できていません（次の保存でもう一度試します）。\n${problem}`,
+        "warning",
+        undefined,
+        {
+          label: "もう一度",
+          run: () => void this.retrySeries(),
+        },
+      );
     } else {
       clearAlert("series");
     }

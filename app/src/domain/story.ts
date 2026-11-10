@@ -164,11 +164,19 @@ export function planAdvice(project: Project): Advice[] {
   project.pages.forEach((page, index) => {
     const text = textAmount(page);
     if (text > HEAVY_TEXT) advice.push({ level: "warn", text: `${index + 1} ページ: 字が多め（${text} 字）`, page: index });
-    if (page.panels.length > MANY_PANELS) advice.push({ level: "warn", text: `${index + 1} ページ: コマが多め（${page.panels.length} コマ）`, page: index });
+    if (page.panels.length > MANY_PANELS)
+      advice.push({ level: "warn", text: `${index + 1} ページ: コマが多め（${page.panels.length} コマ）`, page: index });
   });
-  const empty = project.pages.map((page, index) => (page.panels.length + page.lines.length + page.strokes.length ? -1 : index)).filter((i) => i >= 0);
+  const empty = project.pages
+    .map((page, index) => (page.panels.length + page.lines.length + page.strokes.length ? -1 : index))
+    .filter((i) => i >= 0);
   if (empty.length && empty.length < count) {
-    advice.push({ level: "info", text: `まだ何もないページ: ${runs(empty).map(([a, b]) => (a === b ? `${a + 1}` : `${a + 1}〜${b + 1}`)).join("、")}` });
+    advice.push({
+      level: "info",
+      text: `まだ何もないページ: ${runs(empty)
+        .map(([a, b]) => (a === b ? `${a + 1}` : `${a + 1}〜${b + 1}`))
+        .join("、")}`,
+    });
   }
   return advice;
 }
@@ -282,7 +290,7 @@ export function markSpeakingPages(project: Project, characterId: string): number
     const value =
       before && after
         ? before.value + ((after.value - before.value) * (index - before.index)) / (after.index - before.index)
-        : (before ?? after)?.value ?? 0;
+        : ((before ?? after)?.value ?? 0);
     project.emotions.push({ character: characterId, page: project.pages[index].id, value: Math.round(value * 10) / 10, note: "" });
     added++;
   }

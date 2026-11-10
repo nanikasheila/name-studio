@@ -6,7 +6,16 @@ import type { Project } from "../model/model";
 import { pageIndex } from "../domain/project";
 import { moveScene } from "../domain/reorder";
 import { currentShape, shapeSpans } from "../domain/shapes";
-import { emotionSeries, moveSceneEdge, sceneAtPage, sceneSpans, setStoryRank, timeline, uncoveredRunAt, type SceneSpan } from "../domain/story";
+import {
+  emotionSeries,
+  moveSceneEdge,
+  sceneAtPage,
+  sceneSpans,
+  setStoryRank,
+  timeline,
+  uncoveredRunAt,
+  type SceneSpan,
+} from "../domain/story";
 import { clip, formatValue, icon, type LaneView, ROW, SCENE, track } from "./boardview";
 import { emptySceneMenu, sceneMenu } from "./boardmenus";
 import { inkOn } from "../editing/inkon";
@@ -26,7 +35,10 @@ export function sceneLane(view: LaneView, project: Project, top: number): SVGGEl
   });
   bg.addEventListener("mousemove", (event) => {
     const { index } = view.at(event);
-    view.tip.show(event, [`${index + 1} ページ`, uncoveredRunAt(project, index) ? "ダブルクリックでここにシーンを足す" : ""].filter(Boolean));
+    view.tip.show(
+      event,
+      [`${index + 1} ページ`, uncoveredRunAt(project, index) ? "ダブルクリックでここにシーンを足す" : ""].filter(Boolean),
+    );
   });
   bg.addEventListener("mouseleave", () => view.tip.hide());
   bg.addEventListener("contextmenu", (event) => {
@@ -38,7 +50,15 @@ export function sceneLane(view: LaneView, project: Project, top: number): SVGGEl
   const spans = sceneSpans(project);
   spans.forEach((span, i) => {
     const { left: x, width: w } = view.span(span.first, span.last);
-    const bar = svg("rect", { x: x + 1, y: top + 4, width: Math.max(2, w - 2), height: SCENE - 8, rx: 6, class: `scene ${i % 2 ? "odd" : ""}`, "data-scene": span.scene.id });
+    const bar = svg("rect", {
+      x: x + 1,
+      y: top + 4,
+      width: Math.max(2, w - 2),
+      height: SCENE - 8,
+      rx: 6,
+      class: `scene ${i % 2 ? "odd" : ""}`,
+      "data-scene": span.scene.id,
+    });
     const text = svg("text", { x: x + 8, y: top + SCENE / 2 + 4, class: "scene-label" }, clip(span.scene.title, Math.floor((w - 12) / 12)));
     group.append(bar, text);
     bar.addEventListener("mousemove", (event) =>
@@ -125,24 +145,41 @@ export function timeLane(view: LaneView, project: Project, top: number, height: 
   group.append(svg("rect", { x: 0, y: top, width: view.width(), height, class: "lane-bg" }));
   const rows = timeline(project);
   if (!rows.length) {
-    group.append(svg("text", { x: 8, y: top + 26, class: "lane-hint" }, "シーンを足すと、ページの順と物語の中の時間の流れがここに並びます"));
+    group.append(
+      svg("text", { x: 8, y: top + 26, class: "lane-hint" }, "シーンを足すと、ページの順と物語の中の時間の流れがここに並びます"),
+    );
     return group;
   }
   const rowY = (rank: number) => top + 7 + rank * ROW + ROW / 2;
   for (let i = 1; i < rows.length; i++) {
     const [a, b] = [rows[i - 1], rows[i]];
-    group.append(svg("path", { d: `M${view.x(a.last + 1)},${rowY(a.storyRank)} L${view.x(b.first)},${rowY(b.storyRank)}`, class: "reading-path" }));
+    group.append(
+      svg("path", { d: `M${view.x(a.last + 1)},${rowY(a.storyRank)} L${view.x(b.first)},${rowY(b.storyRank)}`, class: "reading-path" }),
+    );
   }
   for (const row of rows) {
     const box = view.span(row.first, row.last);
     const x = box.left;
     const w = Math.max(4, box.width - 2);
     const cy = rowY(row.storyRank);
-    const bar = svg("rect", { x: x + 1, y: cy - 7, width: w, height: 14, rx: 4, class: `time-bar${row.flashback ? " flashback" : ""}`, "data-scene": row.scene.id });
+    const bar = svg("rect", {
+      x: x + 1,
+      y: cy - 7,
+      width: w,
+      height: 14,
+      rx: 4,
+      class: `time-bar${row.flashback ? " flashback" : ""}`,
+      "data-scene": row.scene.id,
+    });
     const label = `${row.scene.title}${row.scene.storyTime ? `（${row.scene.storyTime}）` : ""}`;
     const text = svg("text", { x: x + 6, y: cy + 4, class: "time-label" }, clip(label, Math.floor((w - 8) / 11)));
     bar.addEventListener("mousemove", (event) =>
-      view.tip.show(event, [label, `物語の中で ${row.storyRank + 1} 番目`, ...(row.flashback ? ["それより後の出来事を見せたあとに出てくる（回想など）"] : []), "上下にドラッグで順を変える"]),
+      view.tip.show(event, [
+        label,
+        `物語の中で ${row.storyRank + 1} 番目`,
+        ...(row.flashback ? ["それより後の出来事を見せたあとに出てくる（回想など）"] : []),
+        "上下にドラッグで順を変える",
+      ]),
     );
     bar.addEventListener("mouseleave", () => view.tip.hide());
     bar.addEventListener("pointerdown", (down) => {
@@ -173,7 +210,8 @@ export function timeLane(view: LaneView, project: Project, top: number, height: 
       });
     });
     group.append(bar, text);
-    if (row.flashback && view.column * (row.last - row.first + 1) > 60) group.append(svg("text", { x: x + w + 4, y: cy + 4, class: "lane-hint small" }, "回想"));
+    if (row.flashback && view.column * (row.last - row.first + 1) > 60)
+      group.append(svg("text", { x: x + w + 4, y: cy + 4, class: "lane-hint small" }, "回想"));
   }
   return group;
 }
@@ -212,13 +250,19 @@ export function sceneInspector(view: LaneView, project: Project, sceneId: string
   return [
     html("h2", { className: "story-title" }, icon("scene"), html("span", { textContent: "シーン" })),
     html("label", {}, "名前", title),
-    html("p", { className: "insp-summary", textContent: `${span.last - span.first + 1} ページ・物語の中で ${(rank?.storyRank ?? 0) + 1} 番目${rank?.flashback ? "（回想）" : ""}` }),
+    html("p", {
+      className: "insp-summary",
+      textContent: `${span.last - span.first + 1} ページ・物語の中で ${(rank?.storyRank ?? 0) + 1} 番目${rank?.flashback ? "（回想）" : ""}`,
+    }),
     pages,
     html("label", {}, "物語の中の時", time),
     html("label", {}, "あらすじ", summary),
     ...emotionsIn(project, span),
     html("div", { className: "row" }, option, remove),
-    html("p", { className: "hint", textContent: "帯でシーンの両端をドラッグするとページの範囲、真ん中のドラッグで場所、時系列の棒の上下で物語の中の順が変わります。" }),
+    html("p", {
+      className: "hint",
+      textContent: "帯でシーンの両端をドラッグするとページの範囲、真ん中のドラッグで場所、時系列の棒の上下で物語の中の順が変わります。",
+    }),
   ];
 }
 
@@ -228,10 +272,20 @@ function emotionsIn(project: Project, span: SceneSpan): HTMLElement[] {
     .map((character) => {
       const values = emotionSeries(project, character.id).filter((s) => s.index >= span.first && s.index <= span.last);
       if (!values.length) return null;
-      const row = html("div", { className: "insp-emotion", title: values.map((v) => `${v.index + 1}p ${formatValue(v.value)}`).join("  ") });
+      const row = html("div", {
+        className: "insp-emotion",
+        title: values.map((v) => `${v.index + 1}p ${formatValue(v.value)}`).join("  "),
+      });
       const swatch = html("span", { className: "swatch" });
       swatch.style.background = character.color ?? "#2a78d6";
-      row.append(swatch, html("span", { className: "who", textContent: character.name }), sparkline(values.map((v) => v.value), character.color ?? "#2a78d6"));
+      row.append(
+        swatch,
+        html("span", { className: "who", textContent: character.name }),
+        sparkline(
+          values.map((v) => v.value),
+          character.color ?? "#2a78d6",
+        ),
+      );
       return row;
     })
     .filter((row): row is HTMLDivElement => !!row);
@@ -264,22 +318,51 @@ export function pageStory(view: LaneView, project: Project, pageId: string): HTM
   }
   const emotions = project.characters.map((character) => {
     const point = project.emotions.find((p) => p.character === character.id && p.page === pageId);
-    const value = html("input", { type: "number", min: "-1", max: "1", step: "0.1", value: point ? String(point.value) : "", placeholder: "—", title: "-1（後ろ向き）〜 1（前向き）" });
+    const value = html("input", {
+      type: "number",
+      min: "-1",
+      max: "1",
+      step: "0.1",
+      value: point ? String(point.value) : "",
+      placeholder: "—",
+      title: "-1（後ろ向き）〜 1（前向き）",
+    });
     value.addEventListener("change", () =>
       view.edit((p) => {
         const parsed = Number.parseFloat(value.value);
         setEmotion(p, character.id, pageId, Number.isFinite(parsed) ? parsed : null, point?.note);
       }),
     );
-    const note = html("input", { type: "text", value: point?.note ?? "", placeholder: point ? "なぜそう感じるか" : "値を入れるとメモも", disabled: !point });
+    const note = html("input", {
+      type: "text",
+      value: point?.note ?? "",
+      placeholder: point ? "なぜそう感じるか" : "値を入れるとメモも",
+      disabled: !point,
+    });
     note.addEventListener("change", () => view.edit((p) => setEmotion(p, character.id, pageId, point!.value, note.value)));
     const swatch = html("span", { className: "swatch" });
     swatch.style.background = character.color ?? "#2a78d6";
-    return html("div", { className: "insp-row emotion" }, swatch, html("span", { className: "who", textContent: character.name }), value, note);
+    return html(
+      "div",
+      { className: "insp-row emotion" },
+      swatch,
+      html("span", { className: "who", textContent: character.name }),
+      value,
+      note,
+    );
   });
   return [
     ...(tags.childElementCount ? [tags] : []),
-    ...(emotions.length ? [html("details", { className: "emotion-fold", open: project.emotions.some((p) => p.page === pageId) }, html("summary", { textContent: "感情（-1〜1）" }), ...emotions)] : []),
+    ...(emotions.length
+      ? [
+          html(
+            "details",
+            { className: "emotion-fold", open: project.emotions.some((p) => p.page === pageId) },
+            html("summary", { textContent: "感情（-1〜1）" }),
+            ...emotions,
+          ),
+        ]
+      : []),
   ];
 }
 
@@ -290,7 +373,10 @@ function sparkline(values: number[], color: string): SVGSVGElement {
   const y = (value: number) => 2 + (h - 4) * (1 - (value + 1) / 2);
   const line = svg("svg", { width: w, height: h, viewBox: `0 0 ${w} ${h}`, class: "sparkline" });
   line.append(svg("line", { x1: 0, x2: w, y1: y(0), y2: y(0), class: "axis" }));
-  if (values.length > 1) line.append(svg("polyline", { points: values.map((v, i) => `${i * step},${y(v)}`).join(" "), fill: "none", stroke: color, "stroke-width": 2 }));
+  if (values.length > 1)
+    line.append(
+      svg("polyline", { points: values.map((v, i) => `${i * step},${y(v)}`).join(" "), fill: "none", stroke: color, "stroke-width": 2 }),
+    );
   values.forEach((v, i) => line.append(svg("circle", { cx: values.length > 1 ? i * step : w / 2, cy: y(v), r: 2.5, fill: color })));
   return line;
 }

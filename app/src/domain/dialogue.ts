@@ -32,7 +32,8 @@ export function textSize(text: string, fontSizePt: number, vertical: boolean): [
   const size = fontSizePt * MM_PER_PT;
   const rows = text.replace(/\r\n?/g, "\n").split("\n");
   // Across, half-width letters (Latin, digits, ｱ) take about half a full-width one; down a column every character takes a whole cell.
-  const length = (row: string) => (vertical ? [...row].length : [...row].reduce((sum, char) => sum + (HALF_WIDTH.test(char) ? HALF_WIDTH_EM : 1), 0));
+  const length = (row: string) =>
+    vertical ? [...row].length : [...row].reduce((sum, char) => sum + (HALF_WIDTH.test(char) ? HALF_WIDTH_EM : 1), 0);
   const longest = Math.max(1, ...rows.map(length));
   const across = size * (1 + (rows.length - 1) * linePitch());
   return vertical ? [across, longest * size] : [longest * size, across];
@@ -218,7 +219,13 @@ export function script(project: Project): { page: number; line: Line }[] {
  * pages: a page's lines are kept in reading order, its panels by number.
  * Null at either end.
  */
-export function neighbour(project: Project, pageId: string, kind: "line" | "note", id: string, step: 1 | -1): { pageId: string; id: string } | null {
+export function neighbour(
+  project: Project,
+  pageId: string,
+  kind: "line" | "note",
+  id: string,
+  step: 1 | -1,
+): { pageId: string; id: string } | null {
   const all = project.pages.flatMap((page) =>
     (kind === "line" ? page.lines : [...page.panels].sort((a, b) => a.order - b.order)).map((item) => ({ pageId: page.id, id: item.id })),
   );

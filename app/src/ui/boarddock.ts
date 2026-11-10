@@ -85,7 +85,8 @@ export class DockHeight {
       return;
     }
     const room = this.room();
-    const wanted = this.heights[mode] || (mode === "wide" ? Math.round(room * 0.62) : Math.min(this.parts.contentHeight() + CHROME, this.ownShare()));
+    const wanted =
+      this.heights[mode] || (mode === "wide" ? Math.round(room * 0.62) : Math.min(this.parts.contentHeight() + CHROME, this.ownShare()));
     // The page above keeps at least some room.
     const max = Math.max(MIN_HEIGHT, room - 160);
     dock.style.height = `${Math.max(MIN_HEIGHT, Math.min(max, wanted))}px`;

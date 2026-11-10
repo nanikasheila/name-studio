@@ -46,7 +46,7 @@ export function sortLines(page: Page, binding: Binding = "right"): void {
   const order = new Map(page.panels.map((panel) => [panel.id, panel.order]));
   const key = (line: Line) => {
     const [cx, cy] = boxCenter(line.box);
-    return { panel: line.panel ? order.get(line.panel) ?? Infinity : Infinity, diagonal: binding === "right" ? cy - cx : cy + cx };
+    return { panel: line.panel ? (order.get(line.panel) ?? Infinity) : Infinity, diagonal: binding === "right" ? cy - cx : cy + cx };
   };
   page.lines.sort((a, b) => {
     const ka = key(a);

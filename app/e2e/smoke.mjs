@@ -96,13 +96,12 @@ try {
   });
   await page.waitForTimeout(100);
   check(
-    await page.evaluate(() => window.nameStudio.workbench.project.pages[1].strokes.length === 120 && !window.nameStudio.workbench.session.inStep),
+    await page.evaluate(
+      () => window.nameStudio.workbench.project.pages[1].strokes.length === 120 && !window.nameStudio.workbench.session.inStep,
+    ),
     "an uncaught error during a change undoes it",
   );
-  check(
-    await page.evaluate(() => window.__calls.some((call) => call.command === "log_error")),
-    "errors go to the log",
-  );
+  check(await page.evaluate(() => window.__calls.some((call) => call.command === "log_error")), "errors go to the log");
 
   // Autosave sends the project as text that reads back as the same name.
   await page.waitForTimeout(3500);
@@ -140,9 +139,18 @@ try {
     const wb = window.nameStudio.workbench;
     const index = wb.project.pages.findIndex((p) => p.references?.length);
     const reference = wb.project.pages[index].references[0];
-    return { index, box: reference.box, tool: wb.editor.tool, chosen: wb.editor.reference?.id === reference.id, images: wb.project.images.length };
+    return {
+      index,
+      box: reference.box,
+      tool: wb.editor.tool,
+      chosen: wb.editor.reference?.id === reference.id,
+      images: wb.project.images.length,
+    };
   });
-  check(pasted.tool === "reference" && pasted.chosen && pasted.images === 1, `a pasted picture lies on page ${pasted.index + 1}, chosen with the 資料 tool`);
+  check(
+    pasted.tool === "reference" && pasted.chosen && pasted.images === 1,
+    `a pasted picture lies on page ${pasted.index + 1}, chosen with the 資料 tool`,
+  );
   // Drag it by its middle.
   const middle = await page.evaluate(({ index }) => {
     const wb = window.nameStudio.workbench;

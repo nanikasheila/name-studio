@@ -13,10 +13,42 @@ function setUp() {
   const project = newProject("t", 4);
   const [w, h] = project.pageFormat.canvasMm;
   const first = project.pages[0];
-  const onPage = addStroke(project, first, [[40, 40, 1], [80, 80, 1]], 0.4)!;
-  const across = addStroke(project, first, [[w - 10, 40, 1], [w + 20, 40, 1]], 0.4)!;
-  const beside = addStroke(project, first, [[w + 20, 40, 1], [w + 60, 90, 1]], 0.4)!;
-  const above = addStroke(project, first, [[30, -50, 1], [90, -20, 1]], 0.4)!;
+  const onPage = addStroke(
+    project,
+    first,
+    [
+      [40, 40, 1],
+      [80, 80, 1],
+    ],
+    0.4,
+  )!;
+  const across = addStroke(
+    project,
+    first,
+    [
+      [w - 10, 40, 1],
+      [w + 20, 40, 1],
+    ],
+    0.4,
+  )!;
+  const beside = addStroke(
+    project,
+    first,
+    [
+      [w + 20, 40, 1],
+      [w + 60, 90, 1],
+    ],
+    0.4,
+  )!;
+  const above = addStroke(
+    project,
+    first,
+    [
+      [30, -50, 1],
+      [90, -20, 1],
+    ],
+    0.4,
+  )!;
   return { project, first, w, h, onPage, across, beside, above };
 }
 
@@ -50,7 +82,15 @@ describe("欄外", () => {
   it("leaves a page with nothing beside it as it is", () => {
     const project = newProject("t", 2);
     const page = project.pages[0];
-    addStroke(project, page, [[40, 40, 1], [80, 80, 1]], 0.4);
+    addStroke(
+      project,
+      page,
+      [
+        [40, 40, 1],
+        [80, 80, 1],
+      ],
+      0.4,
+    );
     expect(onPageOnly(page, project.pageFormat)).toBe(page);
   });
 
@@ -101,18 +141,34 @@ describe("欄外", () => {
     expect(bottom).toBe(0);
     expect(left).toBe(0);
     // Only for the page it lies beside.
-    expect(rooms.slice(1)).toEqual([[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
+    expect(rooms.slice(1)).toEqual([
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+    ]);
     // At most `most` on a side.
     expect(asideRooms(project, 30)[0][0]).toBe(30);
     const view = { single: false, continuous: true, rows: 2, zoom: 1, pan: [0, 0] as [number, number], width: 1200, height: 800 };
-    const list: [number | null, number | null][] = [[1, null], [2, 3], [4, null]];
+    const list: [number | null, number | null][] = [
+      [1, null],
+      [2, 3],
+      [4, null],
+    ];
     const tight = layoutPages(project, list, 0, view);
     const roomy = layoutPages(project, list, 0, { ...view, rooms });
     const rowPitch = (slots: typeof tight) => slots.find((s) => s.index === 3)!.y - slots[0].y;
     // What is above page 1 needs room above the first row only: the second row (page 4, nothing beside it) stays as close.
     expect(rowPitch(roomy)).toBeCloseTo(rowPitch(tight));
     // Something above page 4 pushes its row down by as much.
-    addStroke(project, project.pages[3], [[30, -40, 1], [90, -20, 1]], 0.4);
+    addStroke(
+      project,
+      project.pages[3],
+      [
+        [30, -40, 1],
+        [90, -20, 1],
+      ],
+      0.4,
+    );
     const four = asideRooms(project, 1000);
     expect(rowPitch(layoutPages(project, list, 0, { ...view, rooms: four })) - rowPitch(tight)).toBeCloseTo(four[3][0] * tight[0].scale);
     // The first row starts low enough to show what is above it.
@@ -126,7 +182,12 @@ describe("欄外", () => {
     const [w] = project.pageFormat.canvasMm;
     addSticky(project, project.pages[0], [w + 10, 20], "1 ページの右の外");
     const view = { single: false, continuous: true, rows: 1, zoom: 0.3, pan: [0, 0] as [number, number], width: 1600, height: 800 };
-    const list: [number | null, number | null][] = [[1, null], [2, 3], [4, 5], [6, 7]];
+    const list: [number | null, number | null][] = [
+      [1, null],
+      [2, 3],
+      [4, 5],
+      [6, 7],
+    ];
     const tight = layoutPages(project, list, 0, view);
     const rooms = asideRooms(project, 1000);
     expect(rooms[0][1]).toBeGreaterThan(0);

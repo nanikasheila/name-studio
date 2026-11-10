@@ -84,7 +84,12 @@ interface Placed {
 }
 
 /** Where the pages of `pair` go in a window `width` x `height`: the trims meet at the gutter, as in the book. */
-export function placeSpread(project: Pick<Project, "pageFormat" | "binding" | "scroll">, pair: Pair, width: number, height: number): Placed[] {
+export function placeSpread(
+  project: Pick<Project, "pageFormat" | "binding" | "scroll">,
+  pair: Pair,
+  width: number,
+  height: number,
+): Placed[] {
   const [x0, y0, x1, y1] = trimBox(project.pageFormat);
   const pageW = x1 - x0;
   const pageH = y1 - y0;
@@ -201,7 +206,10 @@ export class Reader {
     if (!project?.pages.length) return false;
     this.list = readingSpreads(project, this.host.firstAlone());
     const page = this.host.page();
-    this.index = Math.max(0, this.list.findIndex((pair) => pair.includes(page)));
+    this.index = Math.max(
+      0,
+      this.list.findIndex((pair) => pair.includes(page)),
+    );
     this.root.hidden = false;
     document.body.classList.add("reading");
     this.hint.textContent = `${this.rightToLeft ? "← 次・→ 前" : "→ 次・← 前"}／クリックやスワイプでもめくる　Esc で戻る`;

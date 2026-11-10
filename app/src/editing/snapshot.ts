@@ -91,7 +91,9 @@ function samePart(a: Part, b: Part): boolean {
 }
 
 function revive<T>(piece: Part): T {
-  return JSON.parse(piece.json, (key, v: unknown) => ((key === "points" || key === "dataBase64") && typeof v === "number" ? piece.lists[v] : v)) as T;
+  return JSON.parse(piece.json, (key, v: unknown) =>
+    (key === "points" || key === "dataBase64") && typeof v === "number" ? piece.lists[v] : v,
+  ) as T;
 }
 
 interface Paged {
@@ -150,8 +152,12 @@ export function fingerprint(value: unknown): string {
   // A page: its lists are only in its strokes and its balloons' outlines (as in `pagePart`).
   const { strokes, lines } = value as { strokes?: unknown; lines?: unknown };
   if (Array.isArray(strokes) && !("dataBase64" in (value as object))) {
-    const numbered = strokes.map((stroke: { points?: unknown }) => (Array.isArray(stroke.points) ? { ...stroke, points: listId(stroke.points) } : stroke));
-    const outlined = Array.isArray(lines) ? lines.map((line: { balloon?: unknown }) => (Array.isArray(line.balloon) ? { ...line, balloon: listId(line.balloon) } : line)) : lines;
+    const numbered = strokes.map((stroke: { points?: unknown }) =>
+      Array.isArray(stroke.points) ? { ...stroke, points: listId(stroke.points) } : stroke,
+    );
+    const outlined = Array.isArray(lines)
+      ? lines.map((line: { balloon?: unknown }) => (Array.isArray(line.balloon) ? { ...line, balloon: listId(line.balloon) } : line))
+      : lines;
     return JSON.stringify({ ...(value as object), strokes: numbered, ...(Array.isArray(lines) ? { lines: outlined } : {}) });
   }
   return JSON.stringify(value, (key, v: unknown) => {

@@ -92,7 +92,11 @@ export function parsePenSettings(text: string | null): PenSettings {
     return settings;
   }
   const curve = stored.pressureCurve;
-  if (Array.isArray(curve) && curve.length >= 2 && curve.every((p) => Array.isArray(p) && p.length === 2 && p.every((v) => typeof v === "number" && v >= 0 && v <= 1))) {
+  if (
+    Array.isArray(curve) &&
+    curve.length >= 2 &&
+    curve.every((p) => Array.isArray(p) && p.length === 2 && p.every((v) => typeof v === "number" && v >= 0 && v <= 1))
+  ) {
     settings.pressureCurve = normalizeCurve(curve);
   }
   for (const key of ["tilt", "eraserEnd", "pinch", "pinchRotate", "touchTaps", "palmRejection", "predict", "lowLatency"] as const) {
@@ -101,7 +105,8 @@ export function parsePenSettings(text: string | null): PenSettings {
   if (stored.sideButton && stored.sideButton in SIDE_BUTTON_LABELS) settings.sideButton = stored.sideButton;
   if (stored.touch && stored.touch in TOUCH_LABELS) settings.touch = stored.touch;
   if (stored.cursor && stored.cursor in CURSOR_LABELS) settings.cursor = stored.cursor;
-  if (typeof stored.stabilization === "number" && Number.isFinite(stored.stabilization)) settings.stabilization = Math.round(Math.min(100, Math.max(0, stored.stabilization)));
+  if (typeof stored.stabilization === "number" && Number.isFinite(stored.stabilization))
+    settings.stabilization = Math.round(Math.min(100, Math.max(0, stored.stabilization)));
   return settings;
 }
 
@@ -148,6 +153,16 @@ export function fitPressureCurve(samples: readonly number[]): [number, number][]
   const at = (q: number) => pressed[Math.min(pressed.length - 1, Math.floor(q * pressed.length))];
   const usual = at(0.5);
   const firm = Math.max(at(0.95), usual + 0.05);
-  if (firm >= 0.999) return normalizeCurve([[0, 0], [usual, 0.5], [1, 1]]);
-  return normalizeCurve([[0, 0], [usual, 0.5], [firm, 1], [1, 1]]);
+  if (firm >= 0.999)
+    return normalizeCurve([
+      [0, 0],
+      [usual, 0.5],
+      [1, 1],
+    ]);
+  return normalizeCurve([
+    [0, 0],
+    [usual, 0.5],
+    [firm, 1],
+    [1, 1],
+  ]);
 }

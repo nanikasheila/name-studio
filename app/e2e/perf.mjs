@@ -214,7 +214,10 @@ try {
   await page.keyboard.press("F7");
   await page.waitForTimeout(400);
   // Every page drawn anew at another size: a change of the whole view, once.
-  await measure("every page on one canvas", () => page.evaluate(() => window.nameStudio.workbench.editor.fitAll()), { budget: 2 * BUDGET_MS, reset: null });
+  await measure("every page on one canvas", () => page.evaluate(() => window.nameStudio.workbench.editor.fitAll()), {
+    budget: 2 * BUDGET_MS,
+    reset: null,
+  });
   await measure("move about every page", () =>
     drag(
       [
@@ -264,7 +267,8 @@ function printProfile({ nodes, samples, timeDeltas }) {
     const key = `${functionName || "(anonymous)"} ${url.split("/").pop()}:${lineNumber + 1}`;
     totals.set(key, (totals.get(key) ?? 0) + time);
   }
-  for (const [key, time] of [...totals].sort((a, b) => b[1] - a[1]).slice(0, 25)) console.log(`  ${(time / 1000).toFixed(1).padStart(7)} ms  ${key}`);
+  for (const [key, time] of [...totals].sort((a, b) => b[1] - a[1]).slice(0, 25))
+    console.log(`  ${(time / 1000).toFixed(1).padStart(7)} ms  ${key}`);
 }
 
 if (report) writeFileSync(report, `${JSON.stringify(results, null, 1)}\n`);

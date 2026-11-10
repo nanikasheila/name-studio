@@ -7,7 +7,16 @@ import { addPanel, wantsSpread } from "../domain/panels";
 import { gutters, nameKind, newProject, SCROLL_GUTTERS } from "../domain/project";
 import { wrapDialogue } from "../domain/wrap";
 
-const view = (change: Partial<Arrangement> = {}): Arrangement => ({ single: false, continuous: true, rows: 1, zoom: 1, pan: [0, 0], width: 1200, height: 800, ...change });
+const view = (change: Partial<Arrangement> = {}): Arrangement => ({
+  single: false,
+  continuous: true,
+  rows: 1,
+  zoom: 1,
+  pan: [0, 0],
+  width: 1200,
+  height: 800,
+  ...change,
+});
 const alone = (count: number): Pair[] => Array.from({ length: count }, (_, i): Pair => [i + 1, null]);
 
 describe("縦スクロール", () => {

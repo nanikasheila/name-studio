@@ -5,7 +5,15 @@
 import { onPageOnly } from "../domain/aside";
 import { call } from "../platform/backend";
 import { useFonts } from "../domain/fonts";
-import { MINI_NUMBER_SIZE, MINI_TITLE_SIZE, miniScale, miniSheet, type MiniFormat, type MiniOptions, type MiniSheet } from "../domain/mininame";
+import {
+  MINI_NUMBER_SIZE,
+  MINI_TITLE_SIZE,
+  miniScale,
+  miniSheet,
+  type MiniFormat,
+  type MiniOptions,
+  type MiniSheet,
+} from "../domain/mininame";
 import type { Page, Project, RoughImage } from "../model/model";
 import { LAYER_ORDER, drawPart, encode, mapBox, packBody } from "./nameexport";
 import { trimBox } from "../domain/pagebox";
@@ -75,7 +83,13 @@ export interface PdfOptions {
 }
 
 /** Render every page as JPEG and write one PDF (with the 指示 unless left out). */
-export async function exportPdf(project: Project, path: string, options: PdfOptions, rough: RoughLoader, progress: (message: string) => void): Promise<void> {
+export async function exportPdf(
+  project: Project,
+  path: string,
+  options: PdfOptions,
+  rough: RoughLoader,
+  progress: (message: string) => void,
+): Promise<void> {
   useFonts(project.fonts);
   useStyle(project.style);
   const [w, h] = project.pageFormat.canvasMm;
@@ -121,7 +135,12 @@ export async function exportPdf(project: Project, path: string, options: PdfOpti
  * Pictures of pages (PNG, base64) for an AI to look at: each page as its
  * reader sees it, with the 指示, the 仕上がり area at `dpi`. Pages by number (from 1).
  */
-export async function pagePictures(project: Project, numbers: readonly number[], rough: RoughLoader, dpi = 50): Promise<{ number: number; base64: string }[]> {
+export async function pagePictures(
+  project: Project,
+  numbers: readonly number[],
+  rough: RoughLoader,
+  dpi = 50,
+): Promise<{ number: number; base64: string }[]> {
   useFonts(project.fonts);
   useStyle(project.style);
   const area = trimBox(project.pageFormat);
@@ -157,7 +176,13 @@ const MINI_FONT = '"Yu Gothic UI", "Yu Gothic", "Hiragino Sans", Meiryo, sans-se
  * The ミニネーム drawn: every page of `sheet` at `scale` px per mm, its
  * outline, number and the title. The caller lets go of the canvas.
  */
-export async function drawMiniSheet(project: Project, sheet: MiniSheet, scale: number, rough: RoughLoader, progress: (message: string) => void): Promise<HTMLCanvasElement> {
+export async function drawMiniSheet(
+  project: Project,
+  sheet: MiniSheet,
+  scale: number,
+  rough: RoughLoader,
+  progress: (message: string) => void,
+): Promise<HTMLCanvasElement> {
   useFonts(project.fonts);
   useStyle(project.style);
   await loadTips(project.brushes);

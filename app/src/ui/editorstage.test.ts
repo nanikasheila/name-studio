@@ -10,7 +10,13 @@ const STAGE = { width: 1200, height: 800, left: 10, top: 20 };
 function stage(project: Project | null) {
   const calls = { draw: 0, requestDraw: 0, status: [] as string[] };
   const canvas = { width: 0, height: 0, getBoundingClientRect: () => STAGE } as unknown as HTMLCanvasElement;
-  const ctx = { font: "", measureText: (text: string) => ({ width: text.length * 7 }), setTransform: () => {}, save: () => {}, restore: () => {} } as unknown as CanvasRenderingContext2D;
+  const ctx = {
+    font: "",
+    measureText: (text: string) => ({ width: text.length * 7 }),
+    setTransform: () => {},
+    save: () => {},
+    restore: () => {},
+  } as unknown as CanvasRenderingContext2D;
   const made = new EditorStage(canvas, ctx, {
     project: () => project,
     status: (message) => void calls.status.push(message),
@@ -24,7 +30,8 @@ function stage(project: Project | null) {
   return { stage: made, calls };
 }
 
-const wheel = (change: Partial<WheelEvent>): WheelEvent => ({ deltaX: 0, deltaY: 0, offsetX: 600, offsetY: 400, ctrlKey: false, metaKey: false, shiftKey: false, ...change }) as WheelEvent;
+const wheel = (change: Partial<WheelEvent>): WheelEvent =>
+  ({ deltaX: 0, deltaY: 0, offsetX: 600, offsetY: 400, ctrlKey: false, metaKey: false, shiftKey: false, ...change }) as WheelEvent;
 
 describe("the pages on screen (EditorStage)", () => {
   beforeEach(() => {
@@ -121,7 +128,15 @@ describe("the pages on screen (EditorStage)", () => {
     const project = newProject("t", 2);
     const page = project.pages[0];
     page.stickies = [{ id: "s1", at: [10, 10], text: "あとで" }];
-    page.strokes.push({ id: "k1", points: [[1, 1, 1], [5, 5, 1]], widthMm: 0.4, closed: false });
+    page.strokes.push({
+      id: "k1",
+      points: [
+        [1, 1, 1],
+        [5, 5, 1],
+      ],
+      widthMm: 0.4,
+      closed: false,
+    });
     const { stage: s } = stage(project);
     expect(s.visiblePage(page).stickies).toHaveLength(1);
     s.showStickies = false;

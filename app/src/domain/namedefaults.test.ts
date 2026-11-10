@@ -27,7 +27,12 @@ describe("新しいネームの既定", () => {
     saveNewNameDefaults(from);
     const made = newProject("b", 8);
     expect(applyNewNameDefaults(made, newNameDefaults())).toBe(true);
-    expect(made).toMatchObject({ gutters: { across: 3, down: 8 }, fonts: { speech: "アンチック" }, style: { fontPt: { speech: 15 }, panelLineMm: 0.5 }, lineShapes: { thought: "cloud" } });
+    expect(made).toMatchObject({
+      gutters: { across: 3, down: 8 },
+      fonts: { speech: "アンチック" },
+      style: { fontPt: { speech: 15 }, panelLineMm: 0.5 },
+      lineShapes: { thought: "cloud" },
+    });
     // Copies, not the same objects.
     made.style!.panelLineMm = 1;
     expect(newNameDefaults()?.style?.panelLineMm).toBe(0.5);

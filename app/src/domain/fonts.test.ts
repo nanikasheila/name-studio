@@ -3,10 +3,32 @@ import { canvasFont, cspFont, fontChoices, lineBold, lineFont, roleFont, setInst
 import type { Line } from "../model/model";
 import { newProject } from "./project";
 
-const line = (extra: Partial<Line> = {}): Line => ({ id: "line1", text: "やあ", kind: "speech", box: [0, 0, 10, 10], fontSizePt: 13, vertical: true, ...extra });
+const line = (extra: Partial<Line> = {}): Line => ({
+  id: "line1",
+  text: "やあ",
+  kind: "speech",
+  box: [0, 0, 10, 10],
+  fontSizePt: 13,
+  vertical: true,
+  ...extra,
+});
 
-const ANTIQUE = { name: "I-OTFアンチックStd B", families: ["I-OTFアンチックStd B", "I-OTFAntiqueStd B"], postscript: "IwaAntStd-Bd", weight: 400, italic: false, japanese: true };
-const GOTHIC_BOLD = { name: "游ゴシック Bold", families: ["游ゴシック", "Yu Gothic"], postscript: "YuGothic-Bold", weight: 700, italic: false, japanese: true };
+const ANTIQUE = {
+  name: "I-OTFアンチックStd B",
+  families: ["I-OTFアンチックStd B", "I-OTFAntiqueStd B"],
+  postscript: "IwaAntStd-Bd",
+  weight: 400,
+  italic: false,
+  japanese: true,
+};
+const GOTHIC_BOLD = {
+  name: "游ゴシック Bold",
+  families: ["游ゴシック", "Yu Gothic"],
+  postscript: "YuGothic-Bold",
+  weight: 700,
+  italic: false,
+  japanese: true,
+};
 
 afterEach(() => setInstalledFonts([]));
 
@@ -38,7 +60,9 @@ describe("用途ごとのフォント", () => {
 
   it("draws a font on this computer by its families and weight, any other by its name", () => {
     setInstalledFonts([GOTHIC_BOLD]);
-    expect(canvasFont("游ゴシック Bold", 12)).toBe('700 12px "游ゴシック", "Yu Gothic", "游ゴシック Bold", "Yu Gothic", "Hiragino Sans", "Noto Sans JP", sans-serif');
+    expect(canvasFont("游ゴシック Bold", 12)).toBe(
+      '700 12px "游ゴシック", "Yu Gothic", "游ゴシック Bold", "Yu Gothic", "Hiragino Sans", "Noto Sans JP", sans-serif',
+    );
     expect(canvasFont("どこかの書体", 12, true)).toMatch(/^bold 12px "どこかの書体", "Yu Gothic"/);
     expect(canvasFont(null, 12)).toMatch(/^normal 12px "Yu Gothic"/);
   });

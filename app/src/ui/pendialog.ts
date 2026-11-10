@@ -1,7 +1,15 @@
 // The tablet settings dialog: 筆圧カーブ with a pad to try it on and to
 // set it by drawing, and the pen's and fingers' other settings.
 import { curveAt } from "../domain/brush";
-import { CURSOR_LABELS, LINEAR, SIDE_BUTTON_LABELS, TOUCH_LABELS, adjustPressure, fitPressureCurve, type PenSettings } from "../editing/pen";
+import {
+  CURSOR_LABELS,
+  LINEAR,
+  SIDE_BUTTON_LABELS,
+  TOUCH_LABELS,
+  adjustPressure,
+  fitPressureCurve,
+  type PenSettings,
+} from "../editing/pen";
 import type { PenPreferences } from "../platform/prefs";
 import { $ } from "../platform/dom";
 
@@ -45,11 +53,19 @@ export class PenDialog {
       ["pen-low-latency", "lowLatency"],
     ];
     for (const [id, key] of checks) {
-      $<HTMLInputElement>(id).addEventListener("change", (event) => this.preferences.update({ [key]: (event.target as HTMLInputElement).checked }));
+      $<HTMLInputElement>(id).addEventListener("change", (event) =>
+        this.preferences.update({ [key]: (event.target as HTMLInputElement).checked }),
+      );
     }
-    $("pen-side").addEventListener("change", (event) => this.preferences.update({ sideButton: (event.target as HTMLSelectElement).value as PenSettings["sideButton"] }));
-    $("pen-touch").addEventListener("change", (event) => this.preferences.update({ touch: (event.target as HTMLSelectElement).value as PenSettings["touch"] }));
-    $("pen-cursor").addEventListener("change", (event) => this.preferences.update({ cursor: (event.target as HTMLSelectElement).value as PenSettings["cursor"] }));
+    $("pen-side").addEventListener("change", (event) =>
+      this.preferences.update({ sideButton: (event.target as HTMLSelectElement).value as PenSettings["sideButton"] }),
+    );
+    $("pen-touch").addEventListener("change", (event) =>
+      this.preferences.update({ touch: (event.target as HTMLSelectElement).value as PenSettings["touch"] }),
+    );
+    $("pen-cursor").addEventListener("change", (event) =>
+      this.preferences.update({ cursor: (event.target as HTMLSelectElement).value as PenSettings["cursor"] }),
+    );
     for (const button of document.querySelectorAll<HTMLButtonElement>("#pen-dialog [data-curve]")) {
       button.addEventListener("click", () => this.setCurve(PRESETS[button.dataset.curve!]));
     }
@@ -156,7 +172,8 @@ export class PenDialog {
     }
     const [first, last] = [curve[0], curve[curve.length - 1]];
     const percent = (value: number) => `${Math.round(value * 100)}%`;
-    $("pen-curve-ends").textContent = `下限: 筆圧 ${percent(first[0])} → ${percent(first[1])}　上限: 筆圧 ${percent(last[0])} → ${percent(last[1])}`;
+    $("pen-curve-ends").textContent =
+      `下限: 筆圧 ${percent(first[0])} → ${percent(first[1])}　上限: 筆圧 ${percent(last[0])} → ${percent(last[1])}`;
     if (raw !== undefined) {
       // Where the pen's press is now.
       const [gx, gy] = this.toGraph([raw, curveAt(curve, raw)]);

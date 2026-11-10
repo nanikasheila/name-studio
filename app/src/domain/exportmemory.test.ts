@@ -25,12 +25,27 @@ describe("export memory", () => {
   it("reads leniently: what cannot be read takes the default", () => {
     expect(memoryFrom(null)).toBeNull();
     expect(memoryFrom({ kind: "csp" })).toBeNull();
-    const read = memoryFrom({ timeMs: 1, kind: "zip", form: { outDir: 3, fit: "page" }, panels: "x", pdf: { dpi: -1 }, files: { pdf: "a.pdf", text: 2 } });
-    expect(read).toMatchObject({ kind: "csp", form: { outDir: "", fit: "basic", makeWork: true }, panels: "lines", pdf: { area: "trim", dpi: 200 }, files: { pdf: "a.pdf" } });
+    const read = memoryFrom({
+      timeMs: 1,
+      kind: "zip",
+      form: { outDir: 3, fit: "page" },
+      panels: "x",
+      pdf: { dpi: -1 },
+      files: { pdf: "a.pdf", text: 2 },
+    });
+    expect(read).toMatchObject({
+      kind: "csp",
+      form: { outDir: "", fit: "basic", makeWork: true },
+      panels: "lines",
+      pdf: { area: "trim", dpi: 200 },
+      files: { pdf: "a.pdf" },
+    });
     expect(read?.files.text).toBeUndefined();
     // Kept before the ミニネーム: its defaults.
     expect(read?.mini).toEqual({ format: "png", area: "trim", dpi: 100, columns: 0, numbers: true, title: true });
-    expect(memoryFrom({ timeMs: 1, kind: "mini", mini: { format: "gif", dpi: 72, columns: 3, numbers: false }, files: { mini: "C:/m.png" } })).toMatchObject({
+    expect(
+      memoryFrom({ timeMs: 1, kind: "mini", mini: { format: "gif", dpi: 72, columns: 3, numbers: false }, files: { mini: "C:/m.png" } }),
+    ).toMatchObject({
       kind: "mini",
       mini: { format: "png", dpi: 72, columns: 3, numbers: false, title: true },
       files: { mini: "C:/m.png" },
@@ -62,7 +77,15 @@ describe("export memory", () => {
 describe("what 書き出す will make", () => {
   const settings = {
     kind: "csp" as const,
-    form: { template: "", outDir: "C:/out", fit: "basic" as const, makeWork: true, workTemplate: "", workName: "ユメノストラ", storyIndex: "4" },
+    form: {
+      template: "",
+      outDir: "C:/out",
+      fit: "basic" as const,
+      makeWork: true,
+      workTemplate: "",
+      workName: "ユメノストラ",
+      storyIndex: "4",
+    },
     mode: "builtin" as const,
     panels: "lines" as const,
     editable: true,
@@ -75,10 +98,15 @@ describe("what 書き出す will make", () => {
   const of = { pages: 21, scroll: false, page: { trimMm: [257, 364] as [number, number], resolution: 600, preset: "商業誌 B4" } };
 
   it("says the pages, the paper, the layers and where, for CSP", () => {
-    expect(exportSummary(settings, of)).toBe("21 ページ・商業誌 B4・600 dpi・直せる線とセリフ・ラフは下描き・コマ枠の線 → 作品「ユメノストラ」とページを C:/out に");
-    expect(exportSummary({ ...settings, mode: "file", form: { ...settings.form, template: "C:\\t\\page.clip", outDir: "", makeWork: false } }, of)).toBe(
-      "21 ページ・ひな形 page.clip・直せる線とセリフ・ラフは下描き・コマ枠の線 → ページだけを （書き出し先が未選択） に",
+    expect(exportSummary(settings, of)).toBe(
+      "21 ページ・商業誌 B4・600 dpi・直せる線とセリフ・ラフは下描き・コマ枠の線 → 作品「ユメノストラ」とページを C:/out に",
     );
+    expect(
+      exportSummary(
+        { ...settings, mode: "file", form: { ...settings.form, template: "C:\\t\\page.clip", outDir: "", makeWork: false } },
+        of,
+      ),
+    ).toBe("21 ページ・ひな形 page.clip・直せる線とセリフ・ラフは下描き・コマ枠の線 → ページだけを （書き出し先が未選択） に");
     expect(exportSummary(settings, { ...of, page: { ...of.page, preset: null } })).toContain("仕上がり 257×364 mm");
   });
 
@@ -90,8 +118,12 @@ describe("what 書き出す will make", () => {
   it("says whether the 指示 go too, when the name has any", () => {
     expect(exportSummary(settings, { ...of, marks: true })).toContain("コマ枠の線・指示付き →");
     expect(exportSummary({ ...settings, marks: false }, { ...of, marks: true })).not.toContain("指示");
-    expect(exportSummary({ ...settings, kind: "pdf" }, { ...of, marks: true })).toBe("21 ページを 1 つの PDF に（200 dpi・仕上がりで切る・指示付き）");
-    expect(exportSummary({ ...settings, kind: "pdf", marks: false }, { ...of, marks: true })).toBe("21 ページを 1 つの PDF に（200 dpi・仕上がりで切る・指示なし）");
+    expect(exportSummary({ ...settings, kind: "pdf" }, { ...of, marks: true })).toBe(
+      "21 ページを 1 つの PDF に（200 dpi・仕上がりで切る・指示付き）",
+    );
+    expect(exportSummary({ ...settings, kind: "pdf", marks: false }, { ...of, marks: true })).toBe(
+      "21 ページを 1 つの PDF に（200 dpi・仕上がりで切る・指示なし）",
+    );
   });
 
   it("reads an older memory as with the 指示", () => {
@@ -100,9 +132,11 @@ describe("what 書き出す will make", () => {
   });
 
   it("says the ミニネーム's form, resolution and how many across", () => {
-    expect(exportSummary({ ...settings, kind: "mini" }, of)).toBe("21 ページを 1 枚のミニネームに（1 ページの PDF・100 dpi・並びはおまかせ）");
-    expect(exportSummary({ ...settings, kind: "mini", mini: { ...settings.mini, format: "jpeg", columns: 4 } }, { ...of, scroll: true })).toBe(
-      "21 区切りを 1 枚のミニネームに（JPEG 画像・100 dpi・横に 4 列）",
+    expect(exportSummary({ ...settings, kind: "mini" }, of)).toBe(
+      "21 ページを 1 枚のミニネームに（1 ページの PDF・100 dpi・並びはおまかせ）",
     );
+    expect(
+      exportSummary({ ...settings, kind: "mini", mini: { ...settings.mini, format: "jpeg", columns: 4 } }, { ...of, scroll: true }),
+    ).toBe("21 区切りを 1 枚のミニネームに（JPEG 画像・100 dpi・横に 4 列）");
   });
 });

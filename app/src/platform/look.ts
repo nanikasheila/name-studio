@@ -138,7 +138,7 @@ export const COLOR_TOKENS: readonly [string, string][] = [
 
 /** A start for the user's CSS: every colour token with its value now and what it is for. */
 export function cssTemplate(values: Record<string, string>): string {
-  const width = Math.max(...COLOR_TOKENS.map(([name, ]) => name.length + (values[name] ?? "").length));
+  const width = Math.max(...COLOR_TOKENS.map(([name]) => name.length + (values[name] ?? "").length));
   const rows = COLOR_TOKENS.map(([name, what]) => {
     const row = `  ${name}: ${values[name] ?? ""};`;
     return `${row.padEnd(width + 5)} /* ${what} */`;

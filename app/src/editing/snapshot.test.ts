@@ -11,7 +11,16 @@ function drawn(pages = 3): Project {
   const project = newProject("試し", pages);
   for (const page of project.pages) {
     for (let s = 0; s < 5; s++) {
-      addStroke(project, page, [[10 + s, 10, 0.5], [20 + s, 15, 0.7], [30 + s, 12.345678901, 0.333333]], 0.5);
+      addStroke(
+        project,
+        page,
+        [
+          [10 + s, 10, 0.5],
+          [20 + s, 15, 0.7],
+          [30 + s, 12.345678901, 0.333333],
+        ],
+        0.5,
+      );
     }
   }
   return project;
@@ -124,11 +133,37 @@ describe("projectJson", () => {
 
   it("writes pages, held panels and other options as one replacer over everything would", () => {
     const project = drawn(2);
-    project.held = [{ id: "held1", panel: { id: "p", shape: [[0, 0], [1, 0], [1, 1]], order: 1 } as never, lines: [], strokes: [project.pages[0].strokes[0]] }];
-    project.alternatives = [{ id: "alt", from: 0, to: 0, active: "a", options: [{ id: "b", name: "案2", pages: [JSON.parse(JSON.stringify(project.pages[1]))] }] } as never];
+    project.held = [
+      {
+        id: "held1",
+        panel: {
+          id: "p",
+          shape: [
+            [0, 0],
+            [1, 0],
+            [1, 1],
+          ],
+          order: 1,
+        } as never,
+        lines: [],
+        strokes: [project.pages[0].strokes[0]],
+      },
+    ];
+    project.alternatives = [
+      {
+        id: "alt",
+        from: 0,
+        to: 0,
+        active: "a",
+        options: [{ id: "b", name: "案2", pages: [JSON.parse(JSON.stringify(project.pages[1]))] }],
+      } as never,
+    ];
     // Every point list, wherever it is, written as the saved text writes it.
-    const round = (points: number[][]) => points.map((point) => point.map((v, i) => Math.round(v * (i < 2 ? 100 : 1000)) / (i < 2 ? 100 : 1000)));
-    const plain = JSON.stringify(project, (key, value: unknown) => (key === "points" && Array.isArray(value) ? round(value as number[][]) : value));
+    const round = (points: number[][]) =>
+      points.map((point) => point.map((v, i) => Math.round(v * (i < 2 ? 100 : 1000)) / (i < 2 ? 100 : 1000)));
+    const plain = JSON.stringify(project, (key, value: unknown) =>
+      key === "points" && Array.isArray(value) ? round(value as number[][]) : value,
+    );
     expect(projectJson(project)).toBe(plain);
   });
 
@@ -136,9 +171,17 @@ describe("projectJson", () => {
     const project = drawn(1);
     const line = addLine(project, project.pages[0], [50, 70]);
     setLineText(line, "セリフ");
-    line.balloon = [[1.23456789, 2.000049], [3.1, 4.9999999], [5, 6]];
+    line.balloon = [
+      [1.23456789, 2.000049],
+      [3.1, 4.9999999],
+      [5, 6],
+    ];
     const back = JSON.parse(projectJson(project)) as Project;
-    expect(back.pages[0].lines[0].balloon).toEqual([[1.235, 2], [3.1, 5], [5, 6]]);
+    expect(back.pages[0].lines[0].balloon).toEqual([
+      [1.235, 2],
+      [3.1, 5],
+      [5, 6],
+    ]);
     const { balloon: _, ...rest } = back.pages[0].lines[0];
     const { balloon: __, ...expected } = line;
     expect(rest).toEqual(JSON.parse(JSON.stringify(expected)));
@@ -156,7 +199,11 @@ describe("projectJson", () => {
     project.title = "第4話「はじまり」";
     const line = addLine(project, project.pages[1], [50, 70]);
     setLineText(line, "セリフ\nもう一行");
-    line.balloon = [[1, 2], [3, 4], [5, 6]];
+    line.balloon = [
+      [1, 2],
+      [3, 4],
+      [5, 6],
+    ];
     const decoder = new TextDecoder();
     // Again with the lists' bytes made already.
     for (const body of [projectBody({ path: "あ.namestudio" }, project), projectBody({ path: "あ.namestudio" }, project)]) {

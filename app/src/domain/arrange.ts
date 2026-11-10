@@ -27,7 +27,12 @@ const MIRROR: ReadingFlip = {
 function mirrorLine(line: Line): void {
   line.box = MIRROR.box(line.box);
   if (line.balloon) line.balloon = MIRROR.shape(line.balloon);
-  if (line.tails) line.tails = line.tails.map((tail) => ({ ...tail, tip: [-tail.tip[0], tail.tip[1]], ...(tail.bend !== undefined ? { bend: -tail.bend } : {}) }));
+  if (line.tails)
+    line.tails = line.tails.map((tail) => ({
+      ...tail,
+      tip: [-tail.tip[0], tail.tip[1]],
+      ...(tail.bend !== undefined ? { bend: -tail.bend } : {}),
+    }));
 }
 
 /**
@@ -171,9 +176,20 @@ export function layOut(lines: readonly Line[], box: BoxMm, shape?: readonly Poin
  * moved left past a face or down below it, as little as it takes, or where it
  * covers the least of them when there is no room to keep clear.
  */
-function clearOf(avoid: readonly BoxMm[], box: BoxMm, right: number, y: number, w: number, h: number): { right: number; top: number; covered: number; cost: number } {
+function clearOf(
+  avoid: readonly BoxMm[],
+  box: BoxMm,
+  right: number,
+  y: number,
+  w: number,
+  h: number,
+): { right: number; top: number; covered: number; cost: number } {
   const covered = (r: number, top: number) =>
-    avoid.reduce((sum, [x0, y0, x1, y1]) => sum + Math.max(0, Math.min(r, x1) - Math.max(r - w, x0)) * Math.max(0, Math.min(top + h, y1) - Math.max(top, y0)), 0);
+    avoid.reduce(
+      (sum, [x0, y0, x1, y1]) =>
+        sum + Math.max(0, Math.min(r, x1) - Math.max(r - w, x0)) * Math.max(0, Math.min(top + h, y1) - Math.max(top, y0)),
+      0,
+    );
   const [minRight, maxY] = [Math.min(right, box[0] + MARGIN + w), Math.max(y, box[3] - MARGIN - h)];
   const rights = [right, ...avoid.map((b) => Math.max(minRight, Math.min(right, b[0] - GAP)))];
   const tops = [y, ...avoid.map((b) => Math.min(maxY, Math.max(y, b[3] + GAP)))];
@@ -224,7 +240,11 @@ function slideInside(line: Line, shape: readonly Point[], box: BoxMm, avoid: rea
   if (!spills(extent, shape)) return;
   const [x0, y0, x1, y1] = extent;
   const covered = (dx: number, dy: number) =>
-    avoid.reduce((sum, [ax0, ay0, ax1, ay1]) => sum + Math.max(0, Math.min(x1 + dx, ax1) - Math.max(x0 + dx, ax0)) * Math.max(0, Math.min(y1 + dy, ay1) - Math.max(y0 + dy, ay0)), 0);
+    avoid.reduce(
+      (sum, [ax0, ay0, ax1, ay1]) =>
+        sum + Math.max(0, Math.min(x1 + dx, ax1) - Math.max(x0 + dx, ax0)) * Math.max(0, Math.min(y1 + dy, ay1) - Math.max(y0 + dy, ay0)),
+      0,
+    );
   const now = covered(0, 0);
   let best: { dx: number; dy: number; cost: number } | null = null;
   for (let dx = 0; x0 - dx >= box[0] - SPILL_MM; dx += 1) {
@@ -283,7 +303,9 @@ export function fitSpills(project: Project): number {
   let redone = 0;
   for (const page of project.pages) {
     for (const panel of page.panels) {
-      const spilled = page.lines.filter((line) => line.panel === panel.id && line.kind !== "sfx" && spills(balloonExtent(line), panel.shape));
+      const spilled = page.lines.filter(
+        (line) => line.panel === panel.id && line.kind !== "sfx" && spills(balloonExtent(line), panel.shape),
+      );
       if (!spilled.length) continue;
       for (const line of spilled) line.text = line.text.replace(/\n/g, "");
       arrangePanel(project, page, panel);
@@ -301,7 +323,10 @@ export function onFace(page: Page, line: Line): boolean {
   const panel = page.panels.find((p) => p.id === line.panel);
   if (!panel || line.kind === "sfx") return false;
   const [x0, y0, x1, y1] = balloonExtent(line);
-  return faces(page, panel).some((face) => Math.max(0, Math.min(x1, face[2]) - Math.max(x0, face[0])) * Math.max(0, Math.min(y1, face[3]) - Math.max(y0, face[1])) > FACE_MM2);
+  return faces(page, panel).some(
+    (face) =>
+      Math.max(0, Math.min(x1, face[2]) - Math.max(x0, face[0])) * Math.max(0, Math.min(y1, face[3]) - Math.max(y0, face[1])) > FACE_MM2,
+  );
 }
 
 /**
@@ -318,7 +343,10 @@ export function clearFaces(project: Project): number {
       found += covering.length;
       const box = placingBox(project, panel);
       for (const line of covering) {
-        const avoid = [...faces(page, panel), ...page.lines.filter((other) => other !== line && other.panel === panel.id).map(balloonExtent)];
+        const avoid = [
+          ...faces(page, panel),
+          ...page.lines.filter((other) => other !== line && other.panel === panel.id).map(balloonExtent),
+        ];
         inReadingDirection(project.binding, [line], (flip) => moveClear(line, flip.box(box), avoid.map(flip.box)));
       }
       if (covering.some((line) => onFace(page, line))) arrangePanel(project, page, panel);

@@ -18,7 +18,30 @@ import { snapCut } from "../domain/pagebox";
 import { drawLineText, drawStroke, LiveLine, tracePath } from "../render/pagedraw";
 import { perfMeter } from "../platform/perfmeter";
 import { penPreferences } from "../platform/prefs";
-import { drawCorners, drawCutOrFrame, drawDashedLine, drawFillDrag, drawGoingTo, drawGuideLines, drawLasso, drawLifted, drawOverflowPanels, drawPenCursor, drawPointerNote, drawReferenceFrames, drawSpreadMarks, drawRing, drawScreenPage, drawSeam, drawSketch, drawSnapGrid, drawStickyLink, drawTransformFrame, drawTailHandles, drawWarpCorners } from "../render/screendraw";
+import {
+  drawCorners,
+  drawCutOrFrame,
+  drawDashedLine,
+  drawFillDrag,
+  drawGoingTo,
+  drawGuideLines,
+  drawLasso,
+  drawLifted,
+  drawOverflowPanels,
+  drawPenCursor,
+  drawPointerNote,
+  drawReferenceFrames,
+  drawSpreadMarks,
+  drawRing,
+  drawScreenPage,
+  drawSeam,
+  drawSketch,
+  drawSnapGrid,
+  drawStickyLink,
+  drawTransformFrame,
+  drawTailHandles,
+  drawWarpCorners,
+} from "../render/screendraw";
 import type { SnapSettings } from "../domain/snapping";
 import { stickyFolds } from "../domain/stickies";
 import { StrokeCache } from "../render/strokecache";
@@ -128,9 +151,20 @@ export class EditorPainter {
       ? panel.spread
         ? []
         : [bounds(panel.shape)]
-      : [...dragged.lines.map((line) => line.box), ...dragged.strokes.map((stroke) => bounds(stroke.points.map(([x, y]) => [x, y] as Point)))];
+      : [
+          ...dragged.lines.map((line) => line.box),
+          ...dragged.strokes.map((stroke) => bounds(stroke.points.map(([x, y]) => [x, y] as Point))),
+        ];
     if (!going.length) return;
-    const box = bounds(going.flatMap(([x0, y0, x1, y1]) => [[x0, y0], [x1, y1]] as Point[]));
+    const box = bounds(
+      going.flatMap(
+        ([x0, y0, x1, y1]) =>
+          [
+            [x0, y0],
+            [x1, y1],
+          ] as Point[],
+      ),
+    );
     const to = this.stage.otherPageUnder(project, slot, [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2]);
     if (to) drawGoingTo(this.ctx, project, to, `${to.index + 1} ページへ${panel ? "（中身ごと）" : ""}`);
   }
@@ -150,8 +184,10 @@ export class EditorPainter {
     const ids = new Set<string>();
     if (drag?.kind === "vertex") ids.add(drag.panelId);
     else if (drag?.kind === "seam") for (const edge of drag.seam.edges) ids.add(edge.panelId);
-    else if (drag && (drag.kind === "scale" || drag.kind === "rotate" || drag.kind === "warp")) for (const panel of drag.base.panels ?? []) ids.add(panel.id);
-    const corners = this.scene.tool === "select" && !this.picks.isTransforming && s?.kind === "panel" && s.pageId === slot.page.id ? s.id : null;
+    else if (drag && (drag.kind === "scale" || drag.kind === "rotate" || drag.kind === "warp"))
+      for (const panel of drag.base.panels ?? []) ids.add(panel.id);
+    const corners =
+      this.scene.tool === "select" && !this.picks.isTransforming && s?.kind === "panel" && s.pageId === slot.page.id ? s.id : null;
     if (corners) ids.add(corners);
     const panels = slot.page.panels.filter((panel) => ids.has(panel.id) && !panel.spread);
     drawOverflowPanels(this.ctx, project, slot, panels, corners);
@@ -294,7 +330,15 @@ export class EditorPainter {
    */
   private drawSpreadMarks(project: Project): void {
     const current = this.stage.continuous ? this.stage.spreadIndex : null;
-    drawSpreadMarks(this.ctx, project, this.stage.slots, this.stage.spreadList(), current, (slot) => this.stage.onCanvas(project, slot), (slots) => this.stage.extent(slots));
+    drawSpreadMarks(
+      this.ctx,
+      project,
+      this.stage.slots,
+      this.stage.spreadList(),
+      current,
+      (slot) => this.stage.onCanvas(project, slot),
+      (slots) => this.stage.extent(slots),
+    );
   }
 
   private drawPage(project: Project, slot: Slot): void {
@@ -360,7 +404,12 @@ export class EditorPainter {
     const drag = this.scene.drag;
     // Slots are laid out again on every draw: the hover's page as it is now placed.
     const hoverSlot = this.scene.hover && this.stage.slots.find((s) => s.page.id === this.scene.hover!.slot.page.id);
-    const seam = drag?.kind === "seam" ? drag : this.scene.hover?.kind === "seam" && hoverSlot ? { slot: hoverSlot, seam: this.scene.hover.seam } : null;
+    const seam =
+      drag?.kind === "seam"
+        ? drag
+        : this.scene.hover?.kind === "seam" && hoverSlot
+          ? { slot: hoverSlot, seam: this.scene.hover.seam }
+          : null;
     if (seam) drawSeam(ctx, seam.slot, seamLines(seam.slot.page, seam.seam));
     if (!drag && this.scene.hover?.kind === "item" && hoverSlot) {
       const { target } = this.scene.hover;
@@ -389,12 +438,18 @@ export class EditorPainter {
       } else if (target.kind === "sticky") {
         // A long 付箋 opens to all its text while the pointer is on it.
         const sticky = slot.page.stickies?.find((n) => n.id === target.id);
-        if (sticky && stickyFolds(sticky) && !this.picks.isSelected(slot.page, "sticky", sticky.id)) drawSticky(ctx, slot, sticky, false, null, true);
+        if (sticky && stickyFolds(sticky) && !this.picks.isSelected(slot.page, "sticky", sticky.id))
+          drawSticky(ctx, slot, sticky, false, null, true);
       } else if (target.kind === "line") {
         const line = slot.page.lines.find((l) => l.id === target.id);
         if (line) {
           const [x0, y0, x1, y1] = line.box;
-          ctx.strokeRect(slot.x + x0 * slot.scale - 3, slot.y + y0 * slot.scale - 3, (x1 - x0) * slot.scale + 6, (y1 - y0) * slot.scale + 6);
+          ctx.strokeRect(
+            slot.x + x0 * slot.scale - 3,
+            slot.y + y0 * slot.scale - 3,
+            (x1 - x0) * slot.scale + 6,
+            (y1 - y0) * slot.scale + 6,
+          );
           if (!this.picks.isSelected(slot.page, "line", line.id)) this.drawTailHandles(slot, line, false);
         }
       }
@@ -415,7 +470,12 @@ export class EditorPainter {
     }
     if (drag?.kind === "fill") drawFillDrag(ctx, drag.slot, drag.points, drag.way, this.scene.fill);
     if ((drag?.kind === "lasso" || drag?.kind === "pick" || drag?.kind === "eraseLasso") && drag.points.length > 1) {
-      drawLasso(ctx, drag.slot, drag.points, drag.kind === "lasso" ? "rgba(214, 120, 40, 0.9)" : drag.kind === "pick" ? ACCENT : "rgba(192, 57, 43, 0.9)");
+      drawLasso(
+        ctx,
+        drag.slot,
+        drag.points,
+        drag.kind === "lasso" ? "rgba(214, 120, 40, 0.9)" : drag.kind === "pick" ? ACCENT : "rgba(192, 57, 43, 0.9)",
+      );
     }
     if (drag?.kind === "stickyLink" && this.scene.pointer) drawStickyLink(ctx, drag.slot, drag.stickyId, drag.to, this.scene.pointer);
     if (drag?.kind === "sketch") drawSketch(ctx, drag.slot, drag.points);
@@ -437,11 +497,18 @@ export class EditorPainter {
       }
     }
     this.drawFrame();
-    if (this.scene.tool === "pen" && !this.scene.erasing() && !this.scene.spaceHeld && this.scene.pointer && penPreferences.settings.cursor === "brush") {
+    if (
+      this.scene.tool === "pen" &&
+      !this.scene.erasing() &&
+      !this.scene.spaceHeld &&
+      this.scene.pointer &&
+      penPreferences.settings.cursor === "brush"
+    ) {
       // The pen's size where it will draw.
       drawPenCursor(ctx, this.scene.pointer, Math.max((this.scene.penWidthMm / 2) * (this.stage.slots[0]?.scale ?? 1), 2));
     }
-    if (this.scene.erasing() && this.scene.eraseMode !== "lasso" && this.scene.pointer) drawRing(ctx, this.scene.pointer, this.scene.eraserRadiusPx());
+    if (this.scene.erasing() && this.scene.eraseMode !== "lasso" && this.scene.pointer)
+      drawRing(ctx, this.scene.pointer, this.scene.eraserRadiusPx());
   }
 
   /** The lines snapped to, across the page they are on. */
@@ -459,7 +526,12 @@ export class EditorPainter {
     const moving = this.scene.drag?.kind === "move" && !!this.scene.drag.snap;
     if (!grid || !(this.scene.tool === "cut" || panelDrag || moving)) return;
     // Too fine to see: no grid.
-    drawSnapGrid(this.ctx, project, this.stage.slots.filter((slot) => gridMm * slot.scale >= 4 && !this.stage.small(project, slot)), gridMm);
+    drawSnapGrid(
+      this.ctx,
+      project,
+      this.stage.slots.filter((slot) => gridMm * slot.scale >= 4 && !this.stage.small(project, slot)),
+      gridMm,
+    );
   }
 
   /** 多角形: the corners placed, and the side to where the pointer is. */
@@ -535,5 +607,4 @@ export class EditorPainter {
     this.strokeCache.tipsChanged();
     this.draw();
   }
-
 }

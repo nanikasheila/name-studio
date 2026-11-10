@@ -225,7 +225,9 @@ export const FULL_PROJECT: Full<Project> = {
   plan: {
     targetPages: 24,
     structure: "shape1",
-    shapes: [{ id: "shape1", label: "自分の型", parts: [{ name: "導入", share: 0.25, color: "#88aa44" }], beats: [{ name: "転機", at: 0.5 }] }],
+    shapes: [
+      { id: "shape1", label: "自分の型", parts: [{ name: "導入", share: 0.25, color: "#88aa44" }], beats: [{ name: "転機", at: 0.5 }] },
+    ],
   },
   lineShapes: { speech: "rounded", thought: "polygon", narration: "box", sfx: "none", aside: "dashed" },
   held: [held],
@@ -233,8 +235,21 @@ export const FULL_PROJECT: Full<Project> = {
   images: [{ id: "image1", name: "駅.jpg", mime: "image/jpeg", dataBase64: "/9j/4AAQ", widthPx: 400, heightPx: 300 }],
   gutters: { across: 3, down: 7.5 },
   scroll: true,
-  fonts: { speech: "I-OTFアンチックStd B", thought: "游明朝 Demibold", narration: "BIZ UD明朝 Medium", sfx: "メイリオ", aside: "BIZ UDゴシック", emphasis: "游ゴシック Bold" },
-  style: { fontPt: { speech: 14, thought: 13.5, narration: 12, sfx: 20, aside: 9 }, panelLineMm: 0.5, thickLineMm: 1.4, balloonLineMm: 0.25, lineSpacing: 125 },
+  fonts: {
+    speech: "I-OTFアンチックStd B",
+    thought: "游明朝 Demibold",
+    narration: "BIZ UD明朝 Medium",
+    sfx: "メイリオ",
+    aside: "BIZ UDゴシック",
+    emphasis: "游ゴシック Bold",
+  },
+  style: {
+    fontPt: { speech: 14, thought: 13.5, narration: 12, sfx: 20, aside: 9 },
+    panelLineMm: 0.5,
+    thickLineMm: 1.4,
+    balloonLineMm: 0.25,
+    lineSpacing: 125,
+  },
   cspPage: {
     canvasMm: [188, 263],
     trimMm: [182, 257],
@@ -319,11 +334,15 @@ export const CHOICES: { [K in string]: string[] } = {
 
 describe("the name data as Rust reads it", () => {
   it("has every field in the fixture for the Rust test", async () => {
-    await expect(`${JSON.stringify(FULL_PROJECT, null, 2)}\n`).toMatchFileSnapshot("../../../crates/name-model/tests/fixtures/full-project.json");
+    await expect(`${JSON.stringify(FULL_PROJECT, null, 2)}\n`).toMatchFileSnapshot(
+      "../../../crates/name-model/tests/fixtures/full-project.json",
+    );
   });
 
   it("has every field of a series in the fixture for the Rust test", async () => {
-    await expect(`${JSON.stringify(FULL_SERIES, null, 2)}\n`).toMatchFileSnapshot("../../../crates/name-model/tests/fixtures/full-series.json");
+    await expect(`${JSON.stringify(FULL_SERIES, null, 2)}\n`).toMatchFileSnapshot(
+      "../../../crates/name-model/tests/fixtures/full-series.json",
+    );
   });
 
   it("has every value of each choice in the fixture for the Rust test", async () => {

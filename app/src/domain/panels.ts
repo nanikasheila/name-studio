@@ -128,7 +128,9 @@ export function carryContents(page: Page, panel: Panel): CarriedContents {
   return {
     box: bounds(panel.shape),
     ...(owned.length ? { fills: owned.map(fillShape) } : {}),
-    strokes: page.strokes.filter((s) => strokes.includes(s.id)).map((s) => ({ id: s.id, points: s.points.map((p) => [...p] as StrokePoint) })),
+    strokes: page.strokes
+      .filter((s) => strokes.includes(s.id))
+      .map((s) => ({ id: s.id, points: s.points.map((p) => [...p] as StrokePoint) })),
     lines: page.lines
       .filter((l) => lines.includes(l.id))
       .map((l) => ({
@@ -183,7 +185,9 @@ export function followPanel(page: Page, panel: Panel, carried: CarriedContents, 
     const [cx0, cy0, cx1, cy1] = bounds(points.map(([x, y]) => [x, y] as Point));
     const centre: Point = [(cx0 + cx1) / 2, (cy0 + cy1) / 2];
     const [mx, my] = map(centre);
-    stroke.points = points.map(([x, y, ...rest]) => [mx + (x - centre[0]) * uniform, my + (y - centre[1]) * uniform, ...rest] as StrokePoint);
+    stroke.points = points.map(
+      ([x, y, ...rest]) => [mx + (x - centre[0]) * uniform, my + (y - centre[1]) * uniform, ...rest] as StrokePoint,
+    );
   }
   for (const { id, box, balloon, tails } of carried.lines) {
     const line = page.lines.find((l) => l.id === id);
@@ -203,7 +207,14 @@ export function followPanel(page: Page, panel: Panel, carried: CarriedContents, 
  * (stretched as when a panel is reshaped, or keeping their 縦横比).
  * The panels may be on different pages.
  */
-export function swapPanelContents(pageA: Page, panelA: Panel, pageB: Page, panelB: Panel, binding: Binding = "right", fit: PanelFit = "stretch"): void {
+export function swapPanelContents(
+  pageA: Page,
+  panelA: Panel,
+  pageB: Page,
+  panelB: Panel,
+  binding: Binding = "right",
+  fit: PanelFit = "stretch",
+): void {
   if (panelA === panelB) return;
   const carriedA = carryContents(pageA, panelA);
   const carriedB = carryContents(pageB, panelB);

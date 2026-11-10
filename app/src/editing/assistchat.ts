@@ -55,7 +55,17 @@ export function readAssistSettings(kept: unknown): AssistSettings {
   if (typeof kept !== "object" || kept === null) return out;
   const from = kept as Record<string, unknown>;
   if (from.kind === "claude" || from.kind === "codex" || from.kind === "local") out.kind = from.kind;
-  for (const key of ["claudePath", "codexPath", "claudeModel", "codexModel", "claudeEffort", "codexEffort", "codexSandbox", "endpoint", "localModel"] as const) {
+  for (const key of [
+    "claudePath",
+    "codexPath",
+    "claudeModel",
+    "codexModel",
+    "claudeEffort",
+    "codexEffort",
+    "codexSandbox",
+    "endpoint",
+    "localModel",
+  ] as const) {
     if (typeof from[key] === "string") out[key] = from[key];
   }
   if (typeof from.pictures === "boolean") out.pictures = from.pictures;
@@ -71,7 +81,8 @@ export function modelFor(models: AiModel[], value: string): AiModel | undefined 
 export function choiceProblem(models: AiModel[], value: string, effort: string): string | null {
   const model = modelFor(models, value);
   if (!model) return value ? `モデル「${value}」は一覧にありません。「接続…」で選び直してください。` : null;
-  if (effort && !model.efforts.includes(effort)) return `${model.label} は effort「${effort}」を選べません（${model.efforts.join("・") || "選べるものなし"}）。`;
+  if (effort && !model.efforts.includes(effort))
+    return `${model.label} は effort「${effort}」を選べません（${model.efforts.join("・") || "選べるものなし"}）。`;
   return null;
 }
 
@@ -133,7 +144,11 @@ function withBrief(note: string, brief: string, question: string): string {
 /** The first question as it is sent to Claude Code or Codex: the name in brief, and the pages the user is on. */
 export function firstPrompt(question: string, current: number[], brief: string): string {
   const pages = current.length ? `作者はいま p${current.join("・p")} を開いています。` : "";
-  return withBrief(`ネームの要約を付けます。同じものが ${BRIEF_FILE} に、写しとページの絵もフォルダーにあります。${pages}`, brief, question);
+  return withBrief(
+    `ネームの要約を付けます。同じものが ${BRIEF_FILE} に、写しとページの絵もフォルダーにあります。${pages}`,
+    brief,
+    question,
+  );
 }
 
 /** A later question, when the name was changed since the last one. */
@@ -145,7 +160,10 @@ export function changedPrompt(question: string, current: number[], brief: string
 /** Ready-made questions for when the user does not know what to ask. */
 export const STARTERS: { label: string; text: string }[] = [
   { label: "行き詰まった", text: "このあたりで行き詰まっています。何が引っかかっているのか、一緒に整理してください。" },
-  { label: "このページのコマ割り", text: "いま開いているページのコマ割りを見て、読みやすさ・間・めくりの効果から、別の割り方の案を 2〜3 出してください。" },
+  {
+    label: "このページのコマ割り",
+    text: "いま開いているページのコマ割りを見て、読みやすさ・間・めくりの効果から、別の割り方の案を 2〜3 出してください。",
+  },
   { label: "セリフを詰める", text: "いま開いているページのセリフを、意味を変えずに短く・口調に合わせて詰める案をください。" },
   { label: "構成を見て", text: "全体の構成（ページ配分・シーン・山場・感情の流れ）を見て、気になるところを挙げてください。" },
   { label: "この先の展開", text: "ここまでの流れから、この先の展開の案をいくつか出してください。それぞれの良さと難しさも。" },
@@ -191,7 +209,11 @@ export interface TalkSummary {
 
 /** What a conversation is called in the list: its first question, on one line. */
 export function talkTitle(entries: ChatEntry[]): string {
-  const first = entries.find((entry) => entry.role === "user")?.text.replace(/\s+/g, " ").trim() ?? "";
+  const first =
+    entries
+      .find((entry) => entry.role === "user")
+      ?.text.replace(/\s+/g, " ")
+      .trim() ?? "";
   return first.length > 40 ? `${first.slice(0, 39)}…` : first || "（質問なし）";
 }
 
@@ -211,7 +233,9 @@ export function readSavedTalk(value: unknown): SavedTalk | null {
   if (!text(from.id) || !KINDS.includes(from.kind as AiKind) || !Array.isArray(from.entries)) return null;
   const entries = from.entries.flatMap((entry): ChatEntry[] => {
     const read = (entry ?? {}) as Record<string, unknown>;
-    return ROLES.includes(read.role as EntryRole) && typeof read.text === "string" ? [{ role: read.role as EntryRole, text: read.text }] : [];
+    return ROLES.includes(read.role as EntryRole) && typeof read.text === "string"
+      ? [{ role: read.role as EntryRole, text: read.text }]
+      : [];
   });
   return {
     id: text(from.id),
@@ -288,7 +312,9 @@ export class Conversation {
 
   /** The conversation for an API that keeps no history: what was said, without the tools' lines. */
   history(): { role: "user" | "assistant"; content: string }[] {
-    return this.entries.filter((entry) => entry.role === "user" || entry.role === "assistant").map((entry) => ({ role: entry.role as "user" | "assistant", content: entry.text }));
+    return this.entries
+      .filter((entry) => entry.role === "user" || entry.role === "assistant")
+      .map((entry) => ({ role: entry.role as "user" | "assistant", content: entry.text }));
   }
 }
 
@@ -308,4 +334,3 @@ export function replyParts(text: string): ({ kind: "text"; text: string } | { ki
   if (rest) parts.push({ kind: "text", text: rest });
   return parts;
 }
-

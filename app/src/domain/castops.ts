@@ -20,7 +20,10 @@ function freeColor(project: Project): string {
 export function insertCharacter(project: Project, index: number, name?: string): Character {
   const character: Character = {
     id: newId(project, "character"),
-    name: freeName(name ?? `人物${project.characters.length + 1}`, project.characters.map((c) => c.name)),
+    name: freeName(
+      name ?? `人物${project.characters.length + 1}`,
+      project.characters.map((c) => c.name),
+    ),
     color: freeColor(project),
   };
   project.characters.splice(Math.max(0, Math.min(index, project.characters.length)), 0, character);
@@ -35,7 +38,10 @@ export function duplicateCharacters(project: Project, ids: readonly string[]): C
   const copies = picked.map((c) => {
     const copy = structuredClone(c);
     copy.id = newId(project, "character");
-    copy.name = freeName(`${c.name}のコピー`, project.characters.map((one) => one.name));
+    copy.name = freeName(
+      `${c.name}のコピー`,
+      project.characters.map((one) => one.name),
+    );
     return copy;
   });
   project.characters.splice(last + 1, 0, ...copies);

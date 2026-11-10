@@ -1,5 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { LAYER_ORDER, canBeVector, layerForm, placeStacked, placeUnit, checkSummary, clipLines, dialogueUpdateSummary, imagesNote, missingEditable, exportUnits, frameMetas, hasNotes, mapBox, packBody, partCount, projectToTemplate, textLayers, unreadWarning, vectorLines, type DialogueUpdateReport, type LayerMeta } from "./nameexport";
+import {
+  LAYER_ORDER,
+  canBeVector,
+  layerForm,
+  placeStacked,
+  placeUnit,
+  checkSummary,
+  clipLines,
+  dialogueUpdateSummary,
+  imagesNote,
+  missingEditable,
+  exportUnits,
+  frameMetas,
+  hasNotes,
+  mapBox,
+  packBody,
+  partCount,
+  projectToTemplate,
+  textLayers,
+  unreadWarning,
+  vectorLines,
+  type DialogueUpdateReport,
+  type LayerMeta,
+} from "./nameexport";
 import { scriptText } from "../domain/scripttext";
 import { addCharacter, addScene } from "../domain/cast";
 import { addLine } from "../domain/dialogue";
@@ -18,7 +41,12 @@ describe("projectToTemplate", () => {
       heightPx: Math.round(420 * px),
       resolution: 600,
       trimPx: null,
-      basicPx: [((297 - 180) / 2) * px, ((420 - 270) / 2) * px, ((297 + 180) / 2) * px, ((420 + 270) / 2) * px] as [number, number, number, number],
+      basicPx: [((297 - 180) / 2) * px, ((420 - 270) / 2) * px, ((297 + 180) / 2) * px, ((420 + 270) / 2) * px] as [
+        number,
+        number,
+        number,
+        number,
+      ],
     };
     const m = projectToTemplate(project, canvas);
     expect(m.scale).toBeCloseTo(px);
@@ -42,13 +70,32 @@ describe("editable layers", () => {
     const project = newProject("t", 1);
     const page = project.pages[0];
     page.panels = [{ id: "p1", shape: rectShape([0, 0, 10, 20]), order: 1 }];
-    page.strokes = [{ id: "s1", points: [[1, 2, 0], [3, 4, 1]], widthMm: 0.5, closed: false }];
+    page.strokes = [
+      {
+        id: "s1",
+        points: [
+          [1, 2, 0],
+          [3, 4, 1],
+        ],
+        widthMm: 0.5,
+        closed: false,
+      },
+    ];
     const line = addLine(project, page, [5, 5], "やあ");
-    line.balloon = [[0, 0], [4, 0], [4, 4]];
+    line.balloon = [
+      [0, 0],
+      [4, 0],
+      [4, 4],
+    ];
     line.balloonShape = "custom";
     const [panel] = vectorLines(page, "panels", m);
     expect(panel.closed).toBe(true);
-    expect(panel.points).toEqual([[100, 50, 1], [200, 50, 1], [200, 250, 1], [100, 250, 1]]);
+    expect(panel.points).toEqual([
+      [100, 50, 1],
+      [200, 50, 1],
+      [200, 250, 1],
+      [100, 250, 1],
+    ]);
     expect(panel.widthPx).toBeCloseTo(6);
     const [balloon] = vectorLines(page, "balloons", m);
     expect(balloon.points[1]).toEqual([140, 50, 1]);
@@ -64,13 +111,35 @@ describe("editable layers", () => {
     const page = project.pages[0];
     page.panels = [{ id: "p1", shape: rectShape([0, 0, 10, 20]), order: 1, openEdges: [0], fill: "black" }];
     page.strokes = [
-      { id: "s1", points: [[1, 2, 1], [3, 4, 1]], widthMm: 0.5, closed: false },
-      { id: "s2", points: [[1, 2, 1], [3, 4, 1]], widthMm: 0.5, closed: false, over: true },
+      {
+        id: "s1",
+        points: [
+          [1, 2, 1],
+          [3, 4, 1],
+        ],
+        widthMm: 0.5,
+        closed: false,
+      },
+      {
+        id: "s2",
+        points: [
+          [1, 2, 1],
+          [3, 4, 1],
+        ],
+        widthMm: 0.5,
+        closed: false,
+        over: true,
+      },
     ];
     page.breakouts = [{ id: "b1", shape: rectShape([20, 20, 30, 30]) }];
     const [panel] = vectorLines(page, "panels", m);
     expect(panel.closed).toBe(false);
-    expect(panel.points).toEqual([[200, 50, 1], [200, 250, 1], [100, 250, 1], [100, 50, 1]]);
+    expect(panel.points).toEqual([
+      [200, 50, 1],
+      [200, 250, 1],
+      [100, 250, 1],
+      [100, 50, 1],
+    ]);
     expect(vectorLines(page, "strokes", m)).toHaveLength(1);
     expect(vectorLines(page, "overStrokes", m)).toHaveLength(1);
     expect(partCount(page, "fills")).toBe(2);
@@ -96,8 +165,20 @@ describe("editable layers", () => {
     ];
     const { ids, frames } = frameMetas(project, page, m);
     expect([...ids]).toEqual(["p1"]);
-    expect(frames).toEqual([{ points: [[200, 150], [600, 150], [600, 450], [200, 450]], widthPx: expect.closeTo(6) }]);
-    expect(vectorLines(page, "panels", m, [], ids).map((line) => line.points.length)).toEqual([vectorLines(page, "panels", m)[1].points.length]);
+    expect(frames).toEqual([
+      {
+        points: [
+          [200, 150],
+          [600, 150],
+          [600, 450],
+          [200, 450],
+        ],
+        widthPx: expect.closeTo(6),
+      },
+    ]);
+    expect(vectorLines(page, "panels", m, [], ids).map((line) => line.points.length)).toEqual([
+      vectorLines(page, "panels", m)[1].points.length,
+    ]);
   });
 
   it("knows which pages have memos for the メモ layer", () => {
@@ -237,14 +318,22 @@ describe("dialogueUpdateSummary", () => {
     const summary = dialogueUpdateSummary({
       pages: [
         page([1]),
-        page([2, 3], { backup: "/out/name-studio-backup/20261023-120000/page0002.clip", retired: ["a"], added: ["b", "c"], replaced: ["フキダシ"], notes: true }),
+        page([2, 3], {
+          backup: "/out/name-studio-backup/20261023-120000/page0002.clip",
+          retired: ["a"],
+          added: ["b", "c"],
+          replaced: ["フキダシ"],
+          notes: true,
+        }),
         page([4], { foreign: 2, leftAsInCsp: 1, conflicts: ["フキダシ"], backup: "/out/name-studio-backup/20261023-120000/page0004.clip" }),
       ],
       changed: 2,
       warnings: [],
     });
     expect(summary.ok).toBe(true);
-    expect(summary.lines[0]).toBe("2 ページに反映しました（セリフ: 足した 2・（旧）にして隠した 1・そのまま 9、フキダシを入れ替えたページ 1、メモを描き直したページ 1）");
+    expect(summary.lines[0]).toBe(
+      "2 ページに反映しました（セリフ: 足した 2・（旧）にして隠した 1・そのまま 9、フキダシを入れ替えたページ 1、メモを描き直したページ 1）",
+    );
     expect(summary.lines).toContain("反映する前のページ: /out/name-studio-backup/20261023-120000");
     // The text retyped in CSP is said once, not again as one added there.
     expect(summary.lines.filter((line) => line.includes("CSP で"))).toEqual([
@@ -254,7 +343,11 @@ describe("dialogueUpdateSummary", () => {
     ]);
   });
   it("is not ok when a page file is missing or reads back wrong", () => {
-    const summary = dialogueUpdateSummary({ pages: [page([1], { notFound: ["ページのファイル"] }), page([2], { problems: ["セリフが 1 個足りません"] })], changed: 0, warnings: [] });
+    const summary = dialogueUpdateSummary({
+      pages: [page([1], { notFound: ["ページのファイル"] }), page([2], { problems: ["セリフが 1 個足りません"] })],
+      changed: 0,
+      warnings: [],
+    });
     expect(summary.ok).toBe(false);
     expect(summary.lines).toContain("2 ページ: セリフが 1 個足りません");
     expect(summary.lines.some((line) => line.startsWith("ページのファイルがありません: 1 ページ"))).toBe(true);
@@ -290,10 +383,32 @@ describe("見開きページの書き出し", () => {
   });
 
   it("cuts vector lines at the gutter, keeping each page's side", () => {
-    const line = { points: [[90, 0, 1], [110, 0, 1]] as [number, number, number][], closed: false, widthPx: 2 };
-    expect(clipLines([line], 100, false)[0].points).toEqual([[90, 0, 1], [100, 0, 1]]);
-    expect(clipLines([line], 100, true)[0].points).toEqual([[100, 0, 1], [110, 0, 1]]);
-    const box = { points: [[90, 0, 1], [110, 0, 1], [110, 10, 1], [90, 10, 1]] as [number, number, number][], closed: true, widthPx: 2 };
+    const line = {
+      points: [
+        [90, 0, 1],
+        [110, 0, 1],
+      ] as [number, number, number][],
+      closed: false,
+      widthPx: 2,
+    };
+    expect(clipLines([line], 100, false)[0].points).toEqual([
+      [90, 0, 1],
+      [100, 0, 1],
+    ]);
+    expect(clipLines([line], 100, true)[0].points).toEqual([
+      [100, 0, 1],
+      [110, 0, 1],
+    ]);
+    const box = {
+      points: [
+        [90, 0, 1],
+        [110, 0, 1],
+        [110, 10, 1],
+        [90, 10, 1],
+      ] as [number, number, number][],
+      closed: true,
+      widthPx: 2,
+    };
     const left = clipLines([box], 100, false);
     expect(left.every((part) => !part.closed && part.points.every(([x]) => x <= 100))).toBe(true);
     expect(clipLines([line], 200, false)).toEqual([line]);
@@ -366,6 +481,8 @@ describe("unreadWarning", () => {
       { id: "r2", image: "image1", box: [0, 0, 10, 10] },
       { id: "r3", image: "gone", box: [0, 0, 10, 10] },
     ];
-    expect(unreadWarning(project, new Set(["image1", "gone"]))).toBe("読めない画像 2 枚は書き出していません: 1・3 ページ「背景.jpg」、3 ページ「gone」");
+    expect(unreadWarning(project, new Set(["image1", "gone"]))).toBe(
+      "読めない画像 2 枚は書き出していません: 1・3 ページ「背景.jpg」、3 ページ「gone」",
+    );
   });
 });

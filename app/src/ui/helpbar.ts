@@ -5,7 +5,16 @@
 // Hidden or shown in 設定 › 表示, kept on this computer.
 import { $ } from "../platform/dom";
 import type { PageEditor } from "./editor";
-import { AREA_TOPICS, HOVER_TOPICS, TOOL_TOPICS, heldFrom, keyLabel, shownSteps, topicFromWords, type HelpTopic } from "../editing/helptopics";
+import {
+  AREA_TOPICS,
+  HOVER_TOPICS,
+  TOOL_TOPICS,
+  heldFrom,
+  keyLabel,
+  shownSteps,
+  topicFromWords,
+  type HelpTopic,
+} from "../editing/helptopics";
 import { HELP_BAR_KEY } from "../platform/prefs";
 import { readFlag, writeFlag } from "../platform/settings";
 

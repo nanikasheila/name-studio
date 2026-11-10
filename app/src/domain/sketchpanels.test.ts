@@ -62,7 +62,12 @@ describe("なぐり描きのコマ割り", () => {
   it("keeps a slanted side drawn on purpose", () => {
     const noise = wobble(11);
     const points: Point[] = [];
-    const corners: Point[] = [[60, 80], [150, 80], [150, 130], [60, 110]];
+    const corners: Point[] = [
+      [60, 80],
+      [150, 80],
+      [150, 130],
+      [60, 110],
+    ];
     corners.forEach((a, i) => {
       const b = corners[(i + 1) % 4];
       for (let t = 0; t < 1; t += 0.05) points.push([a[0] + (b[0] - a[0]) * t + noise() * 0.4, a[1] + (b[1] - a[1]) * t + noise() * 0.4]);
@@ -105,7 +110,12 @@ describe("なぐり描きのコマ割り", () => {
     expect(page.panels).toHaveLength(2);
     expect(page.panels.every((panel) => panel.draft)).toBe(true);
     const empty = newProject("t", 1).pages[0];
-    expect(readSketch(empty, [[10, 10], [11, 11]]).kind).toBe("none");
+    expect(
+      readSketch(empty, [
+        [10, 10],
+        [11, 11],
+      ]).kind,
+    ).toBe("none");
   });
 
   it("joins the panels a scribble over their gutter touches", () => {
@@ -125,8 +135,18 @@ describe("なぐり描きのコマ割り", () => {
   it("joins 仮のコマ drawn not quite in line", () => {
     const project = newProject("t", 1);
     const page = project.pages[0];
-    const a = addPanel(project, page, [[60, 80], [140, 81], [139, 160], [60, 158]]);
-    const b = addPanel(project, page, [[144, 79], [230, 80], [231, 163], [143, 161]]);
+    const a = addPanel(project, page, [
+      [60, 80],
+      [140, 81],
+      [139, 160],
+      [60, 158],
+    ]);
+    const b = addPanel(project, page, [
+      [144, 79],
+      [230, 80],
+      [231, 163],
+      [143, 161],
+    ]);
     a.draft = b.draft = true;
     const done = applySketch(project, page, scribble([142, 120], 6));
     expect(done.changed).toBe(true);

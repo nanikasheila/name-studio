@@ -67,7 +67,11 @@ function sizeWords(project: Project, panel: Panel): string {
 const oneLine = (text: string) => text.replace(/\r\n?/g, "\n").replace(/\n/g, "／").trim();
 
 /** Dialogue without the breaks the balloon put in (words in Latin letters keep a space): the AI writes it unbroken too. */
-const unbroken = (text: string) => text.replace(/\r\n?/g, "\n").replace(/\n/g, mostlyHalfWidth(text) ? " " : "").trim();
+const unbroken = (text: string) =>
+  text
+    .replace(/\r\n?/g, "\n")
+    .replace(/\n/g, mostlyHalfWidth(text) ? " " : "")
+    .trim();
 
 function speakerName(project: Project, line: Line): string {
   return project.characters.find((c) => c.id === line.speaker)?.name ?? "";
@@ -76,7 +80,11 @@ function speakerName(project: Project, line: Line): string {
 /** A line of dialogue as the brief shows it: `[line12] 名前「…」`, with its kind and balloon when not plain speech. */
 function lineWords(project: Project, line: Line): string {
   const name = speakerName(project, line);
-  const tags = [line.kind !== "speech" ? KIND_LABELS[line.kind] : "", line.balloonShape && line.balloonShape !== "auto" ? SHAPE_LABELS[line.balloonShape] : "", line.emphasis ? "強調" : ""].filter(Boolean);
+  const tags = [
+    line.kind !== "speech" ? KIND_LABELS[line.kind] : "",
+    line.balloonShape && line.balloonShape !== "auto" ? SHAPE_LABELS[line.balloonShape] : "",
+    line.emphasis ? "強調" : "",
+  ].filter(Boolean);
   return `[${line.id}]${tags.length ? `（${tags.join("・")}）` : ""} ${name}「${unbroken(line.text)}」`;
 }
 
@@ -123,7 +131,10 @@ function pageWords(project: Project, page: Page, number: number, current: boolea
 
 /** A page as one line, for the pages outside the range asked for. */
 function pageLine(project: Project, page: Page, number: number): string {
-  const said = page.lines.slice(0, 2).map((line) => `${speakerName(project, line)}「${unbroken(line.text).slice(0, 20)}」`).join(" ");
+  const said = page.lines
+    .slice(0, 2)
+    .map((line) => `${speakerName(project, line)}「${unbroken(line.text).slice(0, 20)}」`)
+    .join(" ");
   const memo = page.memo.trim() ? ` メモ: ${oneLine(page.memo).slice(0, 40)}` : "";
   return `- p${number}: コマ ${page.panels.length}・セリフ ${page.lines.length}（${textAmount(page)} 字）${memo}${said ? ` ${said}` : ""}`;
 }
@@ -134,10 +145,16 @@ export function nameBrief(project: Project, options: BriefOptions = {}): string 
   const count = project.pages.length;
   out.push(`# ネーム「${project.title || "（無題）"}」${project.storyIndex ? ` 第${project.storyIndex}話` : ""}`);
   const facts = [
-    project.scroll ? "縦スクロール（上から下へ読む）" : project.binding === "right" ? "右綴じ（ページもコマも右から左へ読む・縦書き）" : "左綴じ（左から右へ読む・横書き）",
+    project.scroll
+      ? "縦スクロール（上から下へ読む）"
+      : project.binding === "right"
+        ? "右綴じ（ページもコマも右から左へ読む・縦書き）"
+        : "左綴じ（左から右へ読む・横書き）",
     `${count} ページ`,
     project.plan?.targetPages ? `目標 ${project.plan.targetPages} ページ` : "",
-    project.plan?.structure ? `話の型: ${STRUCTURES[project.plan.structure as keyof typeof STRUCTURES]?.label ?? project.plan.shapes?.find((s) => s.id === project.plan?.structure)?.label ?? project.plan.structure}` : "",
+    project.plan?.structure
+      ? `話の型: ${STRUCTURES[project.plan.structure as keyof typeof STRUCTURES]?.label ?? project.plan.shapes?.find((s) => s.id === project.plan?.structure)?.label ?? project.plan.structure}`
+      : "",
     project.author ? `作者: ${project.author}` : "",
   ].filter(Boolean);
   out.push(facts.join("・"));
@@ -151,14 +168,21 @@ export function nameBrief(project: Project, options: BriefOptions = {}): string 
     out.push("", "## シーン");
     for (const scene of project.scenes) {
       const [a, b] = [pageIndex(project, scene.firstPage) + 1, pageIndex(project, scene.lastPage) + 1];
-      out.push(`- p${a}〜p${b}「${scene.title}」${scene.storyTime ? `（${scene.storyTime}）` : ""}${scene.summary ? ` ${oneLine(scene.summary)}` : ""}`);
+      out.push(
+        `- p${a}〜p${b}「${scene.title}」${scene.storyTime ? `（${scene.storyTime}）` : ""}${scene.summary ? ` ${oneLine(scene.summary)}` : ""}`,
+      );
     }
   }
   if (project.emotions.length) {
     out.push("", "## 感情の推移（-1 つらい 〜 +1 よい）");
     for (const c of project.characters) {
-      const points = project.emotions.filter((p) => p.character === c.id).sort((a, b) => pageIndex(project, a.page) - pageIndex(project, b.page));
-      if (points.length) out.push(`- ${c.name}: ${points.map((p) => `p${pageIndex(project, p.page) + 1} ${p.value > 0 ? "+" : ""}${p.value.toFixed(1)}${p.note ? `（${oneLine(p.note)}）` : ""}`).join("、")}`);
+      const points = project.emotions
+        .filter((p) => p.character === c.id)
+        .sort((a, b) => pageIndex(project, a.page) - pageIndex(project, b.page));
+      if (points.length)
+        out.push(
+          `- ${c.name}: ${points.map((p) => `p${pageIndex(project, p.page) + 1} ${p.value > 0 ? "+" : ""}${p.value.toFixed(1)}${p.note ? `（${oneLine(p.note)}）` : ""}`).join("、")}`,
+        );
     }
   }
   const advice = planAdvice(project);
@@ -201,7 +225,16 @@ export type AssistOp =
   | { op: "movePage"; page: PageRef; to: PageRef }
   | { op: "panels"; page: PageRef; pattern?: string; count?: number }
   | { op: "setPanelNote"; page: PageRef; panel: PanelRef; note: string; append?: boolean }
-  | { op: "addLine"; page: PageRef; panel?: PanelRef; text: string; speaker?: string; kind?: LineKind; shape?: BalloonShape; after?: string }
+  | {
+      op: "addLine";
+      page: PageRef;
+      panel?: PanelRef;
+      text: string;
+      speaker?: string;
+      kind?: LineKind;
+      shape?: BalloonShape;
+      after?: string;
+    }
   | { op: "setLine"; line: string; text?: string; speaker?: string | null; kind?: LineKind; shape?: BalloonShape }
   | { op: "removeLine"; line: string }
   | { op: "addSticky"; page: PageRef; text: string; panel?: PanelRef; line?: string; color?: StickyColor }
@@ -222,23 +255,29 @@ const STICKY_COLOR_NAMES: StickyColor[] = ["yellow", "pink", "blue", "green"];
  * command line's `ops` show this). Every operation is listed; a test checks it.
  */
 export const OPS_GUIDE: Record<AssistOpName, string> = {
-  script: '台本をネームに流し込む（アプリの「台本の取り込み」と同じ）。{"op":"script","text":"### 1ページ\\n[1]\\n太郎「おはよう」\\n...","startPage":1}。コマのないページにはコマを作る。"update":true で既にあるセリフを台本に合わせて直す。"pattern" はコマ割りの型',
+  script:
+    '台本をネームに流し込む（アプリの「台本の取り込み」と同じ）。{"op":"script","text":"### 1ページ\\n[1]\\n太郎「おはよう」\\n...","startPage":1}。コマのないページにはコマを作る。"update":true で既にあるセリフを台本に合わせて直す。"pattern" はコマ割りの型',
   setTitle: '題名を変える。{"op":"setTitle","title":"…"}',
   setPageMemo: 'ページのメモ（何を描くページか）を書く。{"op":"setPageMemo","page":3,"memo":"…","append":true}（append で書き足す）',
   addPages: 'ページを足す。{"op":"addPages","after":3,"count":2,"memos":["…","…"]}（after:0 で先頭に）',
   deletePages: 'ページを消す。{"op":"deletePages","pages":[5,6]}（1 枚は残す）',
   movePage: 'ページを動かす。{"op":"movePage","page":5,"to":2}',
   panels: `コマ割りをし直す（中のセリフ・ラフは前のコマの順に新しいコマへ）。{"op":"panels","page":3,"pattern":"basic4"} または {"op":"panels","page":3,"count":5}（均等に）。pattern: ${PATTERNS.map((p) => `${p.id}=${p.label}`).join("、")}`,
-  setPanelNote: 'コマの演出メモ（カメラ・間・何のコマか）を書く。{"op":"setPanelNote","page":3,"panel":2,"note":"…"}（panel は読む順の番号か id）',
+  setPanelNote:
+    'コマの演出メモ（カメラ・間・何のコマか）を書く。{"op":"setPanelNote","page":3,"panel":2,"note":"…"}（panel は読む順の番号か id）',
   addLine: `セリフを足す（コマの中の読む順の位置に置く）。{"op":"addLine","page":3,"panel":2,"speaker":"太郎","text":"…","kind":"speech","after":"line12"}。kind: ${LINE_KINDS.map((k) => `${k}=${KIND_LABELS[k]}`).join("、")}。shape（フキダシの形）: ${SHAPES.map((s) => `${s}=${SHAPE_LABELS[s]}`).join("、")}。いない話者は人物に足す`,
-  setLine: 'セリフを直す。{"op":"setLine","line":"line12","text":"…","speaker":"花子","kind":"thought","shape":"spike"}（line は要約の [line12]。speaker:null で話者なし）',
+  setLine:
+    'セリフを直す。{"op":"setLine","line":"line12","text":"…","speaker":"花子","kind":"thought","shape":"spike"}（line は要約の [line12]。speaker:null で話者なし）',
   removeLine: 'セリフを消す。{"op":"removeLine","line":"line12"}',
   addSticky: `付箋を貼る（提案やコメントを紙面に残す）。{"op":"addSticky","page":3,"panel":2,"text":"…","color":"pink"}（panel か line で紐づけ。color: ${STICKY_COLOR_NAMES.join("/")}）`,
   addCharacter: '人物を足す。{"op":"addCharacter","name":"…","tone":"口調のメモ"}',
   setCharacter: '人物を直す。{"op":"setCharacter","character":"太郎","name":"…","tone":"…"}',
-  setScene: 'シーンを置く（重なるシーンと置き換え）。{"op":"setScene","title":"…","firstPage":1,"lastPage":4,"summary":"…","storyTime":"1日目 朝"}',
+  setScene:
+    'シーンを置く（重なるシーンと置き換え）。{"op":"setScene","title":"…","firstPage":1,"lastPage":4,"summary":"…","storyTime":"1日目 朝"}',
   setEmotion: '人物の感情の値を置く（-1〜1、null で消す）。{"op":"setEmotion","character":"太郎","page":5,"value":-0.6,"note":"…"}',
-  setPlan: `目標ページ数・話の型。{"op":"setPlan","targetPages":24,"structure":"kishotenketsu"}（structure: ${Object.entries(STRUCTURES).map(([id, s]) => `${id}=${s.label}`).join("、")}）`,
+  setPlan: `目標ページ数・話の型。{"op":"setPlan","targetPages":24,"structure":"kishotenketsu"}（structure: ${Object.entries(STRUCTURES)
+    .map(([id, s]) => `${id}=${s.label}`)
+    .join("、")}）`,
 };
 
 /** The operations explained, as one text. */
@@ -310,7 +349,12 @@ export function parseOps(text: string): { ops: AssistOp[]; problems: string[] } 
     if (!need) return void problems.push(`${at}: 知らない操作 ${item.op}`);
     for (const [key, type] of Object.entries(need)) {
       const value = item[key];
-      const ok = type === "array" ? Array.isArray(value) : type === "ref" ? typeof value === "number" || typeof value === "string" : typeof value === type;
+      const ok =
+        type === "array"
+          ? Array.isArray(value)
+          : type === "ref"
+            ? typeof value === "number" || typeof value === "string"
+            : typeof value === type;
       if (!ok) return void problems.push(`${at}（${item.op}）: "${key}" がありません`);
     }
     ops.push(item as AssistOp);
@@ -390,7 +434,13 @@ function applyOne(project: Project, op: AssistOp, done: string[]): string {
       if (op.pattern && !PATTERNS.some((p) => p.id === op.pattern)) throw new OpError(`コマ割りの型 ${op.pattern} はありません`);
       const report = applyScript(project, doc, { startPage: start, makePanels: true, pattern: op.pattern, update: op.update ?? false });
       if (report.characters.length) done.push(`人物「${report.characters.join("」「")}」を足しました`);
-      const parts = [`${report.pages} ページ`, report.panels ? `コマ ${report.panels}` : "", `セリフ ${report.lines}`, report.scenes ? `シーン ${report.scenes}` : "", report.insertedPages ? `足したページ ${report.insertedPages}` : ""];
+      const parts = [
+        `${report.pages} ページ`,
+        report.panels ? `コマ ${report.panels}` : "",
+        `セリフ ${report.lines}`,
+        report.scenes ? `シーン ${report.scenes}` : "",
+        report.insertedPages ? `足したページ ${report.insertedPages}` : "",
+      ];
       return `台本を ${start + 1} ページから流し込みました（${parts.filter(Boolean).join("・")}）${doc.warnings.length ? `。注意: ${doc.warnings.join(" / ")}` : ""}`;
     }
     case "setTitle":
@@ -449,7 +499,11 @@ function applyOne(project: Project, op: AssistOp, done: string[]): string {
       const panel = op.panel === undefined ? undefined : panelAt(page, op.panel, op.page);
       const kind = checkKind(op.kind) ?? "speech";
       const shape = checkShape(op.shape);
-      const previous = op.after ? lineAt(project, op.after).line : panel ? page.lines.filter((l) => l.panel === panel.id).at(-1) : undefined;
+      const previous = op.after
+        ? lineAt(project, op.after).line
+        : panel
+          ? page.lines.filter((l) => l.panel === panel.id).at(-1)
+          : undefined;
       const speaker = op.speaker ? speakerFor(project, op.speaker, done) : undefined;
       const line = addLine(project, page, [0, 0], op.text || "…", kind);
       if (speaker) line.speaker = speaker;
@@ -536,7 +590,9 @@ function applyOne(project: Project, op: AssistOp, done: string[]): string {
       const page = pageAt(project, op.page);
       if (op.value !== null && !(typeof op.value === "number" && Number.isFinite(op.value))) throw new OpError("感情の値は -1〜1 の数で");
       setEmotion(project, character.id, page.id, op.value, op.note);
-      return op.value === null ? `${character.name}の p${op.page} の感情の値を消しました` : `${character.name}の p${op.page} の感情 ${op.value}`;
+      return op.value === null
+        ? `${character.name}の p${op.page} の感情の値を消しました`
+        : `${character.name}の p${op.page} の感情 ${op.value}`;
     }
     case "setPlan": {
       const plan = { ...(project.plan ?? {}) };
@@ -547,7 +603,8 @@ function applyOne(project: Project, op: AssistOp, done: string[]): string {
       }
       if (op.structure === null) delete plan.structure;
       else if (op.structure !== undefined) {
-        if (!(op.structure in STRUCTURES) && !plan.shapes?.some((s) => s.id === op.structure)) throw new OpError(`話の型 ${op.structure} はありません`);
+        if (!(op.structure in STRUCTURES) && !plan.shapes?.some((s) => s.id === op.structure))
+          throw new OpError(`話の型 ${op.structure} はありません`);
         plan.structure = op.structure;
       }
       project.plan = plan;

@@ -45,7 +45,9 @@ export class HeldList {
     };
     const list = (kind: "panel" | "pages", picked: string[]) => {
       const project = this.host.project();
-      return kind === "panel" ? (project?.held ?? []).filter((h) => picked.includes(h.id)) : (project?.heldPages ?? []).filter((h) => picked.includes(h.id));
+      return kind === "panel"
+        ? (project?.held ?? []).filter((h) => picked.includes(h.id))
+        : (project?.heldPages ?? []).filter((h) => picked.includes(h.id));
     };
     this.picker = new ListPicker($("side-held"), {
       noun: "保留",
@@ -66,7 +68,11 @@ export class HeldList {
         const at = focus && project ? project.pages.findIndex((p) => p.id === focus.id) : -1;
         if (panels.length === 1) items.push(...this.panelItems(panels[0]));
         if (panels.length && focus) {
-          items.push({ label: `「このあたり」を ${at + 1} ページに`, title: "置きたいページを、今のページにする", run: () => this.near(panels, focus.id) });
+          items.push({
+            label: `「このあたり」を ${at + 1} ページに`,
+            title: "置きたいページを、今のページにする",
+            run: () => this.near(panels, focus.id),
+          });
           items.push({ label: "「このあたり」を未定に", run: () => this.near(panels, undefined) });
         }
         if (pages.length === 1) {
@@ -150,7 +156,9 @@ export class HeldList {
       into.disabled = !target;
       const aside = !!h.at && project.pages.some((p) => p.id === h.near);
       const lay = plainButton(aside ? "欄外から下げる" : "欄外に置く", () => this.lay(h, aside));
-      lay.title = aside ? "ページの外（欄外）から下げて、この一覧だけに置く" : "「このあたり」のページ（未定なら今のページ）の上の欄外に置いて、紙面で見えるようにする";
+      lay.title = aside
+        ? "ページの外（欄外）から下げて、この一覧だけに置く"
+        : "「このあたり」のページ（未定なら今のページ）の上の欄外に置いて、紙面で見えるようにする";
       const drop = plainButton("消す", () => this.removeOne(h.id));
       drop.className = "danger small";
       const item = element(
@@ -158,7 +166,8 @@ export class HeldList {
         {
           className: `held-item${h.near && shown.has(h.near) ? " near" : ""}`,
           draggable: true,
-          title: "ページへドラッグして置く。コマの上で離すと、そのコマに中身を入れる（縦横比を保つかは 設定 › 操作）。押して選ぶ（Ctrl・Shift で複数）・右クリックでメニュー",
+          title:
+            "ページへドラッグして置く。コマの上で離すと、そのコマに中身を入れる（縦横比を保つかは 設定 › 操作）。押して選ぶ（Ctrl・Shift で複数）・右クリックでメニュー",
         },
         heldThumbnail(project, h),
         element(
@@ -167,7 +176,14 @@ export class HeldList {
           element("div", { className: "held-words", textContent: words || h.panel.note || "（セリフなし）" }),
           ...(h.panel.note && words ? [element("div", { className: "held-note", textContent: h.panel.note })] : []),
           near,
-          ...(aside ? [element("div", { className: "held-note", textContent: `欄外（${project.pages.findIndex((p) => p.id === h.near) + 1} ページのそば）に置いてあります` })] : []),
+          ...(aside
+            ? [
+                element("div", {
+                  className: "held-note",
+                  textContent: `欄外（${project.pages.findIndex((p) => p.id === h.near) + 1} ページのそば）に置いてあります`,
+                }),
+              ]
+            : []),
           element("div", { className: "held-actions" }, put, into, lay, drop),
         ),
       );
@@ -182,8 +198,20 @@ export class HeldList {
     const picked = this.picker.targets();
     const tools = toolRow(
       [
-        { id: "held-duplicate", text: "複製", title: "選んだ保留のコマを複製（Ctrl+D）", run: () => this.duplicate(picked), disabled: !held.some((h) => picked.includes(h.id)) },
-        { id: "held-delete", text: "削除", title: "選んだ保留を捨てる（Delete・元に戻すで戻せます）", run: () => this.removeMany(picked), disabled: !picked.length },
+        {
+          id: "held-duplicate",
+          text: "複製",
+          title: "選んだ保留のコマを複製（Ctrl+D）",
+          run: () => this.duplicate(picked),
+          disabled: !held.some((h) => picked.includes(h.id)),
+        },
+        {
+          id: "held-delete",
+          text: "削除",
+          title: "選んだ保留を捨てる（Delete・元に戻すで戻せます）",
+          run: () => this.removeMany(picked),
+          disabled: !picked.length,
+        },
       ],
       picked.length > 1 ? `${picked.length} つ選択中` : "",
     );
@@ -217,7 +245,13 @@ export class HeldList {
   /** 保留のページ: pages taken out of the name, to put back where they were or elsewhere. */
   private heldPages(project: Project): HTMLElement[] {
     const list = project.heldPages ?? [];
-    if (!list.length) return [element("p", { className: "hint", textContent: "保留のページはありません。ページ一覧で右クリック ›「保留にする」で、ページを外して取っておけます。" })];
+    if (!list.length)
+      return [
+        element("p", {
+          className: "hint",
+          textContent: "保留のページはありません。ページ一覧で右クリック ›「保留にする」で、ページを外して取っておけます。",
+        }),
+      ];
     const rows = list.map((held) => {
       const at = held.after ? project.pages.findIndex((p) => p.id === held.after) : -1;
       const where = held.after ? (at >= 0 ? `${at + 1} ページの後ろにあった` : "元の場所はもうありません") : "先頭にあった";
@@ -232,7 +266,10 @@ export class HeldList {
       const drop = plainButton("消す", () => this.removeOne(held.id));
       drop.className = "danger small";
       drop.title = "保留のページを捨てる（元に戻すで戻せます）";
-      const memo = held.pages.map((p) => p.memo.split("\n")[0]).filter(Boolean).join(" / ");
+      const memo = held.pages
+        .map((p) => p.memo.split("\n")[0])
+        .filter(Boolean)
+        .join(" / ");
       const row = element(
         "div",
         { className: "held-item held-pages", title: `${where}。押して選ぶ（Ctrl・Shift で複数）・右クリックでメニュー` },

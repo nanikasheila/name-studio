@@ -48,7 +48,13 @@ describe("塗りつぶし", () => {
     expect(rest).toEqual([]);
     const [x0, y0, x1, y1] = bounds(region.shape);
     // To the middle of the line, within a cell (0.2 mm) or so.
-    for (const [got, want] of [[x0, 20], [y0, 20], [x1, 50], [y1, 50]]) expect(Math.abs(got - want)).toBeLessThan(0.35);
+    for (const [got, want] of [
+      [x0, 20],
+      [y0, 20],
+      [x1, 50],
+      [y1, 50],
+    ])
+      expect(Math.abs(got - want)).toBeLessThan(0.35);
     expect(filled(region)).toBeGreaterThan(29.4 * 29.4);
   });
 
@@ -64,7 +70,18 @@ describe("塗りつぶし", () => {
   it("goes out through a gap, unless 隙間閉じ closes it", () => {
     const { project, page } = setup();
     // A square with a 0.6 mm gap in its top side.
-    line(page, [[35.3, 20], [50, 20], [50, 50], [20, 50], [20, 20], [34.7, 20]], false);
+    line(
+      page,
+      [
+        [35.3, 20],
+        [50, 20],
+        [50, 50],
+        [20, 50],
+        [20, 20],
+        [34.7, 20],
+      ],
+      false,
+    );
     const open = fillAt(project, page, [35, 35], OPTIONS);
     expect("none" in open ? null : open.wholePage).toBe(true);
     const [region, ...rest] = regions(fillAt(project, page, [35, 35], { ...OPTIONS, gapMm: 1 }));
@@ -120,7 +137,17 @@ describe("塗りつぶし", () => {
   it("stops at fills already made", () => {
     const { project, page } = setup();
     line(page, square(20, 20, 30));
-    page.fills = [{ id: "f1", shape: [[20, 20], [50, 20], [50, 35], [20, 35]] }];
+    page.fills = [
+      {
+        id: "f1",
+        shape: [
+          [20, 20],
+          [50, 20],
+          [50, 35],
+          [20, 35],
+        ],
+      },
+    ];
     const [region] = regions(fillAt(project, page, [35, 45], OPTIONS));
     const [, y0] = bounds(region.shape);
     expect(y0).toBeGreaterThan(34.4);
@@ -145,7 +172,14 @@ describe("囲って塗る", () => {
   it("fills the areas next to each other with no gap along the line between them", () => {
     const { project, page } = setup();
     line(page, square(20, 20, 20));
-    line(page, [[30, 20], [30, 40]], false);
+    line(
+      page,
+      [
+        [30, 20],
+        [30, 40],
+      ],
+      false,
+    );
     const found = regions(fillInside(project, page, square(15, 15, 30), OPTIONS));
     // Both halves reach the middle line: together they are one area.
     expect(found).toHaveLength(1);
@@ -158,8 +192,29 @@ describe("塗り残し部分に塗る", () => {
     const { project, page } = setup();
     line(page, square(20, 20, 30));
     // A fill that stops 1 mm short of the bottom line.
-    page.fills = [{ id: "f1", shape: [[20, 20], [50, 20], [50, 49], [20, 49]] }];
-    const [region] = regions(fillUnder(project, page, [[22, 49.5], [48, 49.5]], 1.5, OPTIONS));
+    page.fills = [
+      {
+        id: "f1",
+        shape: [
+          [20, 20],
+          [50, 20],
+          [50, 49],
+          [20, 49],
+        ],
+      },
+    ];
+    const [region] = regions(
+      fillUnder(
+        project,
+        page,
+        [
+          [22, 49.5],
+          [48, 49.5],
+        ],
+        1.5,
+        OPTIONS,
+      ),
+    );
     const [x0, y0, x1, y1] = bounds(region.shape);
     expect(y0).toBeGreaterThan(48.5);
     expect(y1).toBeLessThan(50.5);
@@ -169,7 +224,18 @@ describe("塗り残し部分に塗る", () => {
   it("leaves a large area the brush only went into", () => {
     const { project, page } = setup();
     line(page, square(20, 20, 30));
-    expect(fillUnder(project, page, [[30, 30], [32, 30]], 1, OPTIONS)).toEqual({ none: "nothingClosed" });
+    expect(
+      fillUnder(
+        project,
+        page,
+        [
+          [30, 30],
+          [32, 30],
+        ],
+        1,
+        OPTIONS,
+      ),
+    ).toEqual({ none: "nothingClosed" });
   });
 });
 
@@ -215,7 +281,13 @@ describe("塗りの設定", () => {
     const kept = fillSettingsFrom(JSON.parse(JSON.stringify({ ...defaultFillSettings(), way: "enclose", tone: "gray" })));
     expect(kept.way).toBe("enclose");
     expect(kept.tone).toBe("gray");
-    const odd = fillSettingsFrom({ way: "bucket", tone: "red", brushMm: 999, options: { click: { gapMm: 50, center: "yes", growMm: -9, refer: "x" } }, under: { lasso: true } });
+    const odd = fillSettingsFrom({
+      way: "bucket",
+      tone: "red",
+      brushMm: 999,
+      options: { click: { gapMm: 50, center: "yes", growMm: -9, refer: "x" } },
+      under: { lasso: true },
+    });
     expect(odd.way).toBe("lasso");
     expect(odd.tone).toBe("black");
     expect(odd.brushMm).toBe(30);

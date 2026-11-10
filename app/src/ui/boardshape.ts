@@ -3,7 +3,24 @@
 import { element as html, svg } from "../platform/dom";
 import type { Project, StoryShape } from "../model/model";
 import { forgetShape, keepShape, libraryShapes } from "../platform/prefs";
-import { addBeat, adoptShape, beatPage, currentShape, editableShape, isBuiltinShape, makeShape, moveBoundary, partColor, removeBeat, removePart, removeShape, setBeat, shapeSpans, splitPart, storyShapes } from "../domain/shapes";
+import {
+  addBeat,
+  adoptShape,
+  beatPage,
+  currentShape,
+  editableShape,
+  isBuiltinShape,
+  makeShape,
+  moveBoundary,
+  partColor,
+  removeBeat,
+  removePart,
+  removeShape,
+  setBeat,
+  shapeSpans,
+  splitPart,
+  storyShapes,
+} from "../domain/shapes";
 import { textAmount } from "../domain/dialogue";
 import { planAdvice, sceneSpans } from "../domain/story";
 import { clip, diamond, icon, type LaneView, SHAPE, track } from "./boardview";
@@ -16,7 +33,11 @@ export function shapeLane(view: LaneView, project: Project, top: number): SVGGEl
   const shape = currentShape(project);
   group.append(svg("rect", { x: 0, y: top, width: view.width(), height: SHAPE, class: "lane-bg" }));
   if (!shape || !count) {
-    const hint = svg("text", { x: 8, y: top + 24, class: "lane-hint" }, "クリックで話の型（起承転結・Save the Cat・自分の型）を選ぶと、ページの区切りがここに出ます");
+    const hint = svg(
+      "text",
+      { x: 8, y: top + 24, class: "lane-hint" },
+      "クリックで話の型（起承転結・Save the Cat・自分の型）を選ぶと、ページの区切りがここに出ます",
+    );
     group.addEventListener("click", () => view.select({ kind: "shape" }));
     group.classList.add("pick");
     group.append(hint);
@@ -31,7 +52,13 @@ export function shapeLane(view: LaneView, project: Project, top: number): SVGGEl
     const { left: x, width: w } = view.span(span.first, span.last);
     const part = svg("rect", { x: x + 1, y: top + 3, width: Math.max(1, w - 2), height: 20, rx: 5, class: "part", fill: span.color });
     part.addEventListener("click", () => view.select({ kind: "shape" }));
-    part.addEventListener("mousemove", (event) => view.tip.show(event, [span.name, `${span.first + 1}〜${span.last + 1} ページ（${span.last - span.first + 1} ページ）`, "クリックで型を直す"]));
+    part.addEventListener("mousemove", (event) =>
+      view.tip.show(event, [
+        span.name,
+        `${span.first + 1}〜${span.last + 1} ページ（${span.last - span.first + 1} ページ）`,
+        "クリックで型を直す",
+      ]),
+    );
     part.addEventListener("mouseleave", () => view.tip.hide());
     part.addEventListener("contextmenu", (event) => {
       event.preventDefault();
@@ -81,7 +108,10 @@ export function shapeLane(view: LaneView, project: Project, top: number): SVGGEl
     const page = beatPage(beat.at, count);
     const cx = view.cell(page) + view.column / 2;
     const marker = svg("path", { d: diamond(cx, top + 32, 6), class: "beat" });
-    const label = view.column >= 60 || (shape.beats?.length ?? 0) <= count / 3 ? svg("text", { x: cx + 9, y: top + 36, class: "beat-label" }, clip(beat.name, Math.max(2, Math.floor((view.column * 2.2) / 11)))) : null;
+    const label =
+      view.column >= 60 || (shape.beats?.length ?? 0) <= count / 3
+        ? svg("text", { x: cx + 9, y: top + 36, class: "beat-label" }, clip(beat.name, Math.max(2, Math.floor((view.column * 2.2) / 11))))
+        : null;
     marker.addEventListener("mousemove", (event) => view.tip.show(event, [beat.name, `${page + 1} ページあたり`, "ドラッグで動かす"]));
     marker.addEventListener("mouseleave", () => view.tip.hide());
     marker.addEventListener("contextmenu", (event) => {
@@ -127,7 +157,13 @@ export function shapeInspector(view: LaneView, project: Project): HTMLElement[] 
   const shape = currentShape(project);
   const count = project.pages.length;
   const picker = shapePicker(view, project);
-  const target = html("input", { type: "number", min: "1", value: project.plan?.targetPages ? String(project.plan.targetPages) : "", placeholder: String(count), title: "目標ページ数" });
+  const target = html("input", {
+    type: "number",
+    min: "1",
+    value: project.plan?.targetPages ? String(project.plan.targetPages) : "",
+    placeholder: String(count),
+    title: "目標ページ数",
+  });
   target.addEventListener("change", () =>
     view.edit((p) => {
       const value = Number.parseInt(target.value, 10);
@@ -142,14 +178,21 @@ export function shapeInspector(view: LaneView, project: Project): HTMLElement[] 
   const characters = project.pages.reduce((sum, page) => sum + textAmount(page), 0);
   const head = [
     html("h2", { className: "story-title" }, icon("shape"), html("span", { textContent: "話の型とページ配分" })),
-    html("p", { className: "insp-summary", textContent: `${count} ページ・シーン ${sceneSpans(project).length}・コマ ${panels}・${characters} 字` }),
+    html("p", {
+      className: "insp-summary",
+      textContent: `${count} ページ・シーン ${sceneSpans(project).length}・コマ ${panels}・${characters} 字`,
+    }),
     html("label", {}, "話の型", picker),
     html("label", { className: "inline" }, "目標", target, "ページ"),
     ...planAdvice(project)
       .filter((advice) => advice.level === "warn")
       .map((advice) => html("p", { className: "insp-warn", textContent: advice.text })),
   ];
-  if (!shape) return [...head, html("p", { className: "hint", textContent: "型を選ぶと、帯の「型」に区切りの色が出て、ページ一覧も色分けされます。" })];
+  if (!shape)
+    return [
+      ...head,
+      html("p", { className: "hint", textContent: "型を選ぶと、帯の「型」に区切りの色が出て、ページ一覧も色分けされます。" }),
+    ];
 
   const builtIn = isBuiltinShape(shape.id);
   const spans = shapeSpans(shape, count);
@@ -170,18 +213,35 @@ export function shapeInspector(view: LaneView, project: Project): HTMLElement[] 
     const color = html("input", { type: "color", value: partColor(shape, i) });
     color.addEventListener("change", () => change((own) => (own.parts[i].color = color.value)));
     const span = spans[i];
-    const inside = span ? scenes.filter((s) => (s.first + s.last) / 2 >= span.first && (s.first + s.last) / 2 <= span.last + 0.5).map((s) => s.scene.title) : [];
-    const pages = html("span", { className: "pages", textContent: span ? `${span.first + 1}〜${span.last + 1}` : "—", title: inside.length ? `シーン: ${inside.join("・")}` : "ここに当たるシーンはありません" });
+    const inside = span
+      ? scenes.filter((s) => (s.first + s.last) / 2 >= span.first && (s.first + s.last) / 2 <= span.last + 0.5).map((s) => s.scene.title)
+      : [];
+    const pages = html("span", {
+      className: "pages",
+      textContent: span ? `${span.first + 1}〜${span.last + 1}` : "—",
+      title: inside.length ? `シーン: ${inside.join("・")}` : "ここに当たるシーンはありません",
+    });
     const split = html("button", { className: "small", textContent: "分割", title: "この区切りを二つに分ける" });
     split.addEventListener("click", () => change((own) => splitPart(own, i)));
-    const remove = html("button", { className: "danger small", textContent: "×", title: "この区切りを消す（ページは前の区切りへ）", disabled: shape.parts.length <= 1 });
+    const remove = html("button", {
+      className: "danger small",
+      textContent: "×",
+      title: "この区切りを消す（ページは前の区切りへ）",
+      disabled: shape.parts.length <= 1,
+    });
     remove.addEventListener("click", () => change((own) => removePart(own, i)));
     return html("div", { className: "insp-row part" }, color, name, pages, split, remove);
   });
   const beats = (shape.beats ?? []).map((beat, i) => {
     const name = html("input", { type: "text", value: beat.name });
     name.addEventListener("change", () => change((own) => own.beats && (own.beats[i].name = name.value.trim() || own.beats[i].name)));
-    const page = html("input", { type: "number", min: "1", max: String(count), value: String(beatPage(beat.at, count) + 1), title: "ページ" });
+    const page = html("input", {
+      type: "number",
+      min: "1",
+      max: String(count),
+      value: String(beatPage(beat.at, count) + 1),
+      title: "ページ",
+    });
     page.addEventListener("change", () => {
       const value = Number.parseInt(page.value, 10);
       if (Number.isInteger(value)) change((own) => setBeat(own, i, (Math.max(1, Math.min(count, value)) - 0.5) / count));
@@ -232,7 +292,9 @@ function shapePicker(view: LaneView, project: Project): HTMLSelectElement {
   const mine = html("optgroup", { label: "このネームの型" } as Partial<HTMLOptGroupElement>);
   const kept = html("optgroup", { label: "この PC の型" } as Partial<HTMLOptGroupElement>);
   for (const shape of storyShapes(project)) {
-    (isBuiltinShape(shape.id) ? builtIn : mine).append(html("option", { value: shape.id, textContent: shape.label, selected: shape.id === current }));
+    (isBuiltinShape(shape.id) ? builtIn : mine).append(
+      html("option", { value: shape.id, textContent: shape.label, selected: shape.id === current }),
+    );
   }
   for (const shape of libraryShapes()) {
     if (own.some((s) => s.id === shape.id)) continue;
@@ -263,4 +325,3 @@ function shapePicker(view: LaneView, project: Project): HTMLSelectElement {
   });
   return shapes;
 }
-

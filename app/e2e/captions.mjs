@@ -26,15 +26,19 @@ try {
   await page.goto(server.resolvedUrls.local[0]);
   await page.waitForFunction(() => window.nameStudio);
   const file = process.env.NAME;
-  await page.evaluate(async (text) => {
-    const { newProject } = await import("/src/domain/project.ts");
-    const project = text ? JSON.parse(text) : newProject("説明", 12);
-    if (!text) {
-      const long = "場面の説明：ここでは二人が出会い、互いの目的を確かめる。会話は短く、表情で気持ちの変化を見せる。次のページへの引きを残す。";
-      project.pages.forEach((p, i) => (p.memo = i % 3 === 1 ? `${long}${long}` : i % 3 === 0 ? long : "短い説明"));
-    }
-    window.nameStudio.show(project);
-  }, file ? (await import("node:fs")).readFileSync(file, "utf8") : null);
+  await page.evaluate(
+    async (text) => {
+      const { newProject } = await import("/src/domain/project.ts");
+      const project = text ? JSON.parse(text) : newProject("説明", 12);
+      if (!text) {
+        const long =
+          "場面の説明：ここでは二人が出会い、互いの目的を確かめる。会話は短く、表情で気持ちの変化を見せる。次のページへの引きを残す。";
+        project.pages.forEach((p, i) => (p.memo = i % 3 === 1 ? `${long}${long}` : i % 3 === 0 ? long : "短い説明"));
+      }
+      window.nameStudio.show(project);
+    },
+    file ? (await import("node:fs")).readFileSync(file, "utf8") : null,
+  );
   await page.waitForTimeout(300);
 
   /** Each shown page's caption: how many rows it is drawn in, and where its room ends and what lies under it begins (px). */
@@ -58,7 +62,15 @@ try {
         // The last row's baseline and a little for the letters below it.
         const textEnd = bottom + 18 + (rows.length - 1) * 16 + 4;
         const below = slots.filter((other) => other.y > slot.y + 1 && Math.abs(other.x - slot.x) < 1).map((other) => other.y);
-        return { index: slot.index, rows: rows.length, ellipsis: rows.some((row) => row.endsWith("…")), textEnd, roomEnd: bottom + (slot.caption ?? 36), next: below.length ? Math.min(...below) : null, stage };
+        return {
+          index: slot.index,
+          rows: rows.length,
+          ellipsis: rows.some((row) => row.endsWith("…")),
+          textEnd,
+          roomEnd: bottom + (slot.caption ?? 36),
+          next: below.length ? Math.min(...below) : null,
+          stage,
+        };
       });
       ctx.restore();
       return all;
@@ -67,11 +79,27 @@ try {
   const expectAll = async (where, onStage) => {
     const all = await captions();
     check(all.length > 0, `${where}: pages are shown`);
-    check(all.some((c) => c.rows >= 3), `${where}: a long memo takes more than two rows (${Math.max(...all.map((c) => c.rows))})`);
-    check(all.every((c) => !c.ellipsis), `${where}: no memo is cut off with …`);
-    check(all.every((c) => c.textEnd <= c.roomEnd + 0.5), `${where}: every memo fits in the room under its page ${JSON.stringify(all.filter((c) => c.textEnd > c.roomEnd + 0.5))}`);
-    check(all.every((c) => c.next === null || c.roomEnd <= c.next), `${where}: and ends above the next row`);
-    if (onStage) check(all.every((c) => c.textEnd <= c.stage), `${where}: and is on the stage`);
+    check(
+      all.some((c) => c.rows >= 3),
+      `${where}: a long memo takes more than two rows (${Math.max(...all.map((c) => c.rows))})`,
+    );
+    check(
+      all.every((c) => !c.ellipsis),
+      `${where}: no memo is cut off with …`,
+    );
+    check(
+      all.every((c) => c.textEnd <= c.roomEnd + 0.5),
+      `${where}: every memo fits in the room under its page ${JSON.stringify(all.filter((c) => c.textEnd > c.roomEnd + 0.5))}`,
+    );
+    check(
+      all.every((c) => c.next === null || c.roomEnd <= c.next),
+      `${where}: and ends above the next row`,
+    );
+    if (onStage)
+      check(
+        all.every((c) => c.textEnd <= c.stage),
+        `${where}: and is on the stage`,
+      );
   };
 
   await expectAll("見開き", true);

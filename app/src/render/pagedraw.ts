@@ -34,14 +34,7 @@ export function tracePath(ctx: CanvasRenderingContext2D, points: readonly (reado
  * pressure curves, 入り抜き and opacity apply, and a tip picture (or a flat
  * tip) is stamped along the line.
  */
-export function drawStroke(
-  ctx: CanvasRenderingContext2D,
-  stroke: Stroke,
-  m: MmToPx,
-  color: string,
-  minWidthPx = 0.7,
-  brush?: Brush,
-): void {
+export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke, m: MmToPx, color: string, minWidthPx = 0.7, brush?: Brush): void {
   paintSegments(ctx, stroke, m, color, minWidthPx, brush, 0, 0, false);
 }
 
@@ -51,7 +44,17 @@ export function drawStroke(
  * segments added next. Drawing a line in pieces this way gives the pixels of
  * drawing it whole.
  */
-function paintSegments(ctx: CanvasRenderingContext2D, stroke: Stroke, m: MmToPx, color: string, minWidthPx: number, brush: Brush | undefined, from: number, carry: number, growing: boolean): number {
+function paintSegments(
+  ctx: CanvasRenderingContext2D,
+  stroke: Stroke,
+  m: MmToPx,
+  color: string,
+  minWidthPx: number,
+  brush: Brush | undefined,
+  from: number,
+  carry: number,
+  growing: boolean,
+): number {
   const points = stroke.points;
   // The points before `from` - 1 are not drawn: their widths are not worked out.
   const factors = widthFactors(stroke, brush, from - 1, growing);
@@ -99,16 +102,44 @@ export class LiveLine {
     }
     this.view = view;
     if (points.length > this.painted) {
-      this.carry = paintSegments(this.target, liveStroke(points, widthMm, brush), m, color, LIVE_MIN_WIDTH_PX, brush, this.painted, this.carry, true);
+      this.carry = paintSegments(
+        this.target,
+        liveStroke(points, widthMm, brush),
+        m,
+        color,
+        LIVE_MIN_WIDTH_PX,
+        brush,
+        this.painted,
+        this.carry,
+        true,
+      );
       this.painted = points.length;
     }
     return same;
   }
 
   /** On `ctx` (the screen), the line on from its painted end through `ahead` (where the pen is about to be), left as it is. */
-  ahead(ctx: CanvasRenderingContext2D, points: readonly StrokePoint[], ahead: readonly StrokePoint[], widthMm: number, m: MmToPx, color: string, brush?: Brush): void {
+  ahead(
+    ctx: CanvasRenderingContext2D,
+    points: readonly StrokePoint[],
+    ahead: readonly StrokePoint[],
+    widthMm: number,
+    m: MmToPx,
+    color: string,
+    brush?: Brush,
+  ): void {
     if (!ahead.length || !points.length) return;
-    paintSegments(ctx, liveStroke([...points, ...ahead], widthMm, brush), m, color, LIVE_MIN_WIDTH_PX, brush, points.length, this.carry, true);
+    paintSegments(
+      ctx,
+      liveStroke([...points, ...ahead], widthMm, brush),
+      m,
+      color,
+      LIVE_MIN_WIDTH_PX,
+      brush,
+      points.length,
+      this.carry,
+      true,
+    );
   }
 }
 
@@ -258,7 +289,13 @@ const EFFECT_INK = "rgba(27, 26, 24, 0.45)";
 const FILLS: Record<string, string> = { white: "#ffffff", black: INK, gray: "#b9b6b0" };
 
 /** 塗り: the page's filled areas (with their holes), in the order they were made: those over the rough lines, or with `under` those under them. */
-export function drawPageFills(ctx: CanvasRenderingContext2D, page: Page, m: MmToPx, outline?: (id: string) => string | null, under = false): void {
+export function drawPageFills(
+  ctx: CanvasRenderingContext2D,
+  page: Page,
+  m: MmToPx,
+  outline?: (id: string) => string | null,
+  under = false,
+): void {
   for (const fill of page.fills ?? []) {
     if (!!fill.under !== under) continue;
     tracePath(ctx, fill.shape, m, true);
@@ -351,7 +388,14 @@ export function drawPanelBorders(
  * A border drawn as by hand in pencil (仮のコマ): each edge twice, a little
  * wavy and running past the corners, the same each time for the same panel.
  */
-function drawPencil(ctx: CanvasRenderingContext2D, points: readonly Point[], closed: boolean, m: MmToPx, color: string, seed: string): void {
+function drawPencil(
+  ctx: CanvasRenderingContext2D,
+  points: readonly Point[],
+  closed: boolean,
+  m: MmToPx,
+  color: string,
+  seed: string,
+): void {
   let state = [...seed].reduce((sum, c) => (sum * 31 + c.charCodeAt(0)) % 2147483647, 7) || 7;
   const random = () => {
     state = (state * 16807) % 2147483647;
@@ -466,12 +510,26 @@ export function drawStrokes(
 ): void {
   for (const stroke of page.strokes) {
     if (!!stroke.over !== over) continue;
-    drawStroke(ctx, stroke, m, color(stroke), minWidthPx, brushes.find((brush) => brush.id === stroke.brush));
+    drawStroke(
+      ctx,
+      stroke,
+      m,
+      color(stroke),
+      minWidthPx,
+      brushes.find((brush) => brush.id === stroke.brush),
+    );
   }
 }
 
 /** 指示 over the page, each 指示のレイヤー in its colour (`all`: the hidden ones too). */
-export function drawMarks(ctx: CanvasRenderingContext2D, project: Pick<Project, "roughLayers" | "brushes">, page: Page, m: MmToPx, minWidthPx?: number, all = false): void {
+export function drawMarks(
+  ctx: CanvasRenderingContext2D,
+  project: Pick<Project, "roughLayers" | "brushes">,
+  page: Page,
+  m: MmToPx,
+  minWidthPx?: number,
+  all = false,
+): void {
   for (const layer of markLayersOf(project)) {
     if (layer.hidden && !all) continue;
     const strokes = strokesOn(project, page.strokes, layer).map((stroke) => (stroke.over ? { ...stroke, over: false } : stroke));

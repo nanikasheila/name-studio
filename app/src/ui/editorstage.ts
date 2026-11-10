@@ -6,7 +6,24 @@
 import { asideRooms, type Room, sameRooms } from "../domain/aside";
 import { panelAt } from "../editing/hittest";
 import { withoutHidden } from "./layers";
-import { GRID_GAP_MM, MARGIN, MAX_PAGE_GAP_MM, extent, fitContinuous, fittedTo, layoutPages, nearestSlot, nearestTo, onScreenOf, onStage, rowCount, slotAt, toPage, type Arrangement, type Slot } from "../editing/layout";
+import {
+  GRID_GAP_MM,
+  MARGIN,
+  MAX_PAGE_GAP_MM,
+  extent,
+  fitContinuous,
+  fittedTo,
+  layoutPages,
+  nearestSlot,
+  nearestTo,
+  onScreenOf,
+  onStage,
+  rowCount,
+  slotAt,
+  toPage,
+  type Arrangement,
+  type Slot,
+} from "../editing/layout";
 import type { BoxMm, Page, Panel, Point, Project } from "../model/model";
 import { trimBox } from "../domain/pagebox";
 import { spreads } from "../domain/pages";
@@ -84,7 +101,8 @@ export class EditorStage {
     const project = this.host.project();
     const count = project?.pages.length ?? 0;
     // 単独: each page on its own, one at a time; a 縦スクロール strip has no spreads.
-    if ((this.single && !this.continuous) || project?.scroll) return Array.from({ length: count }, (_, i): [number | null, number | null] => [i + 1, null]);
+    if ((this.single && !this.continuous) || project?.scroll)
+      return Array.from({ length: count }, (_, i): [number | null, number | null] => [i + 1, null]);
     return spreads(count, this.firstAlone);
   }
 
@@ -271,7 +289,10 @@ export class EditorStage {
     // 連続, as the stage grows or shrinks (Tab, the strip, the window): fitted to it, fitted again;
     // otherwise what was in the middle stays in the middle.
     const was = this.continuous && project && before?.width && before.height && width && height ? this.layout(project) : null;
-    const fitted = was && project && !project.scroll && before ? fittedTo(was, project.pageFormat.canvasMm[1], before.width, before.height, this.view.zoom, this.rooms) : null;
+    const fitted =
+      was && project && !project.scroll && before
+        ? fittedTo(was, project.pageFormat.canvasMm[1], before.width, before.height, this.view.zoom, this.rooms)
+        : null;
     const held = was && project && before ? nearestTo(was, project.pageFormat, [before.width / 2, before.height / 2]) : null;
     this.size = { width, height };
     const at = (slots: Slot[]) => (held ? onScreenOf(slots, held) : null);
@@ -302,7 +323,18 @@ export class EditorStage {
 
   private arrangement(): Arrangement {
     const { width, height } = this.stageSize();
-    return { single: this.single, continuous: this.continuous, rows: this.rows, zoom: this.view.zoom, pan: this.view.pan, width, height, gapMm: this.pageGapMm, rooms: this.rooms, captionRows: this.captionRows };
+    return {
+      single: this.single,
+      continuous: this.continuous,
+      rows: this.rows,
+      zoom: this.view.zoom,
+      pan: this.view.pan,
+      width,
+      height,
+      gapMm: this.pageGapMm,
+      rooms: this.rooms,
+      captionRows: this.captionRows,
+    };
   }
 
   /** How many rows a page's number and memo take under it, as drawn. */

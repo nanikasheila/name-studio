@@ -42,7 +42,14 @@ export class StartScreen {
     return [
       { id: "start.open", label: "開く", group, keys: ["Ctrl+O"], words: "ファイル ひらく", run: () => (this.host.openFile(), true) },
       { id: "start.new", label: "新しいネーム", group, keys: [], words: "あたらしい 白紙 作る", run: () => (this.host.newName(), true) },
-      { id: "start.image", label: "ネーム画像から新しいネームを作る", group, keys: [], words: "ミニネーム 俯瞰 画像 スキャン 取り込む 分割", run: () => (this.host.fromImage(), true) },
+      {
+        id: "start.image",
+        label: "ネーム画像から新しいネームを作る",
+        group,
+        keys: [],
+        words: "ミニネーム 俯瞰 画像 スキャン 取り込む 分割",
+        run: () => (this.host.fromImage(), true),
+      },
       ...loadRecentNames().map((name) => ({
         id: `start.recent:${name.path}`,
         label: `${name.title || splitPath(name.path).name} を開く`,

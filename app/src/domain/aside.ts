@@ -61,7 +61,12 @@ export function onPageOnly(page: Page, format: PageFormat): Page {
   const strokes = page.strokes.filter((stroke) => !offPage(strokeBox(stroke), format));
   const references = page.references?.filter((reference) => !offPage(reference.box, format));
   const stickies = page.stickies?.filter((sticky) => !offPage(stickyBox(sticky), format));
-  if (strokes.length === page.strokes.length && references?.length === page.references?.length && stickies?.length === page.stickies?.length) return page;
+  if (
+    strokes.length === page.strokes.length &&
+    references?.length === page.references?.length &&
+    stickies?.length === page.stickies?.length
+  )
+    return page;
   return {
     ...page,
     strokes,
@@ -106,7 +111,8 @@ export function asideBoxes(project: Project, page: Page, except?: HeldPanel, sho
     const box = strokeBox(stroke);
     if (reachesOff(box, format)) boxes.push(box);
   }
-  for (const reference of page.references ?? []) if ((!shown || shown("reference", reference.id)) && reachesOff(reference.box, format)) boxes.push(reference.box);
+  for (const reference of page.references ?? [])
+    if ((!shown || shown("reference", reference.id)) && reachesOff(reference.box, format)) boxes.push(reference.box);
   for (const sticky of page.stickies ?? []) {
     if (shown && !shown("sticky", sticky.id)) continue;
     const box = stickyBox(sticky);

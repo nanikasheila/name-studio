@@ -207,7 +207,11 @@ export class ImageImportDialog {
     this.skipped.clear();
     this.adjusted.clear();
     if (fresh || grid) {
-      $<HTMLSelectElement>("ii-order").value = grid ? (this.rightToLeft() ? "rtl" : "ltr") : guessOrder(this.found.cells, this.rightToLeft());
+      $<HTMLSelectElement>("ii-order").value = grid
+        ? this.rightToLeft()
+          ? "rtl"
+          : "ltr"
+        : guessOrder(this.found.cells, this.rightToLeft());
     }
     if (fresh) {
       $<HTMLSelectElement>("ii-fit").value = this.found.inner ? "inner" : "trim";
@@ -240,7 +244,11 @@ export class ImageImportDialog {
     for (const id of ["ii-grid-label", "ii-grid"]) $(id).hidden = !grid;
     const fit = $<HTMLSelectElement>("ii-fit");
     const inner = !!this.found?.inner;
-    fit.replaceChildren(...(Object.keys(FIT_LABELS) as ImportFit[]).filter((value) => value !== "inner" || inner).map((value) => new Option(FIT_LABELS[value], value)));
+    fit.replaceChildren(
+      ...(Object.keys(FIT_LABELS) as ImportFit[])
+        .filter((value) => value !== "inner" || inner)
+        .map((value) => new Option(FIT_LABELS[value], value)),
+    );
     fit.value = this.fit();
     this.drawPreview();
     const taken = this.taken();
@@ -251,7 +259,10 @@ export class ImageImportDialog {
       $("ii-summary").textContent = "画像を選んでください（PNG・JPEG など）";
       return;
     }
-    const changes = [this.skipped.size ? `${this.skipped.size} 枚は外した` : "", this.adjusted.size ? `${this.adjusted.size} 枚は範囲を直した` : ""].filter(Boolean);
+    const changes = [
+      this.skipped.size ? `${this.skipped.size} 枚は外した` : "",
+      this.adjusted.size ? `${this.adjusted.size} 枚は範囲を直した` : "",
+    ].filter(Boolean);
     const left = changes.length ? `（${changes.join("・")}）` : "";
     const tilt = this.skew ? `画像が ${Math.abs(this.skew).toFixed(2)}° 傾いていたので、まっすぐに直して切り分けます。` : "";
     const found = `${taken.length} ページ見つけました${left}。${tilt}`;
@@ -263,7 +274,8 @@ export class ImageImportDialog {
         `${found}${start}〜${last} ページに置きます${more ? `（足りない ${more} ページを足す）` : ""}。前に取り込んだネーム画像は置き換え、描いたもの・資料画像はそのままです。` +
         "違うところで分かれていたら、分け方・読む順を変えるか、余分なページを押して外してください。枠がずれたページは、辺・角のドラッグで範囲を、中のドラッグで位置を直せます。";
     } else {
-      $("ii-summary").textContent = `${found}${taken.length} ページの新しいネーム「${this.fileName || "ネーム"}」を作ります。違うところで分かれていたら、分け方・読む順を変えるか、余分なページを押して外してください。枠がずれたページは、辺・角のドラッグで範囲を、中のドラッグで位置を直せます。`;
+      $("ii-summary").textContent =
+        `${found}${taken.length} ページの新しいネーム「${this.fileName || "ネーム"}」を作ります。違うところで分かれていたら、分け方・読む順を変えるか、余分なページを押して外してください。枠がずれたページは、辺・角のドラッグで範囲を、中のドラッグで位置を直せます。`;
     }
   }
 
@@ -304,7 +316,12 @@ export class ImageImportDialog {
       ctx.strokeRect(x0 + 0.75, y0 + 0.75, x1 - x0 - 1.5, y1 - y0 - 1.5);
       // The corners to drag, as small squares (filled where the box was put right by hand).
       ctx.fillStyle = this.adjusted.has(cell) ? ctx.strokeStyle : "#ffffff";
-      for (const [x, y] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) {
+      for (const [x, y] of [
+        [x0, y0],
+        [x1, y0],
+        [x0, y1],
+        [x1, y1],
+      ]) {
         ctx.fillRect(x - 2.5, y - 2.5, 5, 5);
         ctx.strokeRect(x - 2.5, y - 2.5, 5, 5);
       }
@@ -431,7 +448,14 @@ export class ImageImportDialog {
     const bytes = new Uint8Array(await blob.arrayBuffer());
     let binary = "";
     for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-    return { id: "", name: `${this.fileName} ${index + 1}`, mime: "image/jpeg", dataBase64: btoa(binary), widthPx: width, heightPx: height };
+    return {
+      id: "",
+      name: `${this.fileName} ${index + 1}`,
+      mime: "image/jpeg",
+      dataBase64: btoa(binary),
+      widthPx: width,
+      heightPx: height,
+    };
   }
 
   private async run(): Promise<void> {
@@ -441,13 +465,14 @@ export class ImageImportDialog {
     this.render();
     try {
       const fit = this.fit();
-      const inner = fit === "inner" ? this.found?.inner ?? null : null;
+      const inner = fit === "inner" ? (this.found?.inner ?? null) : null;
       const images: StoredImage[] = [];
       for (const [index, cell] of taken.entries()) {
         this.message(`ページを切り出しています… ${index + 1} / ${taken.length}`);
         images.push(await this.cut(cell, index));
       }
-      const laid = (format: PageFormat) => images.map((image) => ({ image, box: placeOnPage(format, fit, image.widthPx, image.heightPx, inner) }));
+      const laid = (format: PageFormat) =>
+        images.map((image) => ({ image, box: placeOnPage(format, fit, image.widthPx, image.heightPx, inner) }));
       const project = this.host.project();
       $<HTMLDialogElement>("image-import-dialog").close();
       const how = `（${FIT_LABELS[fit]}）`;
@@ -458,13 +483,19 @@ export class ImageImportDialog {
           added = placeNamePictures(p, first - 1, laid(p.pageFormat));
         });
         const more = added ? `、ページを ${added} 枚足しました` : "";
-        this.host.done(first, `ネーム画像を ${first}〜${first + images.length - 1} ページに取り込みました${how}${more}。資料ツール（I）で動かす・濃さを変えられます。元に戻すは Ctrl+Z`);
+        this.host.done(
+          first,
+          `ネーム画像を ${first}〜${first + images.length - 1} ページに取り込みました${how}${more}。資料ツール（I）で動かす・濃さを変えられます。元に戻すは Ctrl+Z`,
+        );
       } else {
         const title = this.fileName || "ネーム";
         const binding: Binding = $<HTMLSelectElement>("ii-binding").value === "left" ? "left" : "right";
         const made = this.host.newName(title, images.length, binding);
         placeNamePictures(made, 0, laid(made.pageFormat));
-        this.host.opened(made, `ネーム画像から ${images.length} ページのネーム「${title}」を作りました${how}。資料ツール（I）で動かす・濃さを変えられます`);
+        this.host.opened(
+          made,
+          `ネーム画像から ${images.length} ページのネーム「${title}」を作りました${how}。資料ツール（I）で動かす・濃さを変えられます`,
+        );
       }
     } catch (error) {
       this.message(failureText("取り込めませんでした", error), true);

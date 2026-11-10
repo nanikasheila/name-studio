@@ -127,7 +127,12 @@ export class PageList {
   render(project: Project): void {
     const title = element("input", { type: "text", value: project.title, placeholder: "作品名" });
     title.addEventListener("change", () => this.host.edit((p) => (p.title = title.value.trim())));
-    const story = element("input", { type: "number", min: "0", value: project.storyIndex === undefined ? "" : String(project.storyIndex), placeholder: "話数" });
+    const story = element("input", {
+      type: "number",
+      min: "0",
+      value: project.storyIndex === undefined ? "" : String(project.storyIndex),
+      placeholder: "話数",
+    });
     story.addEventListener("change", () =>
       this.host.edit((p) => {
         const value = parseInt(story.value, 10);
@@ -165,7 +170,9 @@ export class PageList {
           },
           `${textAmount(page)}字`,
           ...(page.stickies?.length ? [element("span", { className: "sticky-count", textContent: String(page.stickies.length) })] : []),
-          ...(held ? [element("span", { className: "held-count", title: "このあたりに入れたい保留のコマ", textContent: `保${held}` })] : []),
+          ...(held
+            ? [element("span", { className: "held-count", title: "このあたりに入れたい保留のコマ", textContent: `保${held}` })]
+            : []),
         ),
       );
       item.dataset.page = page.id;
@@ -187,7 +194,14 @@ export class PageList {
       drop: (first, last, target) => this.host.movePages(first, last, target),
     });
     const tools = element("div", { className: "page-tools" }, ...this.toolButtons(project));
-    const count = element("input", { type: "number", id: "add-page-count", min: "1", max: "100", value: String(this.addCount), title: "足すページ数" });
+    const count = element("input", {
+      type: "number",
+      id: "add-page-count",
+      min: "1",
+      max: "100",
+      value: String(this.addCount),
+      title: "足すページ数",
+    });
     count.addEventListener("change", () => (this.addCount = Math.max(1, Math.min(100, Math.round(Number(count.value)) || 1))));
     const add = element("button", { id: "add-pages", textContent: "ページを最後に足す" });
     add.addEventListener("click", () => {
@@ -203,7 +217,9 @@ export class PageList {
   private optionTag(project: Project, page: Page): HTMLElement[] {
     const set = alternativesOf(project, page.id);
     const option = set?.options.find((o) => o.id === set.active);
-    return option ? [element("span", { className: "option-tag", textContent: option.name, title: `別案 ${set!.options.length} つのうち使用中の案` })] : [];
+    return option
+      ? [element("span", { className: "option-tag", textContent: option.name, title: `別案 ${set!.options.length} つのうち使用中の案` })]
+      : [];
   }
 
   /** How a command's keys read, with the list's own key when it has none. */
@@ -257,14 +273,23 @@ export class PageList {
       b.addEventListener("click", run);
       return b;
     };
-    const removable = !cannotRemove(project, targets.map((i) => project.pages[i].id));
+    const removable = !cannotRemove(
+      project,
+      targets.map((i) => project.pages[i].id),
+    );
     const key = (command: string, fallback: string) => this.keys(command, fallback);
     return [
       button("page-insert-before", "＋前", `${label}の前に白紙のページを入れる（Shift+Insert）`, () => this.insert(false)),
       button("page-insert-after", "＋後", `${label}の後ろに白紙のページを入れる（${key("page.add", "Insert")}）`, () => this.insert(true)),
       button("page-duplicate", "複製", `${label}を複製して後ろに入れる（${key("page.duplicate", "Ctrl+D")}）`, () => this.duplicate()),
       button("page-hold", "保留", `${label}をネームから外して「保留」の欄に取っておく（戻せます）`, () => this.hold(), !removable),
-      button("page-delete", "削除", `${label}を消す（${key("page.delete", "Delete")}・元に戻すで戻せます）`, () => void this.remove(), !removable),
+      button(
+        "page-delete",
+        "削除",
+        `${label}を消す（${key("page.delete", "Delete")}・元に戻すで戻せます）`,
+        () => void this.remove(),
+        !removable,
+      ),
       element("span", {
         className: "page-tools-note",
         textContent: `${project.pages.length} ページ${project.plan?.targetPages ? `（目標 ${project.plan.targetPages}）` : ""}${targets.length > 1 ? `・${targets.length} ページ選択中` : ""}`,
@@ -316,7 +341,12 @@ export class PageList {
       { label: `前に白紙のページを入れる`, keys: "Shift+Insert", run: () => this.insert(false) },
       { label: `後ろに白紙のページを入れる`, keys: key("page.add", "Insert"), run: () => this.insert(true) },
       { label: "後ろに見開き（2 ページ）を入れる", run: () => this.insert(true, 2) },
-      { label: `複製して後ろに入れる`, keys: key("page.duplicate", "Ctrl+D"), title: "見開きは 2 ページ一緒に複製します", run: () => this.duplicate() },
+      {
+        label: `複製して後ろに入れる`,
+        keys: key("page.duplicate", "Ctrl+D"),
+        title: "見開きは 2 ページ一緒に複製します",
+        run: () => this.duplicate(),
+      },
       SEPARATOR,
       { label: "コピー", keys: "Ctrl+C", title: "ほかのネームにも貼り付けられます", run: () => this.copy() },
       { label: "切り取り", keys: "Ctrl+X", disabled: !!blocked, run: () => void this.cut() },
@@ -326,7 +356,11 @@ export class PageList {
       { label: "1 つ前へ", keys: "Alt+↑", disabled: !oneRun || first === 0, run: () => this.move(-1) },
       { label: "1 つ後ろへ", keys: "Alt+↓", disabled: !oneRun || last === project.pages.length - 1, run: () => this.move(1) },
       { label: "先頭へ", disabled: !oneRun || first === 0, run: () => this.host.movePages(first, last, 0) },
-      { label: "最後へ", disabled: !oneRun || last === project.pages.length - 1, run: () => this.host.movePages(first, last, project.pages.length) },
+      {
+        label: "最後へ",
+        disabled: !oneRun || last === project.pages.length - 1,
+        run: () => this.host.movePages(first, last, project.pages.length),
+      },
       SEPARATOR,
       ...(pair
         ? [
@@ -337,11 +371,30 @@ export class PageList {
             } satisfies MenuItem,
           ]
         : []),
-      { label: "別案を作る", disabled: !oneRun, title: "このページ（続いたページ）の別のバージョンを作って比べる", run: () => this.host.makeOption(first, last) },
-      { label: "保留にする（外して取っておく）", disabled: !!blocked, title: blocked ?? "「保留」の欄に移します。元の場所やほかの場所に戻せます", run: () => this.hold() },
+      {
+        label: "別案を作る",
+        disabled: !oneRun,
+        title: "このページ（続いたページ）の別のバージョンを作って比べる",
+        run: () => this.host.makeOption(first, last),
+      },
+      {
+        label: "保留にする（外して取っておく）",
+        disabled: !!blocked,
+        title: blocked ?? "「保留」の欄に移します。元の場所やほかの場所に戻せます",
+        run: () => this.hold(),
+      },
       SEPARATOR,
-      { label: `${label}を削除`, keys: key("page.delete", "Delete"), danger: true, disabled: !!blocked, title: blocked ?? "元に戻すで戻せます", run: () => void this.remove() },
-      ...(empties.length ? [{ label: `最後の空のページ ${empties.length} 枚を削除`, run: () => void this.remove(empties) } satisfies MenuItem] : []),
+      {
+        label: `${label}を削除`,
+        keys: key("page.delete", "Delete"),
+        danger: true,
+        disabled: !!blocked,
+        title: blocked ?? "元に戻すで戻せます",
+        run: () => void this.remove(),
+      },
+      ...(empties.length
+        ? [{ label: `最後の空のページ ${empties.length} 枚を削除`, run: () => void this.remove(empties) } satisfies MenuItem]
+        : []),
     ];
     openMenu(items, x, y, `${label}のメニュー`);
   }
@@ -395,7 +448,11 @@ export class PageList {
     }
     const label = pagesLabel(indexes);
     const filled = indexes.filter((i) => !pageIsEmpty(project.pages[i])).length;
-    if (filled && !(await ask(`${label}を消しますか？（中身のあるページ ${filled} 枚。元に戻すで戻せます）`, { title: "Name Studio", kind: "warning" }))) return;
+    if (
+      filled &&
+      !(await ask(`${label}を消しますか？（中身のあるページ ${filled} 枚。元に戻すで戻せます）`, { title: "Name Studio", kind: "warning" }))
+    )
+      return;
     const first = Math.min(...indexes);
     let done = false;
     this.host.edit((p) => (done = deletePages(p, going)));
@@ -414,7 +471,10 @@ export class PageList {
     }
     this.pick(ids, ids[0]);
     if (what === "hold") this.hold();
-    else this.host.status(`${pagesLabel(ids.map((id) => pageIndex(project, id)))}を選びました（ページ一覧でコピー・移動・保留などができます）`);
+    else
+      this.host.status(
+        `${pagesLabel(ids.map((id) => pageIndex(project, id)))}を選びました（ページ一覧でコピー・移動・保留などができます）`,
+      );
   }
 
   /** Take the target pages out to the 保留 list. */
@@ -447,7 +507,9 @@ export class PageList {
     const targets = this.targets();
     if (!project || !targets.length) return;
     copied = clipPages(project, targets);
-    this.host.status(`${pagesLabel(withPartners(project, targets))}をコピーしました。ページ一覧で Ctrl+V（後ろに）・Ctrl+Shift+V（前に）で貼り付けます。ほかのネームにも貼り付けられます`);
+    this.host.status(
+      `${pagesLabel(withPartners(project, targets))}をコピーしました。ページ一覧で Ctrl+V（後ろに）・Ctrl+Shift+V（前に）で貼り付けます。ほかのネームにも貼り付けられます`,
+    );
   }
 
   async cut(): Promise<void> {
@@ -555,7 +617,12 @@ export class PageList {
     if (key === "ArrowUp" || key === "ArrowDown" || key === "Home" || key === "End") {
       const focus = this.host.focusPage();
       const from = focus ? pageIndex(project, focus.id) : 0;
-      const to = key === "Home" ? 0 : key === "End" ? project.pages.length - 1 : Math.max(0, Math.min(project.pages.length - 1, from + (key === "ArrowUp" ? -1 : 1)));
+      const to =
+        key === "Home"
+          ? 0
+          : key === "End"
+            ? project.pages.length - 1
+            : Math.max(0, Math.min(project.pages.length - 1, from + (key === "ArrowUp" ? -1 : 1)));
       if (event.shiftKey) {
         // Extend from the anchor; the page worked on moves along.
         const anchor = this.anchor ? pageIndex(project, this.anchor) : from;

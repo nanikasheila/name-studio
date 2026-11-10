@@ -54,10 +54,20 @@ function moves(side: CalloutSide): [number, number][] {
   return out.sort((x, y) => x[2] - y[2]).map(([dx, dy]) => [dx, dy]);
 }
 
-const MOVES: Record<CalloutSide, [number, number][]> = { right: moves("right"), below: moves("below"), above: moves("above"), inside: moves("inside") };
+const MOVES: Record<CalloutSide, [number, number][]> = {
+  right: moves("right"),
+  below: moves("below"),
+  above: moves("above"),
+  inside: moves("inside"),
+};
 
 function overlaps(a: Box, b: Box): boolean {
-  return a.left < b.left + b.width + MARGIN && b.left < a.left + a.width + MARGIN && a.top < b.top + b.height + MARGIN && b.top < a.top + a.height + MARGIN;
+  return (
+    a.left < b.left + b.width + MARGIN &&
+    b.left < a.left + a.width + MARGIN &&
+    a.top < b.top + b.height + MARGIN &&
+    b.top < a.top + a.height + MARGIN
+  );
 }
 
 function within(box: Box, view: { width: number; height: number }): boolean {
@@ -88,7 +98,12 @@ function nearestFree(start: Box, view: { width: number; height: number }, free: 
  * clear of `blocked` (the header, say), of the words placed before and of the
  * parts beside which words go.
  */
-export function placeCallouts(requests: readonly CalloutRequest[], view: { width: number; height: number }, blocked: readonly Box[] = [], gap = 26): Callout[] {
+export function placeCallouts(
+  requests: readonly CalloutRequest[],
+  view: { width: number; height: number },
+  blocked: readonly Box[] = [],
+  gap = 26,
+): Callout[] {
   const taken: Box[] = [...blocked, ...requests.filter((r) => r.side !== "inside").map((r) => r.anchor)];
   return requests.map((request) => {
     const { anchor, side, width, height } = request;

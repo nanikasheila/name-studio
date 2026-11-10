@@ -99,7 +99,8 @@ function edgeLines(panel: Panel, straighten: boolean): EdgeLine[] {
       const [line, next] = [lines[i], lines[(i + 1) % lines.length]];
       if (dot(line.n, next.n) < Math.cos((2 * Math.PI) / 180)) continue;
       const [la, lb] = [length(line), length(next)];
-      if (line.facing && line.facing === next.facing) setFacing(line, line.facing, (lineValue(line) * la + lineValue(next) * lb) / (la + lb));
+      if (line.facing && line.facing === next.facing)
+        setFacing(line, line.facing, (lineValue(line) * la + lineValue(next) * lb) / (la + lb));
       else line.c = (line.c * la + dot(line.n, [(next.a[0] + next.b[0]) / 2, (next.a[1] + next.b[1]) / 2]) * lb) / (la + lb);
       line.b = next.b;
       line.open = line.open && next.open;
@@ -135,7 +136,8 @@ function believable(before: readonly Point[], after: readonly Point[], edge?: re
   if (ratio < 0.5 || ratio > 2) return false;
   const [x0, y0, x1, y1] = bounds(before);
   const reach = 25;
-  const near = (value: number, low: number, high: number, end: number) => (value > low - reach && value < high + reach) || (edge && (value === 0 || value === end));
+  const near = (value: number, low: number, high: number, end: number) =>
+    (value > low - reach && value < high + reach) || (edge && (value === 0 || value === end));
   return after.every(([x, y]) => near(x, x0, x1, edge?.[0] ?? 0) && near(y, y0, y1, edge?.[1] ?? 0));
 }
 
@@ -233,7 +235,10 @@ function spaceGroups(before: Group, after: Group, gap: number): boolean {
 /** Neighbours across level or upright gutters: right edges with left ones, bottom edges with top ones. */
 function spaceAxisGutters(groups: Map<Facing, Group[]>, gaps: Gutters): void {
   const pairs: { before: Group; after: Group; gap: number; width: number }[] = [];
-  for (const [first, second, gap] of [["right", "left", gaps.across], ["bottom", "top", gaps.down]] as const) {
+  for (const [first, second, gap] of [
+    ["right", "left", gaps.across],
+    ["bottom", "top", gaps.down],
+  ] as const) {
     for (const before of groups.get(first) ?? []) {
       for (const after of groups.get(second) ?? []) {
         const width = after.value - before.value;
@@ -323,7 +328,8 @@ export function tidyPanels(project: Project, page: Page, ids: readonly string[])
   const gaps = gutters(project);
   spaceAxisGutters(groups, gaps);
   for (const found of groups.values()) {
-    for (const group of found) for (const { panel, line } of group.members) if (panel < targets.length) setFacing(line, group.facing, group.value);
+    for (const group of found)
+      for (const { panel, line } of group.members) if (panel < targets.length) setFacing(line, group.facing, group.value);
   }
   spaceSlantedGutters(
     edges.filter((edge) => targets[edge.panel]?.draft),
@@ -340,7 +346,11 @@ export function tidyPanels(project: Project, page: Page, ids: readonly string[])
     const onEdge = ([x, y]: Point) => x <= 0.05 || x >= w - 0.05 || y <= 0.05 || y >= h - 0.05;
     const open = lines[index].flatMap((line, i) => {
       const [a, b] = [shape[i], shape[(i + 1) % shape.length]];
-      const sameSide = (a[0] <= 0.05 && b[0] <= 0.05) || (a[0] >= w - 0.05 && b[0] >= w - 0.05) || (a[1] <= 0.05 && b[1] <= 0.05) || (a[1] >= h - 0.05 && b[1] >= h - 0.05);
+      const sameSide =
+        (a[0] <= 0.05 && b[0] <= 0.05) ||
+        (a[0] >= w - 0.05 && b[0] >= w - 0.05) ||
+        (a[1] <= 0.05 && b[1] <= 0.05) ||
+        (a[1] >= h - 0.05 && b[1] >= h - 0.05);
       return line.open || (sameSide && onEdge(a) && onEdge(b)) ? [i] : [];
     });
     if (open.length) panel.openEdges = open;

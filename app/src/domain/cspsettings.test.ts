@@ -124,7 +124,14 @@ describe("drawing values from the CSP settings", () => {
   it("tapers only when 入り抜き changes the size (its 影響先)", () => {
     const tool = maruPen();
     // As CSP's Gペン: 入り and 抜き set, but changing nothing.
-    setSetting(tool, "BrushInOutTarget", inOutTargetsBytes([{ item: 1001, on: false, min: 0 }, { item: 1021, on: false, min: 0 }]));
+    setSetting(
+      tool,
+      "BrushInOutTarget",
+      inOutTargetsBytes([
+        { item: 1001, on: false, min: 0 },
+        { item: 1021, on: false, min: 0 },
+      ]),
+    );
     expect(drawnValues(tool, "pen").taperInMm).toBe(0);
     setSetting(tool, "BrushInOutTarget", inOutTargetsBytes([{ item: 1001, on: true, min: 10 }]));
     const values = drawnValues(tool, "pen");

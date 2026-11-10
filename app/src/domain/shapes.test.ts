@@ -2,7 +2,23 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { addScene } from "./cast";
 import { newProject } from "./project";
 import { STRUCTURES } from "./structures";
-import { addBeat, adoptShape, beatPage, currentShape, editableShape, makeShape, MIN_SHARE, moveBoundary, pageParts, removePart, removeShape, setBeat, shapeSpans, splitPart, storyShapes } from "./shapes";
+import {
+  addBeat,
+  adoptShape,
+  beatPage,
+  currentShape,
+  editableShape,
+  makeShape,
+  MIN_SHARE,
+  moveBoundary,
+  pageParts,
+  removePart,
+  removeShape,
+  setBeat,
+  shapeSpans,
+  splitPart,
+  storyShapes,
+} from "./shapes";
 import { keepShape, libraryShapes } from "../platform/prefs";
 import { moveSceneEdge, planAdvice, sceneSpans, setStoryRank, timeline } from "./story";
 
@@ -26,7 +42,15 @@ describe("話の型", () => {
   });
 
   it("gives every part a page and ends on the last page", () => {
-    const shape = { id: "x", label: "x", parts: [{ name: "a", share: 0.98 }, { name: "b", share: 0.01 }, { name: "c", share: 0.01 }] };
+    const shape = {
+      id: "x",
+      label: "x",
+      parts: [
+        { name: "a", share: 0.98 },
+        { name: "b", share: 0.01 },
+        { name: "c", share: 0.01 },
+      ],
+    };
     expect(range(shapeSpans(shape, 5))).toEqual(["1-3", "4-4", "5-5"]);
     expect(shapeSpans(shape, 2)).toEqual([]);
   });
@@ -94,7 +118,8 @@ describe("話の型", () => {
 });
 
 describe("全体ボードでの直し", () => {
-  const titles = (project: ReturnType<typeof newProject>) => sceneSpans(project).map((s) => `${s.scene.title}:${s.first + 1}-${s.last + 1}`);
+  const titles = (project: ReturnType<typeof newProject>) =>
+    sceneSpans(project).map((s) => `${s.scene.title}:${s.first + 1}-${s.last + 1}`);
 
   it("moves a scene end, and the scene next to it follows", () => {
     const project = newProject("t", 10);

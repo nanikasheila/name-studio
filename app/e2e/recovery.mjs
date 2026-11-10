@@ -33,8 +33,24 @@ try {
       });
       const kept = [
         { file: "cut-01.json", timeMs: now - 60_000, recovery: null, unreadable: "控えのファイルが壊れています: EOF while parsing" },
-        { file: "dai4-02.json", timeMs: now - 3_600_000, recovery: { path: "C:\\ネーム\\第4話.namestudio", timeMs: now - 3_600_000, project: project("第4話", 24), problems: ["重なった id"] }, unreadable: null },
-        { file: "untitled.json", timeMs: now - 7_200_000, recovery: { path: null, timeMs: now - 7_200_000, project: project("読み切り", 8) }, unknownFields: ["pages.strokes.wobble"], unreadable: null },
+        {
+          file: "dai4-02.json",
+          timeMs: now - 3_600_000,
+          recovery: {
+            path: "C:\\ネーム\\第4話.namestudio",
+            timeMs: now - 3_600_000,
+            project: project("第4話", 24),
+            problems: ["重なった id"],
+          },
+          unreadable: null,
+        },
+        {
+          file: "untitled.json",
+          timeMs: now - 7_200_000,
+          recovery: { path: null, timeMs: now - 7_200_000, project: project("読み切り", 8) },
+          unknownFields: ["pages.strokes.wobble"],
+          unreadable: null,
+        },
       ];
       window.__answer = (command, args) => {
         switch (command) {
@@ -64,10 +80,21 @@ try {
   const rows = dialog.locator(".rc-item");
   check((await page.locator("#rc-count").textContent()).includes("3 件"), "all three kept names are offered, not just the newest");
   const texts = await rows.allTextContents();
-  check(texts[0].startsWith("読めない控え（cut-01.json）") && texts[0].includes("控えのファイルが壊れています"), `the one that cannot be read is there, with why (${texts[0].slice(0, 40)})`);
+  check(
+    texts[0].startsWith("読めない控え（cut-01.json）") && texts[0].includes("控えのファイルが壊れています"),
+    `the one that cannot be read is there, with why (${texts[0].slice(0, 40)})`,
+  );
   check((await rows.nth(0).getByText("復元する").count()) === 0, "it cannot be brought back, only removed");
-  check(texts[1].includes("第4話") && texts[1].includes("24 ページ・今日 11:00:00 の自動保存・C:\\ネーム\\第4話.namestudio") && texts[1].includes("直せる問題が 1 か所"), `each says what it is, when and where (${texts[1].slice(0, 60)})`);
-  check(texts[2].includes("まだ保存していないネーム") && texts[2].includes("この版が知らない項目"), "and what a newer version added that this one does not show");
+  check(
+    texts[1].includes("第4話") &&
+      texts[1].includes("24 ページ・今日 11:00:00 の自動保存・C:\\ネーム\\第4話.namestudio") &&
+      texts[1].includes("直せる問題が 1 か所"),
+    `each says what it is, when and where (${texts[1].slice(0, 60)})`,
+  );
+  check(
+    texts[2].includes("まだ保存していないネーム") && texts[2].includes("この版が知らない項目"),
+    "and what a newer version added that this one does not show",
+  );
 
   await page.evaluate(() => {
     window.__decline = true;
@@ -96,7 +123,10 @@ try {
   await second.locator(".rc-item", { hasText: "読み切り" }).getByText("復元する").click();
   await again.page.waitForFunction(() => window.nameStudio.workbench.project?.title === "読み切り");
   check(!(await second.isVisible()) && (await again.page.locator("#editor").isVisible()), "復元する opens it in the editor");
-  check((await again.page.locator("#status").textContent()).includes("の自動保存から復元しました"), "as unsaved changes from that autosave");
+  check(
+    (await again.page.locator("#status").textContent()).includes("の自動保存から復元しました"),
+    "as unsaved changes from that autosave",
+  );
   const warning = await again.page.locator("#alerts .alert.warning").allTextContents();
   check(warning.length === 1 && warning[0].includes("pages.strokes.wobble"), "saying what this version does not show of it");
   check((await again.page.evaluate(() => window.__removed.length)) === 0, "nothing else is removed");

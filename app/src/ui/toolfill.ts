@@ -78,7 +78,13 @@ const fill: DragHandler<DragOf<"fill">> = {
     const page = drag.slot.page;
     if (drag.way === "remaining") {
       const path = outline(drag.points, 0.2);
-      addRegions(editor, project, page, fillUnder(project, page, path, editor.fill.brushMm / 2, editor.fill.options.remaining), "remaining");
+      addRegions(
+        editor,
+        project,
+        page,
+        fillUnder(project, page, path, editor.fill.brushMm / 2, editor.fill.options.remaining),
+        "remaining",
+      );
       return;
     }
     const shape = outline(drag.points, 0.4);

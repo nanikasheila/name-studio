@@ -78,7 +78,12 @@ export function noteBox(ctx: CanvasRenderingContext2D, slot: Slot, panel: Panel,
   const w = rows.length ? Math.min(room, Math.max(...rows.map((row) => ctx.measureText(row).width)) + 10) : 52;
   const h = Math.max(rows.length, 1) * NOTE_ROW + 4;
   // The top left corner, or another one when dialogue is there (balloons start at the top right).
-  const [sl, sr, st, sb] = [slot.x + left * slot.scale + 4, slot.x + right * slot.scale - 4 - w, slot.y + top * slot.scale + 4, slot.y + bottom * slot.scale - 4 - h];
+  const [sl, sr, st, sb] = [
+    slot.x + left * slot.scale + 4,
+    slot.x + right * slot.scale - 4 - w,
+    slot.y + top * slot.scale + 4,
+    slot.y + bottom * slot.scale - 4 - h,
+  ];
   const corners: [number, number][] = [
     [sl, st],
     [sl, sb],
@@ -127,7 +132,14 @@ export function drawNote(ctx: CanvasRenderingContext2D, slot: Slot, panel: Panel
  * it is outlined, and `handle` (a radius) draws the handle that ties it to a
  * panel or a line.
  */
-export function drawSticky(ctx: CanvasRenderingContext2D, slot: Slot, sticky: Sticky, selected: boolean, handle: number | null, open = selected): void {
+export function drawSticky(
+  ctx: CanvasRenderingContext2D,
+  slot: Slot,
+  sticky: Sticky,
+  selected: boolean,
+  handle: number | null,
+  open = selected,
+): void {
   const [x0, y0, x1, y1] = stickyBox(sticky, open);
   const sx = slot.x + x0 * slot.scale;
   const sy = slot.y + y0 * slot.scale;
@@ -175,7 +187,14 @@ export function drawSticky(ctx: CanvasRenderingContext2D, slot: Slot, sticky: St
 }
 
 /** A line from a point on the page to the nearest edge of a box (screen px), with a dot at the point. */
-export function drawLeader(ctx: CanvasRenderingContext2D, ax: number, ay: number, [x0, y0, x1, y1]: BoxMm, color: string, dot = "#fff6c2"): void {
+export function drawLeader(
+  ctx: CanvasRenderingContext2D,
+  ax: number,
+  ay: number,
+  [x0, y0, x1, y1]: BoxMm,
+  color: string,
+  dot = "#fff6c2",
+): void {
   const nx = Math.min(Math.max(ax, x0), x1);
   const ny = Math.min(Math.max(ay, y0), y1);
   ctx.save();

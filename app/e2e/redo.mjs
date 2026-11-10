@@ -73,7 +73,10 @@ try {
   check(held === 1 && (await memos()) === "メモ2,メモ2,メモ4", `a page held (${await memos()})`);
   await toCanvas();
   await page.keyboard.press("Control+z");
-  check((await memos()) === changed && (await wb(() => window.nameStudio.workbench.project.heldPages?.length ?? 0)) === 0, "undo puts the held page back");
+  check(
+    (await memos()) === changed && (await wb(() => window.nameStudio.workbench.project.heldPages?.length ?? 0)) === 0,
+    "undo puts the held page back",
+  );
   await page.keyboard.press("Control+y");
   check((await memos()) === "メモ2,メモ2,メモ4", "redo holds it again");
   await page.keyboard.press("Control+z");
@@ -83,7 +86,10 @@ try {
   const d = await depth();
   await wb(() => window.nameStudio.workbench.edit(() => {}));
   await toCanvas();
-  check(JSON.stringify(await depth()) === JSON.stringify(d), `a change that changed nothing is no step and keeps the redo (${JSON.stringify(d)})`);
+  check(
+    JSON.stringify(await depth()) === JSON.stringify(d),
+    `a change that changed nothing is no step and keeps the redo (${JSON.stringify(d)})`,
+  );
   await page.keyboard.press("Control+y");
   check((await memos()) === changed, "and redo still works after it");
 
@@ -115,7 +121,10 @@ try {
   check((await names()) === "新しいペン", "Ctrl+Z there undoes the copy");
   check((await page.locator("#be-list").textContent()).includes("のコピー") === false, "and the list shows it");
   await page.keyboard.press("Control+y");
-  check((await names()) === "新しいペン,新しいペン のコピー" && (await page.locator("#be-list").textContent()).includes("のコピー"), "Ctrl+Y brings it back, in the list too");
+  check(
+    (await names()) === "新しいペン,新しいペン のコピー" && (await page.locator("#be-list").textContent()).includes("のコピー"),
+    "Ctrl+Y brings it back, in the list too",
+  );
   check(await page.locator("#brush-editor").evaluate((dialog) => dialog.open), "the pen settings stay open");
   await page.keyboard.press("Escape");
 

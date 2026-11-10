@@ -5,8 +5,21 @@ import type { Line, Page, Point } from "../model/model";
 import { emptyPage } from "../domain/project";
 import { tailGeometry } from "../domain/balloon";
 
-const rect = (x0: number, y0: number, x1: number, y1: number): Point[] => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
-const line = (id: string, box: [number, number, number, number], extra: Partial<Line> = {}): Line => ({ id, text: "あ", kind: "speech", box, fontSizePt: 9, vertical: true, ...extra });
+const rect = (x0: number, y0: number, x1: number, y1: number): Point[] => [
+  [x0, y0],
+  [x1, y0],
+  [x1, y1],
+  [x0, y1],
+];
+const line = (id: string, box: [number, number, number, number], extra: Partial<Line> = {}): Line => ({
+  id,
+  text: "あ",
+  kind: "speech",
+  box,
+  fontSizePt: 9,
+  vertical: true,
+  ...extra,
+});
 const state = (more: Partial<PickState> = {}): PickState => ({ open: () => false, selectedLine: null, editable: () => true, ...more });
 
 /** A page: a panel over the whole of it with an inset, a fill, a rough line across, two lines, and a 付箋 beside the page. */
@@ -18,7 +31,17 @@ function page(): Page {
       { id: "inset", shape: rect(60, 60, 90, 90), order: 1, z: 1 },
     ],
     fills: [{ id: "fill", shape: rect(10, 60, 30, 80), tone: "black" }] as Page["fills"],
-    strokes: [{ id: "stroke", points: [[0, 50, 1], [100, 50, 1]], widthMm: 0.5, closed: false }],
+    strokes: [
+      {
+        id: "stroke",
+        points: [
+          [0, 50, 1],
+          [100, 50, 1],
+        ],
+        widthMm: 0.5,
+        closed: false,
+      },
+    ],
     lines: [line("a", [40, 10, 50, 30]), line("b", [45, 20, 55, 40])],
     stickies: [{ id: "sticky", text: "メモ", at: [110, 5] }],
   };

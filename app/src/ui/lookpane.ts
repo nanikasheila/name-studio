@@ -112,7 +112,13 @@ export class LookPane {
       .then((safe) => {
         this.safe = safe && this.kept.cssOn;
         applyLook(this.onScreen());
-        if (this.safe) showAlert("look-safe", "Shift を押しながら起動したので、今回はカスタム CSS を当てていません。設定 › 画面の見た目 で直すか切ってください。", "warning", 20);
+        if (this.safe)
+          showAlert(
+            "look-safe",
+            "Shift を押しながら起動したので、今回はカスタム CSS を当てていません。設定 › 画面の見た目 で直すか切ってください。",
+            "warning",
+            20,
+          );
       });
   }
 
@@ -220,7 +226,12 @@ export class LookPane {
   private showBar(): void {
     if (!this.trial) return;
     if (!this.bar) {
-      const keep = element("button", { type: "button", className: "primary", textContent: "このままにする", title: "このカスタム CSS を残す（次の起動からも使う）" });
+      const keep = element("button", {
+        type: "button",
+        className: "primary",
+        textContent: "このままにする",
+        title: "このカスタム CSS を残す（次の起動からも使う）",
+      });
       keep.addEventListener("click", () => {
         this.endTrial(true);
         this.status("カスタム CSS を残しました（次の起動からも使います）");
@@ -230,7 +241,13 @@ export class LookPane {
         this.endTrial(false);
         this.status("カスタム CSS を元に戻しました");
       });
-      this.bar = element("div", { id: "look-trial", className: "look-trial" }, element("span", { className: "look-trial-text" }), keep, back);
+      this.bar = element(
+        "div",
+        { id: "look-trial", className: "look-trial" },
+        element("span", { className: "look-trial-text" }),
+        keep,
+        back,
+      );
       this.bar.setAttribute("role", "alertdialog");
       this.bar.setAttribute("aria-label", "カスタム CSS を残すか");
     }
@@ -266,11 +283,21 @@ export class LookPane {
         card.setAttribute("aria-checked", String(theme.id === current));
         // The sample in the theme's own colours (Windows に合わせる: light and dark side by side).
         const sample = (id: ThemeId) => {
-          const look = element("span", { className: "theme-sample" }, element("i", { className: "ts-bar" }), element("i", { className: "ts-side" }), element("i", { className: "ts-page" }), element("i", { className: "ts-accent" }));
+          const look = element(
+            "span",
+            { className: "theme-sample" },
+            element("i", { className: "ts-bar" }),
+            element("i", { className: "ts-side" }),
+            element("i", { className: "ts-page" }),
+            element("i", { className: "ts-accent" }),
+          );
           look.dataset.theme = id;
           return look;
         };
-        const samples = theme.id === "system" ? element("span", { className: "theme-samples split" }, sample("light"), sample("dark")) : element("span", { className: "theme-samples" }, sample(theme.id));
+        const samples =
+          theme.id === "system"
+            ? element("span", { className: "theme-samples split" }, sample("light"), sample("dark"))
+            : element("span", { className: "theme-samples" }, sample(theme.id));
         card.append(samples, element("span", { className: "theme-name", textContent: theme.label }));
         card.addEventListener("click", () => {
           this.change({ theme: theme.id });

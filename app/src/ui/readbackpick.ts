@@ -15,7 +15,8 @@ export function chooseTakeBack(plan: TakeBack, where: string): Promise<TakeBack 
     list.push(box);
     return element("label", { className: "check readback-item" }, box, text);
   };
-  const section = (title: string, rows: HTMLElement[]) => (rows.length ? [element("h4", { textContent: `${title}（${rows.length}）` }), ...rows] : []);
+  const section = (title: string, rows: HTMLElement[]) =>
+    rows.length ? [element("h4", { textContent: `${title}（${rows.length}）` }), ...rows] : [];
   const go = element("button", { type: "button", className: "primary", id: "readback-go" });
   const count = () => Object.values(boxes).reduce((sum, list) => sum + list.filter((box) => box.checked).length, 0);
   const update = () => {
@@ -26,17 +27,34 @@ export function chooseTakeBack(plan: TakeBack, where: string): Promise<TakeBack 
   const none = element("button", { type: "button", textContent: "全部外す" });
   const stop = element("button", { type: "button", textContent: "やめる" });
   const conflicts = plan.conflicts.length
-    ? [element("p", { className: "hint", textContent: `ネームでも変えていたので、ネームのままにするもの ${plan.conflicts.length}: ${plan.conflicts.map((c) => `${c.page + 1}p「${flat(c.csp)}」`).join("、")}` })]
+    ? [
+        element("p", {
+          className: "hint",
+          textContent: `ネームでも変えていたので、ネームのままにするもの ${plan.conflicts.length}: ${plan.conflicts.map((c) => `${c.page + 1}p「${flat(c.csp)}」`).join("、")}`,
+        }),
+      ]
     : [];
   dialog.append(
     element("h3", { textContent: "CSP で変えたセリフを読み戻す" }),
-    element("p", { className: "hint", textContent: `${where} のページ。外したものはネームのまま（次の「セリフだけ反映」で CSP もネームに合わせます）。元に戻すは Ctrl+Z。` }),
+    element("p", {
+      className: "hint",
+      textContent: `${where} のページ。外したものはネームのまま（次の「セリフだけ反映」で CSP もネームに合わせます）。元に戻すは Ctrl+Z。`,
+    }),
     element(
       "div",
       { className: "readback-list" },
-      ...section("CSP で直した", plan.retyped.map((r) => row(boxes.retyped, `${r.page + 1}p「${flat(r.from)}」→「${flat(r.to)}」`))),
-      ...section("CSP で足した", plan.added.map((a) => row(boxes.added, `${a.page + 1}p「${flat(a.text)}」`))),
-      ...section("CSP で消した", plan.removed.map((r) => row(boxes.removed, `${r.page + 1}p「${flat(r.text)}」`))),
+      ...section(
+        "CSP で直した",
+        plan.retyped.map((r) => row(boxes.retyped, `${r.page + 1}p「${flat(r.from)}」→「${flat(r.to)}」`)),
+      ),
+      ...section(
+        "CSP で足した",
+        plan.added.map((a) => row(boxes.added, `${a.page + 1}p「${flat(a.text)}」`)),
+      ),
+      ...section(
+        "CSP で消した",
+        plan.removed.map((r) => row(boxes.removed, `${r.page + 1}p「${flat(r.text)}」`)),
+      ),
     ),
     ...conflicts,
     element("div", { className: "actions" }, all, none, stop, go),
@@ -63,7 +81,13 @@ export function chooseTakeBack(plan: TakeBack, where: string): Promise<TakeBack 
       close(null);
     });
     go.addEventListener("click", () =>
-      close(pickTakeBack(plan, { retyped: boxes.retyped.map((b) => b.checked), added: boxes.added.map((b) => b.checked), removed: boxes.removed.map((b) => b.checked) })),
+      close(
+        pickTakeBack(plan, {
+          retyped: boxes.retyped.map((b) => b.checked),
+          added: boxes.added.map((b) => b.checked),
+          removed: boxes.removed.map((b) => b.checked),
+        }),
+      ),
     );
   });
 }

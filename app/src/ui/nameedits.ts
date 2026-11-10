@@ -81,7 +81,12 @@ export class NameEdits {
     this.edit((p) => {
       switch (change.kind) {
         case "add": {
-          const layer = addRoughLayer(p, `ラフ線 ${roughLayersOf(p).length + 1}`, () => newId(p, "rough"), layerOf(p, { layer: this.editor.roughLayer }).id);
+          const layer = addRoughLayer(
+            p,
+            `ラフ線 ${roughLayersOf(p).length + 1}`,
+            () => newId(p, "rough"),
+            layerOf(p, { layer: this.editor.roughLayer }).id,
+          );
           this.editor.roughLayer = layer.id;
           message = `レイヤー「${layer.name}」を足しました。ペンはこのレイヤーに描きます（名前はダブルクリックで変えられます）`;
           break;
@@ -108,11 +113,18 @@ export class NameEdits {
         case "remove": {
           const { name, marks } = layerOf(p, { layer: change.id });
           const count = removeRoughLayer(p, change.id, change.mergeDown);
-          message = change.mergeDown ? `「${name}」を下のレイヤーと結合しました（${count} 本）` : `レイヤー「${name}」を消しました（${marks ? "指示" : "ラフ線"} ${count} 本、Ctrl+Z で戻せます）`;
+          message = change.mergeDown
+            ? `「${name}」を下のレイヤーと結合しました（${count} 本）`
+            : `レイヤー「${name}」を消しました（${marks ? "指示" : "ラフ線"} ${count} 本、Ctrl+Z で戻せます）`;
           break;
         }
         case "duplicate": {
-          const layer = duplicateRoughLayer(p, change.id, () => newId(p, "rough"), () => newId(p, "stroke"));
+          const layer = duplicateRoughLayer(
+            p,
+            change.id,
+            () => newId(p, "rough"),
+            () => newId(p, "stroke"),
+          );
           if (!layer) break;
           if (layer.marks) markPen.layer = layer.id;
           else this.editor.roughLayer = layer.id;
@@ -142,7 +154,9 @@ export class NameEdits {
     const picked = pickedStrokes(this.editor.selection);
     if (picked.length && this.editor.selection) {
       const page = project.pages.find((one) => one.id === this.editor.selection?.pageId);
-      const stuck = page?.strokes.some((stroke) => picked.includes(stroke.id) && (layerOf(project, stroke).hidden || layerOf(project, stroke).locked));
+      const stuck = page?.strokes.some(
+        (stroke) => picked.includes(stroke.id) && (layerOf(project, stroke).hidden || layerOf(project, stroke).locked),
+      );
       if (stuck) this.editor.select(null);
     }
     if (message) this.status(message);
@@ -154,7 +168,9 @@ export class NameEdits {
   private selectLayerLines(project: Project, id: string): void {
     const page = this.editor.focusPage();
     const layer = layerOf(project, { layer: id });
-    const items: ItemRef[] = (page?.strokes ?? []).filter((stroke) => layerOf(project, stroke).id === layer.id).map((stroke) => ({ kind: "stroke", id: stroke.id }));
+    const items: ItemRef[] = (page?.strokes ?? [])
+      .filter((stroke) => layerOf(project, stroke).id === layer.id)
+      .map((stroke) => ({ kind: "stroke", id: stroke.id }));
     if (!page || !items.length) {
       this.status(`このページには「${layer.name}」の線がありません`);
       return;
@@ -163,7 +179,9 @@ export class NameEdits {
       this.status(`「${layer.name}」は${layer.hidden ? "隠して" : "ロックして"}あるので選べません`);
       return;
     }
-    this.editor.select(items.length === 1 ? { kind: "stroke", pageId: page.id, id: items[0].id } : { kind: "group", pageId: page.id, id: "group", items });
+    this.editor.select(
+      items.length === 1 ? { kind: "stroke", pageId: page.id, id: items[0].id } : { kind: "group", pageId: page.id, id: "group", items },
+    );
     this.status(`「${layer.name}」の線 ${items.length} 本を選びました`);
     this.host.renderAll();
   }
@@ -174,9 +192,17 @@ export class NameEdits {
     if (!pageId) return;
     const items: ItemRef[] = refs
       .filter((ref) => ref.pageId === pageId)
-      .flatMap((ref): ItemRef[] => (ref.kind === "strokes" ? ref.ids.map((id) => ({ kind: "stroke" as const, id })) : ref.kind === "sticky" ? [] : [{ kind: ref.kind, id: ref.id }]));
+      .flatMap((ref): ItemRef[] =>
+        ref.kind === "strokes"
+          ? ref.ids.map((id) => ({ kind: "stroke" as const, id }))
+          : ref.kind === "sticky"
+            ? []
+            : [{ kind: ref.kind, id: ref.id }],
+      );
     if (!items.length) return;
-    this.editor.select(items.length === 1 ? { kind: items[0].kind, pageId, id: items[0].id } : { kind: "group", pageId, id: "group", items });
+    this.editor.select(
+      items.length === 1 ? { kind: items[0].kind, pageId, id: items[0].id } : { kind: "group", pageId, id: "group", items },
+    );
     if (refs.some((ref) => ref.pageId !== pageId)) this.status("一緒に選べるのは同じページのものだけです");
     this.host.renderAll();
   }
@@ -205,7 +231,8 @@ export class NameEdits {
       ];
     });
     const panels = items.filter((item) => item.kind === "panel");
-    if (panels.length === 1 && items.every((item) => item.kind !== "fill" && item.kind !== "breakout")) this.editor.select({ kind: "panel", pageId: page.id, id: panels[0].id });
+    if (panels.length === 1 && items.every((item) => item.kind !== "fill" && item.kind !== "breakout"))
+      this.editor.select({ kind: "panel", pageId: page.id, id: panels[0].id });
     else if (items.length > 1) this.editor.select({ kind: "group", pageId: page.id, id: "group", items });
     else if (items.length) this.editor.select({ kind: items[0].kind, pageId: page.id, id: items[0].id });
     this.status("複製しました（元に戻すは Ctrl+Z）");
@@ -284,7 +311,9 @@ export class NameEdits {
       if (at && target) layAside(p, holdPanel(p, at, target), at);
     });
     this.editor.select(null);
-    this.status(`${index + 1} ページのコマ ${panel.order} を中身ごと保留にして、ページの上の欄外に置きました（ページへドラッグで戻せます。一覧は「保留」）`);
+    this.status(
+      `${index + 1} ページのコマ ${panel.order} を中身ごと保留にして、ページの上の欄外に置きました（ページへドラッグで戻せます。一覧は「保留」）`,
+    );
     this.host.renderAll();
   }
 
@@ -307,7 +336,13 @@ export class NameEdits {
     const page = (selection && project?.pages.find((p) => p.id === selection.pageId)) || this.editor.focusPage();
     if (!project || !page) return false;
     const chosen =
-      selection?.pageId !== page.id ? [] : selection.kind === "panel" ? [selection.id] : selection.kind === "group" ? (selection.items ?? []).filter((item) => item.kind === "panel").map((item) => item.id) : [];
+      selection?.pageId !== page.id
+        ? []
+        : selection.kind === "panel"
+          ? [selection.id]
+          : selection.kind === "group"
+            ? (selection.items ?? []).filter((item) => item.kind === "panel").map((item) => item.id)
+            : [];
     const targets = panelsToTidy(page, chosen);
     if (!targets.length) {
       this.status("整えるコマがありません");
@@ -317,7 +352,12 @@ export class NameEdits {
     let result = { tidied: 0, kept: 0 };
     this.edit((p) => {
       const at = p.pages.find((x) => x.id === page.id);
-      if (at) result = tidyPanels(p, at, targets.map((panel) => panel.id));
+      if (at)
+        result = tidyPanels(
+          p,
+          at,
+          targets.map((panel) => panel.id),
+        );
     });
     const index = project.pages.indexOf(page) + 1;
     const what = drafts === targets.length ? "仮のコマ" : "コマ";
@@ -373,7 +413,9 @@ export class NameEdits {
     const index = this.host.project()!.pages.findIndex((x) => x.id === to.id);
     this.editor.showPage(index + 1);
     this.editor.select({ kind: "panel", pageId: to.id, id: (moved as Panel).id });
-    this.status(`コマを中身ごと ${index + 1} ページへ移しました（コマ ${(moved as Panel).order}）。重なったら動かすか、コマ割りで整えてください`);
+    this.status(
+      `コマを中身ごと ${index + 1} ページへ移しました（コマ ${(moved as Panel).order}）。重なったら動かすか、コマ割りで整えてください`,
+    );
     this.host.renderAll();
   }
 
@@ -383,7 +425,11 @@ export class NameEdits {
     this.edit((p) => {
       for (const page of p.pages) if (!pageId || page.id === pageId) added += addAutoTails(page, p.binding);
     });
-    this.status(added ? `しっぽ ${added} 本を話者（コマのラフ）へ向けて付けました。丸い先をドラッグで直せます（元に戻すは Ctrl+Z）` : "しっぽのないセリフはありません");
+    this.status(
+      added
+        ? `しっぽ ${added} 本を話者（コマのラフ）へ向けて付けました。丸い先をドラッグで直せます（元に戻すは Ctrl+Z）`
+        : "しっぽのないセリフはありません",
+    );
     return added;
   }
 
@@ -396,7 +442,11 @@ export class NameEdits {
       if (!page) return;
       moved = panel ? arrangePanel(p, page, panel) : arrangePage(p, page);
     });
-    this.status(moved ? `セリフ ${moved} 個を読む順に並べ直しました（元に戻すは Ctrl+Z）` : "並べ直すセリフがありません（コマの中のセリフだけを並べます）");
+    this.status(
+      moved
+        ? `セリフ ${moved} 個を読む順に並べ直しました（元に戻すは Ctrl+Z）`
+        : "並べ直すセリフがありません（コマの中のセリフだけを並べます）",
+    );
   }
 
   /** はみ出したセリフ: the panels with dialogue spilling out laid out again. */

@@ -51,7 +51,13 @@ export function hasMarks(project: Pick<Project, "roughLayers" | "pages">): boole
 
 /** The 指示's colours to choose from: 赤・青・緑・橙・紫. */
 export const MARK_COLORS = ["#e53935", "#1e6fd9", "#2e9b4a", "#f08a00", "#8e3fb5"] as const;
-export const MARK_COLOR_NAMES: Record<(typeof MARK_COLORS)[number], string> = { "#e53935": "赤", "#1e6fd9": "青", "#2e9b4a": "緑", "#f08a00": "橙", "#8e3fb5": "紫" };
+export const MARK_COLOR_NAMES: Record<(typeof MARK_COLORS)[number], string> = {
+  "#e53935": "赤",
+  "#1e6fd9": "青",
+  "#2e9b4a": "緑",
+  "#f08a00": "橙",
+  "#8e3fb5": "紫",
+};
 export const MARK_LAYER_NAME = "指示";
 
 export function markColor(layer: Pick<RoughLayer, "color">): string {
@@ -133,7 +139,11 @@ export function renameRoughLayer(project: Project, id: string, name: string): vo
 }
 
 /** Change how a layer is shown (hidden, opacity, locked). */
-export function setRoughLayer(project: Project, id: string, change: Partial<Pick<RoughLayer, "hidden" | "opacity" | "locked" | "color">>): void {
+export function setRoughLayer(
+  project: Project,
+  id: string,
+  change: Partial<Pick<RoughLayer, "hidden" | "opacity" | "locked" | "color">>,
+): void {
   const layer = ownRoughLayers(project).find((l) => l.id === id);
   if (!layer) return;
   for (const [key, value] of Object.entries(change) as [keyof typeof change, unknown][]) {
@@ -193,7 +203,9 @@ export function duplicateRoughLayer(project: Project, id: string, newId: () => s
   const copy: RoughLayer = { ...structuredClone(look), id: newId(), name: freeLayerName(project, `${source.name}のコピー`) };
   layers.splice(at + 1, 0, copy);
   for (const page of project.pages) {
-    const copies = page.strokes.filter((stroke) => layerOf(project, stroke).id === id).map((stroke) => ({ ...structuredClone(stroke), id: strokeId(), layer: copy.id }));
+    const copies = page.strokes
+      .filter((stroke) => layerOf(project, stroke).id === id)
+      .map((stroke) => ({ ...structuredClone(stroke), id: strokeId(), layer: copy.id }));
     // Right above the lines they were copied from.
     if (copies.length) page.strokes.push(...copies);
   }
@@ -224,7 +236,15 @@ export function removeRoughLayer(project: Project, id: string, mergeDown: boolea
     else page.strokes = page.strokes.filter((stroke) => !on.includes(stroke.id));
   }
   layers.splice(at, 1);
-  if (layers.length === 1 && layers[0].id === ROUGH_BASE && !layers[0].hidden && !layers[0].opacity && !layers[0].locked && !layers[0].marks && layers[0].name === ROUGH_BASE_NAME) {
+  if (
+    layers.length === 1 &&
+    layers[0].id === ROUGH_BASE &&
+    !layers[0].hidden &&
+    !layers[0].opacity &&
+    !layers[0].locked &&
+    !layers[0].marks &&
+    layers[0].name === ROUGH_BASE_NAME
+  ) {
     delete project.roughLayers;
   }
   return count;
@@ -235,7 +255,10 @@ export function removeRoughLayer(project: Project, id: string, mergeDown: boolea
  * its はみ出し (over them), unlike each other and the page's other layers;
  * a 指示のレイヤー has one name (`under`).
  */
-export function roughExportNames(project: Pick<Project, "roughLayers">, reserved: readonly string[]): Map<string, { under: string; over: string }> {
+export function roughExportNames(
+  project: Pick<Project, "roughLayers">,
+  reserved: readonly string[],
+): Map<string, { under: string; over: string }> {
   const taken = new Set(reserved);
   const names = new Map<string, { under: string; over: string }>();
   const free = (name: string) => {

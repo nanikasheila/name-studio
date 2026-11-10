@@ -15,7 +15,14 @@ import { type LaneView, track } from "./boardview";
 import { inkOn } from "../editing/inkon";
 
 /** A page's picture, drawn again only when the page (or its size) changed: drawing every line of every page on each change is slow. */
-function thumb(view: LaneView, project: Project, page: Project["pages"][number], thumbWidth: number, thumbHeight: number, ratio: number): HTMLCanvasElement {
+function thumb(
+  view: LaneView,
+  project: Project,
+  page: Project["pages"][number],
+  thumbWidth: number,
+  thumbHeight: number,
+  ratio: number,
+): HTMLCanvasElement {
   const key = `${thumbWidth}|${thumbHeight}|${ratio}|${fingerprint(project.pageFormat)}|${fingerprint(page)}`;
   const kept = view.thumbs.get(page.id);
   if (kept?.key === key) return kept.canvas;
@@ -46,7 +53,11 @@ export function pageLane(view: LaneView, project: Project, thumbWidth: number, t
     card.style.width = `${thumbWidth}px`;
     const part = partOf(index);
     const scene = spans.find((span) => span.first === index);
-    const head = html("div", { className: "board-page-head", title: "ドラッグでページを移動（見開きは 2 ページ一緒に）" }, html("span", { textContent: String(index + 1) }));
+    const head = html(
+      "div",
+      { className: "board-page-head", title: "ドラッグでページを移動（見開きは 2 ページ一緒に）" },
+      html("span", { textContent: String(index + 1) }),
+    );
     if (part) {
       head.style.background = part.color;
       head.style.color = inkOn(part.color);
@@ -86,7 +97,12 @@ function panelShape(view: LaneView, project: Project, index: number, panel: Pane
   group.addEventListener("mousemove", (event) => {
     if (view.busy) return;
     const lines = page.lines.filter((line) => line.panel === panel.id).map((line) => line.text.replace(/\s+/g, " "));
-    view.tip.show(event, [`${index + 1} ページ コマ ${panel.order}`, ...(panel.note ? [`メモ: ${panel.note}`] : []), ...lines.slice(0, 3), "クリックで上に開く・ドラッグで別のコマと中身を入れ替え"]);
+    view.tip.show(event, [
+      `${index + 1} ページ コマ ${panel.order}`,
+      ...(panel.note ? [`メモ: ${panel.note}`] : []),
+      ...lines.slice(0, 3),
+      "クリックで上に開く・ドラッグで別のコマと中身を入れ替え",
+    ]);
   });
   group.addEventListener("mouseleave", () => view.tip.hide());
   group.addEventListener("pointerdown", (down) => {
@@ -162,7 +178,9 @@ function pageDrag(view: LaneView, project: Project, index: number, head: HTMLEle
         const { boundary } = view.at(event);
         view.placeMark(marker, view.x(boundary));
         head.parentElement?.classList.add("dragging");
-        view.tip.show(event, [`${first === last ? `${first + 1} ページ` : `${first + 1}–${last + 1} ページ`}を ${boundary >= project.pages.length ? "最後" : `${boundary + 1} ページの前`}へ`]);
+        view.tip.show(event, [
+          `${first === last ? `${first + 1} ページ` : `${first + 1}–${last + 1} ページ`}を ${boundary >= project.pages.length ? "最後" : `${boundary + 1} ページの前`}へ`,
+        ]);
       },
       end: (event, moved) => {
         marker.remove();

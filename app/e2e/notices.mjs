@@ -34,7 +34,13 @@ const demo = (page) =>
 const status = (page) =>
   page.evaluate(() => {
     const s = document.getElementById("status");
-    return { text: s.textContent, error: s.classList.contains("error"), open: s.classList.contains("open"), role: s.getAttribute("role"), color: getComputedStyle(s).color };
+    return {
+      text: s.textContent,
+      error: s.classList.contains("error"),
+      open: s.classList.contains("open"),
+      role: s.getAttribute("role"),
+      color: getComputedStyle(s).color,
+    };
   });
 
 try {
@@ -44,16 +50,25 @@ try {
     Object.defineProperty(navigator, "userAgent", { get: () => "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" });
     window.__answer = (command) => {
       if (command === "choose_open") return "C:\\作品\\第4話.namestudio";
-      if (command === "load_project") throw "C:\\作品\\第4話.namestudio: プロセスはファイルにアクセスできません。別のプロセスが使用中です。 (os error 32)";
+      if (command === "load_project")
+        throw "C:\\作品\\第4話.namestudio: プロセスはファイルにアクセスできません。別のプロセスが使用中です。 (os error 32)";
       return undefined;
     };
   });
   const plain = await status(page);
   await page.click("#open");
-  await page.waitForFunction(() => document.getElementById("status").classList.contains("error"), null, { timeout: 5000 }).catch(() => undefined);
+  await page
+    .waitForFunction(() => document.getElementById("status").classList.contains("error"), null, { timeout: 5000 })
+    .catch(() => undefined);
   const failed = await status(page);
-  check(failed.error && failed.role === "alert" && failed.color !== plain.color, `a failure looks like one in the status line (${failed.color} against ${plain.color}, role ${failed.role})`);
-  check(failed.text.includes("開けませんでした") && failed.text.includes("ほかのアプリ") && failed.text.includes("閉じてから"), `it says what to do: ${failed.text}`);
+  check(
+    failed.error && failed.role === "alert" && failed.color !== plain.color,
+    `a failure looks like one in the status line (${failed.color} against ${plain.color}, role ${failed.role})`,
+  );
+  check(
+    failed.text.includes("開けませんでした") && failed.text.includes("ほかのアプリ") && failed.text.includes("閉じてから"),
+    `it says what to do: ${failed.text}`,
+  );
   check(!failed.text.includes("os error"), "and not the system's own words");
   const alert = await page.evaluate(() => document.querySelector("#alerts .alert.error")?.textContent ?? "");
   check(alert.includes("ほかのアプリ"), `it is shown over the page too (${alert.slice(0, 40)}…)`);
@@ -69,7 +84,10 @@ try {
   await page.mouse.click(600, 300);
   check(!(await status(page)).open, "a click elsewhere closes it");
   const logged = await page.evaluate(() => window.__calls.filter((c) => c.command === "log_error").map((c) => c.args.message));
-  check(logged.some((line) => line.includes("os error 32")), "the error as it came goes to the log");
+  check(
+    logged.some((line) => line.includes("os error 32")),
+    "the error as it came goes to the log",
+  );
   // The next message is an ordinary one again.
   await demo(page);
   await page.keyboard.press("F7");
@@ -79,10 +97,23 @@ try {
   // 大きめ: turned on in the settings, every button and field on screen is 28px or more.
   const small = (page, limit) =>
     page.evaluate((limit) => {
-      const seen = (e) => e.getClientRects().length > 0 && getComputedStyle(e).visibility !== "hidden" && e.getBoundingClientRect().top < innerHeight && e.getBoundingClientRect().left < innerWidth && e.getBoundingClientRect().bottom > 0;
-      return [...document.querySelectorAll("button, select, textarea, summary, input:not([type=checkbox], [type=radio], [type=range], [type=color])")]
+      const seen = (e) =>
+        e.getClientRects().length > 0 &&
+        getComputedStyle(e).visibility !== "hidden" &&
+        e.getBoundingClientRect().top < innerHeight &&
+        e.getBoundingClientRect().left < innerWidth &&
+        e.getBoundingClientRect().bottom > 0;
+      return [
+        ...document.querySelectorAll(
+          "button, select, textarea, summary, input:not([type=checkbox], [type=radio], [type=range], [type=color])",
+        ),
+      ]
         .filter((e) => seen(e) && !e.closest("dialog"))
-        .map((e) => [e.id || e.title || e.textContent.trim().slice(0, 12), Math.round(e.getBoundingClientRect().width), Math.round(e.getBoundingClientRect().height)])
+        .map((e) => [
+          e.id || e.title || e.textContent.trim().slice(0, 12),
+          Math.round(e.getBoundingClientRect().width),
+          Math.round(e.getBoundingClientRect().height),
+        ])
         .filter(([, w, h]) => Math.min(w, h) < limit);
     }, limit);
   const before = await small(page, 28);
@@ -93,7 +124,10 @@ try {
   await page.keyboard.press("Escape");
   const large = await small(page, 28);
   const textAfter = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize));
-  check(before.length > 0 && large.length === 0, `大きめ leaves nothing under 28px (${before.length} before, now ${JSON.stringify(large.slice(0, 5))})`);
+  check(
+    before.length > 0 && large.length === 0,
+    `大きめ leaves nothing under 28px (${before.length} before, now ${JSON.stringify(large.slice(0, 5))})`,
+  );
   check(textAfter === textBefore + 2, `and the words are a step larger (${textBefore} → ${textAfter} px)`);
   check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "the window still holds everything at 1366 px");
   await page.reload();
@@ -108,7 +142,9 @@ try {
   const where = () =>
     keys.evaluate(() => {
       const a = document.activeElement;
-      const part = ["dock-left", "editor-tools", "tool-options", "page-nav", "story", "dock-right"].find((id) => document.getElementById(id)?.contains(a));
+      const part = ["dock-left", "editor-tools", "tool-options", "page-nav", "story", "dock-right"].find((id) =>
+        document.getElementById(id)?.contains(a),
+      );
       return a?.id === "editor-canvas" ? "page" : (part ?? (a?.closest("header.toolbar") ? "top" : "nowhere"));
     });
   const round = [];

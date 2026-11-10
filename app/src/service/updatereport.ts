@@ -29,7 +29,11 @@ export function updatedPages(summary: DialogueUpdateSummary): UpdatedPage[] {
     else if (lost.length) parts.push(`「${lost.join("」「")}」レイヤーがないのでフキダシは前のまま`);
     if (page.problems.length) parts.push(`自己確認の問題: ${page.problems.join("／")}`);
     if (!parts.length) continue;
-    rows.push({ pages: page.pages, text: `${where(page.pages)}: ${parts.join("・")}`, attention: !!(page.conflicts.length || page.notFound.length || page.problems.length) });
+    rows.push({
+      pages: page.pages,
+      text: `${where(page.pages)}: ${parts.join("・")}`,
+      attention: !!(page.conflicts.length || page.notFound.length || page.problems.length),
+    });
   }
   return rows.sort((a, b) => a.pages[0] - b.pages[0]);
 }

@@ -4,16 +4,38 @@ import type { LayerView, SheetView } from "../model/types";
 
 function layer(id: number, parent: number | null, extra: Partial<LayerView> = {}): LayerView {
   return {
-    id, parent, depth: parent === null ? 0 : 1, name: `L${id}`, kind: "text", visible: true, opacity: 1,
-    hasPixels: false, pixelOrigin: [0, 0], pixelSize: null, vectors: [], texts: [], ...extra,
+    id,
+    parent,
+    depth: parent === null ? 0 : 1,
+    name: `L${id}`,
+    kind: "text",
+    visible: true,
+    opacity: 1,
+    hasPixels: false,
+    pixelOrigin: [0, 0],
+    pixelSize: null,
+    vectors: [],
+    texts: [],
+    ...extra,
   };
 }
 
 describe("spreads", () => {
   it("starts with a lone left page and pairs the rest right/left", () => {
-    expect(spreads(5, true)).toEqual([[null, 1], [2, 3], [4, 5]]);
-    expect(spreads(4, true)).toEqual([[null, 1], [2, 3], [4, null]]);
-    expect(spreads(3, false)).toEqual([[1, 2], [3, null]]);
+    expect(spreads(5, true)).toEqual([
+      [null, 1],
+      [2, 3],
+      [4, 5],
+    ]);
+    expect(spreads(4, true)).toEqual([
+      [null, 1],
+      [2, 3],
+      [4, null],
+    ]);
+    expect(spreads(3, false)).toEqual([
+      [1, 2],
+      [3, null],
+    ]);
     expect(spreads(0, true)).toEqual([]);
   });
 });
@@ -29,11 +51,17 @@ describe("effectiveVisibility", () => {
 describe("dialogueByPage", () => {
   it("assigns text to the page holding its centre, read top band first, right to left", () => {
     const text = (x: number, y: number, value: string) => ({
-      text: value, bbox: [x, y, x + 10, y + 40] as [number, number, number, number],
-      fontSizePx: 10, fontName: null, vertical: true, inBalloon: false,
+      text: value,
+      bbox: [x, y, x + 10, y + 40] as [number, number, number, number],
+      fontSizePx: 10,
+      fontName: null,
+      vertical: true,
+      inBalloon: false,
     });
     const sheet: SheetView = {
-      path: "", fileName: "", warnings: [],
+      path: "",
+      fileName: "",
+      warnings: [],
       canvas: { widthPx: 400, heightPx: 600, resolution: 600, isDoublePage: false },
       cells: [
         { index: 1, rect: { x0: 200, y0: 0, x1: 400, y1: 600 }, frame: null, spread_side: null },

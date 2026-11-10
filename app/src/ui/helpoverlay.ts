@@ -118,7 +118,8 @@ export class HelpOverlay {
   private layout(): void {
     const keys = (command?: string) => (command ? this.host.keysOf(command).slice(0, 2).map(keyLabel) : []);
     const overlay = keys("help.overlay")[0];
-    this.head.querySelector(".help-intro")!.textContent = `画面の各部の名前と使い方です。もっと細かいことは、ポインターを置くと下のヘルプの帯に出ます。クリック${overlay ? `・${overlay}` : ""}・Esc で閉じます。`;
+    this.head.querySelector(".help-intro")!.textContent =
+      `画面の各部の名前と使い方です。もっと細かいことは、ポインターを置くと下のヘルプの帯に出ます。クリック${overlay ? `・${overlay}` : ""}・Esc で閉じます。`;
     this.barToggle.textContent = helpBarShown() ? "ヘルプの帯を隠す" : "ヘルプの帯を出す";
     const spots: { spot: OverlaySpot; box: DOMRect; node: HTMLElement }[] = [];
     const seen = new Set<Element>();
@@ -139,13 +140,19 @@ export class HelpOverlay {
       if (spot.text) label.append(Object.assign(document.createElement("div"), { className: "help-label-text", textContent: spot.text }));
       if (spot.also) {
         title.append(Object.assign(document.createElement("span"), { className: "help-label-text", textContent: spot.also.name }));
-        for (const key of keys(spot.also.command).slice(0, 1)) title.append(Object.assign(document.createElement("kbd"), { textContent: key }));
+        for (const key of keys(spot.also.command).slice(0, 1))
+          title.append(Object.assign(document.createElement("kbd"), { textContent: key }));
       }
       return label;
     });
     this.labels.replaceChildren(...made);
     const head = this.head.getBoundingClientRect();
-    const requests: CalloutRequest[] = spots.map(({ spot, box }, i) => ({ anchor: boxOf(box), side: spot.side, width: made[i].offsetWidth, height: made[i].offsetHeight }));
+    const requests: CalloutRequest[] = spots.map(({ spot, box }, i) => ({
+      anchor: boxOf(box),
+      side: spot.side,
+      width: made[i].offsetWidth,
+      height: made[i].offsetHeight,
+    }));
     // The tools' words first (they line up with their buttons), then the bars', then the large parts' around them.
     const rank = { right: 0, above: 1, below: 2, inside: 3 };
     const order = requests.map((_, i) => i).sort((a, b) => rank[requests[a].side] - rank[requests[b].side]);
@@ -162,12 +169,20 @@ export class HelpOverlay {
       const box = spots[i].box;
       const frame = document.createElementNS(SVG, "rect");
       const pad = spots[i].spot.side === "inside" ? -3 : 2;
-      for (const [name, value] of Object.entries({ x: box.left - pad, y: box.top - pad, width: box.width + 2 * pad, height: box.height + 2 * pad, rx: 6 })) frame.setAttribute(name, String(value));
+      for (const [name, value] of Object.entries({
+        x: box.left - pad,
+        y: box.top - pad,
+        width: box.width + 2 * pad,
+        height: box.height + 2 * pad,
+        rx: 6,
+      }))
+        frame.setAttribute(name, String(value));
       frame.setAttribute("class", spots[i].spot.side === "inside" ? "help-area" : "help-target");
       marks.push(frame);
       if (line) {
         const path = document.createElementNS(SVG, "line");
-        for (const [name, value] of Object.entries({ x1: line[0], y1: line[1], x2: line[2], y2: line[3] })) path.setAttribute(name, String(value));
+        for (const [name, value] of Object.entries({ x1: line[0], y1: line[1], x2: line[2], y2: line[3] }))
+          path.setAttribute(name, String(value));
         path.setAttribute("class", "help-line");
         const dot = document.createElementNS(SVG, "circle");
         for (const [name, value] of Object.entries({ cx: line[0], cy: line[1], r: 2.5 })) dot.setAttribute(name, String(value));

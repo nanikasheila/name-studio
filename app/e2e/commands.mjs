@@ -62,7 +62,10 @@ try {
   await wb((ids) => window.nameStudio.workbench.editor.select({ kind: "panel", pageId: ids.page, id: ids.a }), ids);
   const before = await undos();
   check(await wb(() => window.nameStudio.workbench.run("panel.hold")), "the selected panel goes to 保留");
-  s = await wb(() => ({ held: window.nameStudio.workbench.project.held?.length ?? 0, panels: window.nameStudio.workbench.project.pages[0].panels.length }));
+  s = await wb(() => ({
+    held: window.nameStudio.workbench.project.held?.length ?? 0,
+    panels: window.nameStudio.workbench.project.pages[0].panels.length,
+  }));
   check(s.held === 1 && s.panels === 1 && (await undos()) === before + 1, `in one undo step (${JSON.stringify(s)})`);
 
   // Where it would go, while it is dragged from the 保留 list.
@@ -132,7 +135,10 @@ try {
     window.__picked = chooseTakeBack(plan, "out");
   });
   const go = page.locator("#readback-go");
-  check((await page.locator("#readback-pick .readback-item input:checked").count()) === 3 && (await go.textContent()) === "3 件を読み戻す", "every change is listed, ticked");
+  check(
+    (await page.locator("#readback-pick .readback-item input:checked").count()) === 3 && (await go.textContent()) === "3 件を読み戻す",
+    "every change is listed, ticked",
+  );
   await page.locator("#readback-pick .readback-item").filter({ hasText: "ねえ" }).locator("input").uncheck();
   check((await go.textContent()) === "2 件を読み戻す", "the button counts what is ticked");
   await go.click();
@@ -140,7 +146,10 @@ try {
     const plan = await window.__picked;
     return [plan.retyped.length, plan.added.length, plan.removed.length];
   });
-  check(JSON.stringify(picked) === "[1,1,0]" && (await page.locator("#readback-pick").count()) === 0, `only the ticked are taken back (${picked})`);
+  check(
+    JSON.stringify(picked) === "[1,1,0]" && (await page.locator("#readback-pick").count()) === 0,
+    `only the ticked are taken back (${picked})`,
+  );
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(" / ")}` : ""}`);
 } finally {
   await browser.close();

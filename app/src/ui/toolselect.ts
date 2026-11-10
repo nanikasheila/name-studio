@@ -121,7 +121,8 @@ export function pressSelect(editor: EditorCore, { event, project, slot, point, s
   // Shift: click to add a thing to the picked ones (or take it out), drag around things to add them.
   if (event.shiftKey) {
     const s = editor.selection;
-    const base: ItemRef[] = s?.pageId !== slot.page.id ? [] : s.kind === "group" ? [...(s.items ?? [])] : isItemKind(s.kind) ? [{ kind: s.kind, id: s.id }] : [];
+    const base: ItemRef[] =
+      s?.pageId !== slot.page.id ? [] : s.kind === "group" ? [...(s.items ?? [])] : isItemKind(s.kind) ? [{ kind: s.kind, id: s.id }] : [];
     // Halves of 見開き panels move and change only as a pair.
     const spread = target?.kind === "panel" && slot.page.panels.some((panel) => panel.id === target.id && panel.spread);
     const ref = target && isItemKind(target.kind) && !spread ? { kind: target.kind, id: target.id } : null;
@@ -166,7 +167,11 @@ export function pressSelect(editor: EditorCore, { event, project, slot, point, s
   }
   // Inside a 範囲選択: drag the whole group.
   const selection = editor.selection;
-  if (selection?.kind === "group" && selection.pageId === slot.page.id && (!target || editor.isSelected(slot.page, target.kind, target.id))) {
+  if (
+    selection?.kind === "group" &&
+    selection.pageId === slot.page.id &&
+    (!target || editor.isSelected(slot.page, target.kind, target.id))
+  ) {
     if (editor.groupHit(slot.page, point, 4 / slot.scale)) {
       editor.host.begin();
       // Panels picked take along what is drawn in them.
@@ -377,7 +382,8 @@ const tail: DragHandler<DragOf<"tail">> = {
     const tail = line?.tails?.[drag.index];
     if (!drag.moved && !drag.created) {
       editor.host.cancel();
-      if ((line?.tails?.length ?? 0) > 1) editor.host.status(`${drag.index + 1} 本目のしっぽを選びました（Delete か右の欄の × で、このしっぽだけ消せます）`);
+      if ((line?.tails?.length ?? 0) > 1)
+        editor.host.status(`${drag.index + 1} 本目のしっぽを選びました（Delete か右の欄の × で、このしっぽだけ消せます）`);
       return;
     }
     // A tip put back inside its balloon takes the tail away.
@@ -404,7 +410,8 @@ const swap: DragHandler<DragOf<"swap">> = {
     // The panel under the pointer, on this page or the facing one.
     const under = editor.slotAt(ex, ey, project);
     const target = under && editor.panelAt(under.page, toPage(under, ex, ey));
-    drag.to = under && target && !(under.page === drag.slot.page && target.id === drag.panelId) ? { slot: under, panelId: target.id } : null;
+    drag.to =
+      under && target && !(under.page === drag.slot.page && target.id === drag.panelId) ? { slot: under, panelId: target.id } : null;
   },
   end(editor, drag, project) {
     const from = drag.slot.page.panels.find((panel) => panel.id === drag.panelId);
@@ -459,7 +466,8 @@ const pick: DragHandler<DragOf<"pick">> = {
       const picked = pickInside(page, drag.points);
       // Lines on a hidden or locked layer stay where they are.
       const project = editor.host.project();
-      if (project) picked.strokes = picked.strokes.filter((id) => strokeEditable(project, page.strokes.find((stroke) => stroke.id === id) ?? {}));
+      if (project)
+        picked.strokes = picked.strokes.filter((id) => strokeEditable(project, page.strokes.find((stroke) => stroke.id === id) ?? {}));
       const found: ItemRef[] = [
         ...picked.panels.map((id) => ({ kind: "panel" as const, id })),
         ...picked.strokes.map((id) => ({ kind: "stroke" as const, id })),
@@ -473,7 +481,10 @@ const pick: DragHandler<DragOf<"pick">> = {
     if (!items.length) editor.select(null);
     else if (items.length === 1) editor.select({ kind: items[0].kind, pageId: page.id, id: items[0].id });
     else editor.select({ kind: "group", pageId: page.id, id: "group", items });
-    if (items.length > 1) editor.host.status(`${pickedSummary(items)}を選びました。ドラッグで動かし、枠で変形、Delete で消せます（Shift + クリックで足す・外す）`);
+    if (items.length > 1)
+      editor.host.status(
+        `${pickedSummary(items)}を選びました。ドラッグで動かし、枠で変形、Delete で消せます（Shift + クリックで足す・外す）`,
+      );
   },
 };
 

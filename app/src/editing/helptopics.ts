@@ -356,9 +356,7 @@ export const HOVER_TOPICS: Record<string, HelpTopic> = {
 };
 
 /** What every managing list does alike (listops.ts), as its help reads. */
-const LIST_STEPS: HelpStep[] = [
-  { input: "Ctrl+クリック・Shift+クリック", does: "複数選ぶ（Shift+↑↓・Ctrl+A でも）" },
-];
+const LIST_STEPS: HelpStep[] = [{ input: "Ctrl+クリック・Shift+クリック", does: "複数選ぶ（Shift+↑↓・Ctrl+A でも）" }];
 
 /** Parts of the screen with no words of their own (by element id), and the larger areas around them. */
 export const AREA_TOPICS: Record<string, HelpTopic> = {
@@ -582,7 +580,10 @@ export function heldFrom(event: Pick<KeyboardEvent, "shiftKey" | "altKey" | "ctr
  * come as one more step.
  */
 export function topicFromWords(words: string, label: string, command?: string): HelpTopic {
-  const lines = words.split("\n").map((line) => line.trim()).filter(Boolean);
+  const lines = words
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
   const steps: HelpStep[] = [];
   const prose: string[] = [];
   for (const line of lines) {
@@ -622,7 +623,13 @@ export interface OverlaySpot {
   also?: { name: string; command: string };
 }
 
-const tool = (id: string, name: string, text: string): OverlaySpot => ({ target: `#tool-${id}`, name, text, command: `tool.${id}`, side: "right" });
+const tool = (id: string, name: string, text: string): OverlaySpot => ({
+  target: `#tool-${id}`,
+  name,
+  text,
+  command: `tool.${id}`,
+  side: "right",
+});
 
 /** The help over the whole screen: the parts of the editor and of the start screen. */
 export const OVERLAY_SPOTS: OverlaySpot[] = [
@@ -635,27 +642,67 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
   { target: "#shortcuts", name: "キー設定", text: "キーの割り当てを変える", side: "below" },
   { target: "#pen-settings", name: "ペン設定", text: "筆圧・タブレット", side: "below" },
   { target: "#save-state", name: "保存の状態", text: "保存済み・未保存・自動保存の写し", side: "below" },
-  { target: "#workspace-modes", name: "作業の配置", text: "描く・全体・CSP に渡すで欄と見せ方をまとめて切り替え", command: "workspace.draw", side: "below" },
+  {
+    target: "#workspace-modes",
+    name: "作業の配置",
+    text: "描く・全体・CSP に渡すで欄と見せ方をまとめて切り替え",
+    command: "workspace.draw",
+    side: "below",
+  },
   { target: "#undo", name: "元に戻す", text: "", command: "undo", side: "below", also: { name: "・右はやり直す", command: "redo" } },
-  { target: "#image-import", name: "取り込む", text: "1 枚にまとめたネーム画像をページに分けて置く", command: "button.image-import", side: "below" },
+  {
+    target: "#image-import",
+    name: "取り込む",
+    text: "1 枚にまとめたネーム画像をページに分けて置く",
+    command: "button.image-import",
+    side: "below",
+  },
   { target: "#name-export", name: "書き出す", text: "CSP のページと作品・PDF・ミニネーム・台本", command: "exportAgain", side: "below" },
   { target: "#help", name: "ヘルプ", text: "この画面。もう一度で閉じる", command: "help.overlay", side: "below" },
   // The tools.
   ...TOOL_IDS.map((id) => tool(id, TOOLS[id].name, TOOLS[id].overlay)),
   // Around the pages.
   { target: "#tool-options", name: "道具の設定", text: "持っている道具の設定と使い方のひと言", side: "below" },
-  { target: "#brush-edit", name: "ペン・消しゴムの設定", text: "CSP の項目すべてを変えて試し描き・.sut で CSP へ", command: "button.brush-edit", side: "below" },
+  {
+    target: "#brush-edit",
+    name: "ペン・消しゴムの設定",
+    text: "CSP の項目すべてを変えて試し描き・.sut で CSP へ",
+    command: "button.brush-edit",
+    side: "below",
+  },
   { target: "#panel-tidy", name: "整える", text: "仮のコマを清書（線をそろえ、コマ間を設定の幅に）", command: "panel.tidy", side: "below" },
-  { target: "#editor-canvas", name: "紙面", text: "ここに描く。Space+ドラッグで動かす・ホイールで拡大縮小・Shift+Space+ドラッグで回す", command: "view.fit", side: "inside" },
+  {
+    target: "#editor-canvas",
+    name: "紙面",
+    text: "ここに描く。Space+ドラッグで動かす・ホイールで拡大縮小・Shift+Space+ドラッグで回す",
+    command: "view.fit",
+    side: "inside",
+  },
   { target: "#editor-next", name: "ページをめくる", text: "", command: "page.next", side: "above" },
   { target: "#spread-mode", name: "見開き・単独・連続", text: "連続は全ページを一枚に並べる", command: "view.continuous", side: "above" },
   { target: "#marks-shown", name: "指示", text: "指示を全部出す・隠す", command: "button.marks-shown", side: "above" },
   { target: "#read-mode", name: "読む", text: "見開きで通し読み", command: "button.read-mode", side: "above" },
   { target: "#focus-mode", name: "ページだけ", text: "欄と帯を隠す", command: "view.focus", side: "above" },
   { target: ".lane-toggles", name: "帯に出すもの", text: "型・シーン・時系列・感情・字数", side: "right" },
-  { target: "#story", name: "物語の帯", text: "シーン・感情・ページを並びにそろえて見る。クリックでそのページへ", command: "view.board", side: "inside" },
-  { target: "#dock-left", name: "左の欄", text: "サブツール・ページ・台本・人物・付箋・保留・レイヤー・シリーズ。アイコンで出し入れ、見出しのドラッグで反対側へ", side: "inside" },
-  { target: "#dock-right", name: "右の欄（詳細・相談）", text: "選んだもの（ページ・コマ・セリフ・付箋・シーン）の設定と、AI に相談", side: "inside" },
+  {
+    target: "#story",
+    name: "物語の帯",
+    text: "シーン・感情・ページを並びにそろえて見る。クリックでそのページへ",
+    command: "view.board",
+    side: "inside",
+  },
+  {
+    target: "#dock-left",
+    name: "左の欄",
+    text: "サブツール・ページ・台本・人物・付箋・保留・レイヤー・シリーズ。アイコンで出し入れ、見出しのドラッグで反対側へ",
+    side: "inside",
+  },
+  {
+    target: "#dock-right",
+    name: "右の欄（詳細・相談）",
+    text: "選んだもの（ページ・コマ・セリフ・付箋・シーン）の設定と、AI に相談",
+    side: "inside",
+  },
   { target: "#help-bar", name: "ヘルプの帯", text: "ポインターの下の名前と操作。設定 › 表示で隠せる", side: "above" },
   // The start screen.
   { target: "#start-open", name: "開く", text: "ネームデータか CSP のネーム用紙", command: "button.open", side: "below" },
@@ -677,42 +724,66 @@ export interface TourStop {
 export const TOUR_STOPS: TourStop[] = [
   {
     title: "Name Studio へようこそ",
-    text: ["ネームを描いて、CLIP STUDIO PAINT のページと作品に書き出す道具です。", "画面の各部を順に案内します（1 分ほど）。→ キーか「次へ」で進み、Esc でいつでも閉じられます。"],
+    text: [
+      "ネームを描いて、CLIP STUDIO PAINT のページと作品に書き出す道具です。",
+      "画面の各部を順に案内します（1 分ほど）。→ キーか「次へ」で進み、Esc でいつでも閉じられます。",
+    ],
   },
   {
     target: "#editor-tools",
     title: "道具",
-    text: ["選択 {tool.select}・コマ割り {tool.cut}・セリフ {tool.text}・ペン {tool.pen} など。", "道具のキーを押したままにすると、その間だけ持ち替えます。"],
+    text: [
+      "選択 {tool.select}・コマ割り {tool.cut}・セリフ {tool.text}・ペン {tool.pen} など。",
+      "道具のキーを押したままにすると、その間だけ持ち替えます。",
+    ],
   },
   {
     target: "#tool-options",
     title: "道具の設定",
-    text: ["持っている道具の設定（コマの作り方・ペンの太さ・消し方など）と、使い方のひと言が出ます。", "コマ割りが決まらないうちは「描く」で仮のコマを描き、決まったら {panel.tidy} で整えます。"],
+    text: [
+      "持っている道具の設定（コマの作り方・ペンの太さ・消し方など）と、使い方のひと言が出ます。",
+      "コマ割りが決まらないうちは「描く」で仮のコマを描き、決まったら {panel.tidy} で整えます。",
+    ],
   },
   {
     target: "#editor-canvas",
     title: "紙面",
-    text: ["まずコマ割り {tool.cut} でページを横切るように引くとコマが割れます。セリフ {tool.text} はクリックした所に書けます。", "Space+ドラッグで動かす、ホイールで拡大縮小、{view.fit} で全体を表示。"],
+    text: [
+      "まずコマ割り {tool.cut} でページを横切るように引くとコマが割れます。セリフ {tool.text} はクリックした所に書けます。",
+      "Space+ドラッグで動かす、ホイールで拡大縮小、{view.fit} で全体を表示。",
+    ],
   },
   {
     target: "#workspace-modes",
     title: "作業の配置",
-    text: ["描く・全体・CSP（{workspace.draw}・{workspace.overview}・{workspace.handoff}）で、欄と見せ方と物語の帯をまとめて切り替えます。", "動かした欄はその配置に覚えます。"],
+    text: [
+      "描く・全体・CSP（{workspace.draw}・{workspace.overview}・{workspace.handoff}）で、欄と見せ方と物語の帯をまとめて切り替えます。",
+      "動かした欄はその配置に覚えます。",
+    ],
   },
   {
     target: "#page-nav",
     title: "ページの見せ方",
-    text: ["見開き・単独・連続（{view.continuous}）を切り替え、読む（{button.read-mode}）で通し読み。", "{view.focus} で左右の欄と帯を隠してページを大きくできます。"],
+    text: [
+      "見開き・単独・連続（{view.continuous}）を切り替え、読む（{button.read-mode}）で通し読み。",
+      "{view.focus} で左右の欄と帯を隠してページを大きくできます。",
+    ],
   },
   {
     target: "#story",
     title: "物語の帯",
-    text: ["話の型・シーン・時系列・感情曲線・ページを、ページの並びにそろえて見ます。", "ページやコマをクリックするとそのページへ。{view.board} で大きく、{view.fold} でたたみます。", "並ぶ向き（左から右／編集画面と同じ右から左）は設定 › 表示で選べます。"],
+    text: [
+      "話の型・シーン・時系列・感情曲線・ページを、ページの並びにそろえて見ます。",
+      "ページやコマをクリックするとそのページへ。{view.board} で大きく、{view.fold} でたたみます。",
+      "並ぶ向き（左から右／編集画面と同じ右から左）は設定 › 表示で選べます。",
+    ],
   },
   {
     target: "#dock-left",
     title: "左の欄",
-    text: ["サブツール（ペン・消しゴムの種類と太さ。行の ⌨ でキーを割り当て）・ページの一覧・台本・人物・付箋・保留・レイヤー。上のアイコンで出し入れし、見出しをドラッグすると右の欄へ移せます。"],
+    text: [
+      "サブツール（ペン・消しゴムの種類と太さ。行の ⌨ でキーを割り当て）・ページの一覧・台本・人物・付箋・保留・レイヤー。上のアイコンで出し入れし、見出しをドラッグすると右の欄へ移せます。",
+    ],
   },
   {
     target: "#dock-right",
@@ -722,12 +793,18 @@ export const TOUR_STOPS: TourStop[] = [
   {
     target: "#name-export",
     title: "書き出す",
-    text: ["CSP のページと作品（.clip/.cmc）・PDF・全ページを 1 枚にまとめたミニネーム・台本に書き出します。2 回目からは {exportAgain} で同じ設定のまま。", "保存は自動でもされます（{save} でいつでも）。"],
+    text: [
+      "CSP のページと作品（.clip/.cmc）・PDF・全ページを 1 枚にまとめたミニネーム・台本に書き出します。2 回目からは {exportAgain} で同じ設定のまま。",
+      "保存は自動でもされます（{save} でいつでも）。",
+    ],
   },
   {
     target: "#help-bar",
     title: "困ったときは",
-    text: ["下のヘルプの帯に、ポインターの下にあるものの名前とできることが出ます。", "{help.overlay} で画面全体のヘルプ、{palette.commands} で命令を名前で探せます。この案内はヘルプから何度でも見られます。"],
+    text: [
+      "下のヘルプの帯に、ポインターの下にあるものの名前とできることが出ます。",
+      "{help.overlay} で画面全体のヘルプ、{palette.commands} で命令を名前で探せます。この案内はヘルプから何度でも見られます。",
+    ],
   },
 ];
 

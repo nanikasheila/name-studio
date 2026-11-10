@@ -4,7 +4,9 @@
 // inside a word written in katakana, kanji or Latin letters.
 
 /** Characters a line must not start with. */
-const NO_START = new Set([..."、。，．,.・：；:;！？!?‼⁉…‥ー〜～）)」』】〕］]｝}〉》ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶ゛゜ゝゞヽヾ々"]);
+const NO_START = new Set([
+  ..."、。，．,.・：；:;！？!?‼⁉…‥ー〜～）)」』】〕］]｝}〉》ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶ゛゜ゝゞヽヾ々",
+]);
 /** Characters a line must not end with. */
 const NO_END = new Set([..."（(「『【〔［[｛{〈《"]);
 const PUNCTUATION = new Set([..."、。，．,.！？!?‼⁉…‥"]);
@@ -50,10 +52,16 @@ function breakScore(before: string, after: string): number {
 export function wrapDialogue(text: string, width = 8): string {
   if (text.includes("\n")) return text;
   // A full-width space is a break the writer asked for (and how the app writes breaks out).
-  const asked = text.split(/　+/).map((part) => part.trim()).filter(Boolean);
+  const asked = text
+    .split(/　+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
   if (asked.length > 1) return asked.map((part) => wrapDialogue(part, width)).join("\n");
   // A new sentence starts a new line, however short the two are.
-  const sentences = text.split(SENTENCE).map((part) => part.trim()).filter(Boolean);
+  const sentences = text
+    .split(SENTENCE)
+    .map((part) => part.trim())
+    .filter(Boolean);
   if (sentences.length > 1) return sentences.map((part) => wrapDialogue(part, width)).join("\n");
   const chars = [...text];
   if (chars.length <= width + 1) return text;

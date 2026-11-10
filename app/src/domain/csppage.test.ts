@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { compactStory, cspPageOf, joinedPage, pageFromFormat, pageSetup, piecesPerPage, pixelSize, presetOf, setupProblem, withPreset } from "./csppage";
+import {
+  compactStory,
+  cspPageOf,
+  joinedPage,
+  pageFromFormat,
+  pageSetup,
+  piecesPerPage,
+  pixelSize,
+  presetOf,
+  setupProblem,
+  withPreset,
+} from "./csppage";
 import { newProject, scrollPageFormat } from "./project";
 
 describe("CSP のページ設定", () => {
@@ -36,11 +47,32 @@ describe("CSP のページ設定", () => {
   it("gives Rust the binding, first page side, story info and font", () => {
     const project = newProject("題名", 2);
     const page = cspPageOf(project);
-    const setup = pageSetup(project, page, { title: " ", storyIndex: 3, author: " 作者 " }, (font) => (font === "メイリオ" ? "Meiryo" : undefined));
-    expect(setup).toMatchObject({ rightBinding: true, firstPageLeft: true, title: "題名", storyIndex: 3, author: "作者", nombreStart: 1, font: null });
+    const setup = pageSetup(project, page, { title: " ", storyIndex: 3, author: " 作者 " }, (font) =>
+      font === "メイリオ" ? "Meiryo" : undefined,
+    );
+    expect(setup).toMatchObject({
+      rightBinding: true,
+      firstPageLeft: true,
+      title: "題名",
+      storyIndex: 3,
+      author: "作者",
+      nombreStart: 1,
+      font: null,
+    });
     project.binding = "left";
-    const left = pageSetup(project, { ...page, font: "メイリオ", nombreStart: 5 }, { title: "作品", storyIndex: null, author: "" }, (font) => (font === "メイリオ" ? "Meiryo" : undefined));
-    expect(left).toMatchObject({ rightBinding: false, firstPageLeft: false, title: "作品", nombreStart: 5, font: { name: "メイリオ", postscript: "Meiryo" } });
+    const left = pageSetup(
+      project,
+      { ...page, font: "メイリオ", nombreStart: 5 },
+      { title: "作品", storyIndex: null, author: "" },
+      (font) => (font === "メイリオ" ? "Meiryo" : undefined),
+    );
+    expect(left).toMatchObject({
+      rightBinding: false,
+      firstPageLeft: false,
+      title: "作品",
+      nombreStart: 5,
+      font: { name: "メイリオ", postscript: "Meiryo" },
+    });
     expect(pageSetup(project, { ...page, firstPageLeft: true }, { title: "x", storyIndex: null, author: "" }).firstPageLeft).toBe(true);
     expect(pageSetup({ ...project, scroll: true }, page, { title: "x", storyIndex: null, author: "" }).rightBinding).toBe(false);
   });
@@ -81,7 +113,12 @@ describe("CSP のページ設定", () => {
       pageNumber: { start: 7, position: "right" },
       nombre: { place: "top-inner", white: false, edgeMm: 0.5, prefix: "p.", suffix: "", offsetMm: [0, 5], sizePt: 9 },
     });
-    expect(story).toEqual({ subtitle: "サブ", titlePosition: "right", pageNumber: { start: 7 }, nombre: { place: "top-inner", edgeMm: 0.5, prefix: "p." } });
+    expect(story).toEqual({
+      subtitle: "サブ",
+      titlePosition: "right",
+      pageNumber: { start: 7 },
+      nombre: { place: "top-inner", edgeMm: 0.5, prefix: "p." },
+    });
     const project = newProject("ネーム", 2);
     const setup = pageSetup(project, { ...cspPageOf(project), story }, { title: "作品", storyIndex: 1, author: "" });
     expect(setup.story).toEqual(story);

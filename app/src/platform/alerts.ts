@@ -13,13 +13,7 @@ export interface AlertAction {
  * Show `message` at the top of the window until closed (or, when `seconds`
  * is given, for that long). A message with the same `key` replaces the last.
  */
-export function showAlert(
-  key: string,
-  message: string,
-  kind: "error" | "warning" = "error",
-  seconds?: number,
-  action?: AlertAction,
-): void {
+export function showAlert(key: string, message: string, kind: "error" | "warning" = "error", seconds?: number, action?: AlertAction): void {
   const host = document.getElementById("alerts");
   if (!host) return;
   clearAlert(key);

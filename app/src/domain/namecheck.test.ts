@@ -35,8 +35,23 @@ describe("書き出し前の確認", () => {
     const page = project.pages[0];
     const panel = addPanel(project, page, rectShape([40, 40, 160, 130]));
     const [hx, hy] = [120, 60];
-    const head: Point[] = Array.from({ length: 12 }, (_, i) => [hx + 4 * Math.cos((i / 12) * 2 * Math.PI), hy + 4 * Math.sin((i / 12) * 2 * Math.PI)]);
-    for (const stroke of [head, [[hx, hy + 4], [hx, hy + 50]] as Point[]]) addStroke(project, page, stroke.map(([x, y]) => [x, y, 0.5]), 0.5);
+    const head: Point[] = Array.from({ length: 12 }, (_, i) => [
+      hx + 4 * Math.cos((i / 12) * 2 * Math.PI),
+      hy + 4 * Math.sin((i / 12) * 2 * Math.PI),
+    ]);
+    for (const stroke of [
+      head,
+      [
+        [hx, hy + 4],
+        [hx, hy + 50],
+      ] as Point[],
+    ])
+      addStroke(
+        project,
+        page,
+        stroke.map(([x, y]) => [x, y, 0.5]),
+        0.5,
+      );
     // Half over the head (a head wholly inside a balloon reads as text drawn by hand).
     const over = addLine(project, page, [hx + 6, hy + 4], "えっ、なに");
     over.tails = [{ tip: [hx, hy + 30] }];
@@ -44,7 +59,10 @@ describe("書き出し前の確認", () => {
     beside.tails = [{ tip: [70, 100] }];
     // A sound effect may go over a face.
     const sfx = addLine(project, page, [hx - 5, hy + 2], "ドン", "sfx");
-    const faces = () => checkName(project).filter((issue) => issue.kind === "face").map((issue) => issue.lineId);
+    const faces = () =>
+      checkName(project)
+        .filter((issue) => issue.kind === "face")
+        .map((issue) => issue.lineId);
     expect(faces()).toEqual([over.id]);
     expect(issueSummary(checkName(project))).toContain("顔にかかるセリフ 1");
     const where = beside.box.slice();

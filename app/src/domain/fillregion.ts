@@ -226,7 +226,8 @@ function grownAlong(area: Uint8Array, wall: Uint8Array, { w, h }: Grid, steps: n
   for (let k = 0; k < area.length; k++) {
     if (!area[k]) continue;
     const i = k % w;
-    if ((i > 0 && !area[k - 1]) || (i < w - 1 && !area[k + 1]) || (k >= w && !area[k - w]) || (k < (h - 1) * w && !area[k + w])) ring.push(k);
+    if ((i > 0 && !area[k - 1]) || (i < w - 1 && !area[k + 1]) || (k >= w && !area[k - w]) || (k < (h - 1) * w && !area[k + w]))
+      ring.push(k);
   }
   for (let step = 0; step < steps && ring.length; step++) {
     const next: number[] = [];
@@ -400,7 +401,7 @@ export function outlines(mask: Uint8Array, grid: Grid): Region[] {
       used[e] = 1;
       const a = from[e];
       const b = a + END[dir[e]];
-      points.push([((a % W) + (b % W)) / 2 * step, (Math.floor(a / W) + Math.floor(b / W)) / 2 * step]);
+      points.push([(((a % W) + (b % W)) / 2) * step, ((Math.floor(a / W) + Math.floor(b / W)) / 2) * step]);
       const one = first[b] - 1;
       const two = second[b] - 1;
       const free1 = one >= 0 && !used[one];

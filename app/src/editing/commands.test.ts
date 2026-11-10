@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { findCommands, searchText, usedNow, RECENT_COMMANDS, type Command } from "./commands";
 
-const command = (id: string, label: string, group = "編集", keys: string[] = [], words?: string): Command => ({ id, label, group, keys, words, run: () => true });
+const command = (id: string, label: string, group = "編集", keys: string[] = [], words?: string): Command => ({
+  id,
+  label,
+  group,
+  keys,
+  words,
+  run: () => true,
+});
 
 const LIST = [
   command("save", "保存", "ファイル", ["Ctrl+S"]),

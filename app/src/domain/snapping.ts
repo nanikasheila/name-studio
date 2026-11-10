@@ -63,7 +63,13 @@ const STRAIGHT = 0.05;
  * the corners and straight edges of its panels but those in `exclude` (the
  * ones being changed), the lines a コマ間 away from those edges, and the grid.
  */
-export function snapTargets(page: Page | null, format: PageFormat, settings: SnapSettings, gutters: Gutters, exclude: ReadonlySet<string> = new Set()): SnapTargets {
+export function snapTargets(
+  page: Page | null,
+  format: PageFormat,
+  settings: SnapSettings,
+  gutters: Gutters,
+  exclude: ReadonlySet<string> = new Set(),
+): SnapTargets {
   const xs: Target[] = [];
   const ys: Target[] = [];
   if (settings.frame) {
@@ -106,7 +112,12 @@ export const NO_TARGETS: SnapTargets = { xs: [], ys: [], grid: null };
  * `tolerance` (lines win over the grid), else to the grid when there is one.
  * `guide` is the line snapped to when it is one to show.
  */
-export function snapValue(value: number, targets: readonly Target[], grid: { origin: number; step: number } | null, tolerance: number): { value: number; guide: number | null } {
+export function snapValue(
+  value: number,
+  targets: readonly Target[],
+  grid: { origin: number; step: number } | null,
+  tolerance: number,
+): { value: number; guide: number | null } {
   let best: Target | null = null;
   let gap = tolerance;
   for (const target of targets) {
@@ -130,7 +141,12 @@ function gridOn(targets: SnapTargets, axis: 0 | 1): { origin: number; step: numb
  * ones before and after it on the outline, or the last one placed): with
  * them it lines up horizontally or vertically.
  */
-export function snapPointTo(point: Point, targets: SnapTargets, tolerance: number, beside: readonly Point[] = []): { point: Point; guides: Guides } {
+export function snapPointTo(
+  point: Point,
+  targets: SnapTargets,
+  tolerance: number,
+  beside: readonly Point[] = [],
+): { point: Point; guides: Guides } {
   const xs = [...targets.xs, ...beside.map(([x]) => ({ at: x, guide: true }))];
   const ys = [...targets.ys, ...beside.map(([, y]) => ({ at: y, guide: true }))];
   const x = snapValue(point[0], xs, gridOn(targets, 0), tolerance);
@@ -149,7 +165,8 @@ export function snapBox(box: BoxMm, targets: SnapTargets, tolerance: number): { 
     for (const edge of [low, high, (low + high) / 2]) {
       for (const line of lines) {
         const shift = line.at - edge;
-        if (Math.abs(shift) <= tolerance && (!best || Math.abs(shift) < Math.abs(best.shift))) best = { shift, guide: line.guide ? line.at : null };
+        if (Math.abs(shift) <= tolerance && (!best || Math.abs(shift) < Math.abs(best.shift)))
+          best = { shift, guide: line.guide ? line.at : null };
       }
     }
     if (best) return best;

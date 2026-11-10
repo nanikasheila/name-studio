@@ -55,7 +55,8 @@ export class ScriptDialog {
     $("sd-update").addEventListener("change", () => this.preview());
     $("sd-run").addEventListener("click", () => this.run());
     const pattern = $<HTMLSelectElement>("sd-pattern");
-    for (const item of PATTERNS) pattern.append(Object.assign(document.createElement("option"), { value: item.id, textContent: item.label, title: item.note }));
+    for (const item of PATTERNS)
+      pattern.append(Object.assign(document.createElement("option"), { value: item.id, textContent: item.label, title: item.note }));
   }
 
   open(): void {
@@ -98,7 +99,9 @@ export class ScriptDialog {
         `プロットとして読みます${plot.title ? `（${plot.title}）` : ""}: ページのメモ ${plot.pages.length}・シーン ${plot.scenes.length}・付箋 ${notes}${plot.total ? `・合計 ${plot.total} ページ` : ""}`,
         added ? `ページを ${added} 枚足します。` : "",
         notes ? stickyWhere(plot) : "",
-        plot.scenes.length ? `シーン: ${plot.scenes.map((s) => `${s.title}（${s.first === s.last ? s.first : `${s.first}〜${s.last}`}）`).join("、")}` : "",
+        plot.scenes.length
+          ? `シーン: ${plot.scenes.map((s) => `${s.title}（${s.first === s.last ? s.first : `${s.first}〜${s.last}`}）`).join("、")}`
+          : "",
         project.scenes.length && plot.scenes.length ? "重なる今のシーンは置き換えます。" : "",
       ]
         .filter(Boolean)
@@ -132,7 +135,9 @@ export class ScriptDialog {
         changes = [
           `セリフのある ${spoken} ページは台本に合わせて直します: 書き換え ${trial.changed}・足す ${trial.added}・消す ${trial.removed}・そのまま ${trial.kept}${trial.notes ? `、コマのメモの書き換え ${trial.notes}` : ""}`,
           trial.insertedPages ? `台本で増えたページ ${trial.insertedPages} 枚を、その位置に入れます。` : "",
-          trial.leftPages.length ? `台本にないページ ${trial.leftPages.join("・")} はそのままにします（要らなければページ一覧で消してください）。` : "",
+          trial.leftPages.length
+            ? `台本にないページ ${trial.leftPages.join("・")} はそのままにします（要らなければページ一覧で消してください）。`
+            : "",
         ]
           .filter(Boolean)
           .join("\n");

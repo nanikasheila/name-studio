@@ -24,12 +24,27 @@ describe("repair", () => {
     line.panel = "nowhere";
     line.linkTo = line.id;
     twin.id = line.id;
-    p2.panels.push({ ...panel, id: "", shape: [[0, 0], [1, 1]] });
+    p2.panels.push({
+      ...panel,
+      id: "",
+      shape: [
+        [0, 0],
+        [1, 1],
+      ],
+    });
     const scene = addScene(project, p2.id, p1.id, "逆");
     project.emotions.push({ character: "gone", page: p1.id, value: 0.5, note: "" });
     const hero = addCharacter(project, "主人公");
     project.emotions.push({ character: hero.id, page: p1.id, value: 3, note: "" });
-    p1.strokes.push({ id: "stroke999", points: [[0, 0, 1], [1, 1, 1]], widthMm: 1, closed: false });
+    p1.strokes.push({
+      id: "stroke999",
+      points: [
+        [0, 0, 1],
+        [1, 1, 1],
+      ],
+      widthMm: 1,
+      closed: false,
+    });
     const mended = repair(project);
     expect(mended.length).toBeGreaterThanOrEqual(8);
     expect(line.speaker).toBeUndefined();

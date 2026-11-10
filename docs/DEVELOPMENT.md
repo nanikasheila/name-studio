@@ -61,8 +61,10 @@ name-studio-app --export-csp ネーム.namestudio (--template page.clip | --buil
 ```bash
 cargo test
 (cd app && npm test)
-# 画面のコードの lint（Biome。CI でも流す）と、既知の脆弱性（cargo install cargo-audit）
+# 画面のコードの lint と整形の確かめ（Biome。CI でも流す）と、既知の脆弱性（cargo install cargo-audit）
 (cd app && npm run lint)
+# 整形を当てる（幅 140。src/generated は Rust 側が書くので除く）
+(cd app && npm run format)
 cargo audit
 # 画面の通しテスト（ブラウザで開く・描く・元に戻す・失敗の取り消し・自動保存・連続表示と速さ）
 (cd app && npx playwright install chromium && npm run e2e)

@@ -32,7 +32,10 @@ try {
   const middle = [box.x + box.width / 2, box.y + box.height / 2];
   const under = (client) => page.evaluate(([x, y]) => window.nameStudio.workbench.editor.pageAtClient(x, y)?.point ?? null, client);
   const onScreen = (pageId, point) => page.evaluate(([id, p]) => window.nameStudio.workbench.editor.clientOf(id, p), [pageId, point]);
-  const pageId = await page.evaluate(([x, y]) => window.nameStudio.workbench.editor.pageAtClient(x, y)?.page.id ?? null, [middle[0] - 120, middle[1]]);
+  const pageId = await page.evaluate(
+    ([x, y]) => window.nameStudio.workbench.editor.pageAtClient(x, y)?.page.id ?? null,
+    [middle[0] - 120, middle[1]],
+  );
   check(pageId !== null, "a page is under the middle of the stage");
 
   const target = [middle[0] - 120, middle[1] - 80];

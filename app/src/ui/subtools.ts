@@ -108,7 +108,9 @@ export class SubToolPanel {
         this.listening = null;
         const taken = this.host.bindKey(subtoolCommandId(ref), combo);
         const name = this.find(ref)?.name ?? ref;
-        this.host.status(taken ? `${keyLabel(combo)} を「${taken}」から外して「${name}」に割り当てました` : `${keyLabel(combo)} で「${name}」を持ちます`);
+        this.host.status(
+          taken ? `${keyLabel(combo)} を「${taken}」から外して「${name}」に割り当てました` : `${keyLabel(combo)} で「${name}」を持ちます`,
+        );
         this.render(true);
       },
       { capture: true },
@@ -118,7 +120,10 @@ export class SubToolPanel {
 
   private bind(): ListPicker {
     const source = () => this.source();
-    const movable = () => source()?.list().filter((tool) => tool.movable && !tool.group) ?? [];
+    const movable = () =>
+      source()
+        ?.list()
+        .filter((tool) => tool.movable && !tool.group) ?? [];
     const step = (ref: string, to: -1 | 1 | "first" | "last"): [number, number] | null => {
       const list = movable();
       const at = list.findIndex((tool) => tool.ref === ref);
@@ -129,7 +134,10 @@ export class SubToolPanel {
     return new ListPicker(this.root, {
       noun: "サブツール",
       single: true,
-      ids: () => source()?.list().map((tool) => tool.ref) ?? [],
+      ids: () =>
+        source()
+          ?.list()
+          .map((tool) => tool.ref) ?? [],
       open: (ref) => source()?.pick(ref),
       duplicate: (ids) => source()?.duplicate?.(ids[0]),
       remove: (ids) => {
@@ -248,7 +256,8 @@ export class SubToolPanel {
       if (tool.movable && !tool.group) movable.push(row);
       list.append(row);
     }
-    if (source.reorder && movable.length > 1) dragSort(movable, { axis: "y", drop: (first, last, target) => source.reorder?.(first, last, target) });
+    if (source.reorder && movable.length > 1)
+      dragSort(movable, { axis: "y", drop: (first, last, target) => source.reorder?.(first, last, target) });
     const props = element("div", { className: "subtool-props" });
     props.setAttribute("aria-label", "ツールプロパティ");
     source.properties(props);

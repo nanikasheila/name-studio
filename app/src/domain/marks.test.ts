@@ -101,7 +101,10 @@ describe("指示のレイヤー", () => {
 
   it("leaves a line with no layer on the rough even when 指示 come first", () => {
     const project = newProject("t", 1);
-    project.roughLayers = [{ id: "m", name: "指示", marks: true }, { id: "r2", name: "人物" }];
+    project.roughLayers = [
+      { id: "m", name: "指示", marks: true },
+      { id: "r2", name: "人物" },
+    ];
     expect(layerOf(project, {}).id).toBe("r2");
     expect(isMark(project, {})).toBe(false);
   });

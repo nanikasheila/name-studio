@@ -28,7 +28,11 @@ export function asideSlot(editor: EditorCore, tool: Tool, project: Project, sx: 
   const byDistance = nearest ? [nearest, ...editor.slots.filter((slot) => slot !== nearest)] : [];
   const under = (slot: Slot) => {
     const point = toPage(slot, sx, sy);
-    return tool === "reference" ? !!referenceAt(slot.page, point) : tool === "select" || tool === "sticky" ? !!editor.hit(slot, point) : false;
+    return tool === "reference"
+      ? !!referenceAt(slot.page, point)
+      : tool === "select" || tool === "sticky"
+        ? !!editor.hit(slot, point)
+        : false;
   };
   return byDistance.find(under) ?? nearest;
 }
@@ -76,7 +80,9 @@ const held: DragHandler<DragOf<"held">> = {
   end(editor, drag, project) {
     const held = project.held?.find((h) => h.id === drag.heldId);
     if (!drag.moved || !held) {
-      editor.host.status("保留のコマです。ページへドラッグすると置けます（コマの上で離すと中身をそのコマへ）。欄外の中なら好きな所へ動かせます");
+      editor.host.status(
+        "保留のコマです。ページへドラッグすると置けます（コマの上で離すと中身をそのコマへ）。欄外の中なら好きな所へ動かせます",
+      );
       return;
     }
     const pointer = editor.pointer;
@@ -85,17 +91,28 @@ const held: DragHandler<DragOf<"held">> = {
       // On a page: there, or into the panel under the pointer.
       const into = editor.panelAt(on.page, toPage(on, ...pointer));
       const box = heldBox(held)!;
-      const centre = toPage(on, drag.slot.x + ((box[0] + box[2]) / 2) * drag.slot.scale, drag.slot.y + ((box[1] + box[3]) / 2) * drag.slot.scale);
+      const centre = toPage(
+        on,
+        drag.slot.x + ((box[0] + box[2]) / 2) * drag.slot.scale,
+        drag.slot.y + ((box[1] + box[3]) / 2) * drag.slot.scale,
+      );
       delete held.at;
       const panel = placeHeld(project, on.page, held, centre, into, swapFit());
       editor.host.commit();
       editor.select({ kind: "panel", pageId: on.page.id, id: panel.id });
-      editor.host.status(into ? `保留のコマの中身を ${on.index + 1} ページのコマ ${panel.order} に入れました` : `保留のコマを ${on.index + 1} ページに置きました（コマ ${panel.order}）`);
+      editor.host.status(
+        into
+          ? `保留のコマの中身を ${on.index + 1} ページのコマ ${panel.order} に入れました`
+          : `保留のコマを ${on.index + 1} ページに置きました（コマ ${panel.order}）`,
+      );
       return;
     }
     // Still in the 欄外: it belongs to the page it now lies nearest.
     const box = heldBox(held)!;
-    const centre: Point = [drag.slot.x + ((box[0] + box[2]) / 2) * drag.slot.scale, drag.slot.y + ((box[1] + box[3]) / 2) * drag.slot.scale];
+    const centre: Point = [
+      drag.slot.x + ((box[0] + box[2]) / 2) * drag.slot.scale,
+      drag.slot.y + ((box[1] + box[3]) / 2) * drag.slot.scale,
+    ];
     const home = nearestSlot(editor.slots, project.pageFormat, centre);
     if (home && home !== drag.slot) {
       held.near = home.page.id;

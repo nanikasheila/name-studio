@@ -42,7 +42,11 @@ describe("サブツール: picking pens and erasers", () => {
       ["Gペン", false],
       ["鉛筆", true],
     ]);
-    expect(brushPicks({ brushes: [g, eraser] }, library, "eraser").map((p) => p.brush?.name ?? "plain")).toEqual(["plain", "硬め", "練り消し"]);
+    expect(brushPicks({ brushes: [g, eraser] }, library, "eraser").map((p) => p.brush?.name ?? "plain")).toEqual([
+      "plain",
+      "硬め",
+      "練り消し",
+    ]);
   });
 
   it("names a pen the same in every name (its keys and size go by it)", () => {

@@ -67,7 +67,10 @@ try {
     return { border: darkest, sticky: rgb(at([66, 186])) };
   });
   check(pixels.border < 120, `the panel border is drawn (darkest ${pixels.border})`);
-  check(pixels.sticky.every((v) => v > 245), `the sticky is not (${pixels.sticky})`);
+  check(
+    pixels.sticky.every((v) => v > 245),
+    `the sticky is not (${pixels.sticky})`,
+  );
 
   await page.keyboard.press("ArrowLeft");
   check((await caption()) === "4–5 / 8", "← turns on in a right-bound book");
@@ -95,7 +98,8 @@ try {
   await page.keyboard.press("e");
   await page.keyboard.press("Tab");
   check(
-    (await page.evaluate(() => window.nameStudio.workbench.editor.tool)) === toolBefore && !(await page.evaluate(() => document.body.classList.contains("focus-mode"))),
+    (await page.evaluate(() => window.nameStudio.workbench.editor.tool)) === toolBefore &&
+      !(await page.evaluate(() => document.body.classList.contains("focus-mode"))),
     "while reading, the editor's keys do nothing",
   );
 

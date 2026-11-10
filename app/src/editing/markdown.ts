@@ -72,7 +72,8 @@ function blocks(lines: string[]): MdBlock[] {
       const mark = fence[2];
       const body: string[] = [];
       i++;
-      while (i < lines.length && !lines[i].trim().startsWith(mark)) body.push(lines[i++].replace(new RegExp(`^ {0,${fence[1].length}}`), ""));
+      while (i < lines.length && !lines[i].trim().startsWith(mark))
+        body.push(lines[i++].replace(new RegExp(`^ {0,${fence[1].length}}`), ""));
       i++;
       out.push({ t: "code", lang: fence[3] ?? "", v: body.join("\n") });
       continue;
@@ -96,7 +97,9 @@ function blocks(lines: string[]): MdBlock[] {
     }
     if (isTableStart(line, lines[i + 1])) {
       const head = cells(line);
-      const align = cells(lines[i + 1]).map((cell) => (cell.startsWith(":") && cell.endsWith(":") ? "center" : cell.endsWith(":") ? "right" : cell.startsWith(":") ? "left" : ""));
+      const align = cells(lines[i + 1]).map((cell) =>
+        cell.startsWith(":") && cell.endsWith(":") ? "center" : cell.endsWith(":") ? "right" : cell.startsWith(":") ? "left" : "",
+      );
       i += 2;
       const rows: MdInline[][][] = [];
       while (i < lines.length && lines[i].trim() && lines[i].includes("|")) {

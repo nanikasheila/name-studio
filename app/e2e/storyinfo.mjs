@@ -106,7 +106,10 @@ try {
   await page.click("#ne-run");
   await page.waitForFunction(() => document.getElementById("ne-message").textContent.includes("確かめられません"));
   const said = await page.locator("#ne-message").textContent();
-  check(said.includes("アクセスが拒否されました") && said.includes("何も書き換えていません"), `a folder that cannot be looked into stops the export, saying why (${said.split("\n")[0].slice(0, 50)})`);
+  check(
+    said.includes("アクセスが拒否されました") && said.includes("何も書き換えていません"),
+    `a folder that cannot be looked into stops the export, saying why (${said.split("\n")[0].slice(0, 50)})`,
+  );
   check((await begun()) === before, "nothing is written");
 
   check(errors.length === 0, `no page errors (${errors.join(" / ")})`);

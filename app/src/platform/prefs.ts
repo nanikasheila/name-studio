@@ -234,7 +234,10 @@ export function loadRecentNames(): RecentName[] {
 
 /** Keep a name opened or saved now at the top of the start screen's list. */
 export function rememberName(path: string, project: Pick<Project, "title" | "pages">): void {
-  writeJson(RECENT_NAMES_KEY, remembered(loadRecentNames(), { path, title: project.title, pages: project.pages.length, timeMs: Date.now() }));
+  writeJson(
+    RECENT_NAMES_KEY,
+    remembered(loadRecentNames(), { path, title: project.title, pages: project.pages.length, timeMs: Date.now() }),
+  );
 }
 
 export function forgetName(path: string): void {
@@ -280,11 +283,21 @@ export interface LastDialogueUpdate {
 
 function lastUpdateFrom(value: unknown): LastDialogueUpdate | null {
   const kept = value as Partial<LastDialogueUpdate> | null;
-  if (typeof kept?.timeMs !== "number" || typeof kept.first !== "string" || typeof kept.outDir !== "string" || !Array.isArray(kept.rows)) return null;
+  if (typeof kept?.timeMs !== "number" || typeof kept.first !== "string" || typeof kept.outDir !== "string" || !Array.isArray(kept.rows))
+    return null;
   const rows = kept.rows.filter(
-    (row) => typeof row?.text === "string" && Array.isArray(row.pages) && row.pages.length > 0 && row.pages.every((page) => Number.isInteger(page) && page > 0),
+    (row) =>
+      typeof row?.text === "string" &&
+      Array.isArray(row.pages) &&
+      row.pages.length > 0 &&
+      row.pages.every((page) => Number.isInteger(page) && page > 0),
   );
-  return { timeMs: kept.timeMs, outDir: kept.outDir, first: kept.first, rows: rows.map((row) => ({ pages: row.pages, text: row.text, attention: !!row.attention })) };
+  return {
+    timeMs: kept.timeMs,
+    outDir: kept.outDir,
+    first: kept.first,
+    rows: rows.map((row) => ({ pages: row.pages, text: row.text, attention: !!row.attention })),
+  };
 }
 
 function lastUpdates(): Record<string, unknown> {

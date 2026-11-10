@@ -80,7 +80,10 @@ export class SheetExport {
         : await open({
             multiple: false,
             defaultPath: start || undefined,
-            filters: field === "template" ? [{ name: "CLIP STUDIO PAINT のページ", extensions: ["clip"] }] : [{ name: "CLIP STUDIO PAINT EX の作品", extensions: ["cmc"] }],
+            filters:
+              field === "template"
+                ? [{ name: "CLIP STUDIO PAINT のページ", extensions: ["clip"] }]
+                : [{ name: "CLIP STUDIO PAINT EX の作品", extensions: ["cmc"] }],
           });
     if (typeof path === "string") form[field] = path;
     this.show();

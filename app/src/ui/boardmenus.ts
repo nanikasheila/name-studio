@@ -5,7 +5,16 @@ import { addScene } from "../domain/cast";
 import type { Project } from "../model/model";
 import { openMenu, SEPARATOR, type MenuItem } from "./popupmenu";
 import { keepShape } from "../platform/prefs";
-import { canSplitAt, duplicateScene, joinScene, moveSceneTo, sceneNeighbours, scenePageIds, sceneTarget, splitScene } from "../domain/sceneops";
+import {
+  canSplitAt,
+  duplicateScene,
+  joinScene,
+  moveSceneTo,
+  sceneNeighbours,
+  scenePageIds,
+  sceneTarget,
+  splitScene,
+} from "../domain/sceneops";
 import { addBeat, editableShape, removeBeat, removePart, splitPart } from "../domain/shapes";
 import { type SceneSpan, uncoveredRunAt } from "../domain/story";
 import type { LaneView } from "./boardview";
@@ -33,7 +42,15 @@ export function sceneMenu(view: LaneView, project: Project, span: SceneSpan, ind
         requestAnimationFrame(() => document.querySelector<HTMLInputElement>("#inspector input.scene-title")?.focus());
       },
     },
-    ...(pages ? [{ label: `シーンのページ（${range}）を選ぶ`, title: "ページ一覧でまとめて選ぶ（コピー・移動・保留などに）", run: () => pages("pick", ids) }] : []),
+    ...(pages
+      ? [
+          {
+            label: `シーンのページ（${range}）を選ぶ`,
+            title: "ページ一覧でまとめて選ぶ（コピー・移動・保留などに）",
+            run: () => pages("pick", ids),
+          },
+        ]
+      : []),
     SEPARATOR,
     {
       label: "ページごと複製して後ろに入れる",
@@ -59,10 +76,24 @@ export function sceneMenu(view: LaneView, project: Project, span: SceneSpan, ind
         if (made) view.setSelection({ kind: "scene", sceneId: made });
       },
     },
-    { label: before ? `前のシーン「${before.scene.title}」とつなぐ` : "前のシーンとつなぐ", disabled: !before, run: () => view.edit((p) => joinScene(p, id, false)) },
-    { label: after ? `次のシーン「${after.scene.title}」とつなぐ` : "次のシーンとつなぐ", disabled: !after, run: () => view.edit((p) => joinScene(p, id, true)) },
-    { label: "別案を作る", title: "このシーンのページを写した案を作り、ページ配分やコマ割りを試す", run: () => view.host.makeOption(span.first, span.last) },
-    ...(pages ? [{ label: "ページを保留にする（外して取っておく）", disabled: ids.length >= project.pages.length, run: () => pages("hold", ids) }] : []),
+    {
+      label: before ? `前のシーン「${before.scene.title}」とつなぐ` : "前のシーンとつなぐ",
+      disabled: !before,
+      run: () => view.edit((p) => joinScene(p, id, false)),
+    },
+    {
+      label: after ? `次のシーン「${after.scene.title}」とつなぐ` : "次のシーンとつなぐ",
+      disabled: !after,
+      run: () => view.edit((p) => joinScene(p, id, true)),
+    },
+    {
+      label: "別案を作る",
+      title: "このシーンのページを写した案を作り、ページ配分やコマ割りを試す",
+      run: () => view.host.makeOption(span.first, span.last),
+    },
+    ...(pages
+      ? [{ label: "ページを保留にする（外して取っておく）", disabled: ids.length >= project.pages.length, run: () => pages("hold", ids) }]
+      : []),
     SEPARATOR,
     {
       label: "シーンを消す（ページは残す）",
@@ -74,7 +105,9 @@ export function sceneMenu(view: LaneView, project: Project, span: SceneSpan, ind
           view.setSelection(null);
         }),
     },
-    ...(pages ? [{ label: "シーンをページごと削除", danger: true, disabled: ids.length >= project.pages.length, run: () => pages("delete", ids) }] : []),
+    ...(pages
+      ? [{ label: "シーンをページごと削除", danger: true, disabled: ids.length >= project.pages.length, run: () => pages("delete", ids) }]
+      : []),
   ];
   view.selectScene(span);
   openMenu(items, x, y, `シーン「${span.scene.title}」のメニュー`);
@@ -121,7 +154,12 @@ export function partMenu(view: LaneView, project: Project, part: number, parts: 
       { label: "この区切りを半分に分ける", run: () => changeShape(view, (own) => splitPart(own, part)) },
       { label: `${index + 1} ページにビートを足す`, run: () => changeShape(view, (own) => addBeat(own, "ビート", (index + 0.5) / count)) },
       SEPARATOR,
-      { label: "この区切りを消す（前の区切りに入れる）", danger: true, disabled: parts <= 1, run: () => changeShape(view, (own) => removePart(own, part)) },
+      {
+        label: "この区切りを消す（前の区切りに入れる）",
+        danger: true,
+        disabled: parts <= 1,
+        run: () => changeShape(view, (own) => removePart(own, part)),
+      },
     ],
     x,
     y,

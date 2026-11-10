@@ -11,7 +11,10 @@ export interface MmToPx {
 }
 
 export function bounds(points: readonly (readonly number[])[]): BoxMm {
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  let x0 = Infinity,
+    y0 = Infinity,
+    x1 = -Infinity,
+    y1 = -Infinity;
   for (const [x, y] of points) {
     x0 = Math.min(x0, x);
     y0 = Math.min(y0, y);
@@ -22,7 +25,12 @@ export function bounds(points: readonly (readonly number[])[]): BoxMm {
 }
 
 export function rectShape([x0, y0, x1, y1]: BoxMm): Point[] {
-  return [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+  return [
+    [x0, y0],
+    [x1, y0],
+    [x1, y1],
+    [x0, y1],
+  ];
 }
 
 export function area(shape: readonly Point[]): number {

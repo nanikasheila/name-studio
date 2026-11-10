@@ -12,8 +12,14 @@ const OVERVIEW_MAX_WIDTH = 4096;
 const MARGIN = 24;
 
 const KIND_LABELS: Record<string, string> = {
-  raster: "ラスター", vector: "ベクター", text: "テキスト", folder: "フォルダー", frame_folder: "コマ枠",
-  paper: "用紙", story_info: "作品情報", other: "その他",
+  raster: "ラスター",
+  vector: "ベクター",
+  text: "テキスト",
+  folder: "フォルダー",
+  frame_folder: "コマ枠",
+  paper: "用紙",
+  story_info: "作品情報",
+  other: "その他",
 };
 
 async function pngToImage(bytes: ArrayBuffer): Promise<ImageBitmap | null> {
@@ -193,10 +199,16 @@ export class SheetViewer {
     const ctx = this.ctx;
     this.view ??= this.fitSheet(sheet);
     const t = this.view;
-    drawSheet(ctx, sheet, visible, (layer) => {
-      const placed = this.overview.get(layer.id);
-      return placed ? [placed] : [];
-    }, t);
+    drawSheet(
+      ctx,
+      sheet,
+      visible,
+      (layer) => {
+        const placed = this.overview.get(layer.id);
+        return placed ? [placed] : [];
+      },
+      t,
+    );
     ctx.save();
     ctx.font = "bold 13px sans-serif";
     for (const cell of sheet.cells) {
@@ -216,7 +228,7 @@ export class SheetViewer {
     const pair = this.currentSpreads()[this.spreadIndex];
     if (!pair) return;
     const [rightPage, leftPage] = pair;
-    const cellOf = (page: number | null) => (page === null ? null : sheet.cells[page - 1] ?? null);
+    const cellOf = (page: number | null) => (page === null ? null : (sheet.cells[page - 1] ?? null));
     const right = cellOf(rightPage);
     const left = cellOf(leftPage);
     const sample = right ?? left;
@@ -241,14 +253,20 @@ export class SheetViewer {
       ctx.clip();
       ctx.fillStyle = "#ffffff";
       ctx.fill();
-      drawSheet(ctx, sheet, visible, (layer) => {
-        if (!layer.hasPixels) return [];
-        this.requestRegion(layer, cell);
-        const region = this.regions.get(`${layer.id}:${cell.index}`);
-        if (region && region !== "loading") return [region];
-        const overview = this.overview.get(layer.id);
-        return overview ? [overview] : [];
-      }, t);
+      drawSheet(
+        ctx,
+        sheet,
+        visible,
+        (layer) => {
+          if (!layer.hasPixels) return [];
+          this.requestRegion(layer, cell);
+          const region = this.regions.get(`${layer.id}:${cell.index}`);
+          if (region && region !== "loading") return [region];
+          const overview = this.overview.get(layer.id);
+          return overview ? [overview] : [];
+        },
+        t,
+      );
       ctx.restore();
       ctx.fillStyle = "#f4f3f0";
       ctx.font = "13px sans-serif";
@@ -357,17 +375,21 @@ export class SheetViewer {
   /** Overview: wheel zooms around the pointer, drag pans, double click opens a page. */
   private wireCanvas(): void {
     const canvas = this.canvas;
-    canvas.addEventListener("wheel", (event) => {
-      if (this.mode !== "sheet" || !this.view) return;
-      event.preventDefault();
-      const factor = Math.exp(-event.deltaY * 0.0015);
-      const { offsetX, offsetY } = event;
-      const view = this.view;
-      view.offsetX = offsetX - (offsetX - view.offsetX) * factor;
-      view.offsetY = offsetY - (offsetY - view.offsetY) * factor;
-      view.scale *= factor;
-      this.draw();
-    }, { passive: false });
+    canvas.addEventListener(
+      "wheel",
+      (event) => {
+        if (this.mode !== "sheet" || !this.view) return;
+        event.preventDefault();
+        const factor = Math.exp(-event.deltaY * 0.0015);
+        const { offsetX, offsetY } = event;
+        const view = this.view;
+        view.offsetX = offsetX - (offsetX - view.offsetX) * factor;
+        view.offsetY = offsetY - (offsetY - view.offsetY) * factor;
+        view.scale *= factor;
+        this.draw();
+      },
+      { passive: false },
+    );
     canvas.addEventListener("pointerdown", (event) => {
       if (this.mode !== "sheet") return;
       this.drag = { x: event.clientX, y: event.clientY };

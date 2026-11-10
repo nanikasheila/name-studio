@@ -15,7 +15,19 @@ import { emotionLane, textLane } from "./boardemotion";
 import { pageLane } from "./boardpages";
 import { pageStory, sceneInspector, sceneLane, timeLane } from "./boardscene";
 import { shapeInspector, shapeLane } from "./boardshape";
-import { type BoardSelection, type BoardTip, icon, type LaneId, type LaneView, ROW, RULER, SCENE, SHAPE, type StoryHost, TEXT } from "./boardview";
+import {
+  type BoardSelection,
+  type BoardTip,
+  icon,
+  type LaneId,
+  type LaneView,
+  ROW,
+  RULER,
+  SCENE,
+  SHAPE,
+  type StoryHost,
+  TEXT,
+} from "./boardview";
 import { boundaryX, cellX, type PageAxis, pageAt, spanX } from "../editing/pageaxis";
 import { refitRow } from "./rowfit";
 import { inkOn } from "../editing/inkon";
@@ -23,8 +35,16 @@ import { inkOn } from "../editing/inkon";
 export type { BoardSelection, BoardTip, LaneId, StoryHost } from "./boardview";
 
 const LANES: { id: LaneId; label: string; hint: string }[] = [
-  { id: "shape", label: "型", hint: "話の型: 区切りの線をドラッグで配分を変える（決まった型は自分の型に写してから）。◆はビート。クリックで型を選ぶ・直す。右クリックで区切りを分ける・消す・ビートを足す" },
-  { id: "scene", label: "シーン", hint: "シーン: 両端のドラッグでページの範囲、真ん中のドラッグでシーンごと移動。空いた所をダブルクリックでシーンを足す。右クリックで分ける・つなぐ・複製・前後へ・ページを選ぶ・削除" },
+  {
+    id: "shape",
+    label: "型",
+    hint: "話の型: 区切りの線をドラッグで配分を変える（決まった型は自分の型に写してから）。◆はビート。クリックで型を選ぶ・直す。右クリックで区切りを分ける・消す・ビートを足す",
+  },
+  {
+    id: "scene",
+    label: "シーン",
+    hint: "シーン: 両端のドラッグでページの範囲、真ん中のドラッグでシーンごと移動。空いた所をダブルクリックでシーンを足す。右クリックで分ける・つなぐ・複製・前後へ・ページを選ぶ・削除",
+  },
   { id: "time", label: "時系列", hint: "時系列: 上ほど物語の中で早い出来事。上下にドラッグで順を変える（回想など）" },
   { id: "emotion", label: "感情", hint: "感情: 下の帯で人物を選んで、なぞると値が入る。右クリック（Alt＋クリック）で消す" },
   { id: "text", label: "字数", hint: "字数: ページごとのセリフの字数（多いページは色を変える）" },
@@ -305,7 +325,10 @@ export class Board {
   toggleLane(id: LaneId, on?: boolean): void {
     const lanes = this.shown[this.mode];
     const show = on ?? !lanes.includes(id);
-    this.shown = { ...this.shown, [this.mode]: show ? LANES.map((l) => l.id).filter((l) => l === id || lanes.includes(l)) : lanes.filter((l) => l !== id) };
+    this.shown = {
+      ...this.shown,
+      [this.mode]: show ? LANES.map((l) => l.id).filter((l) => l === id || lanes.includes(l)) : lanes.filter((l) => l !== id),
+    };
     writeJson(LANES_KEY, this.shown);
     this.render();
   }
@@ -316,7 +339,11 @@ export class Board {
     const lanes = this.shown[this.mode];
     const toggles = html("div", { className: "segmented lane-toggles", title: "帯に出すもの" } as Partial<HTMLDivElement>);
     for (const lane of LANES) {
-      const button = html("button", { className: lanes.includes(lane.id) ? "active" : "", title: `${lane.label}を${lanes.includes(lane.id) ? "隠す" : "出す"}` }, icon(lane.id));
+      const button = html(
+        "button",
+        { className: lanes.includes(lane.id) ? "active" : "", title: `${lane.label}を${lanes.includes(lane.id) ? "隠す" : "出す"}` },
+        icon(lane.id),
+      );
       button.setAttribute("aria-pressed", String(lanes.includes(lane.id)));
       button.setAttribute("aria-label", lane.label);
       button.addEventListener("click", () => this.toggleLane(lane.id));
@@ -329,7 +356,11 @@ export class Board {
     if (lanes.includes("emotion") && project.characters.length) {
       const cast = html("div", { className: "board-cast", title: "感情曲線をなぞる人物" }, icon("emotion"));
       for (const character of project.characters) {
-        const chip = html("button", { className: `cast-dot${character.id === this.character ? " active" : ""}`, title: `${character.name} の感情をなぞる`, textContent: [...character.name][0] ?? "？" });
+        const chip = html("button", {
+          className: `cast-dot${character.id === this.character ? " active" : ""}`,
+          title: `${character.name} の感情をなぞる`,
+          textContent: [...character.name][0] ?? "？",
+        });
         chip.style.setProperty("--who", character.color ?? "#2a78d6");
         chip.style.setProperty("--on-who", inkOn(character.color ?? "#2a78d6"));
         chip.addEventListener("click", () => {
@@ -359,7 +390,11 @@ export class Board {
       }
       out.push(cast);
     }
-    const fit = html("button", { className: "icon-button", title: "全ページが横に収まる幅にする（Ctrl＋ホイールで拡大縮小）" }, icon("fit"));
+    const fit = html(
+      "button",
+      { className: "icon-button", title: "全ページが横に収まる幅にする（Ctrl＋ホイールで拡大縮小）" },
+      icon("fit"),
+    );
     fit.addEventListener("click", () => {
       this.columns = { ...this.columns, [this.mode]: 0 };
       this.scroll.left = 0;
@@ -367,13 +402,21 @@ export class Board {
     });
     const wide = html(
       "button",
-      { className: `icon-button${this.expanded ? " active" : ""}`, title: this.expanded ? "帯を元の高さに戻す（F6）" : "帯を大きくして全体を見る（F6）。上端のドラッグでも高さを変えられます" },
+      {
+        className: `icon-button${this.expanded ? " active" : ""}`,
+        title: this.expanded ? "帯を元の高さに戻す（F6）" : "帯を大きくして全体を見る（F6）。上端のドラッグでも高さを変えられます",
+      },
       icon(this.expanded ? "narrow" : "wide"),
     );
     wide.addEventListener("click", () => this.toggleWide());
     const fold = html(
       "button",
-      { className: `icon-button${this.isFolded ? " active" : ""}`, title: this.isFolded ? "帯を広げる（Shift+F6・上端のダブルクリック）" : "帯をたたんでページを広くする（Shift+F6・上端のダブルクリック）" },
+      {
+        className: `icon-button${this.isFolded ? " active" : ""}`,
+        title: this.isFolded
+          ? "帯を広げる（Shift+F6・上端のダブルクリック）"
+          : "帯をたたんでページを広くする（Shift+F6・上端のダブルクリック）",
+      },
       icon(this.isFolded ? "unfold" : "fold"),
     );
     fold.setAttribute("aria-pressed", String(this.isFolded));
@@ -441,7 +484,12 @@ export class Board {
     };
     const labels = html("div", { className: "board-labels" });
     const label = (text: string, height: number, hint: string, name?: LaneId) => {
-      const node = html("div", { className: `board-label${name ? "" : text ? " pages-label" : ""}`, title: hint }, ...(name ? [icon(name)] : []), html("span", { textContent: text }));
+      const node = html(
+        "div",
+        { className: `board-label${name ? "" : text ? " pages-label" : ""}`, title: hint },
+        ...(name ? [icon(name)] : []),
+        html("span", { textContent: text }),
+      );
       node.style.height = `${height}px`;
       if (name === "shape") node.addEventListener("click", () => this.select({ kind: "shape" }));
       labels.append(node);
@@ -461,7 +509,11 @@ export class Board {
       chart.append(draw[lane.id](y));
       y += heights[lane.id];
     }
-    label("ページ", pagesHeight, "ページ・コマ: クリックでそのページを上に開く。ページ番号の帯をドラッグでページを移動。コマを別のコマ（ほかのページでも）にドラッグで中身を入れ替え");
+    label(
+      "ページ",
+      pagesHeight,
+      "ページ・コマ: クリックでそのページを上に開く。ページ番号の帯をドラッグでページを移動。コマを別のコマ（ほかのページでも）にドラッグで中身を入れ替え",
+    );
     const pages = pageLane(this.view, project, thumbWidth, thumbHeight, showMemo);
     pages.style.height = `${pagesHeight}px`;
     this.contentHeight = chartHeight + pagesHeight;
@@ -496,7 +548,6 @@ export class Board {
     return html("div", { className: "board-lanes" }, labels, scroller);
   }
 
-
   private axis(): PageAxis {
     return { count: this.project?.pages.length ?? 0, column: this.column, reversed: this.reversed };
   }
@@ -517,7 +568,6 @@ export class Board {
     return edge === "first" ? boundary : boundary - 1;
   }
 
-
   private ruler(project: Project, top: number): SVGGElement {
     const group = svg("g", { class: "lane ruler" });
     const every = this.column >= 30 ? 1 : this.column >= 14 ? 5 : 10;
@@ -526,8 +576,12 @@ export class Board {
       const cell = svg("rect", { x, y: top, width: this.column, height: RULER, class: "ruler-cell" });
       cell.addEventListener("click", () => this.host.openPage(index + 1));
       group.append(cell);
-      if (index % every === 0 || every === 1) group.append(svg("text", { x: x + this.column / 2, y: top + 14, class: "ruler-number", "text-anchor": "middle" }, String(index + 1)));
-      if (page.joinNext) group.append(svg("line", { x1: this.x(index + 1), x2: this.x(index + 1), y1: top + 4, y2: top + RULER - 4, class: "spread-mark" }));
+      if (index % every === 0 || every === 1)
+        group.append(
+          svg("text", { x: x + this.column / 2, y: top + 14, class: "ruler-number", "text-anchor": "middle" }, String(index + 1)),
+        );
+      if (page.joinNext)
+        group.append(svg("line", { x1: this.x(index + 1), x2: this.x(index + 1), y1: top + 4, y2: top + RULER - 4, class: "spread-mark" }));
     });
     return group;
   }
@@ -629,6 +683,4 @@ export class Board {
   pageStory(project: Project, pageId: string): HTMLElement[] {
     return pageStory(this.view, project, pageId);
   }
-
-
 }

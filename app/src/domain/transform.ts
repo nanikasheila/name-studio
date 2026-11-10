@@ -60,7 +60,9 @@ export function warpScale(w: Warp): number {
   const [x0, y0, x1, y1] = w.box;
   const before = (x1 - x0) * (y1 - y0);
   const [a, b, c, d] = w.corners;
-  const after = Math.abs((a[0] * b[1] - b[0] * a[1] + b[0] * c[1] - c[0] * b[1] + c[0] * d[1] - d[0] * c[1] + d[0] * a[1] - a[0] * d[1]) / 2);
+  const after = Math.abs(
+    (a[0] * b[1] - b[0] * a[1] + b[0] * c[1] - c[0] * b[1] + c[0] * d[1] - d[0] * c[1] + d[0] * a[1] - a[0] * d[1]) / 2,
+  );
   return before > 0 ? Math.sqrt(after / before) : 1;
 }
 
@@ -349,7 +351,13 @@ export function copySelection(page: Page, selection: CopySource, contents?: { st
   for (const sticky of page.stickies ?? []) {
     if (sticky.link && copied.has(sticky.link.id) && !clip.stickies.some((n) => n.id === sticky.id)) clip.stickies.push(clone(sticky));
   }
-  const empty = !clip.strokes.length && !clip.lines.length && !clip.panels.length && !clip.breakouts.length && !clip.stickies.length && !clip.fills?.length;
+  const empty =
+    !clip.strokes.length &&
+    !clip.lines.length &&
+    !clip.panels.length &&
+    !clip.breakouts.length &&
+    !clip.stickies.length &&
+    !clip.fills?.length;
   return empty ? null : clip;
 }
 

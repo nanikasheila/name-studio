@@ -12,7 +12,13 @@ describe("recent names", () => {
   it("keeps a few at most", () => {
     let list: RecentName[] = [];
     for (let i = 0; i < 20; i++) list = remembered(list, entry(`/n${i}.namestudio`), 5);
-    expect(list.map((name) => name.path)).toEqual(["/n19.namestudio", "/n18.namestudio", "/n17.namestudio", "/n16.namestudio", "/n15.namestudio"]);
+    expect(list.map((name) => name.path)).toEqual([
+      "/n19.namestudio",
+      "/n18.namestudio",
+      "/n17.namestudio",
+      "/n16.namestudio",
+      "/n15.namestudio",
+    ]);
   });
 
   it("forgets a file", () => {
@@ -21,10 +27,9 @@ describe("recent names", () => {
 
   it("reads only what it can from a kept value", () => {
     expect(recentFrom("x")).toEqual([]);
-    expect(recentFrom([entry("/a", 3), { path: "" }, null, { path: "/b", title: "b", pages: "2", timeMs: 1 }, { ...entry("/c"), extra: 1 }])).toEqual([
-      entry("/a", 3),
-      entry("/c"),
-    ]);
+    expect(
+      recentFrom([entry("/a", 3), { path: "" }, null, { path: "/b", title: "b", pages: "2", timeMs: 1 }, { ...entry("/c"), extra: 1 }]),
+    ).toEqual([entry("/a", 3), entry("/c")]);
   });
 
   it("splits the file's name from its folder", () => {

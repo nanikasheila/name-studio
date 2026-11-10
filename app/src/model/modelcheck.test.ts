@@ -35,7 +35,11 @@ type Loosen<R, A> = [R] extends [string]
         : A
       : A;
 /** True when `R` (what Rust sends) fits `A` and `A` knows all of `R`'s fields. */
-type Agrees<R, A> = [Missing<R, A>] extends [never] ? ([R] extends [Loosen<R, A>] ? true : { "does not fit": [R, Loosen<R, A>] }) : { "fields model.ts lacks": Missing<R, A> };
+type Agrees<R, A> = [Missing<R, A>] extends [never]
+  ? [R] extends [Loosen<R, A>]
+    ? true
+    : { "does not fit": [R, Loosen<R, A>] }
+  : { "fields model.ts lacks": Missing<R, A> };
 
 /** Each Rust type and the model.ts type it is read as (inline there, for a few). */
 interface Pairs {
@@ -99,12 +103,62 @@ interface Pairs {
 }
 
 const agreed: { [K in keyof Pairs]: Agrees<Pairs[K][0], Pairs[K][1]> } = {
-  Project: true, HeldPanel: true, HeldPages: true, Alternatives: true, AlternativeOption: true, Binding: true, PageFormat: true, Page: true, ReferenceImage: true,
-  StoredImage: true, Fill: true, Sticky: true, StickyLink: true, Gutters: true, LineFonts: true, NameStyle: true, KindSizes: true, CspPage: true,
-  StoryPosition: true, CspStory: true, StoryPageNumber: true, NombrePlace: true, ShownNombre: true, Plan: true, StoryShape: true, ShapePart: true,
-  ShapeBeat: true, Panel: true, PanelBorder: true, PanelFill: true, PanelEffect: true, Breakout: true, LineKind: true, LineShapes: true, BalloonShape: true,
-  TailStyle: true, Tail: true, Line: true, Stroke: true, StrokePoint: true, RoughLayer: true, BrushKind: true, EraseMode: true, PressureCurve: true,
-  BrushTip: true, Brush: true, CspValue: true, CspMaterial: true, CspToolData: true, RoughImage: true, Character: true, Scene: true, EmotionPoint: true, SourceSheet: true, Series: true, SeriesEpisode: true,
+  Project: true,
+  HeldPanel: true,
+  HeldPages: true,
+  Alternatives: true,
+  AlternativeOption: true,
+  Binding: true,
+  PageFormat: true,
+  Page: true,
+  ReferenceImage: true,
+  StoredImage: true,
+  Fill: true,
+  Sticky: true,
+  StickyLink: true,
+  Gutters: true,
+  LineFonts: true,
+  NameStyle: true,
+  KindSizes: true,
+  CspPage: true,
+  StoryPosition: true,
+  CspStory: true,
+  StoryPageNumber: true,
+  NombrePlace: true,
+  ShownNombre: true,
+  Plan: true,
+  StoryShape: true,
+  ShapePart: true,
+  ShapeBeat: true,
+  Panel: true,
+  PanelBorder: true,
+  PanelFill: true,
+  PanelEffect: true,
+  Breakout: true,
+  LineKind: true,
+  LineShapes: true,
+  BalloonShape: true,
+  TailStyle: true,
+  Tail: true,
+  Line: true,
+  Stroke: true,
+  StrokePoint: true,
+  RoughLayer: true,
+  BrushKind: true,
+  EraseMode: true,
+  PressureCurve: true,
+  BrushTip: true,
+  Brush: true,
+  CspValue: true,
+  CspMaterial: true,
+  CspToolData: true,
+  RoughImage: true,
+  Character: true,
+  Scene: true,
+  EmotionPoint: true,
+  SourceSheet: true,
+  Series: true,
+  SeriesEpisode: true,
   SeriesShared: true,
 };
 

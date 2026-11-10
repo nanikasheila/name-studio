@@ -138,13 +138,21 @@ export class Workbench {
     },
     drop: (ref, to) => this.edits.dropLayer(ref, to),
     lineLabel: (page, id) => {
-      const text = page.lines.find((l) => l.id === id)?.text.replace(/\s+/g, " ").trim() ?? "";
+      const text =
+        page.lines
+          .find((l) => l.id === id)
+          ?.text.replace(/\s+/g, " ")
+          .trim() ?? "";
       return text.length > 14 ? `${text.slice(0, 14)}…` : text || "（空）";
     },
     isMark: (page, id) => isMark(this.session.project ?? {}, page.strokes.find((stroke) => stroke.id === id) ?? {}),
     selectMany: (refs) => this.edits.selectRefs(refs),
     act: (what) =>
-      void (what === "duplicate" ? this.edits.duplicateSelection() : what === "paste" ? this.editor.paste() : this.run(({ delete: "delete", copy: "copy", cut: "cut", hold: "panel.hold" } as const)[what])),
+      void (what === "duplicate"
+        ? this.edits.duplicateSelection()
+        : what === "paste"
+          ? this.editor.paste()
+          : this.run(({ delete: "delete", copy: "copy", cut: "cut", hold: "panel.hold" } as const)[what])),
     canPaste: () => this.editor.canPaste,
   });
   private readonly roughPanel = new RoughPanel({
@@ -197,7 +205,11 @@ export class Workbench {
   private readonly shortcutDialog: ShortcutDialog;
   private readonly palette: CommandPalette;
   private readonly penDialog = new PenDialog(penPreferences);
-  private readonly perfDialog = new PerfDialog(() => perfMeter.report(), () => perfMeter.reset(), (message) => this.setStatus(message));
+  private readonly perfDialog = new PerfDialog(
+    () => perfMeter.report(),
+    () => perfMeter.reset(),
+    (message) => this.setStatus(message),
+  );
   private readonly brushDialog: BrushDialog;
   private readonly brushEditor: BrushEditor;
   private readonly settingsDialog: SettingsDialog;
@@ -218,7 +230,11 @@ export class Workbench {
     changed: () => this.updateTitle(),
   });
 
-  constructor(private readonly setStatus: (message: string) => void, private readonly onTitle: (title: string) => void, help: (kind: HelpKind) => void = () => {}) {
+  constructor(
+    private readonly setStatus: (message: string) => void,
+    private readonly onTitle: (title: string) => void,
+    help: (kind: HelpKind) => void = () => {},
+  ) {
     this.editor = new PageEditor($<HTMLCanvasElement>("editor-canvas"), {
       project: () => this.session.project,
       begin: () => this.begin(),
@@ -395,14 +411,20 @@ export class Workbench {
         const fixed = report.changed + report.added + report.removed + report.kept;
         const inserted = report.insertedPages ? `、ページを ${report.insertedPages} 枚入れました` : "";
         const left = report.leftPages.length ? `、台本にないページ ${report.leftPages.join("・")} はそのまま` : "";
-        const update = fixed ? `。セリフを台本に合わせました: 書き換え ${report.changed}・足す ${report.added}・消す ${report.removed}・そのまま ${report.kept}${report.notes ? `、コマのメモの書き換え ${report.notes}` : ""}${inserted}${left}` : "";
-        this.setStatus(`台本を ${report.pages} ページに入れました（セリフ ${report.lines}、作ったコマ ${report.panels}${who}${scenes}）${update}。元に戻すは Ctrl+Z`);
+        const update = fixed
+          ? `。セリフを台本に合わせました: 書き換え ${report.changed}・足す ${report.added}・消す ${report.removed}・そのまま ${report.kept}${report.notes ? `、コマのメモの書き換え ${report.notes}` : ""}${inserted}${left}`
+          : "";
+        this.setStatus(
+          `台本を ${report.pages} ページに入れました（セリフ ${report.lines}、作ったコマ ${report.panels}${who}${scenes}）${update}。元に戻すは Ctrl+Z`,
+        );
       },
       plotDone: (report) => {
         // The plot is about the whole: the strip shows it large.
         if (!this.board.expanded) this.board.toggleWide(true);
         const added = report.addedPages ? `、ページを ${report.addedPages} 枚足しました` : "";
-        this.setStatus(`プロットを取り込みました: ページのメモ ${report.memos}・シーン ${report.scenes}・付箋 ${report.stickies}${added}。元に戻すは Ctrl+Z`);
+        this.setStatus(
+          `プロットを取り込みました: ページのメモ ${report.memos}・シーン ${report.scenes}・付箋 ${report.stickies}${added}。元に戻すは Ctrl+Z`,
+        );
       },
     });
     this.altDialog = new AltDialog({
@@ -584,7 +606,12 @@ export class Workbench {
     const empty = trailingEmptyPages(p);
     if (empty > 0 && empty < p.pages.length) {
       const keep = p.pages.length - empty;
-      if (await ask(`ネーム用紙の後ろの ${empty} ページは空です。除いて ${keep} ページにしますか？（あとで足すこともできます）`, { title: "Name Studio", kind: "info" })) {
+      if (
+        await ask(`ネーム用紙の後ろの ${empty} ページは空です。除いて ${keep} ページにしますか？（あとで足すこともできます）`, {
+          title: "Name Studio",
+          kind: "info",
+        })
+      ) {
         p.pages.splice(keep);
       }
     }
@@ -593,7 +620,11 @@ export class Workbench {
     const warnings = result.warnings.length ? ` ／ ${result.warnings.join(" ／ ")}` : "";
     const margins = p.pages.filter((page) => page.memo.includes("余白: ")).length;
     const marginNote = margins ? `（余白の文字は ${margins} ページのメモに入れました）` : "";
-    this.show(p, null, `${p.pages.length} ページ、コマ ${panels}、セリフ ${lines} を取り込みました${marginNote}。保存先はまだ決まっていません${warnings}`);
+    this.show(
+      p,
+      null,
+      `${p.pages.length} ページ、コマ ${panels}、セリフ ${lines} を取り込みました${marginNote}。保存先はまだ決まっていません${warnings}`,
+    );
     this.markDirty();
     this.updateTitle();
   }
@@ -747,7 +778,10 @@ export class Workbench {
     useFonts(this.session.project?.fonts);
     useStyle(this.session.project?.style);
     // The pens of this name (and of others) as commands, for their keys.
-    replaceSubtoolCommands(this.commands, this.bars.subtoolCommands(() => this.session.project !== null));
+    replaceSubtoolCommands(
+      this.commands,
+      this.bars.subtoolCommands(() => this.session.project !== null),
+    );
     this.bars.renderBrushBar();
     this.editor.draw();
     this.board.update(this.session.revision);
@@ -758,16 +792,15 @@ export class Workbench {
     $<HTMLButtonElement>("redo").disabled = !this.session.canRedo;
     if (this.editor.continuous) this.bars.showRows();
     const pages = this.editor.currentPages().sort((a, b) => a - b);
-    $("editor-page-label").textContent = this.session.project
-      ? `${pages.join("–") || "-"} / ${this.session.project.pages.length}`
-      : "-";
+    $("editor-page-label").textContent = this.session.project ? `${pages.join("–") || "-"} / ${this.session.project.pages.length}` : "-";
     const leftIsNext = this.leftward() === 1;
     $("editor-next").title = leftIsNext ? "次へ（←）" : "前へ（←）";
     $("editor-prev").title = leftIsNext ? "前へ（→）" : "次へ（→）";
     $("first-alone-label").title = `見開きの組み方: 1 ページ目を${leftIsNext ? "左" : "右"}ページだけで始める`;
     // 保留: the held panels meant for around these pages, a click away.
     const badge = $("held-badge");
-    const near = this.session.project && pages.length ? heldNear(this.session.project, pages[0] - 1, pages[pages.length - 1] - 1).length : 0;
+    const near =
+      this.session.project && pages.length ? heldNear(this.session.project, pages[0] - 1, pages[pages.length - 1] - 1).length : 0;
     const all = this.session.project?.held?.length ?? 0;
     badge.hidden = !all;
     badge.textContent = near ? `保留 ${near}（このあたり）` : `保留 ${all}`;
@@ -824,13 +857,20 @@ export class Workbench {
       const picked = pickedStrokes(s);
       return picked.length === ref.ids.length && ref.ids.every((id) => picked.includes(id));
     }
-    return (s.kind === ref.kind && s.id === ref.id) || (s.kind === "group" && !!s.items?.some((item) => item.kind === ref.kind && item.id === ref.id));
+    return (
+      (s.kind === ref.kind && s.id === ref.id) ||
+      (s.kind === "group" && !!s.items?.some((item) => item.kind === ref.kind && item.id === ref.id))
+    );
   }
 
   private selectLayer(ref: LayerRef): void {
     if (ref.kind === "strokes") {
       const items = ref.ids.map((id) => ({ kind: "stroke" as const, id }));
-      this.editor.select(items.length === 1 ? { kind: "stroke", pageId: ref.pageId, id: ref.ids[0] } : { kind: "group", pageId: ref.pageId, id: "group", items });
+      this.editor.select(
+        items.length === 1
+          ? { kind: "stroke", pageId: ref.pageId, id: ref.ids[0] }
+          : { kind: "group", pageId: ref.pageId, id: "group", items },
+      );
     } else {
       this.editor.select({ kind: ref.kind, pageId: ref.pageId, id: ref.id });
     }
@@ -965,7 +1005,8 @@ export class Workbench {
     // Undo and redo work from a checkbox or a slider just used, and in the pen editor (it shows the name as undo leaves it).
     if ((action === "undo" || action === "redo") && !isTextEntry(event) && noDialogBut("brush-editor")) return this.run(action);
     // 欄を巡る works from a field too (not while its text is being composed): it is how the keyboard leaves it.
-    if ((action === "view.nextPane" || action === "view.previousPane") && !event.isComposing && !document.querySelector("dialog[open]")) return this.run(action);
+    if ((action === "view.nextPane" || action === "view.previousPane") && !event.isComposing && !document.querySelector("dialog[open]"))
+      return this.run(action);
     if (isTyping(event) || document.querySelector("dialog[open]")) return false;
     // Arrows move what is selected (資料: the chosen picture; Shift: further) before anything else.
     const step = event.shiftKey ? 5 : 0.5;

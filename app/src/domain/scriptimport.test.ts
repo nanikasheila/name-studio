@@ -69,7 +69,20 @@ describe("台本の取り込み", () => {
   it("deals the script out onto pages and panels", () => {
     const project = newProject("新しいネーム", 2);
     const report = applyScript(project, parseScript(MARKDOWN), { startPage: 0, makePanels: true });
-    expect(report).toEqual({ pages: 3, panels: 4, lines: 7, characters: ["ミカ", "ソラ"], scenes: 2, replacedScenes: 0, insertedPages: 0, leftPages: [], kept: 0, changed: 0, added: 0, removed: 0 });
+    expect(report).toEqual({
+      pages: 3,
+      panels: 4,
+      lines: 7,
+      characters: ["ミカ", "ソラ"],
+      scenes: 2,
+      replacedScenes: 0,
+      insertedPages: 0,
+      leftPages: [],
+      kept: 0,
+      changed: 0,
+      added: 0,
+      removed: 0,
+    });
     expect(project.title).toBe("星の約束");
     expect(project.pages.length).toBe(3);
     const page = project.pages[0];
@@ -91,7 +104,10 @@ describe("台本の取り込み", () => {
     const mika = addCharacter(project, "ミカ");
     const page = project.pages[0];
     addPanel(project, page, rectShape([20, 20, 120, 120]));
-    const report = applyScript(project, parseScript("### 1\n- コマ1\n- ミカ「a」\n- コマ2\n- ミカ「b」"), { startPage: 0, makePanels: true });
+    const report = applyScript(project, parseScript("### 1\n- コマ1\n- ミカ「a」\n- コマ2\n- ミカ「b」"), {
+      startPage: 0,
+      makePanels: true,
+    });
     expect(report.characters).toEqual([]);
     expect(page.panels.length).toBe(1);
     expect(page.lines.every((line) => line.speaker === mika.id && line.panel === page.panels[0].id)).toBe(true);
@@ -115,7 +131,10 @@ describe("台本の取り込み", () => {
 
   it("lays panels out in tiers, two across past four", () => {
     expect(panelBoxes([0, 0, 100, 100], 1)).toEqual([[0, 0, 100, 100]]);
-    expect(panelBoxes([0, 0, 100, 106], 2, { across: 2, down: 6 })).toEqual([[0, 0, 100, 50], [0, 56, 100, 106]]);
+    expect(panelBoxes([0, 0, 100, 106], 2, { across: 2, down: 6 })).toEqual([
+      [0, 0, 100, 50],
+      [0, 56, 100, 106],
+    ]);
     const five = panelBoxes([0, 0, 102, 100], 5, { across: 2, down: 5 });
     expect(five.length).toBe(5);
     // First row: two panels, the first one on the right.
@@ -193,7 +212,9 @@ describe("台本を直して取り込み直す", () => {
     first.balloonShape = "wavy";
     moveLine(second, -5, 8);
     const where = second.box.slice();
-    const revised = MARKDOWN.replace("ミカ「今日も星が見えないね」", "ミカ「今夜も星が見えないね」").replace("SE：ガチャ", "ソラ「ねえ」").replace("[1] 「誰？」", "[1] 「誰？」\n「わたしだよ」");
+    const revised = MARKDOWN.replace("ミカ「今日も星が見えないね」", "ミカ「今夜も星が見えないね」")
+      .replace("SE：ガチャ", "ソラ「ねえ」")
+      .replace("[1] 「誰？」", "[1] 「誰？」\n「わたしだよ」");
     const report = applyScript(project, parseScript(revised), { startPage: 0, makePanels: true, update: true });
     expect([report.changed, report.added, report.removed, report.kept]).toEqual([1, 2, 1, 5]);
     expect(project.pages.reduce((n, p) => n + p.lines.length, 0)).toBe(8);
@@ -210,7 +231,11 @@ describe("台本を直して取り込み直す", () => {
     expect([again.changed, again.added, again.removed, again.kept]).toEqual([0, 0, 0, 8]);
     expect(again.notes ?? 0).toBe(0);
     // A changed panel memo is counted (and goes to the memos layer in CSP).
-    const directed = applyScript(project, parseScript(revised.replace("#### コマ1 引きの絵", "#### コマ1 俯瞰の引きの絵")), { startPage: 0, makePanels: true, update: true });
+    const directed = applyScript(project, parseScript(revised.replace("#### コマ1 引きの絵", "#### コマ1 俯瞰の引きの絵")), {
+      startPage: 0,
+      makePanels: true,
+      update: true,
+    });
     expect(directed.notes).toBe(1);
     expect(page.panels.find((panel) => panel.order === 1)!.note).toBe("俯瞰の引きの絵");
   });
@@ -224,11 +249,30 @@ describe("台本を直して取り込み直す", () => {
     // A figure just left of 「誰？」, its head where the next line would go.
     const [x0, y0] = balloonExtent(who);
     const [hx, hy] = [x0 - 8, y0 + 6];
-    const head: Point[] = Array.from({ length: 12 }, (_, i) => [hx + 4 * Math.cos((i / 12) * 2 * Math.PI), hy + 4 * Math.sin((i / 12) * 2 * Math.PI)]);
-    for (const stroke of [head, [[hx, hy + 4], [hx, hy + 40]] as Point[]]) addStroke(project, page, stroke.map(([x, y]) => [x, y, 0.5]), 0.5);
+    const head: Point[] = Array.from({ length: 12 }, (_, i) => [
+      hx + 4 * Math.cos((i / 12) * 2 * Math.PI),
+      hy + 4 * Math.sin((i / 12) * 2 * Math.PI),
+    ]);
+    for (const stroke of [
+      head,
+      [
+        [hx, hy + 4],
+        [hx, hy + 40],
+      ] as Point[],
+    ])
+      addStroke(
+        project,
+        page,
+        stroke.map(([x, y]) => [x, y, 0.5]),
+        0.5,
+      );
     const face = faces(page, panel);
     expect(face).toHaveLength(1);
-    applyScript(project, parseScript(MARKDOWN.replace("[1] 「誰？」", "[1] 「誰？」\n「わたしだよ」")), { startPage: 0, makePanels: true, update: true });
+    applyScript(project, parseScript(MARKDOWN.replace("[1] 「誰？」", "[1] 「誰？」\n「わたしだよ」")), {
+      startPage: 0,
+      makePanels: true,
+      update: true,
+    });
     const added = page.lines.find((line) => line.text === "わたしだよ")!;
     const overlaps = (a: BoxMm, b: BoxMm) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
     expect(overlaps(balloonExtent(added), face[0])).toBe(false);
@@ -254,7 +298,10 @@ describe("台本を直して取り込み直す", () => {
     const [p1, p2, p3] = project.pages;
     const ids = project.pages.flatMap((page) => page.lines.map((line) => line.id));
     // A new page 2; the old 2 and 3 are now 3 and 4.
-    const revised = MARKDOWN.replace("### 2ページ", "### 2ページ\n[1] ミカ「待って」\n\n### 3ページ").replace("### 3ページ\nミカ『またね』", "### 4ページ\nミカ『またね』");
+    const revised = MARKDOWN.replace("### 2ページ", "### 2ページ\n[1] ミカ「待って」\n\n### 3ページ").replace(
+      "### 3ページ\nミカ『またね』",
+      "### 4ページ\nミカ『またね』",
+    );
     const report = applyScript(project, parseScript(revised), { startPage: 0, makePanels: true, update: true });
     expect(report.insertedPages).toBe(1);
     expect([report.changed, report.added, report.removed]).toEqual([0, 0, 0]);

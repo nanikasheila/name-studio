@@ -83,7 +83,13 @@ export function makeShape(project: Project, from?: StoryShape, label?: string): 
     // Unique beyond this name: own shapes are also kept on the computer for other names.
     id: `shape-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
     label: label ?? (from ? `${from.label}（自分用）` : "自分の型"),
-    parts: from ? from.parts.map((part) => ({ ...part })) : [{ name: "はじまり", share: 1 }, { name: "なか", share: 1 }, { name: "おわり", share: 1 }],
+    parts: from
+      ? from.parts.map((part) => ({ ...part }))
+      : [
+          { name: "はじまり", share: 1 },
+          { name: "なか", share: 1 },
+          { name: "おわり", share: 1 },
+        ],
     ...(from?.beats?.length ? { beats: from.beats.map((beat) => ({ ...beat })) } : {}),
   };
   const p = plan(project);

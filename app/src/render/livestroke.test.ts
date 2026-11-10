@@ -24,7 +24,21 @@ function recorder() {
   return { ctx: ctx as unknown as CanvasRenderingContext2D, calls };
 }
 
-const brush: Brush = { id: "b", name: "ペン", kind: "pen", sizeMm: 1, opacity: 0.8, hardness: 100, stabilization: 0, taperInMm: 4, taperOutMm: 4, thickness: 100, rotation: 0, sizePressure: { min: 0.2 }, opacityPressure: { min: 0.5 } };
+const brush: Brush = {
+  id: "b",
+  name: "ペン",
+  kind: "pen",
+  sizeMm: 1,
+  opacity: 0.8,
+  hardness: 100,
+  stabilization: 0,
+  taperInMm: 4,
+  taperOutMm: 4,
+  thickness: 100,
+  rotation: 0,
+  sizePressure: { min: 0.2 },
+  opacityPressure: { min: 0.5 },
+};
 const points: StrokePoint[] = Array.from({ length: 40 }, (_, i) => [10 + i * 0.7, 20 + Math.sin(i / 4) * 3, 0.2 + (i % 7) / 10]);
 const m = { scale: 3, x: 5, y: 7 };
 

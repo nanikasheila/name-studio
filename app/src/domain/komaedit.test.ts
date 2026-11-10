@@ -57,7 +57,10 @@ describe("borders between panels", () => {
   it("finds the panel across the gutter, not the far side of a thin panel", () => {
     // A thin 5 mm panel (間) between two others.
     const { page, ids } = pageWith([20, 20, 90, 100], [92, 20, 97, 100], [99, 20, 180, 100]);
-    const seam = seamOf(page, { panelId: ids[1], edge: page.panels.find((p) => p.id === ids[1])!.shape.findIndex(([x], i, s) => x === 97 && s[(i + 1) % s.length][0] === 97) })!;
+    const seam = seamOf(page, {
+      panelId: ids[1],
+      edge: page.panels.find((p) => p.id === ids[1])!.shape.findIndex(([x], i, s) => x === 97 && s[(i + 1) % s.length][0] === 97),
+    })!;
     expect(new Set(seam.edges.map((edge) => edge.panelId))).toEqual(new Set([ids[1], ids[2]]));
   });
 
@@ -135,7 +138,12 @@ describe("joining panels", () => {
     const { page, ids } = pageWith([20, 20, 99, 100], [101, 20, 180, 100], [20, 106, 180, 200]);
     const first = page.panels.find((p) => p.id === ids[0])!;
     const found = neighbours(page, first).map(({ panel, side }) => [panel.id, side]);
-    expect(found).toEqual(expect.arrayContaining([[ids[1], "right"], [ids[2], "bottom"]]));
+    expect(found).toEqual(
+      expect.arrayContaining([
+        [ids[1], "right"],
+        [ids[2], "bottom"],
+      ]),
+    );
   });
 });
 

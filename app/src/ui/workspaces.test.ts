@@ -33,7 +33,10 @@ describe("作業の配置", () => {
   });
 
   it("reads back what was kept, anything spoilt as it comes", () => {
-    const kept = { current: "handoff", saved: { overview: { docks: { order: ["pages"] }, view: "sideways", rows: -1, band: "wide" }, other: {} } };
+    const kept = {
+      current: "handoff",
+      saved: { overview: { docks: { order: ["pages"] }, view: "sideways", rows: -1, band: "wide" }, other: {} },
+    };
     const store = readWorkspaces(JSON.stringify(kept));
     expect(store.current).toBe("handoff");
     const overview = store.saved.overview!;
@@ -45,7 +48,10 @@ describe("作業の配置", () => {
 
   it("goes back to a workspace as it comes, and keeps the choice for the next start", () => {
     const items = new Map<string, string>();
-    const storage = { getItem: (key: string) => items.get(key) ?? null, setItem: (key: string, value: string) => void items.set(key, value) };
+    const storage = {
+      getItem: (key: string) => items.get(key) ?? null,
+      setItem: (key: string, value: string) => void items.set(key, value),
+    };
     const applied: Workspace[] = [];
     let now = defaultWorkspace("draw");
     const host = { current: () => now, apply: (w: Workspace) => (applied.push(w), (now = w)), status: () => undefined };

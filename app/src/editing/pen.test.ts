@@ -34,13 +34,34 @@ describe("tablet settings", () => {
   });
 
   it("keeps a curve's points in order, its ends where they were put (下限・上限)", () => {
-    expect(normalizeCurve([[0.6, 0.4], [0.1, 0.2], [0.9, 1]])).toEqual([[0.1, 0.2], [0.6, 0.4], [0.9, 1]]);
+    expect(
+      normalizeCurve([
+        [0.6, 0.4],
+        [0.1, 0.2],
+        [0.9, 1],
+      ]),
+    ).toEqual([
+      [0.1, 0.2],
+      [0.6, 0.4],
+      [0.9, 1],
+    ]);
     // Ends on top of each other are pulled apart.
-    expect(normalizeCurve([[0.5, 0], [0.5, 1]])).toEqual([[0, 0], [1, 1]]);
+    expect(
+      normalizeCurve([
+        [0.5, 0],
+        [0.5, 1],
+      ]),
+    ).toEqual([
+      [0, 0],
+      [1, 1],
+    ]);
   });
 
   it("stays flat below the lower end and above the upper one", () => {
-    const curve: [number, number][] = [[0.2, 0], [0.8, 1]];
+    const curve: [number, number][] = [
+      [0.2, 0],
+      [0.8, 1],
+    ];
     expect(adjustPressure(curve, 0.1)).toBe(0);
     expect(adjustPressure(curve, 0.5)).toBeCloseTo(0.5);
     expect(adjustPressure(curve, 0.9)).toBe(1);
@@ -48,7 +69,11 @@ describe("tablet settings", () => {
 
   it("passes pressure through the curve", () => {
     expect(adjustPressure(LINEAR, 0.3)).toBeCloseTo(0.3);
-    const soft: [number, number][] = [[0, 0], [0.25, 0.6], [1, 1]];
+    const soft: [number, number][] = [
+      [0, 0],
+      [0.25, 0.6],
+      [1, 1],
+    ];
     expect(adjustPressure(soft, 0.3)).toBeGreaterThan(0.4);
     expect(adjustPressure(soft, 1)).toBeCloseTo(1);
   });
@@ -67,10 +92,21 @@ describe("tablet settings", () => {
     const first = new PenPreferences(storage);
     let heard = 0;
     first.onChange(() => heard++);
-    first.update({ cursor: "dot", pressureCurve: [[0, 0], [0.5, 0.8], [1, 1]] });
+    first.update({
+      cursor: "dot",
+      pressureCurve: [
+        [0, 0],
+        [0.5, 0.8],
+        [1, 1],
+      ],
+    });
     expect(heard).toBe(1);
     const again = new PenPreferences(storage);
     expect(again.settings.cursor).toBe("dot");
-    expect(again.settings.pressureCurve).toEqual([[0, 0], [0.5, 0.8], [1, 1]]);
+    expect(again.settings.pressureCurve).toEqual([
+      [0, 0],
+      [0.5, 0.8],
+      [1, 1],
+    ]);
   });
 });

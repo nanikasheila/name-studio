@@ -24,9 +24,19 @@ const SUMMARY: DialogueUpdateSummary = {
   changed: 3,
   warnings: [],
   pages: [
-    page([5], { added: ["いくぞ"], retired: ["行くぞ", "待て"], replaced: ["b1"], backup: "C:\\out\\name-studio-backup\\20261028-100000\\005.clip" }),
+    page([5], {
+      added: ["いくぞ"],
+      retired: ["行くぞ", "待て"],
+      replaced: ["b1"],
+      backup: "C:\\out\\name-studio-backup\\20261028-100000\\005.clip",
+    }),
     page([1]),
-    page([2, 3], { conflicts: ["はい"], retired: ["はい"], added: ["はい！"], backup: "C:\\out\\name-studio-backup\\20261028-100000\\002.clip" }),
+    page([2, 3], {
+      conflicts: ["はい"],
+      retired: ["はい"],
+      added: ["はい！"],
+      backup: "C:\\out\\name-studio-backup\\20261028-100000\\002.clip",
+    }),
     page([7], { notFound: ["ページのファイル"] }),
     page([8], { notes: true, marks: ["指示"], backup: "C:\\out\\name-studio-backup\\20261028-100000\\008.clip" }),
   ],

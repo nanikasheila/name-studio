@@ -25,11 +25,53 @@ describe("マスク付きフォルダー", () => {
     ];
     const format = project.pageFormat;
     // Runs out of p1 into the gutter and p2, but mostly in p1: kept whole, in p1.
-    expect(strokePanel(page, line("a", [[20, 20], [30, 30], [40, 40], [50, 80]]), format)?.id).toBe("p1");
-    expect(strokePanel(page, line("b", [[70, 30], [80, 40]]), format)?.id).toBe("inset");
+    expect(
+      strokePanel(
+        page,
+        line("a", [
+          [20, 20],
+          [30, 30],
+          [40, 40],
+          [50, 80],
+        ]),
+        format,
+      )?.id,
+    ).toBe("p1");
+    expect(
+      strokePanel(
+        page,
+        line("b", [
+          [70, 30],
+          [80, 40],
+        ]),
+        format,
+      )?.id,
+    ).toBe("inset");
     // Outside every panel, or drawn over the borders (はみ出し): left on the page.
-    expect(strokePanel(page, line("c", [[2, 2], [5, 5]]), format)).toBeUndefined();
-    expect(strokePanel(page, line("d", [[20, 20], [30, 30]], true), format)).toBeUndefined();
+    expect(
+      strokePanel(
+        page,
+        line("c", [
+          [2, 2],
+          [5, 5],
+        ]),
+        format,
+      ),
+    ).toBeUndefined();
+    expect(
+      strokePanel(
+        page,
+        line(
+          "d",
+          [
+            [20, 20],
+            [30, 30],
+          ],
+          true,
+        ),
+        format,
+      ),
+    ).toBeUndefined();
   });
 
   it("counts a はみ出し reaching into a panel as part of it", () => {
@@ -44,7 +86,16 @@ describe("マスク付きフォルダー", () => {
     expect(area).toHaveLength(2);
     expect(area[1]).toEqual(page.breakouts[0].shape);
     // A stroke in the はみ出し only, below the panel.
-    expect(strokePanel(page, line("a", [[50, 70], [60, 75]]), project.pageFormat)?.id).toBe("p1");
+    expect(
+      strokePanel(
+        page,
+        line("a", [
+          [50, 70],
+          [60, 75],
+        ]),
+        project.pageFormat,
+      )?.id,
+    ).toBe("p1");
   });
 
   it("takes a 裁ち切り panel past the canvas edge", () => {
@@ -65,8 +116,22 @@ describe("マスク付きフォルダー", () => {
       { id: "r1", shape: rectShape([10, 10, 100, 60]), order: 1, spread: "s" },
     ];
     left.panels = [{ id: "l1", shape: rectShape([10, 10, 100, 60]), order: 1, spread: "s" }];
-    right.strokes = [line("a", [[20, 20], [30, 30]]), line("b", [[2, 2], [4, 4]])];
-    left.strokes = [line("c", [[20, 20], [30, 30]])];
+    right.strokes = [
+      line("a", [
+        [20, 20],
+        [30, 30],
+      ]),
+      line("b", [
+        [2, 2],
+        [4, 4],
+      ]),
+    ];
+    left.strokes = [
+      line("c", [
+        [20, 20],
+        [30, 30],
+      ]),
+    ];
     const placed = [
       { page: right, m, right: true },
       { page: left, m, right: false },
@@ -106,10 +171,16 @@ describe("マスク付きフォルダー", () => {
     };
     const { folders } = panelFolders([{ page, m, right: true }], project.pageFormat);
     const clips: boolean[] = [];
-    drawPanelMask(ctx as unknown as CanvasRenderingContext2D, folders[0], project.pageFormat, (at) => at, (right, draw) => {
-      clips.push(right);
-      draw();
-    });
+    drawPanelMask(
+      ctx as unknown as CanvasRenderingContext2D,
+      folders[0],
+      project.pageFormat,
+      (at) => at,
+      (right, draw) => {
+        clips.push(right);
+        draw();
+      },
+    );
     expect(clips).toEqual([true]);
     expect(ops).toEqual(["save", "fill source-over", "fill source-over", "fill destination-out", "restore"]);
   });

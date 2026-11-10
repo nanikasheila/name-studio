@@ -58,7 +58,11 @@ export interface AssistHost {
 export const ASSIST_KEY = "namestudio.assist";
 
 /** A new element with these attributes and children. */
-function element<K extends keyof HTMLElementTagNameMap>(tag: K, attributes: Record<string, string> = {}, ...children: (Node | string)[]): HTMLElementTagNameMap[K] {
+function element<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  attributes: Record<string, string> = {},
+  ...children: (Node | string)[]
+): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
   for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, value);
   node.append(...children);
@@ -159,7 +163,12 @@ export class AssistPanel {
     past.title = "前の相談の一覧。開くと続きを話せる";
     const fresh = plainButton("新しい相談", () => this.reset());
     fresh.title = "今の相談を終えて、新しく始める（相手は前の話を忘れます）";
-    const input = element("textarea", { "data-part": "input", rows: "3", placeholder: "相談したいこと（Ctrl+Enter で送る）", "aria-label": "相談したいこと" });
+    const input = element("textarea", {
+      "data-part": "input",
+      rows: "3",
+      placeholder: "相談したいこと（Ctrl+Enter で送る）",
+      "aria-label": "相談したいこと",
+    });
     input.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
         event.preventDefault();
@@ -199,7 +208,18 @@ export class AssistPanel {
         starters,
       ),
       input,
-      element("div", { class: "assist-actions" }, element("label", { class: "check", title: "ページの絵（ラフ・コマ・フキダシ）も見せる。言葉だけより的確になるが、少し時間がかかる" }, pictures, " ページの絵も見せる"), send, stop),
+      element(
+        "div",
+        { class: "assist-actions" },
+        element(
+          "label",
+          { class: "check", title: "ページの絵（ラフ・コマ・フキダシ）も見せる。言葉だけより的確になるが、少し時間がかかる" },
+          pictures,
+          " ページの絵も見せる",
+        ),
+        send,
+        stop,
+      ),
     );
     this.renderLog();
     return this.built;
@@ -243,14 +263,19 @@ export class AssistPanel {
     this.renderSettings();
     let fetched: ModelList;
     try {
-      const list = await call("ai_models", { kind, program: kind === "local" ? null : from || null, endpoint: kind === "local" ? from : null });
+      const list = await call("ai_models", {
+        kind,
+        program: kind === "local" ? null : from || null,
+        endpoint: kind === "local" ? from : null,
+      });
       fetched = { from, list };
     } catch (error) {
       fetched = { from, error: String(error) };
     }
     if (this.modelSource(kind) !== from) return;
     this.models[kind] = fetched;
-    if (kind === "local" && fetched.list && !this.settings.localModel && fetched.list.length) this.save({ localModel: fetched.list[0].value });
+    if (kind === "local" && fetched.list && !this.settings.localModel && fetched.list.length)
+      this.save({ localModel: fetched.list[0].value });
     this.renderSettings();
     this.renderState();
   }
@@ -266,7 +291,9 @@ export class AssistPanel {
     const listed = this.listed(kind)?.list;
     const problem = listed ? choiceProblem(listed, this.chosenModel(kind), this.chosenEffort(kind)) : null;
     if (kind === "local") {
-      state.textContent = problem ?? `${this.settings.endpoint || "（URL がありません）"}${this.settings.localModel ? ` の ${this.settings.localModel}` : ""} に聞きます。`;
+      state.textContent =
+        problem ??
+        `${this.settings.endpoint || "（URL がありません）"}${this.settings.localModel ? ` の ${this.settings.localModel}` : ""} に聞きます。`;
       state.dataset.tone = problem ? "warn" : "";
       return;
     }
@@ -280,7 +307,8 @@ export class AssistPanel {
     const which = [model, effort && `effort ${effort}`].filter(Boolean).join("・");
     state.textContent = !found
       ? `${AI_LABELS[kind]} が見つかりません。入れてログインしてから、「接続…」で場所を指定してください。`
-      : (problem ?? `${AI_LABELS[kind]}（${found.version}）${which ? `の ${which} ` : ""}に聞きます。${this.tools.node ? "" : "Node.js がないので、ネームの写しはスキルのコマンドで読めません（要約と絵は見られます）。"}`);
+      : (problem ??
+        `${AI_LABELS[kind]}（${found.version}）${which ? `の ${which} ` : ""}に聞きます。${this.tools.node ? "" : "Node.js がないので、ネームの写しはスキルのコマンドで読めません（要約と絵は見られます）。"}`);
     state.dataset.tone = found && !problem ? "" : "warn";
   }
 
@@ -309,10 +337,12 @@ export class AssistPanel {
       const models = list ?? [];
       // Codex has no "default" entry of its own: offer one (its isDefault model).
       const fallback = models.find((found) => found.isDefault);
-      if (kind !== "local" && !models.some((found) => found.value === "")) model.append(element("option", { value: "" }, `既定（${fallback?.label ?? `${AI_LABELS[kind]} が決める`}）`));
+      if (kind !== "local" && !models.some((found) => found.value === ""))
+        model.append(element("option", { value: "" }, `既定（${fallback?.label ?? `${AI_LABELS[kind]} が決める`}）`));
       if (kind === "local" && !models.length) model.append(element("option", { value: "" }, "（モデルがありません）"));
       for (const found of models) model.append(element("option", { value: found.value, title: found.description }, found.label));
-      if (!modelFor(models, chosen) && (chosen || kind === "local")) model.append(element("option", { value: chosen }, `${chosen || "（なし）"}（一覧にありません）`));
+      if (!modelFor(models, chosen) && (chosen || kind === "local"))
+        model.append(element("option", { value: chosen }, `${chosen || "（なし）"}（一覧にありません）`));
       model.value = chosen;
     }
     model.addEventListener("change", () => {
@@ -334,7 +364,8 @@ export class AssistPanel {
       const preset = list && modelFor(list, chosen)?.defaultEffort;
       effort.append(element("option", { value: "" }, preset ? `既定（${preset}）` : "既定"));
       for (const level of efforts) effort.append(element("option", { value: level }, level));
-      if (effortNow && !efforts.includes(effortNow)) effort.append(element("option", { value: effortNow }, `${effortNow}（このモデルでは選べません）`));
+      if (effortNow && !efforts.includes(effortNow))
+        effort.append(element("option", { value: effortNow }, `${effortNow}（このモデルでは選べません）`));
       effort.value = effortNow;
       effort.disabled = !list || (!efforts.length && !effortNow);
       effort.title = "考える深さ。深いほど答えはよくなるが、時間と使用量が増える";
@@ -391,7 +422,8 @@ export class AssistPanel {
         ])
           sandbox.append(element("option", { value }, label));
         sandbox.value = this.settings.codexSandbox;
-        sandbox.title = "Codex がコマンドを動かす囲い。elevated は Codex アプリを開いていると準備に失敗し、ファイルを読めないことがあります";
+        sandbox.title =
+          "Codex がコマンドを動かす囲い。elevated は Codex アプリを開いていると準備に失敗し、ファイルを読めないことがあります";
         sandbox.addEventListener("change", () => this.save({ codexSandbox: sandbox.value }));
         more.push(element("label", { class: "assist-field" }, element("span", {}, "サンドボックス"), sandbox));
       }
@@ -406,7 +438,12 @@ export class AssistPanel {
       );
     } else {
       rows.push(field("URL", "endpoint", DEFAULT_ASSIST.endpoint));
-      const key = element("input", { type: "password", placeholder: this.hasKey ? "保存してあります（変えるときだけ入れる）" : "要るときだけ（Ollama・LM Studio は不要）", "aria-label": "API キー", autocomplete: "off" });
+      const key = element("input", {
+        type: "password",
+        placeholder: this.hasKey ? "保存してあります（変えるときだけ入れる）" : "要るときだけ（Ollama・LM Studio は不要）",
+        "aria-label": "API キー",
+        autocomplete: "off",
+      });
       key.addEventListener("keydown", (event) => event.stopPropagation());
       const keep = plainButton("保存", async () => {
         try {
@@ -422,7 +459,13 @@ export class AssistPanel {
       keep.title = "入れたキーを保存する（空のまま押すと消す）。キーはファイルに書かず、システムの資格情報の保管庫に入れます";
       rows.push(...this.modelRows(kind));
       more.push(element("label", { class: "assist-field" }, element("span", {}, "API キー"), key, keep));
-      more.push(element("p", { class: "hint" }, "Ollama・LM Studio・llama.cpp など、OpenAI と同じ形の API なら使えます。絵を見られるモデル（llava・gemma3 など）なら、ページの絵も見せられます。"));
+      more.push(
+        element(
+          "p",
+          { class: "hint" },
+          "Ollama・LM Studio・llama.cpp など、OpenAI と同じ形の API なら使えます。絵を見られるモデル（llava・gemma3 など）なら、ページの絵も見せられます。",
+        ),
+      );
     }
     const install = (target: "claude" | "codex" | "folder") =>
       plainButton({ claude: "Claude Code に入れる", codex: "Codex に入れる", folder: "フォルダーに書き出す…" }[target], async () => {
@@ -447,7 +490,12 @@ export class AssistPanel {
         element("div", { class: "assist-row" }, install("claude"), install("codex"), install("folder")),
       ),
     );
-    const details = element("details", { class: "assist-more" }, element("summary", {}, kind === "local" ? "詳しく（API キー・スキル）" : "詳しく（場所・スキル）"), ...more);
+    const details = element(
+      "details",
+      { class: "assist-more" },
+      element("summary", {}, kind === "local" ? "詳しく（API キー・スキル）" : "詳しく（場所・スキル）"),
+      ...more,
+    );
     details.open = this.moreOpen;
     details.addEventListener("toggle", () => {
       this.moreOpen = details.open;
@@ -461,7 +509,13 @@ export class AssistPanel {
     const log = this.part("log");
     const entries = this.talk?.conversation.entries ?? [];
     if (!entries.length) {
-      log.replaceChildren(element("p", { class: "hint" }, "ネームで行き詰まったら、ここで AI に相談できます。今のネーム（要約とページの絵）を見せて話します。下のボタンから始めても。"));
+      log.replaceChildren(
+        element(
+          "p",
+          { class: "hint" },
+          "ネームで行き詰まったら、ここで AI に相談できます。今のネーム（要約とページの絵）を見せて話します。下のボタンから始めても。",
+        ),
+      );
       return;
     }
     const running = this.talk?.conversation.running != null;
@@ -472,7 +526,9 @@ export class AssistPanel {
         return element(
           "div",
           { class: "assist-entry assistant" },
-          ...replyParts(entry.text).map((part, k) => (part.kind === "text" ? this.markdown(part.text) : this.opsCard(part.json, `${index}:${k}`, settled))),
+          ...replyParts(entry.text).map((part, k) =>
+            part.kind === "text" ? this.markdown(part.text) : this.opsCard(part.json, `${index}:${k}`, settled),
+          ),
         );
       }),
     );
@@ -481,7 +537,10 @@ export class AssistPanel {
 
   /** What the AI says, as the Markdown it writes it in. */
   private markdown(text: string): HTMLElement {
-    const view = markdownView(text, (href) => void navigator.clipboard?.writeText(href).then(() => this.host.status(`リンクをコピーしました: ${href}`)));
+    const view = markdownView(
+      text,
+      (href) => void navigator.clipboard?.writeText(href).then(() => this.host.status(`リンクをコピーしました: ${href}`)),
+    );
     view.classList.add("assist-text");
     return view;
   }
@@ -505,7 +564,10 @@ export class AssistPanel {
     apply.classList.add("primary");
     apply.disabled = !preview || preview.broken || !preview.done.length;
     apply.title = "このネームに当てる（1 回の操作として。Ctrl+Z で戻せます）";
-    const copy = plainButton("JSON をコピー", () => void navigator.clipboard?.writeText(json).then(() => this.host.status("変更の案の JSON をコピーしました")));
+    const copy = plainButton(
+      "JSON をコピー",
+      () => void navigator.clipboard?.writeText(json).then(() => this.host.status("変更の案の JSON をコピーしました")),
+    );
     card.append(element("div", { class: "assist-row" }, apply, copy));
     return card;
   }
@@ -576,7 +638,16 @@ export class AssistPanel {
       const when = new Date(talk.updated).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
       const where = talk.name === name ? "" : `・${talk.name ? (talk.name.split(/[\\/]/).pop() ?? talk.name) : "保存前のネーム"}`;
       const now = this.talk?.id === talk.id;
-      const open = element("button", { type: "button", class: "assist-talk", title: `この相談を開いて続きを話す（${AI_LABELS[talk.kind]}）` }, element("span", { class: "assist-talk-title" }, talk.title), element("span", { class: "assist-talk-meta" }, `${AI_LABELS[talk.kind]}・${talk.count} 問・${when}${where}${now ? "・いまの相談" : ""}`));
+      const open = element(
+        "button",
+        { type: "button", class: "assist-talk", title: `この相談を開いて続きを話す（${AI_LABELS[talk.kind]}）` },
+        element("span", { class: "assist-talk-title" }, talk.title),
+        element(
+          "span",
+          { class: "assist-talk-meta" },
+          `${AI_LABELS[talk.kind]}・${talk.count} 問・${when}${where}${now ? "・いまの相談" : ""}`,
+        ),
+      );
       open.addEventListener("click", () => void this.reopen(talk.id));
       const remove = plainButton("消す", () => {
         if (remove.dataset.sure !== "1") {
@@ -592,8 +663,15 @@ export class AssistPanel {
       return element("li", { class: now ? "now" : "" }, open, remove);
     });
     box.replaceChildren(
-      element("div", { class: "assist-row" }, element("strong", {}, "前の相談"), element("label", { class: "check", title: "ほかのネームで話した相談も出す" }, all, ` ほかのネームも（${others}）`)),
-      rows.length ? element("ul", { class: "assist-talks" }, ...rows) : element("p", { class: "hint" }, this.allTalks ? "残っている相談はありません。" : "このネームの相談はまだありません。"),
+      element(
+        "div",
+        { class: "assist-row" },
+        element("strong", {}, "前の相談"),
+        element("label", { class: "check", title: "ほかのネームで話した相談も出す" }, all, ` ほかのネームも（${others}）`),
+      ),
+      rows.length
+        ? element("ul", { class: "assist-talks" }, ...rows)
+        : element("p", { class: "hint" }, this.allTalks ? "残っている相談はありません。" : "このネームの相談はまだありません。"),
     );
   }
 
@@ -617,7 +695,14 @@ export class AssistPanel {
     this.save({ kind: talk.kind });
     this.part<HTMLSelectElement>("kind").value = talk.kind;
     // Seen as never: the next question brings the name as it is now (and its folder up to date).
-    this.talk = { id: talk.id, created: talk.created, conversation: Conversation.restore(talk), dir: talk.dir, name: this.host.path() ?? "", seen: "" };
+    this.talk = {
+      id: talk.id,
+      created: talk.created,
+      conversation: Conversation.restore(talk),
+      dir: talk.dir,
+      name: this.host.path() ?? "",
+      seen: "",
+    };
     this.applied.clear();
     for (const key of talk.applied) this.applied.add(key);
     this.part("history").hidden = true;
@@ -662,10 +747,15 @@ export class AssistPanel {
       { path: COPY_FILE, text: JSON.stringify(project) },
     ];
     const instructions = agentInstructions(pictures.length > 0);
-    files.push({ path: "SYSTEM.md", text: instructions }, { path: "CLAUDE.md", text: instructions }, { path: "AGENTS.md", text: instructions });
+    files.push(
+      { path: "SYSTEM.md", text: instructions },
+      { path: "CLAUDE.md", text: instructions },
+      { path: "AGENTS.md", text: instructions },
+    );
     if (pictures.length) {
       this.host.status("ページの絵を用意しています…");
-      for (const picture of await pagePictures(project, pictures, (rough) => this.host.rough(rough))) files.push({ path: pictureFile(picture.number), base64: picture.base64 });
+      for (const picture of await pagePictures(project, pictures, (rough) => this.host.rough(rough)))
+        files.push({ path: pictureFile(picture.number), base64: picture.base64 });
     }
     return files;
   }
@@ -708,7 +798,8 @@ export class AssistPanel {
         });
         talk.seen = now;
       }
-      const turnPictures = this.settings.pictures && (first || changed) ? current.filter((n) => n <= project.pages.length).map(pictureFile) : [];
+      const turnPictures =
+        this.settings.pictures && (first || changed) ? current.filter((n) => n <= project.pages.length).map(pictureFile) : [];
       const messages: ChatMessage[] =
         kind === "local"
           ? [

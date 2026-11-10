@@ -105,7 +105,15 @@ try {
       kept[key] = {
         timeMs: now,
         kind: "csp",
-        form: { template: "", outDir: "C:\\out\\第5話", fit: "basic", makeWork: true, workTemplate: "", workName: "第5話", storyIndex: "5" },
+        form: {
+          template: "",
+          outDir: "C:\\out\\第5話",
+          fit: "basic",
+          makeWork: true,
+          workTemplate: "",
+          workName: "第5話",
+          storyIndex: "5",
+        },
         mode: "builtin",
         panels: "masks",
         editable: true,
@@ -123,7 +131,10 @@ try {
   await settle();
   check((await page.locator("#ne-out-dir").textContent()) === "C:\\out\\第5話", "another name opens with its own folder");
   check(await page.locator("#ne-kind-csp").evaluate((b) => b.classList.contains("active")), "and its own kind of export");
-  check((await page.locator("#ne-panels").inputValue()) === "masks" && !(await page.locator("#ne-notes").isChecked()), "and its own layer choices");
+  check(
+    (await page.locator("#ne-panels").inputValue()) === "masks" && !(await page.locator("#ne-notes").isChecked()),
+    "and its own layer choices",
+  );
   check((await page.locator("#ne-story-index").inputValue()) === "5", "and its story number");
   await page.keyboard.press("Escape");
 
@@ -132,7 +143,10 @@ try {
   await settle();
   check((await page.locator("#ne-out-dir").textContent()) === "未選択", "back on the first name, not the other name's folder");
   check(await page.locator("#ne-kind-text").evaluate((b) => b.classList.contains("active")), "but the first name's own settings");
-  check((await dialog.evaluate((d) => d.open)) && !(await page.locator("#ne-updated").isVisible()), "a name never updated in CSP lists no pages to go to");
+  check(
+    (await dialog.evaluate((d) => d.open)) && !(await page.locator("#ne-updated").isVisible()),
+    "a name never updated in CSP lists no pages to go to",
+  );
   await page.keyboard.press("Escape");
 
   // The last セリフだけ反映 of 第5話: its pages are there to go to again.
@@ -141,15 +155,25 @@ try {
       { pages: [2, 3], text: "2–3 ページ: 足した 1・CSP でも直した「はい」をネームのものに", attention: true },
       { pages: [4], text: "4 ページ: （旧）にして隠した 1", attention: false },
     ];
-    localStorage.setItem("namestudio.lastDialogueUpdate", JSON.stringify({ [key]: { timeMs: Date.now(), outDir: "C:\\out\\第5話", first: "2 ページに反映しました", rows } }));
+    localStorage.setItem(
+      "namestudio.lastDialogueUpdate",
+      JSON.stringify({ [key]: { timeMs: Date.now(), outDir: "C:\\out\\第5話", first: "2 ページに反映しました", rows } }),
+    );
   }, "c:/ネーム/第5話.namestudio");
   await show(B, "第5話");
   await page.locator("#name-export").click();
   await settle();
   const heading = await page.locator("#ne-updated-heading").textContent();
   const updated = page.locator("#ne-updated button");
-  check(heading.startsWith("前回のセリフだけ反映（") && heading.includes("C:\\out\\第5話）: 2 ページに反映しました"), `the dialog shows the name's last セリフだけ反映 (${heading})`);
-  check(JSON.stringify(await updated.allTextContents()) === JSON.stringify(["2–3 ページ: 足した 1・CSP でも直した「はい」をネームのものに", "4 ページ: （旧）にして隠した 1"]), "page by page");
+  check(
+    heading.startsWith("前回のセリフだけ反映（") && heading.includes("C:\\out\\第5話）: 2 ページに反映しました"),
+    `the dialog shows the name's last セリフだけ反映 (${heading})`,
+  );
+  check(
+    JSON.stringify(await updated.allTextContents()) ===
+      JSON.stringify(["2–3 ページ: 足した 1・CSP でも直した「はい」をネームのものに", "4 ページ: （旧）にして隠した 1"]),
+    "page by page",
+  );
   check((await updated.nth(0).getAttribute("class")) === "attention", "the page changed in CSP too stands out");
   await updated.nth(1).click();
   await settle();
@@ -161,7 +185,10 @@ try {
 
   await page.keyboard.press("Control+k");
   await page.locator("#command-palette input").fill("前回");
-  check((await page.locator("#command-palette .cmdp-item.current .cmdp-label").textContent()) === "前回と同じ設定で書き出す", "the command palette finds it");
+  check(
+    (await page.locator("#command-palette .cmdp-item.current .cmdp-label").textContent()) === "前回と同じ設定で書き出す",
+    "the command palette finds it",
+  );
   check((await page.locator("#command-palette .cmdp-item.current .cmdp-keys").textContent()) === "Ctrl+Shift+E", "with its keys");
   await page.keyboard.press("Escape");
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(" / ")}` : ""}`);

@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { STICKY_FOLDED_ROWS, stickyBox, stickyFolds, stickyRows } from "./stickies";
 
 describe("付箋をたたむ", () => {
-  const long = { id: "s", text: "情報局長はザグレウスの心臓によって失った腕を取り戻せるとニイに約束し、協力を引き出していた。", at: [10, 10] as [number, number] };
+  const long = {
+    id: "s",
+    text: "情報局長はザグレウスの心臓によって失った腕を取り戻せるとニイに約束し、協力を引き出していた。",
+    at: [10, 10] as [number, number],
+  };
 
   it("shows a long sticky's first rows, ending in …, and all of it open", () => {
     const rows = stickyRows(long.text);

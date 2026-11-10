@@ -1,7 +1,14 @@
 // Writing the name data out: CSP pages (a layer per kind of part, editable
 // vector lines and texts where CSP-made layers to copy are found, plus the
 // work .cmc), a PDF to read or share, and the script as text.
-import { call, type CspExportRequest, type DialogueUpdateReport, type FileCheck, type SpreadLayout, type TemplateCanvas } from "../platform/backend";
+import {
+  call,
+  type CspExportRequest,
+  type DialogueUpdateReport,
+  type FileCheck,
+  type SpreadLayout,
+  type TemplateCanvas,
+} from "../platform/backend";
 export type { CspExportRequest, DialogueUpdateReport, FileCheck, NameExportStart, SpreadLayout, TemplateCanvas } from "../platform/backend";
 import { balloonExtent, pageBalloons } from "../domain/balloon";
 import { widthFactors } from "../domain/brush";
@@ -27,7 +34,16 @@ import { wantsSpread } from "../domain/panels";
 import { MM_PER_PT } from "../domain/project";
 import { splitAtX } from "../domain/strokes";
 import { panelFolders } from "../domain/panelfolders";
-import { layerOf, markLayersOf, opacityOfLayer, roughExportNames, roughLayersOf, shownStrokes, strokesOn, withoutMarks } from "../domain/roughlayers";
+import {
+  layerOf,
+  markLayersOf,
+  opacityOfLayer,
+  roughExportNames,
+  roughLayersOf,
+  shownStrokes,
+  strokesOn,
+  withoutMarks,
+} from "../domain/roughlayers";
 import { decodePicture } from "../render/pictures";
 import { onPageOnly } from "../domain/aside";
 import { imageOf, isNamePicture, writtenOpacity } from "../domain/references";
@@ -265,7 +281,10 @@ export function vectorLines(
       return page.strokes
         .filter((stroke) => !!stroke.over === (kind === "overStrokes"))
         .map((stroke) => {
-          const factors = widthFactors(stroke, brushes.find((brush) => brush.id === stroke.brush));
+          const factors = widthFactors(
+            stroke,
+            brushes.find((brush) => brush.id === stroke.brush),
+          );
           return {
             points: map(stroke.points, (_, i) => factors[i]),
             closed: stroke.closed,
@@ -273,10 +292,17 @@ export function vectorLines(
           };
         });
     case "panels":
-      return borderLines(page).filter((line) => !framed.has(line.panel.id)).flatMap((line) => {
-        const parts = line.panel.border === "dashed" ? dashes(line.points, line.closed).map((points) => ({ points, closed: false })) : [line];
-        return parts.map((part) => ({ points: map(part.points, () => 1), closed: part.closed, widthPx: borderWidthMm(line.panel) * m.scale }));
-      });
+      return borderLines(page)
+        .filter((line) => !framed.has(line.panel.id))
+        .flatMap((line) => {
+          const parts =
+            line.panel.border === "dashed" ? dashes(line.points, line.closed).map((points) => ({ points, closed: false })) : [line];
+          return parts.map((part) => ({
+            points: map(part.points, () => 1),
+            closed: part.closed,
+            widthPx: borderWidthMm(line.panel) * m.scale,
+          }));
+        });
     case "balloons":
       return pageBalloons(page).flatMap((balloon) => {
         const widthPx = balloonLineMm() * m.scale;
@@ -375,7 +401,9 @@ export function drawNotes(ctx: CanvasRenderingContext2D, project: Project, page:
     const rows = noteRows(ctx, panel.note, room - 2 * pad, 4);
     const w = Math.max(...rows.map((row) => ctx.measureText(row).width)) + 2 * pad;
     const h = rows.length * size * 1.25 + 2 * pad;
-    const balloons = page.lines.filter((line) => line.panel === panel.id).map((line) => balloonExtent(line).map((v, i) => (i % 2 ? py(v) : px(v))));
+    const balloons = page.lines
+      .filter((line) => line.panel === panel.id)
+      .map((line) => balloonExtent(line).map((v, i) => (i % 2 ? py(v) : px(v))));
     const clear = ([x, y]: number[]) => balloons.every(([bx0, by0, bx1, by1]) => x + w < bx0 || x > bx1 || y + h < by0 || y > by1);
     const corners = [
       [left + pad, top + pad],
@@ -487,7 +515,9 @@ export interface CspExportReport {
 
 /** The kinds of layer that will be images because no CSP-made layer was found to copy. */
 export function missingEditable(found: Pick<CspExportReport, "vectorLayers" | "textLayers">): string[] {
-  return [!found.vectorLayers && "ベクター線（コマ枠・フキダシ・ラフ線）", !found.textLayers && "テキスト（セリフ）"].filter((x): x is string => !!x);
+  return [!found.vectorLayers && "ベクター線（コマ枠・フキダシ・ラフ線）", !found.textLayers && "テキスト（セリフ）"].filter(
+    (x): x is string => !!x,
+  );
 }
 
 /** Why some parts went as images, and how to have them editable. */
@@ -502,7 +532,11 @@ export function imagesNote(missing: string[]): string {
 export function checkSummary(report: Pick<CspExportReport, "checks" | "workCheck">): { ok: boolean; lines: string[] } {
   const lines: string[] = [];
   for (const [index, check] of report.checks.entries()) {
-    const where = check.pages ? (check.pages.length > 1 ? `${check.pages.join("–")} ページ（見開き）` : `${check.pages[0]} ページ`) : `${index + 1} ページ`;
+    const where = check.pages
+      ? check.pages.length > 1
+        ? `${check.pages.join("–")} ページ（見開き）`
+        : `${check.pages[0]} ページ`
+      : `${index + 1} ページ`;
     for (const problem of check.problems) lines.push(`${where}: ${problem}`);
   }
   for (const problem of report.workCheck?.problems ?? []) lines.push(`作品: ${problem}`);
@@ -512,7 +546,9 @@ export function checkSummary(report: Pick<CspExportReport, "checks" | "workCheck
   const work = report.workCheck ? "、作品のページの並び" : "";
   return {
     ok: true,
-    lines: [`自己確認 OK: ${report.checks.length} ページを読み直し、レイヤー・ベクター線 ${vectors} 本・テキスト ${texts} 個${work}が書いたとおりでした`],
+    lines: [
+      `自己確認 OK: ${report.checks.length} ページを読み直し、レイヤー・ベクター線 ${vectors} 本・テキスト ${texts} 個${work}が書いたとおりでした`,
+    ],
   };
 }
 
@@ -544,7 +580,12 @@ export function placeUnit(project: Project, unit: number[], full: MmToPx, spread
  * 縦スクロール, joined: the pieces of a unit one under the other on a page
  * that holds `pieces` of them, each fitted into its share of the height.
  */
-export function placeStacked(project: Project, unit: number[], canvas: Pick<TemplateCanvas, "widthPx" | "heightPx">, pieces: number): PlacedPage[] {
+export function placeStacked(
+  project: Project,
+  unit: number[],
+  canvas: Pick<TemplateCanvas, "widthPx" | "heightPx">,
+  pieces: number,
+): PlacedPage[] {
   const share = canvas.heightPx / pieces;
   const [w, h] = project.pageFormat.canvasMm;
   const scale = Math.min(canvas.widthPx / w, share / h);
@@ -619,26 +660,48 @@ export async function exportToCsp(
   const notes = request.notes !== false && project.pages.some(hasNotes);
   if (notes) request = { ...request, draftLayers: [...(request.draftLayers ?? []), NOTES_LAYER_NAME] };
   // 指示: a 下描き layer each (seen while inking, never printed), on top; the ones with no 指示 in the name are left out.
-  const markSet = request.marks === false ? [] : markLayersOf(project).filter((layer) => project.pages.some((page) => strokesOn(project, page.strokes, layer).length));
+  const markSet =
+    request.marks === false
+      ? []
+      : markLayersOf(project).filter((layer) => project.pages.some((page) => strokesOn(project, page.strokes, layer).length));
   // 資料画像 and the pictures of the name: a 下描き layer each, on every page when any page has one.
-  const pictureLayers = PICTURE_LAYERS.filter(({ takes }) => project.pages.some((page) => onPageOnly(page, project.pageFormat).references?.some(takes)));
-  if (pictureLayers.length) request = { ...request, draftLayers: [...(request.draftLayers ?? []), ...pictureLayers.map(({ name }) => name)] };
+  const pictureLayers = PICTURE_LAYERS.filter(({ takes }) =>
+    project.pages.some((page) => onPageOnly(page, project.pageFormat).references?.some(takes)),
+  );
+  if (pictureLayers.length)
+    request = { ...request, draftLayers: [...(request.draftLayers ?? []), ...pictureLayers.map(({ name }) => name)] };
   // ラフ線のレイヤー: each its own CSP layer (one layer: ラフ線 and はみ出し（ラフ線）, as always).
   const roughSet = roughLayersOf(project);
   const roughNames = layerNames(project);
   const roughName = (layer: RoughLayer, kind: LayerKind) => roughNames.get(layer.id)![kind === "overStrokes" ? "over" : "under"];
   // はみ出し layers for the first layer, as always, and the others that have lines over the borders.
-  const overLayers = roughSet.filter((layer) => layer.id === layerOf(project, {}).id || project.pages.some((page) => strokesOn(project, page.strokes, layer).some((stroke) => stroke.over)));
-  const onLayer = <T extends { page: Page }>(place: T, layer: RoughLayer): T => ({ ...place, page: { ...place.page, strokes: strokesOn(project, place.page.strokes, layer) } });
+  const overLayers = roughSet.filter(
+    (layer) =>
+      layer.id === layerOf(project, {}).id ||
+      project.pages.some((page) => strokesOn(project, page.strokes, layer).some((stroke) => stroke.over)),
+  );
+  const onLayer = <T extends { page: Page }>(place: T, layer: RoughLayer): T => ({
+    ...place,
+    page: { ...place.page, strokes: strokesOn(project, place.page.strokes, layer) },
+  });
   if (request.draftLayers?.includes(LAYER_NAMES.strokes)) {
-    request = { ...request, draftLayers: [...request.draftLayers, ...roughSet.flatMap((layer) => [roughName(layer, "strokes"), roughName(layer, "overStrokes")])] };
+    request = {
+      ...request,
+      draftLayers: [...request.draftLayers, ...roughSet.flatMap((layer) => [roughName(layer, "strokes"), roughName(layer, "overStrokes")])],
+    };
   }
   const markName = (layer: RoughLayer) => roughNames.get(layer.id)!.under;
   if (markSet.length) request = { ...request, draftLayers: [...(request.draftLayers ?? []), ...markSet.map(markName)] };
   const looks = [
     ...roughSet
       .filter((layer) => layer.hidden || opacityOfLayer(layer) < 1)
-      .flatMap((layer) => [roughName(layer, "strokes"), roughName(layer, "overStrokes")].map((name) => ({ name, opacity: opacityOfLayer(layer), hidden: !!layer.hidden }))),
+      .flatMap((layer) =>
+        [roughName(layer, "strokes"), roughName(layer, "overStrokes")].map((name) => ({
+          name,
+          opacity: opacityOfLayer(layer),
+          hidden: !!layer.hidden,
+        })),
+      ),
     // 指示 keep their colour: a 下描き layer at its own opacity, not halved; a hidden 指示のレイヤー goes hidden.
     ...markSet.map((layer) => ({ name: markName(layer), opacity: opacityOfLayer(layer), hidden: !!layer.hidden, whole: true })),
   ];
@@ -665,7 +728,10 @@ export async function exportToCsp(
     const unread = new Set<string>();
     const checks: PageCheck[] = [];
     // One drawing canvas for the widest page; each page is drawn at its own size.
-    const widest = Math.max(start.widthPx, ...(units.some((unit) => unit.length > 1) && start.spread && pieces === 1 ? [start.spread.widthPx] : []));
+    const widest = Math.max(
+      start.widthPx,
+      ...(units.some((unit) => unit.length > 1) && start.spread && pieces === 1 ? [start.spread.widthPx] : []),
+    );
     const factor = Math.min(1, Math.sqrt(MAX_LAYER_PIXELS / (widest * start.heightPx)));
     const drawing = document.createElement("canvas");
     const ctx = drawing.getContext("2d")!;
@@ -702,7 +768,8 @@ export async function exportToCsp(
         if (shown.length) {
           const pictures = await decodePictures(project, shown, takes, unread);
           ctx.clearRect(0, 0, width, height);
-          for (const { page, m, right } of placed) clipped(ctx, factor, right, () => drawReferences(ctx, page, pictures, scaled(m, factor), takes));
+          for (const { page, m, right } of placed)
+            clipped(ctx, factor, right, () => drawReferences(ctx, page, pictures, scaled(m, factor), takes));
           for (const picture of pictures.values()) picture.close();
           png = await encode(drawing, "image/png");
         }
@@ -750,7 +817,13 @@ export async function exportToCsp(
           }
           for (const folder of folders) {
             ctx.clearRect(0, 0, width, height);
-            drawPanelMask(ctx, folder, project.pageFormat, (m) => scaled(m, factor), (right, draw) => clipped(ctx, factor, right, draw));
+            drawPanelMask(
+              ctx,
+              folder,
+              project.pageFormat,
+              (m) => scaled(m, factor),
+              (right, draw) => clipped(ctx, factor, right, draw),
+            );
             const mask = await encode(drawing, "image/png");
             pngs.push(mask);
             const children: LayerMeta[] = [];
@@ -765,7 +838,13 @@ export async function exportToCsp(
         }
         if (kind === "strokes" || kind === "overStrokes") {
           for (const layer of kind === "strokes" ? roughSet : overLayers) {
-            layers.push(await part(kind, placed.map((place) => onLayer(place, layer)), roughName(layer, kind)));
+            layers.push(
+              await part(
+                kind,
+                placed.map((place) => onLayer(place, layer)),
+                roughName(layer, kind),
+              ),
+            );
           }
           continue;
         }
@@ -827,7 +906,14 @@ export async function exportToCsp(
     overlay.width = 0;
     if (unread.size) warnings.push(unreadWarning(project, unread));
     const report = await call("finish_name_export");
-    return { ...report, vectorLayers: vector, textLayers: text, checks, warnings, spreads: pieces > 1 ? 0 : units.filter((unit) => unit.length > 1).length };
+    return {
+      ...report,
+      vectorLayers: vector,
+      textLayers: text,
+      checks,
+      warnings,
+      spreads: pieces > 1 ? 0 : units.filter((unit) => unit.length > 1).length,
+    };
   } catch (error) {
     const written = await call("cancel_name_export").catch(() => 0);
     if (error instanceof ExportStopped) error.written = written ?? 0;
@@ -870,7 +956,13 @@ async function decodePictures(
  * itself is a 下描き layer at half opacity in CSP, so each is drawn twice as
  * strong as on screen.
  */
-function drawReferences(ctx: CanvasRenderingContext2D, page: Page, pictures: Map<string, ImageBitmap>, m: MmToPx, takes: (reference: ReferenceImage) => boolean): void {
+function drawReferences(
+  ctx: CanvasRenderingContext2D,
+  page: Page,
+  pictures: Map<string, ImageBitmap>,
+  m: MmToPx,
+  takes: (reference: ReferenceImage) => boolean,
+): void {
   for (const reference of page.references ?? []) {
     const picture = takes(reference) ? pictures.get(reference.image) : undefined;
     if (!picture) continue;
@@ -1014,7 +1106,11 @@ export async function updateCspDialogue(
  * Read the dialogue back from the pages written to `request.outDir` (as
  * CSP has it now), each text on its page of the name in mm.
  */
-export async function readCspDialogue(project: Project, request: CspExportRequest, progress: (message: string) => void): Promise<ReadUnit[]> {
+export async function readCspDialogue(
+  project: Project,
+  request: CspExportRequest,
+  progress: (message: string) => void,
+): Promise<ReadUnit[]> {
   const start = await call("begin_name_export", { request: { ...request, frameFolders: false } });
   try {
     const full = projectToTemplate(project, start);
@@ -1031,11 +1127,18 @@ export async function readCspDialogue(project: Project, request: CspExportReques
       const texts = (page.dialogue?.texts ?? []).map(({ text, bbox }) => {
         // On a 見開き page, the page whose side of the gutter it is on.
         const x = bbox ? (bbox[0] + bbox[2]) / 2 : 0;
-        const on = (spread && placed.find(({ right }) => (x >= spread.gutterPx) === right)) || placed[0];
+        const on = (spread && placed.find(({ right }) => x >= spread.gutterPx === right)) || placed[0];
         const box = bbox ? (bbox.map((v, i) => (v - (i % 2 ? on.m.y : on.m.x)) / on.m.scale) as BoxMm) : null;
         return { text, page: on.index, box };
       });
-      read.push({ pages: unit, path: page.path, found: page.dialogue !== null, written: page.dialogue?.written ?? null, adoptedFrom: page.dialogue?.adoptedFrom ?? null, texts });
+      read.push({
+        pages: unit,
+        path: page.path,
+        found: page.dialogue !== null,
+        written: page.dialogue?.written ?? null,
+        adoptedFrom: page.dialogue?.adoptedFrom ?? null,
+        texts,
+      });
     }
     return read;
   } finally {
@@ -1063,15 +1166,18 @@ export function dialogueUpdateSummary(summary: DialogueUpdateSummary): { ok: boo
   if (foreign) lines.push(`CSP で足したテキスト ${foreign} 個はそのままです`);
   for (const page of summary.pages) {
     const lost = page.notFound.filter((name) => name !== "ページのファイル");
-    if (lost.length && page.backup) lines.push(`${where(page)}: 「${lost.join("」「")}」レイヤーが見つからないので、フキダシは前のままです`);
+    if (lost.length && page.backup)
+      lines.push(`${where(page)}: 「${lost.join("」「")}」レイヤーが見つからないので、フキダシは前のままです`);
     if (page.conflicts.length) {
-      lines.push(`${where(page)}: CSP でも直した「${page.conflicts.join("」「")}」をネームのものにしました（CSP で直したものは「（旧）」で隠してあります）`);
+      lines.push(
+        `${where(page)}: CSP でも直した「${page.conflicts.join("」「")}」をネームのものにしました（CSP で直したものは「（旧）」で隠してあります）`,
+      );
     }
   }
-  if (missing.length) lines.push(`ページのファイルがありません: ${missing.map(where).join("、")}（書き出したときとページの数・見開きが変わっていませんか）`);
+  if (missing.length)
+    lines.push(`ページのファイルがありません: ${missing.map(where).join("、")}（書き出したときとページの数・見開きが変わっていませんか）`);
   lines.push(...summary.warnings);
   const problems = summary.pages.flatMap((page) => page.problems.map((problem) => `${where(page)}: ${problem}`));
   if (problems.length) lines.push(`自己確認で ${problems.length} 件の問題:`, ...problems);
   return { ok: !problems.length && !missing.length, lines };
 }
-

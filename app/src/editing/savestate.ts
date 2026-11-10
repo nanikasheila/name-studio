@@ -31,18 +31,35 @@ export interface SaveState {
 export function saveState(facts: SaveFacts, time: (ms: number) => string): SaveState {
   const series = facts.seriesBehind ? "・シリーズ未反映" : "";
   const seriesDetail = facts.seriesBehind ? "\nシリーズのファイルにはまだ反映できていません（次の保存でもう一度試します）。" : "";
-  if (facts.failed) return { text: `保存できませんでした${series}`, tone: "error", detail: `${facts.failed}\n保存（Ctrl+S）でもう一度試せます。${seriesDetail}` };
+  if (facts.failed)
+    return {
+      text: `保存できませんでした${series}`,
+      tone: "error",
+      detail: `${facts.failed}\n保存（Ctrl+S）でもう一度試せます。${seriesDetail}`,
+    };
   if (facts.writing) return { text: "保存中…", tone: "pending", detail: "ファイルに書いています。" };
   if (!facts.hasPath) {
     if (facts.copyAt !== null)
-      return { text: "控えだけに保存", tone: "warning", detail: `保存先がまだありません。${time(facts.copyAt)} の変更までは復旧用の控えに残っています。保存（Ctrl+S）で保存先を決めます。` };
+      return {
+        text: "控えだけに保存",
+        tone: "warning",
+        detail: `保存先がまだありません。${time(facts.copyAt)} の変更までは復旧用の控えに残っています。保存（Ctrl+S）で保存先を決めます。`,
+      };
     return { text: "未保存", tone: "warning", detail: "保存先がまだありません。保存（Ctrl+S）で保存先を決めます。" };
   }
   if (facts.dirty) {
     if (facts.copyAt !== null)
-      return { text: `控えに保存 ${time(facts.copyAt)}${series}`, tone: "warning", detail: `ファイルにはまだ書いていません。${time(facts.copyAt)} の変更までは復旧用の控えに残っています。${seriesDetail}` };
+      return {
+        text: `控えに保存 ${time(facts.copyAt)}${series}`,
+        tone: "warning",
+        detail: `ファイルにはまだ書いていません。${time(facts.copyAt)} の変更までは復旧用の控えに残っています。${seriesDetail}`,
+      };
     return { text: `未保存の変更あり${series}`, tone: "pending", detail: `ファイルにはまだ書いていない変更があります。${seriesDetail}` };
   }
   const when = facts.savedAt !== null ? ` ${time(facts.savedAt)}` : "";
-  return { text: `保存済み${when}${series}`, tone: facts.seriesBehind ? "warning" : "saved", detail: `変更はすべてファイルに保存されています。${seriesDetail}` };
+  return {
+    text: `保存済み${when}${series}`,
+    tone: facts.seriesBehind ? "warning" : "saved",
+    detail: `変更はすべてファイルに保存されています。${seriesDetail}`,
+  };
 }

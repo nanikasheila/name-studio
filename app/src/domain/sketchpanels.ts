@@ -18,7 +18,8 @@ export type SketchReading =
   | { kind: "join"; panels: string[] }
   | { kind: "none" };
 
-const length = (points: readonly Point[]) => points.slice(1).reduce((sum, p, i) => sum + Math.hypot(p[0] - points[i][0], p[1] - points[i][1]), 0);
+const length = (points: readonly Point[]) =>
+  points.slice(1).reduce((sum, p, i) => sum + Math.hypot(p[0] - points[i][0], p[1] - points[i][1]), 0);
 
 function signedArea(shape: readonly Point[]): number {
   let sum = 0;
@@ -68,7 +69,10 @@ export function fitOutline(points: readonly Point[]): Point[] {
     if (distance > far) [far, index] = [distance, i];
   });
   const tolerance = Math.max(1.2, size * 0.04);
-  let shape = [...simplifyRun(points.slice(0, index + 1), tolerance).slice(0, -1), ...simplifyRun([...points.slice(index), points[0]], tolerance).slice(0, -1)];
+  let shape = [
+    ...simplifyRun(points.slice(0, index + 1), tolerance).slice(0, -1),
+    ...simplifyRun([...points.slice(index), points[0]], tolerance).slice(0, -1),
+  ];
   // Corners that barely turn or cut off only a sliver (a rounded corner) go.
   for (let removed = true; removed && shape.length > 3; ) {
     removed = false;
@@ -177,7 +181,9 @@ export function applySketch(project: Project, page: Page, drawn: readonly Point[
       return {
         changed: true,
         panelId: panel.id,
-        message: panel.z ? `仮のコマ ${panel.order} を足しました（中に描いたので、はめ込み）` : `仮のコマ ${panel.order} を足しました。決まったら「整える」で清書できます`,
+        message: panel.z
+          ? `仮のコマ ${panel.order} を足しました（中に描いたので、はめ込み）`
+          : `仮のコマ ${panel.order} を足しました。決まったら「整える」で清書できます`,
       };
     }
     case "cut": {

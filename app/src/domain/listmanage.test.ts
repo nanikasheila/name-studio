@@ -3,7 +3,16 @@
 import { describe, expect, it } from "vitest";
 import { addCharacter, addScene, setEmotion } from "./cast";
 import { addLine } from "./dialogue";
-import { clipCharacters, duplicateCharacters, insertCharacter, linesOf, mergeCharacters, moveCharacters, pasteCharacters, removeCharacters } from "./castops";
+import {
+  clipCharacters,
+  duplicateCharacters,
+  insertCharacter,
+  linesOf,
+  mergeCharacters,
+  moveCharacters,
+  pasteCharacters,
+  removeCharacters,
+} from "./castops";
 import { rectShape } from "../model/geometry";
 import { holdPanel } from "./hold";
 import { duplicateHeld, moveHeld, removeHeld, setHeldNear } from "./heldops";
@@ -79,7 +88,12 @@ describe("人物の管理", () => {
     const copies = duplicateCharacters(project, [a.id, b.id]);
     expect(project.characters.map((c) => c.name)).toEqual(["ユメ", "ノスト", "ユメのコピー", "ノストのコピー", "ラ"]);
     expect(copies[1].tone).toBe("ですます");
-    expect(linesOf(project, copies.map((c) => c.id))).toBe(0);
+    expect(
+      linesOf(
+        project,
+        copies.map((c) => c.id),
+      ),
+    ).toBe(0);
   });
   it("moves and removes several", () => {
     const project = cast();
@@ -105,7 +119,10 @@ describe("人物の管理", () => {
   });
   it("pastes copied characters into another name, not the ones it already has", () => {
     const from = cast();
-    const clip = clipCharacters(from, from.characters.map((c) => c.id));
+    const clip = clipCharacters(
+      from,
+      from.characters.map((c) => c.id),
+    );
     const to = newProject("u", 1);
     addCharacter(to, "ノスト");
     const { added, skipped } = pasteCharacters(to, clip, 0);
@@ -211,7 +228,10 @@ describe("ラフ線のレイヤーを複製", () => {
     let n = 0;
     const fresh = () => `x${++n}`;
     const layer = addRoughLayer(project, "下描き", fresh);
-    project.pages[0].strokes.push({ id: "s1", points: [], widthMm: 1, closed: false, layer: layer.id }, { id: "s2", points: [], widthMm: 1, closed: false });
+    project.pages[0].strokes.push(
+      { id: "s1", points: [], widthMm: 1, closed: false, layer: layer.id },
+      { id: "s2", points: [], widthMm: 1, closed: false },
+    );
     project.pages[1].strokes.push({ id: "s3", points: [], widthMm: 1, closed: false, layer: layer.id });
     const copy = duplicateRoughLayer(project, layer.id, fresh, fresh)!;
     expect(copy.name).toBe("下描きのコピー");

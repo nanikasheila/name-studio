@@ -80,7 +80,9 @@ export function findCommands(query: string, commands: readonly Command[], recent
     }
     scored.push({ command, score, order });
   });
-  return scored.sort((a, b) => a.score - b.score || recency(a.command) - recency(b.command) || a.order - b.order).map(({ command }) => command);
+  return scored
+    .sort((a, b) => a.score - b.score || recency(a.command) - recency(b.command) || a.order - b.order)
+    .map(({ command }) => command);
 }
 
 /** The recent list with `id` used just now. */

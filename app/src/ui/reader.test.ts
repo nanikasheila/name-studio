@@ -26,8 +26,17 @@ describe("読む表示", () => {
 
   it("reads the spreads as bound, a 縦スクロール strip piece by piece", () => {
     const project = newProject("t", 4);
-    expect(readingSpreads(project, true)).toEqual([[null, 1], [2, 3], [4, null]]);
-    expect(readingSpreads({ ...project, scroll: true }, true)).toEqual([[1, null], [2, null], [3, null], [4, null]]);
+    expect(readingSpreads(project, true)).toEqual([
+      [null, 1],
+      [2, 3],
+      [4, null],
+    ]);
+    expect(readingSpreads({ ...project, scroll: true }, true)).toEqual([
+      [1, null],
+      [2, null],
+      [3, null],
+      [4, null],
+    ]);
   });
 
   it("puts the first page read on the right of a right-bound spread, the trims meeting at the gutter", () => {

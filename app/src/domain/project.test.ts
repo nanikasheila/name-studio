@@ -124,8 +124,24 @@ describe("strokes", () => {
   it("erases strokes under the pointer", () => {
     const project = newProject("test", 1);
     const page = project.pages[0];
-    addStroke(project, page, [[0, 0, 1], [10, 0, 1]], 0.5);
-    addStroke(project, page, [[0, 20, 1], [10, 20, 1]], 0.5);
+    addStroke(
+      project,
+      page,
+      [
+        [0, 0, 1],
+        [10, 0, 1],
+      ],
+      0.5,
+    );
+    addStroke(
+      project,
+      page,
+      [
+        [0, 20, 1],
+        [10, 20, 1],
+      ],
+      0.5,
+    );
     expect(eraseStrokes(page, [5, 1], 1)).toBe(1);
     expect(page.strokes).toHaveLength(1);
   });
@@ -196,9 +212,33 @@ describe("範囲選択と囲って消す", () => {
   function setup() {
     const project = newProject("t", 1);
     const page = project.pages[0];
-    addStroke(project, page, [[0, 5, 1], [10, 5, 1]], 0.2); // crosses the box
-    addStroke(project, page, [[4, 4, 1], [6, 6, 1]], 0.2); // inside
-    addStroke(project, page, [[20, 20, 1], [30, 30, 1]], 0.2); // outside
+    addStroke(
+      project,
+      page,
+      [
+        [0, 5, 1],
+        [10, 5, 1],
+      ],
+      0.2,
+    ); // crosses the box
+    addStroke(
+      project,
+      page,
+      [
+        [4, 4, 1],
+        [6, 6, 1],
+      ],
+      0.2,
+    ); // inside
+    addStroke(
+      project,
+      page,
+      [
+        [20, 20, 1],
+        [30, 30, 1],
+      ],
+      0.2,
+    ); // outside
     return { project, page };
   }
   const box = rectShape([3, 3, 7, 7]);
@@ -246,8 +286,23 @@ describe("見開きのノド", () => {
   });
 
   it("keeps a line on one side whole, and drops a crossing with nothing after it", () => {
-    expect(splitAtX([[1, 1], [2, 2]] as never, 10)).toHaveLength(1);
-    const back = splitAtX([[5, 0], [15, 0], [5, 0]] as never, 10);
+    expect(
+      splitAtX(
+        [
+          [1, 1],
+          [2, 2],
+        ] as never,
+        10,
+      ),
+    ).toHaveLength(1);
+    const back = splitAtX(
+      [
+        [5, 0],
+        [15, 0],
+        [5, 0],
+      ] as never,
+      10,
+    );
     expect(back.map((run) => run.beyond)).toEqual([false, true, false]);
   });
 });
@@ -258,8 +313,24 @@ describe("コマに中身が付いてくる", () => {
     const page = project.pages[0];
     const panel = addPanel(project, page, rectShape([10, 10, 110, 110]));
     const other = addPanel(project, page, rectShape([120, 10, 170, 110]));
-    const inside = addStroke(project, page, [[40, 40, 0.5], [60, 40, 0.5]], 0.5)!;
-    const outside = addStroke(project, page, [[130, 40, 0.5], [150, 40, 0.5]], 0.5)!;
+    const inside = addStroke(
+      project,
+      page,
+      [
+        [40, 40, 0.5],
+        [60, 40, 0.5],
+      ],
+      0.5,
+    )!;
+    const outside = addStroke(
+      project,
+      page,
+      [
+        [130, 40, 0.5],
+        [150, 40, 0.5],
+      ],
+      0.5,
+    )!;
     const line = addLine(project, page, [50, 60], "セリフ");
     return { project, page, panel, other, inside, outside, line };
   };
@@ -363,7 +434,15 @@ describe("入れ替え", () => {
     const big = addPanel(project, page, rectShape([10, 10, 110, 110]));
     const small = addPanel(project, page, rectShape([120, 10, 170, 60]));
     const there = addPanel(project, next, rectShape([10, 10, 60, 60]));
-    const drawing = addStroke(project, page, [[40, 40, 0.5], [60, 40, 0.5]], 0.5)!;
+    const drawing = addStroke(
+      project,
+      page,
+      [
+        [40, 40, 0.5],
+        [60, 40, 0.5],
+      ],
+      0.5,
+    )!;
     const said = addLine(project, page, [140, 30], "小さいコマ");
     swapPanelContents(page, big, page, small);
     expect(panelContents(page, small).strokes).toEqual([drawing.id]);
@@ -383,8 +462,24 @@ describe("入れ替え", () => {
       const [page] = project.pages;
       const wide = addPanel(project, page, rectShape([10, 10, 210, 110]));
       const tall = addPanel(project, page, rectShape([10, 120, 60, 320]));
-      const left = addStroke(project, page, [[30, 30, 0.5], [70, 30, 0.5]], 0.5)!;
-      const right = addStroke(project, page, [[170, 90, 0.5], [190, 90, 0.5]], 0.5)!;
+      const left = addStroke(
+        project,
+        page,
+        [
+          [30, 30, 0.5],
+          [70, 30, 0.5],
+        ],
+        0.5,
+      )!;
+      const right = addStroke(
+        project,
+        page,
+        [
+          [170, 90, 0.5],
+          [190, 90, 0.5],
+        ],
+        0.5,
+      )!;
       const said = addLine(project, page, [110, 60], "あ");
       return { page, wide, tall, left, right, said, size: [said.box[2] - said.box[0], said.box[3] - said.box[1]] };
     };
@@ -445,21 +540,48 @@ describe("連続のキャンバスでページをまたぐ線", () => {
   const gutter = (from: string, to: string) => ((from === "a" && to === "b") || (from === "b" && to === "a") ? 100 : null);
 
   it("cuts exactly at the gutter of a spread", () => {
-    const runs = splitOverPages<string>([[80, 10, 1], [120, 30, 1]], "a", pageOf, gutter);
+    const runs = splitOverPages<string>(
+      [
+        [80, 10, 1],
+        [120, 30, 1],
+      ],
+      "a",
+      pageOf,
+      gutter,
+    );
     expect(runs.map((run) => run.page)).toEqual(["a", "b"]);
     expect(runs[0].points.at(-1)).toEqual([100, 20, 1]);
     expect(runs[1].points[0]).toEqual([100, 20, 1]);
   });
 
   it("carries a line down onto the page below, both runs reaching the page edges", () => {
-    const runs = splitOverPages<string>([[50, 150, 1], [50, 190, 1], [50, 215, 1], [50, 230, 1]], "a", pageOf, gutter);
+    const runs = splitOverPages<string>(
+      [
+        [50, 150, 1],
+        [50, 190, 1],
+        [50, 215, 1],
+        [50, 230, 1],
+      ],
+      "a",
+      pageOf,
+      gutter,
+    );
     expect(runs.map((run) => run.page)).toEqual(["a", "c"]);
     expect(runs[0].points.at(-1)).toEqual([50, 215, 1]);
     expect(runs[1].points[0]).toEqual([50, 190, 1]);
   });
 
   it("keeps points off every page with the page before", () => {
-    const runs = splitOverPages<string>([[50, 10, 1], [-20, 10, 1], [-30, 20, 1]], "a", pageOf, gutter);
+    const runs = splitOverPages<string>(
+      [
+        [50, 10, 1],
+        [-20, 10, 1],
+        [-30, 20, 1],
+      ],
+      "a",
+      pageOf,
+      gutter,
+    );
     expect(runs).toHaveLength(1);
     expect(runs[0].points).toHaveLength(3);
   });

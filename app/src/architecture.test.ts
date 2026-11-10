@@ -38,9 +38,13 @@ const LAYERS = {
   app: "",
 } as const;
 
-/** How long these modules may grow (lines as the formatter lays them out) before they are split again. */
-const WORKBENCH_LINES = 1000;
-const BOARD_LINES = 650;
+/**
+ * How long these modules may grow before they are split again. Lines are counted
+ * as the formatter lays them out (`npm run format`), so the numbers mean the same
+ * for everyone.
+ */
+const WORKBENCH_LINES = 1100;
+const BOARD_LINES = 720;
 const EDITOR_LINES = 1400;
 const EDITOR_PART_LINES = 650;
 
@@ -49,10 +53,13 @@ const FOLDERS: string[] = ORDER.map((layer) => LAYERS[layer]);
 
 /** Every module (not the tests), by its path from here: "ui/editor.ts", "main.ts". */
 const sources: Record<string, string> = Object.fromEntries(
-  Object.entries(import.meta.glob<string>(["./*.ts", "./*/*.ts", "!./**/*.test.ts", "!./**/*.d.ts", "!./generated/**", "!./skill/**"], { query: "?raw", import: "default", eager: true })).map(([path, source]) => [
-    path.slice(2),
-    source,
-  ]),
+  Object.entries(
+    import.meta.glob<string>(["./*.ts", "./*/*.ts", "!./**/*.test.ts", "!./**/*.d.ts", "!./generated/**", "!./skill/**"], {
+      query: "?raw",
+      import: "default",
+      eager: true,
+    }),
+  ).map(([path, source]) => [path.slice(2), source]),
 );
 
 /** What is not a layer: written by the Rust side's tools (types only), and the AI skill's own entry. */
@@ -75,7 +82,9 @@ function resolve(from: string, spec: string): string {
 function imports(): Map<string, string[]> {
   const graph = new Map<string, string[]>();
   for (const [file, source] of Object.entries(sources)) {
-    const found = [...source.matchAll(/^(?:import|export)\b[^;]*?from "(\.\.?\/[\w/.-]+)"/gms)].map((m) => resolve(file, m[1])).filter((other) => !OUTSIDE.includes(folderOf(other)));
+    const found = [...source.matchAll(/^(?:import|export)\b[^;]*?from "(\.\.?\/[\w/.-]+)"/gms)]
+      .map((m) => resolve(file, m[1]))
+      .filter((other) => !OUTSIDE.includes(folderOf(other)));
     graph.set(file, [...new Set(found)]);
   }
   return graph;
@@ -90,7 +99,9 @@ describe("module structure", () => {
   });
 
   it("imports only modules that are there", () => {
-    const missing = [...imports()].flatMap(([file, used]) => used.filter((other) => !(other in sources)).map((other) => `${file} → ${other}`));
+    const missing = [...imports()].flatMap(([file, used]) =>
+      used.filter((other) => !(other in sources)).map((other) => `${file} → ${other}`),
+    );
     expect(missing).toEqual([]);
   });
 
@@ -143,11 +154,15 @@ describe("module structure", () => {
   it("keeps the page editor's parts apart", () => {
     // The pages on screen (editorstage), what is picked (editorpicks) and the drawing (editorpaint):
     // each knows the ones before it, none knows the editor that puts them together and hands out the input.
-    const knows = (file: string) => imports().get(`ui/${file}`)?.filter((other) => /^ui\/editor(?!core)\w*\.ts$/.test(other)) ?? [];
+    const knows = (file: string) =>
+      imports()
+        .get(`ui/${file}`)
+        ?.filter((other) => /^ui\/editor(?!core)\w*\.ts$/.test(other)) ?? [];
     expect(knows("editorstage.ts")).toEqual([]);
     expect(knows("editorpicks.ts")).toEqual(["ui/editorstage.ts"]);
     expect(knows("editorpaint.ts").sort()).toEqual(["ui/editorpicks.ts", "ui/editorstage.ts"]);
-    for (const part of ["editorstage", "editorpicks", "editorpaint"]) expect(sources[`ui/${part}.ts`].split("\n").length, part).toBeLessThan(EDITOR_PART_LINES);
+    for (const part of ["editorstage", "editorpicks", "editorpaint"])
+      expect(sources[`ui/${part}.ts`].split("\n").length, part).toBeLessThan(EDITOR_PART_LINES);
     // Only the drawing draws: the other two have no canvas calls of their own.
     expect(sources["ui/editorpicks.ts"]).not.toMatch(/\bctx\b/);
   });
@@ -163,7 +178,8 @@ describe("module structure", () => {
   });
 
   it("keeps the browser, its storage and the Rust side out of the types and the computation", () => {
-    const browser = /\b(?:document|window|localStorage|sessionStorage|createImageBitmap|requestAnimationFrame)\b|\bnew Image\b|"@tauri-apps\//;
+    const browser =
+      /\b(?:document|window|localStorage|sessionStorage|createImageBitmap|requestAnimationFrame)\b|\bnew Image\b|"@tauri-apps\//;
     const found = Object.entries(sources)
       .filter(([file]) => rankOf(file) <= ORDER.indexOf("editing"))
       .filter(([, source]) => browser.test(source.replace(/\/\/.*$|\/\*[\s\S]*?\*\//gm, "")))

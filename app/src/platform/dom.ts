@@ -3,7 +3,9 @@
 /** Whether a key press is typing into a field (the app's keys leave it alone). */
 export function isTyping(event: Event): boolean {
   const target = event.target as HTMLElement | null;
-  return !!target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable);
+  return (
+    !!target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable)
+  );
 }
 
 /** Input types that are pressed or slid, not typed in: undo there is the name's, not the field's. */
@@ -38,7 +40,12 @@ export function element<K extends keyof HTMLElementTagNameMap>(
 }
 
 /** A drop-down of labelled values. */
-export function choice<T extends string>(labels: Record<T, string>, value: T, change: (value: T) => void, skip: T[] = []): HTMLSelectElement {
+export function choice<T extends string>(
+  labels: Record<T, string>,
+  value: T,
+  change: (value: T) => void,
+  skip: T[] = [],
+): HTMLSelectElement {
   const select = element("select");
   for (const [key, label] of Object.entries(labels) as [T, string][]) {
     if (!skip.includes(key) || key === value) select.append(element("option", { value: key, textContent: label }));
@@ -58,7 +65,11 @@ export function plainButton(label: string, action: () => void): HTMLButtonElemen
 const SVG = "http://www.w3.org/2000/svg";
 
 /** A new SVG element with these attributes and children. */
-export function svg<K extends keyof SVGElementTagNameMap>(tag: K, attributes: Record<string, string | number> = {}, ...children: (Node | string)[]): SVGElementTagNameMap[K] {
+export function svg<K extends keyof SVGElementTagNameMap>(
+  tag: K,
+  attributes: Record<string, string | number> = {},
+  ...children: (Node | string)[]
+): SVGElementTagNameMap[K] {
   const node = document.createElementNS(SVG, tag);
   for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, String(value));
   node.append(...children);

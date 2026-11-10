@@ -1,7 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { addLine, setDefaultLineSize, setLineSpacing } from "./dialogue";
 import { MM_PER_PT, newProject } from "./project";
-import { APP_FONT_PT, APP_LINE_SPACING, MAX_LINE_SPACING, balloonLineMm, linePitch, lineSpacing, setLineSpacingStyle, defaultFontPt, panelLineMm, setDefaultFontPt, setPanelLineMm, setStyleLine, styleLineMm, useStyle } from "./style";
+import {
+  APP_FONT_PT,
+  APP_LINE_SPACING,
+  MAX_LINE_SPACING,
+  balloonLineMm,
+  linePitch,
+  lineSpacing,
+  setLineSpacingStyle,
+  defaultFontPt,
+  panelLineMm,
+  setDefaultFontPt,
+  setPanelLineMm,
+  setStyleLine,
+  styleLineMm,
+  useStyle,
+} from "./style";
 
 describe("作品の既定", () => {
   it("gives new lines the size set for their kind, else the app's", () => {

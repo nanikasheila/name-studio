@@ -25,7 +25,9 @@ export function repair(project: Project): string[] {
     note(old ? `${what}の id ${old} が重複していたので ${item.id} にしました` : `${what}の空の id を ${item.id} にしました`);
   };
   // nextId first, so new ids never meet old ones.
-  const numbers = allIds(project).map(idNumber).filter((n): n is number => n !== null);
+  const numbers = allIds(project)
+    .map(idNumber)
+    .filter((n): n is number => n !== null);
   const highest = numbers.length ? Math.max(...numbers) : -1;
   if (highest >= project.nextId) {
     project.nextId = highest + 1;
@@ -142,7 +144,8 @@ function allIds(project: Project): string[] {
   ];
   for (const page of project.pages) {
     ids.push(page.id);
-    for (const list of [page.panels, page.breakouts, page.lines, page.strokes, page.roughs, page.references ?? []]) for (const item of list) ids.push(item.id);
+    for (const list of [page.panels, page.breakouts, page.lines, page.strokes, page.roughs, page.references ?? []])
+      for (const item of list) ids.push(item.id);
   }
   return ids;
 }

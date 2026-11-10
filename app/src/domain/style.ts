@@ -87,7 +87,11 @@ export function setDefaultFontPt(project: Project, kind: LineKind, pt: number | 
 
 export type StyleLine = "panelLineMm" | "thickLineMm" | "balloonLineMm";
 
-const APP_LINES: Record<StyleLine, number> = { panelLineMm: APP_PANEL_LINE_MM, thickLineMm: APP_THICK_LINE_MM, balloonLineMm: APP_BALLOON_LINE_MM };
+const APP_LINES: Record<StyleLine, number> = {
+  panelLineMm: APP_PANEL_LINE_MM,
+  thickLineMm: APP_THICK_LINE_MM,
+  balloonLineMm: APP_BALLOON_LINE_MM,
+};
 
 /** A line width of the name's; null (or the app's width) clears it. */
 export function setStyleLine(project: Project, key: StyleLine, mm: number | null): void {

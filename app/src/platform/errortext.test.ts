@@ -33,7 +33,9 @@ describe("errors in words for the person at the screen", () => {
     expect(explained.detail).toContain("reading 'pages'");
     expect(explain("missing field `pages` at line 1 column 2").detail).toContain("missing field");
     // A dialog's own line has nowhere to open it from, so it follows in brackets.
-    expect(failureText("読めませんでした", "missing field `pages`")).toBe("読めませんでした: 思わぬエラーが起きました（missing field `pages`）");
+    expect(failureText("読めませんでした", "missing field `pages`")).toBe(
+      "読めませんでした: 思わぬエラーが起きました（missing field `pages`）",
+    );
   });
 
   it("says when the network could not be reached", () => {

@@ -110,7 +110,8 @@ export function normalize(project: Project): Project {
       line.kind ??= "speech";
       // Before balloon shapes (format 1), an outline the editor did not make
       // (it made 40-point ellipses and 4-point boxes) came from CSP.
-      if (beforeShapes && !line.balloonShape && line.balloon && line.balloon.length !== 40 && line.balloon.length !== 4) line.balloonShape = "custom";
+      if (beforeShapes && !line.balloonShape && line.balloon && line.balloon.length !== 40 && line.balloon.length !== 4)
+        line.balloonShape = "custom";
     }
   }
   for (const scene of project.scenes) scene.summary ??= "";
@@ -177,7 +178,9 @@ export function movePage(project: Project, pageId: string, step: number): void {
 /** Whether nothing is on a page: no panels, lines, strokes, roughs, はみ出し, fills, 資料, 付箋 or memo. */
 export function pageIsEmpty(page: Page): boolean {
   const things = page.panels.length + page.lines.length + page.strokes.length + page.roughs.length + page.breakouts.length;
-  return things + (page.fills?.length ?? 0) + (page.references?.length ?? 0) + (page.stickies?.length ?? 0) === 0 && page.memo.trim() === "";
+  return (
+    things + (page.fills?.length ?? 0) + (page.references?.length ?? 0) + (page.stickies?.length ?? 0) === 0 && page.memo.trim() === ""
+  );
 }
 
 /** How many pages at the end have nothing on them. */

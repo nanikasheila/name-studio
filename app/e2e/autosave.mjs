@@ -74,14 +74,23 @@ try {
   await page.locator('.settings-nav-item[data-pane="save"]').click();
   const delay = page.locator("#st-autosave-delay");
   const maxWait = page.locator("#st-autosave-max-wait");
-  check((await delay.inputValue()) === "3" && (await maxWait.inputValue()) === "30", `autosave waits 3 s of quiet, 30 s at most, until set (${await delay.inputValue()}, ${await maxWait.inputValue()})`);
+  check(
+    (await delay.inputValue()) === "3" && (await maxWait.inputValue()) === "30",
+    `autosave waits 3 s of quiet, 30 s at most, until set (${await delay.inputValue()}, ${await maxWait.inputValue()})`,
+  );
   await maxWait.fill("2");
   await maxWait.dispatchEvent("change");
-  check((await delay.inputValue()) === "2" && (await maxWait.inputValue()) === "5", `the longest wait stays in its range and takes the quiet along (${await delay.inputValue()}, ${await maxWait.inputValue()})`);
+  check(
+    (await delay.inputValue()) === "2" && (await maxWait.inputValue()) === "5",
+    `the longest wait stays in its range and takes the quiet along (${await delay.inputValue()}, ${await maxWait.inputValue()})`,
+  );
   await delay.fill("1");
   await delay.dispatchEvent("change");
   check((await status()).includes("1 秒") && (await status()).includes("5 秒"), `the times set are said (${await status()})`);
-  const kept = await page.evaluate(() => [localStorage.getItem("namestudio.autosaveDelaySec"), localStorage.getItem("namestudio.autosaveMaxWaitSec")]);
+  const kept = await page.evaluate(() => [
+    localStorage.getItem("namestudio.autosaveDelaySec"),
+    localStorage.getItem("namestudio.autosaveMaxWaitSec"),
+  ]);
   check(kept[0] === "1" && kept[1] === "5", `and kept for the next start (${kept})`);
 
   // 更新: three ways, kept; 「今すぐ確かめる」 says what it found.
@@ -113,7 +122,10 @@ try {
   check((await writes()) === 0, "autosave waits the quiet set");
   await page.waitForTimeout(1100);
   let last = await lastWrite();
-  check((await writes()) === 1 && last?.command === "autosave_project" && last.toFile && last.title === "A2", `then writes the change to the file (${JSON.stringify(last)})`);
+  check(
+    (await writes()) === 1 && last?.command === "autosave_project" && last.toFile && last.title === "A2",
+    `then writes the change to the file (${JSON.stringify(last)})`,
+  );
   await page.waitForTimeout(1500);
   check((await writes()) === 1, "and not again while nothing changes");
 
@@ -138,7 +150,10 @@ try {
   await step("A4");
   await page.waitForTimeout(1500);
   last = await lastWrite();
-  check((await writes()) === 2 && last?.toFile === false && last.title === "A4", `with the file off, a change goes to the copy (${JSON.stringify(last)})`);
+  check(
+    (await writes()) === 2 && last?.toFile === false && last.title === "A4",
+    `with the file off, a change goes to the copy (${JSON.stringify(last)})`,
+  );
   check((await saveState()).startsWith("控えに保存"), `and the save state says so (${await saveState()})`);
   await step(null);
   await page.waitForTimeout(1500);

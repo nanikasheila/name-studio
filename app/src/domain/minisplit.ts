@@ -196,7 +196,8 @@ function planeOf(gray: Gray, box: PxBox, tolerance: number): Plane {
   for (let y = y0; y < y1; y += step) for (let x = x0; x < x1; x += step) samples.push(gray.data[y * gray.width + x]);
   const own = median(samples);
   const ink = new Uint8Array(w * (y1 - y0));
-  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) ink[(y - y0) * w + x - x0] = Math.abs(gray.data[y * gray.width + x] - own) > tolerance ? 1 : 0;
+  for (let y = y0; y < y1; y++)
+    for (let x = x0; x < x1; x++) ink[(y - y0) * w + x - x0] = Math.abs(gray.data[y * gray.width + x] - own) > tolerance ? 1 : 0;
   return { ink, box };
 }
 
@@ -272,7 +273,8 @@ function splitShape(gray: Gray, box: PxBox, aspect: number, tolerance: number): 
   const plane = planeOf(gray, box, tolerance);
   const w = x1 - x0;
   const h = y1 - y0;
-  const inside = (runs: LineRun[], span: number, start: number) => runs.filter((run) => run.at - start > span * EDGE && start + span - run.at > span * EDGE);
+  const inside = (runs: LineRun[], span: number, start: number) =>
+    runs.filter((run) => run.at - start > span * EDGE && start + span - run.at > span * EDGE);
   const vertical = inside(linesIn(plane, true, SPLIT_LINE), w, x0);
   const horizontal = inside(linesIn(plane, false, SPLIT_LINE), h, y0);
   // Cuts for n pieces of a span: on the nearest line when there is one; how many had none; how many strong lines were left over.
@@ -283,7 +285,9 @@ function splitShape(gray: Gray, box: PxBox, aspect: number, tolerance: number): 
     for (let k = 1; k < n; k++) {
       const expected = start + (span * k) / n;
       const reach = Math.max(2, (span / n) * 0.12);
-      const near = runs.filter((run) => Math.abs(run.at - expected) <= reach).sort((a, b) => Math.abs(a.at - expected) - Math.abs(b.at - expected))[0];
+      const near = runs
+        .filter((run) => Math.abs(run.at - expected) <= reach)
+        .sort((a, b) => Math.abs(a.at - expected) - Math.abs(b.at - expected))[0];
       if (near) used.add(near);
       else missing++;
       at.push(near ? near.at : expected);
@@ -306,7 +310,8 @@ function splitShape(gray: Gray, box: PxBox, aspect: number, tolerance: number): 
   const { xs, ys } = best!;
   const cells: PxBox[] = [];
   for (let r = 0; r + 1 < ys.length; r++) {
-    for (let c = 0; c + 1 < xs.length; c++) cells.push(toFrame(plane, [Math.round(xs[c]), Math.round(ys[r]), Math.round(xs[c + 1]), Math.round(ys[r + 1])]));
+    for (let c = 0; c + 1 < xs.length; c++)
+      cells.push(toFrame(plane, [Math.round(xs[c]), Math.round(ys[r]), Math.round(xs[c + 1]), Math.round(ys[r + 1])]));
   }
   return cells;
 }
@@ -398,7 +403,18 @@ export function findPages(gray: Gray, aspect: number): FoundPages {
   let cells = shapes.map(({ box }) => trimmed(box, width, height)).flatMap((box) => splitShape(gray, box, aspect, tolerance));
   // A page holds no page: shapes inside one (its panels, where the ground got in at a broken corner) are part of it.
   const slack = Math.max(2, Math.min(width, height) * 0.005);
-  cells = cells.filter((cell, i) => !cells.some((other, j) => j !== i && (other[2] - other[0]) * (other[3] - other[1]) > (cell[2] - cell[0]) * (cell[3] - cell[1]) && other[0] - slack <= cell[0] && other[1] - slack <= cell[1] && other[2] + slack >= cell[2] && other[3] + slack >= cell[3]));
+  cells = cells.filter(
+    (cell, i) =>
+      !cells.some(
+        (other, j) =>
+          j !== i &&
+          (other[2] - other[0]) * (other[3] - other[1]) > (cell[2] - cell[0]) * (cell[3] - cell[1]) &&
+          other[0] - slack <= cell[0] &&
+          other[1] - slack <= cell[1] &&
+          other[2] + slack >= cell[2] &&
+          other[3] + slack >= cell[3],
+      ),
+  );
   const area = median(cells.map(([x0, y0, x1, y1]) => (x1 - x0) * (y1 - y0)));
   cells = cells.filter(([x0, y0, x1, y1]) => {
     const shape = Math.abs(Math.log((x1 - x0) / (y1 - y0) / aspect));
@@ -560,10 +576,12 @@ function blocksOf(cells: PxBox[]): PxBox[][] {
 /** Read block by block when the pages lie in two or more blocks of several rows and columns each, as on a name sheet. */
 export function guessOrder(cells: PxBox[], rightToLeft: boolean): ReadingOrder {
   const blocks = blocksOf(cells);
-  const many = blocks.length >= 2 && blocks.every((block) => {
-    const rows = rowsOf(block).length;
-    return rows >= 2 && block.length / rows >= 3;
-  });
+  const many =
+    blocks.length >= 2 &&
+    blocks.every((block) => {
+      const rows = rowsOf(block).length;
+      return rows >= 2 && block.length / rows >= 3;
+    });
   return many ? (rightToLeft ? "blocks-rtl" : "blocks-ltr") : rightToLeft ? "rtl" : "ltr";
 }
 
@@ -602,7 +620,8 @@ export function placeOnPage(format: PageFormat, fit: ImportFit, widthPx: number,
     const cy = (by0 + by1) / 2 - ((inner[1] + inner[3]) / 2) * heightPx * scale;
     return [cx, cy, cx + widthPx * scale, cy + heightPx * scale];
   }
-  const [tx0, ty0, tx1, ty1] = fit === "trim" ? trimBox(format) : fit === "basic" || fit === "inner" ? basicBox(format) : [0, 0, ...format.canvasMm];
+  const [tx0, ty0, tx1, ty1] =
+    fit === "trim" ? trimBox(format) : fit === "basic" || fit === "inner" ? basicBox(format) : [0, 0, ...format.canvasMm];
   const scale = Math.min((tx1 - tx0) / widthPx, (ty1 - ty0) / heightPx);
   const w = widthPx * scale;
   const h = heightPx * scale;
@@ -620,7 +639,12 @@ export function gripAt(box: PxBox, x: number, y: number, reach: number): Grip | 
   if (x < x0 - reach || x > x1 + reach || y < y0 - reach || y > y1 + reach) return null;
   // A small box: the edges never take all of it, so it can still be moved.
   const near = Math.min(reach, (x1 - x0) / 4, (y1 - y0) / 4);
-  const grip = { left: Math.abs(x - x0) <= near, top: Math.abs(y - y0) <= near, right: Math.abs(x - x1) <= near, bottom: Math.abs(y - y1) <= near };
+  const grip = {
+    left: Math.abs(x - x0) <= near,
+    top: Math.abs(y - y0) <= near,
+    right: Math.abs(x - x1) <= near,
+    bottom: Math.abs(y - y1) <= near,
+  };
   if (grip.left || grip.top || grip.right || grip.bottom) return grip;
   return x > x0 && x < x1 && y > y0 && y < y1 ? "move" : null;
 }

@@ -10,8 +10,16 @@ import { savedForm } from "./references";
 import { repair } from "./repair";
 
 const texts: Record<string, string> = {
-  ...import.meta.glob<string>("../../../crates/name-model/tests/fixtures/past/*.{json,namestudio}", { query: "?raw", import: "default", eager: true }),
-  ...import.meta.glob<string>("../../../crates/name-model/tests/data/editor-project.namestudio", { query: "?raw", import: "default", eager: true }),
+  ...import.meta.glob<string>("../../../crates/name-model/tests/fixtures/past/*.{json,namestudio}", {
+    query: "?raw",
+    import: "default",
+    eager: true,
+  }),
+  ...import.meta.glob<string>("../../../crates/name-model/tests/data/editor-project.namestudio", {
+    query: "?raw",
+    import: "default",
+    eager: true,
+  }),
 };
 const files = Object.entries(texts).map(([path, text]) => ({ name: path.split("/").pop()!, text }));
 

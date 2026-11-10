@@ -122,8 +122,7 @@ export async function checkNow(host: UpdateHost): Promise<UpdateCheck> {
   } else if (found.kind === "latest") {
     const version = await appVersion();
     host.status(`いまの版${version ? ` ${version}` : ""}が最新です`);
-  }
-  else if (found.kind === "notRelease") host.status("開発中の版なので、更新は確かめません");
+  } else if (found.kind === "notRelease") host.status("開発中の版なので、更新は確かめません");
   else host.status(`新しい版を確かめられませんでした（ネットにつながっているか確かめてください）: ${found.error}`);
   return found;
 }
@@ -182,7 +181,10 @@ interface GitHubRelease {
 /** The releases that can be put in (signed, with their latest.json), newest first. */
 export function installableReleases(list: GitHubRelease[]): Release[] {
   return list
-    .filter((release) => !release.draft && /^v\d+\.\d+\.\d+$/.test(release.tag_name) && release.assets.some((asset) => asset.name === "latest.json"))
+    .filter(
+      (release) =>
+        !release.draft && /^v\d+\.\d+\.\d+$/.test(release.tag_name) && release.assets.some((asset) => asset.name === "latest.json"),
+    )
     .map((release) => ({
       version: release.tag_name.slice(1),
       date: (release.published_at ?? "").slice(0, 10),

@@ -3,7 +3,17 @@
 // dragged), copied to another name, merged into one, removed — by the
 // buttons over the list, its right-click menu or keys (listops.ts).
 import { ask } from "../platform/dialogs";
-import { clipCharacters, type CharacterClip, duplicateCharacters, insertCharacter, linesOf, mergeCharacters, moveCharacters, pasteCharacters, removeCharacters } from "../domain/castops";
+import {
+  clipCharacters,
+  type CharacterClip,
+  duplicateCharacters,
+  insertCharacter,
+  linesOf,
+  mergeCharacters,
+  moveCharacters,
+  pasteCharacters,
+  removeCharacters,
+} from "../domain/castops";
 import { $, element } from "../platform/dom";
 import { dragSort } from "./dragsort";
 import { canMove, moveRange } from "../domain/listorder";
@@ -101,7 +111,9 @@ export class CastList {
     const project = this.host.project();
     if (!project || !list.length) return;
     copied = clipCharacters(project, list);
-    this.host.status(`人物 ${list.length} 人をコピーしました。人物の一覧で Ctrl+V で貼り付けます（ほかのネームにも。同じ名前の人がいれば足しません）`);
+    this.host.status(
+      `人物 ${list.length} 人をコピーしました。人物の一覧で Ctrl+V で貼り付けます（ほかのネームにも。同じ名前の人がいれば足しません）`,
+    );
   }
 
   private paste(before: boolean, at: string[]): void {
@@ -129,7 +141,14 @@ export class CastList {
     if (!project || !list.length) return;
     const lines = linesOf(project, list);
     const who = list.length === 1 ? `「${project.characters.find((c) => c.id === list[0])?.name ?? ""}」` : `人物 ${list.length} 人`;
-    if (lines && !(await ask(`${who}を消しますか？（セリフ ${lines} 件の話者が空になります。元に戻すで戻せます）`, { title: "Name Studio", kind: "warning" }))) return;
+    if (
+      lines &&
+      !(await ask(`${who}を消しますか？（セリフ ${lines} 件の話者が空になります。元に戻すで戻せます）`, {
+        title: "Name Studio",
+        kind: "warning",
+      }))
+    )
+      return;
     let count = 0;
     this.host.edit((p) => (count = removeCharacters(p, list)));
     if (count) this.host.status(`${who}を消しました（元に戻すは Ctrl+Z）`);
@@ -173,9 +192,16 @@ export class CastList {
       });
       const color = element("input", { type: "color", value: character.color ?? "#2f6fdb", title: "色" });
       color.addEventListener("change", () => this.host.edit(() => (character.color = color.value)));
-      const said = project.pages.flatMap((page, index) => page.lines.filter((l) => l.speaker === character.id).map((line) => ({ page, index, line })));
+      const said = project.pages.flatMap((page, index) =>
+        page.lines.filter((l) => l.speaker === character.id).map((line) => ({ page, index, line })),
+      );
       // 口調: kept beside the name, to write the dialogue in voice.
-      const tone = element("textarea", { className: "tone", rows: 2, placeholder: "口調のメモ（一人称・語尾・口ぐせ）", value: character.tone ?? "" });
+      const tone = element("textarea", {
+        className: "tone",
+        rows: 2,
+        placeholder: "口調のメモ（一人称・語尾・口ぐせ）",
+        value: character.tone ?? "",
+      });
       tone.addEventListener("change", () => {
         const text = tone.value.trim();
         // Also fires on the blur when the list is drawn again: only a real change is an edit.
@@ -187,9 +213,17 @@ export class CastList {
       });
       // その人のセリフを並べて、口調が揃っているか見る。
       const open = this.open.has(character.id);
-      const toggle = element("button", { className: "count", textContent: `${open ? "▾" : "▸"} ${said.length}`, title: "この人のセリフを並べる" });
+      const toggle = element("button", {
+        className: "count",
+        textContent: `${open ? "▾" : "▸"} ${said.length}`,
+        title: "この人のセリフを並べる",
+      });
       toggle.addEventListener("click", () => this.toggle(character.id));
-      const grip = element("span", { className: "list-grip", textContent: "⋮⋮", title: "押して選ぶ（Ctrl・Shift で複数）・ドラッグで並べ替え・右クリックでメニュー" });
+      const grip = element("span", {
+        className: "list-grip",
+        textContent: "⋮⋮",
+        title: "押して選ぶ（Ctrl・Shift で複数）・ドラッグで並べ替え・右クリックでメニュー",
+      });
       const list = open
         ? [
             element(
@@ -203,7 +237,13 @@ export class CastList {
             ),
           ]
         : [];
-      const block = element("div", { className: "cast-block" }, element("div", { className: "cast-item" }, grip, color, name, toggle), tone, ...list);
+      const block = element(
+        "div",
+        { className: "cast-block" },
+        element("div", { className: "cast-item" }, grip, color, name, toggle),
+        tone,
+        ...list,
+      );
       return this.picker.row(block, character.id);
     });
     dragSort(rows, {
@@ -218,10 +258,33 @@ export class CastList {
     const picked = targets.length;
     const tools = toolRow(
       [
-        { id: "cast-add", text: "＋", title: "人物を足す（選んだ人の後ろに。Insert・Shift+Insert で前に）", run: () => this.actions.insert?.(true, targets) },
-        { id: "cast-duplicate", text: "複製", title: "選んだ人を複製（Ctrl+D）", run: () => this.actions.duplicate?.(targets), disabled: !picked },
-        { id: "cast-merge", text: "まとめる", title: "選んだ人（Ctrl+クリックで 2 人以上）を最初の人 1 人にまとめる", run: () => this.merge(targets), disabled: picked < 2 },
-        { id: "cast-delete", text: "削除", title: "選んだ人を消す（Delete・セリフの話者は空に。元に戻すで戻せます）", run: () => void this.remove(targets), disabled: !picked },
+        {
+          id: "cast-add",
+          text: "＋",
+          title: "人物を足す（選んだ人の後ろに。Insert・Shift+Insert で前に）",
+          run: () => this.actions.insert?.(true, targets),
+        },
+        {
+          id: "cast-duplicate",
+          text: "複製",
+          title: "選んだ人を複製（Ctrl+D）",
+          run: () => this.actions.duplicate?.(targets),
+          disabled: !picked,
+        },
+        {
+          id: "cast-merge",
+          text: "まとめる",
+          title: "選んだ人（Ctrl+クリックで 2 人以上）を最初の人 1 人にまとめる",
+          run: () => this.merge(targets),
+          disabled: picked < 2,
+        },
+        {
+          id: "cast-delete",
+          text: "削除",
+          title: "選んだ人を消す（Delete・セリフの話者は空に。元に戻すで戻せます）",
+          run: () => void this.remove(targets),
+          disabled: !picked,
+        },
       ],
       `${project.characters.length} 人${picked > 1 ? `・${picked} 人選択中` : ""}`,
     );

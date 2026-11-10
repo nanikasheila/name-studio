@@ -43,8 +43,16 @@ export interface Preset {
 
 /** 用紙: common page sizes (仕上がり with its bleed, and a basic frame inside). */
 export const PRESETS: Preset[] = [
-  { id: "b4", label: "商業誌 B4（A3 キャンバス、裁ち落とし 5 mm）", page: { canvasMm: [297, 420], trimMm: [257, 364], bleedMm: 5, basicMm: [180, 270] } },
-  { id: "b4-tight", label: "B4（キャンバス＝仕上がり＋裁ち落とし 5 mm）", page: { canvasMm: [267, 374], trimMm: [257, 364], bleedMm: 5, basicMm: [180, 270] } },
+  {
+    id: "b4",
+    label: "商業誌 B4（A3 キャンバス、裁ち落とし 5 mm）",
+    page: { canvasMm: [297, 420], trimMm: [257, 364], bleedMm: 5, basicMm: [180, 270] },
+  },
+  {
+    id: "b4-tight",
+    label: "B4（キャンバス＝仕上がり＋裁ち落とし 5 mm）",
+    page: { canvasMm: [267, 374], trimMm: [257, 364], bleedMm: 5, basicMm: [180, 270] },
+  },
   { id: "a4", label: "A4（裁ち落とし 3 mm）", page: { canvasMm: [216, 303], trimMm: [210, 297], bleedMm: 3, basicMm: [170, 250] } },
   { id: "b5", label: "同人誌 B5（裁ち落とし 3 mm）", page: { canvasMm: [188, 263], trimMm: [182, 257], bleedMm: 3, basicMm: [150, 220] } },
   { id: "a5", label: "同人誌 A5（裁ち落とし 3 mm）", page: { canvasMm: [154, 216], trimMm: [148, 210], bleedMm: 3, basicMm: [120, 175] } },
@@ -162,7 +170,8 @@ export function setupProblem(setup: PageSetup): string | null {
   if (!positive(setup.canvasMm)) return "キャンバスの幅と高さを入れてください";
   if (!(setup.resolution >= 72 && setup.resolution <= 1200)) return "解像度は 72〜1200 dpi にしてください";
   if (!positive(setup.trimMm)) return "仕上がりの幅と高さを入れてください";
-  if (setup.trimMm[0] > setup.canvasMm[0] + 1e-9 || setup.trimMm[1] > setup.canvasMm[1] + 1e-9) return "仕上がりがキャンバスより大きくなっています";
+  if (setup.trimMm[0] > setup.canvasMm[0] + 1e-9 || setup.trimMm[1] > setup.canvasMm[1] + 1e-9)
+    return "仕上がりがキャンバスより大きくなっています";
   if (!(Number.isFinite(setup.bleedMm) && setup.bleedMm >= 0)) return "裁ち落とし幅は 0 以上にしてください";
   if (!positive(setup.basicMm)) return "基本枠の幅と高さを入れてください";
   // What is left out is what the Rust side fills in: no offset, numbers from 1.
@@ -176,7 +185,8 @@ export function setupProblem(setup: PageSetup): string | null {
     return "基本枠がキャンバスからはみ出しています";
   }
   const px = (mm: number) => Math.round((mm * setup.resolution) / 25.4);
-  if (px(setup.canvasMm[0]) > MAX_SIDE_PX || px(setup.canvasMm[1]) > MAX_SIDE_PX) return "キャンバスが大きすぎます（解像度を下げてください）";
+  if (px(setup.canvasMm[0]) > MAX_SIDE_PX || px(setup.canvasMm[1]) > MAX_SIDE_PX)
+    return "キャンバスが大きすぎます（解像度を下げてください）";
   if (!setup.title.trim()) return "作品名を入れてください";
   if ((setup.storyIndex ?? 0) < 0 || (setup.nombreStart ?? 1) < 0) return "話数とノンブルの開始番号は 0 以上にしてください";
   const story = setup.story;
@@ -186,7 +196,8 @@ export function setupProblem(setup: PageSetup): string | null {
     const size = nombre.sizePt ?? 9;
     if (!(size >= 4 && size <= 72)) return "ノンブルの大きさは 4〜72 pt にしてください";
     if (nombre.edgeMm != null && !(nombre.edgeMm >= 0 && nombre.edgeMm <= 5)) return "ノンブルのフチは 0〜5 mm にしてください";
-    if (!(nombre.offsetMm ?? [0, 5]).every((offset) => Math.abs(offset) <= 100)) return "ノンブルの基本枠との間隔は ±100 mm までにしてください";
+    if (!(nombre.offsetMm ?? [0, 5]).every((offset) => Math.abs(offset) <= 100))
+      return "ノンブルの基本枠との間隔は ±100 mm までにしてください";
   }
   return null;
 }

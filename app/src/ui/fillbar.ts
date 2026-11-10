@@ -34,9 +34,12 @@ const SHORT: Record<FillWay, string> = { click: "クリック", enclose: "囲う
 
 const ICONS: Record<FillWay, string> = {
   click: '<path d="M4 9l5-5 7 7-5 5z"/><path d="M16 11c1.2 1.8 1.8 3 1.8 3.8a1.8 1.8 0 0 1-3.6 0c0-.8.6-2 1.8-3.8z" class="fill"/>',
-  enclose: '<path d="M4 10c0-4 3-6.5 6.5-6.5S17 6 17 10s-3 6.5-6.5 6.5" stroke-dasharray="2 2"/><rect x="7" y="7.5" width="6" height="5" class="fill"/>',
-  lasso: '<path d="M4 9c0-3.5 3-5.5 6.5-5.5S17 5.5 17 9s-3 5.5-6.5 5.5S4 12.5 4 9z" class="fill"/><path d="M6 13.5c-1 1.5-.5 3.5 1.5 3.5"/>',
-  remaining: '<path d="M3 16c3-1 5-4 7-7s4-5 7-6"/><circle cx="7.5" cy="11.5" r="1.2" class="fill"/><circle cx="12.5" cy="6.5" r="1.2" class="fill"/>',
+  enclose:
+    '<path d="M4 10c0-4 3-6.5 6.5-6.5S17 6 17 10s-3 6.5-6.5 6.5" stroke-dasharray="2 2"/><rect x="7" y="7.5" width="6" height="5" class="fill"/>',
+  lasso:
+    '<path d="M4 9c0-3.5 3-5.5 6.5-5.5S17 5.5 17 9s-3 5.5-6.5 5.5S4 12.5 4 9z" class="fill"/><path d="M6 13.5c-1 1.5-.5 3.5 1.5 3.5"/>',
+  remaining:
+    '<path d="M3 16c3-1 5-4 7-7s4-5 7-6"/><circle cx="7.5" cy="11.5" r="1.2" class="fill"/><circle cx="12.5" cy="6.5" r="1.2" class="fill"/>',
 };
 
 const UNDER_TITLE = "ラフ線の下に塗る（CSP では「塗り（線の下）」レイヤー）。切ると線の上に塗り、線も隠れます（ホワイトで消すとき）";
@@ -89,7 +92,12 @@ export class FillBar {
   private ways(): HTMLElement {
     const group = this.group("segmented fill-ways", "塗りのサブツール");
     for (const way of FILL_WAYS) {
-      const button = element("button", { id: `fill-${way}`, type: "button", className: `with-icon${way === this.fill.way ? " active" : ""}`, title: `${FILL_WAY_LABELS[way]}: ${FILL_WAY_HINTS[way]}（G を押すたびに切り替え）` });
+      const button = element("button", {
+        id: `fill-${way}`,
+        type: "button",
+        className: `with-icon${way === this.fill.way ? " active" : ""}`,
+        title: `${FILL_WAY_LABELS[way]}: ${FILL_WAY_HINTS[way]}（G を押すたびに切り替え）`,
+      });
       button.innerHTML = `<svg class="icon" viewBox="0 0 20 20" aria-hidden="true">${ICONS[way]}</svg>`;
       button.append(SHORT[way]);
       button.addEventListener("click", () => this.setWay(way));
@@ -102,7 +110,12 @@ export class FillBar {
   tones(palette = false): HTMLElement {
     const group = this.group("segmented", "塗りの色");
     for (const tone of ["black", "gray", "white"] as const) {
-      const button = element("button", { ...idOf(palette, tone), type: "button", className: tone === this.fill.tone ? "active" : "", title: TONE_TITLES[tone] });
+      const button = element("button", {
+        ...idOf(palette, tone),
+        type: "button",
+        className: tone === this.fill.tone ? "active" : "",
+        title: TONE_TITLES[tone],
+      });
       const swatch = element("i", { className: `tone ${tone}` });
       button.append(swatch, TONE_LABELS[tone].replace(/（.*/, ""));
       button.addEventListener("click", () => this.setTone(tone));
@@ -149,12 +162,25 @@ export class FillBar {
       }),
     );
     parts.push(
-      this.number(palette, "grow", palette ? "領域拡縮" : "拡縮", options.growMm, -MAX_GROW_MM, MAX_GROW_MM, 0.1, "領域拡縮: 塗る範囲をこの幅（mm）だけ広げる。マイナスで狭める", (value) => {
-        options.growMm = value;
-        changed(`領域拡縮 ${value} mm`);
-      }),
+      this.number(
+        palette,
+        "grow",
+        palette ? "領域拡縮" : "拡縮",
+        options.growMm,
+        -MAX_GROW_MM,
+        MAX_GROW_MM,
+        0.1,
+        "領域拡縮: 塗る範囲をこの幅（mm）だけ広げる。マイナスで狭める",
+        (value) => {
+          options.growMm = value;
+          changed(`領域拡縮 ${value} mm`);
+        },
+      ),
     );
-    const refer = element("select", { ...idOf(palette, "refer"), title: "参照: どの線で閉じた範囲を塗るか（塗りはどれでも境目になります。フキダシは塗りの上に描かれるので境目にしません）" });
+    const refer = element("select", {
+      ...idOf(palette, "refer"),
+      title: "参照: どの線で閉じた範囲を塗るか（塗りはどれでも境目になります。フキダシは塗りの上に描かれるので境目にしません）",
+    });
     for (const [value, label] of Object.entries(REFER_LABELS)) refer.append(element("option", { value, textContent: label }));
     refer.value = options.refer;
     refer.addEventListener("change", () => {
@@ -187,8 +213,25 @@ export class FillBar {
     return label;
   }
 
-  private number(palette: boolean, name: string, text: string, value: number, min: number, max: number, step: number, title: string, set: (value: number) => void): HTMLElement {
-    const input = element("input", { ...idOf(palette, name), type: "number", min: String(min), max: String(max), step: String(step), value: String(value) });
+  private number(
+    palette: boolean,
+    name: string,
+    text: string,
+    value: number,
+    min: number,
+    max: number,
+    step: number,
+    title: string,
+    set: (value: number) => void,
+  ): HTMLElement {
+    const input = element("input", {
+      ...idOf(palette, name),
+      type: "number",
+      min: String(min),
+      max: String(max),
+      step: String(step),
+      value: String(value),
+    });
     input.addEventListener("change", () => {
       const next = Number(input.value);
       if (!Number.isFinite(next)) return;

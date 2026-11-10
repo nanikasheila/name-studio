@@ -90,9 +90,15 @@ try {
   await settle();
   let s = await state();
   let series = await file(SERIES);
-  check(s.series === "../作品.nameseries" && (await file(FIRST))?.series === "../作品.nameseries", `the name links to its series (${s.series} / ${s.status})`);
   check(
-    series?.title === "作品" && series.episodes.length === 1 && series.episodes[0].path === "第1話/第1話.namestudio" && series.episodes[0].storyIndex === 1,
+    s.series === "../作品.nameseries" && (await file(FIRST))?.series === "../作品.nameseries",
+    `the name links to its series (${s.series} / ${s.status})`,
+  );
+  check(
+    series?.title === "作品" &&
+      series.episodes.length === 1 &&
+      series.episodes[0].path === "第1話/第1話.namestudio" &&
+      series.episodes[0].storyIndex === 1,
     `the series lists the first 話 (${JSON.stringify(series?.episodes)})`,
   );
   check(s.rows.length === 1 && s.rows[0].includes("第1話"), `the palette lists it (${s.rows})`);
@@ -107,10 +113,19 @@ try {
   await settle();
   s = await state();
   series = await file(SERIES);
-  const made = await page.evaluate(() => ({ pages: window.nameStudio.workbench.project.pages.length, target: window.nameStudio.workbench.project.plan?.targetPages }));
+  const made = await page.evaluate(() => ({
+    pages: window.nameStudio.workbench.project.pages.length,
+    target: window.nameStudio.workbench.project.plan?.targetPages,
+  }));
   check(made.pages === 8 && made.target === 8, `with the pages asked for, as its target too (${JSON.stringify(made)})`);
-  check(s.title === "第2話" && s.characters.join() === "ミナ" && s.series === "../作品.nameseries", `the next 話 has the cast (${JSON.stringify(s)})`);
-  check(series?.episodes.map((one) => one.storyIndex).join() === "1,2" && (await file(SECOND))?.storyIndex === 2, "the series lists both, in order");
+  check(
+    s.title === "第2話" && s.characters.join() === "ミナ" && s.series === "../作品.nameseries",
+    `the next 話 has the cast (${JSON.stringify(s)})`,
+  );
+  check(
+    series?.episodes.map((one) => one.storyIndex).join() === "1,2" && (await file(SECOND))?.storyIndex === 2,
+    "the series lists both, in order",
+  );
   check(s.rows.length === 2, `the palette lists both (${s.rows})`);
 
   // A character added in the second 話 goes to the series, and to the first 話 when it opens.
@@ -120,7 +135,10 @@ try {
     await wb.save();
   });
   series = await file(SERIES);
-  check(series?.shared.characters.map((c) => c.name).join() === "ミナ,カイ", `the series takes the new cast (${JSON.stringify(series?.shared.characters)})`);
+  check(
+    series?.shared.characters.map((c) => c.name).join() === "ミナ,カイ",
+    `the series takes the new cast (${JSON.stringify(series?.shared.characters)})`,
+  );
   await page.locator(".series-row").first().click();
   await settle();
   s = await state();
@@ -140,7 +158,10 @@ try {
   await settle();
   s = await state();
   series = await file(SERIES);
-  check(s.series === "../作品.nameseries" && series?.episodes.map((one) => one.storyIndex).join() === "1,2", `it joined again (${JSON.stringify(series?.episodes)})`);
+  check(
+    s.series === "../作品.nameseries" && series?.episodes.map((one) => one.storyIndex).join() === "1,2",
+    `it joined again (${JSON.stringify(series?.episodes)})`,
+  );
   await page.keyboard.press("Control+z");
   await settle();
   check((await state()).series === null && (await page.locator("#series-join").isVisible()), "undo takes the joining back");

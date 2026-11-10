@@ -76,7 +76,9 @@ export type SizePresets = Record<BrushKind, number[]>;
 
 /** Sizes in order, each once, within the kind's range. */
 function cleanSizes(kind: BrushKind, sizes: readonly unknown[]): number[] {
-  const numbers = sizes.filter((size): size is number => typeof size === "number" && Number.isFinite(size) && size > 0).map((size) => clampSize(kind, size));
+  const numbers = sizes
+    .filter((size): size is number => typeof size === "number" && Number.isFinite(size) && size > 0)
+    .map((size) => clampSize(kind, size));
   return [...new Set(numbers)].sort((a, b) => a - b).slice(0, MAX_PRESETS);
 }
 

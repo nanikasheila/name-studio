@@ -106,7 +106,8 @@ export function miniSheet(project: Project, options: MiniOptions, firstAlone: bo
       const perColumn = Math.ceil(Math.max(1, count) / columns);
       return [2 * MINI_MARGIN + columns * pitch - MINI_GAP, top + MINI_MARGIN + perColumn * pageH] as const;
     };
-    const columns = options.columns > 0 ? Math.min(options.columns, Math.max(1, count)) : chooseColumns(count, (c) => size(c)[0] / size(c)[1]);
+    const columns =
+      options.columns > 0 ? Math.min(options.columns, Math.max(1, count)) : chooseColumns(count, (c) => size(c)[0] / size(c)[1]);
     const perColumn = Math.ceil(Math.max(1, count) / columns);
     const [widthMm, heightMm] = size(columns);
     for (let index = 0; index < count; index++) {
@@ -126,7 +127,10 @@ export function miniSheet(project: Project, options: MiniOptions, firstAlone: bo
     const rows = Math.ceil(Math.max(1, pairs.length) / columns);
     return [2 * MINI_MARGIN + columns * (spreadW + MINI_GAP) - MINI_GAP, top + MINI_MARGIN + rows * pitchY - MINI_GAP] as const;
   };
-  const columns = options.columns > 0 ? Math.min(options.columns, Math.max(1, pairs.length)) : chooseColumns(pairs.length, (c) => size(c)[0] / size(c)[1]);
+  const columns =
+    options.columns > 0
+      ? Math.min(options.columns, Math.max(1, pairs.length))
+      : chooseColumns(pairs.length, (c) => size(c)[0] / size(c)[1]);
   const rows = Math.ceil(Math.max(1, pairs.length) / columns);
   const [widthMm, heightMm] = size(columns);
   const right = project.binding === "right";
@@ -147,7 +151,9 @@ export function miniSheet(project: Project, options: MiniOptions, firstAlone: bo
     place(rightPage, left + pageW);
   });
   pages.sort((a, b) => a.index - b.index);
-  const title = options.title ? { text: miniTitle(project), at: [right ? widthMm - MINI_MARGIN : MINI_MARGIN, MINI_MARGIN + MINI_TITLE / 2] as [number, number] } : null;
+  const title = options.title
+    ? { text: miniTitle(project), at: [right ? widthMm - MINI_MARGIN : MINI_MARGIN, MINI_MARGIN + MINI_TITLE / 2] as [number, number] }
+    : null;
   return { widthMm, heightMm, pages, numbers, title, columns, rows };
 }
 

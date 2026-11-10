@@ -98,7 +98,8 @@ export class ListPicker {
     window.addEventListener(
       "pointerdown",
       (event) => {
-        if (container.contains(document.activeElement) && !container.contains(event.target as Node)) (document.activeElement as HTMLElement).blur();
+        if (container.contains(document.activeElement) && !container.contains(event.target as Node))
+          (document.activeElement as HTMLElement).blur();
       },
       true,
     );
@@ -181,7 +182,8 @@ export class ListPicker {
   /** The rows painted as picked or not (without drawing the list again). */
   paint(): void {
     const picked = new Set(this.targets());
-    for (const row of this.container.querySelectorAll<HTMLElement>("[data-list-id]")) row.classList.toggle("picked", picked.has(row.dataset.listId ?? ""));
+    for (const row of this.container.querySelectorAll<HTMLElement>("[data-list-id]"))
+      row.classList.toggle("picked", picked.has(row.dataset.listId ?? ""));
     this.actions.changed?.();
   }
 
@@ -190,7 +192,12 @@ export class ListPicker {
     const a = this.actions;
     if (id === null) {
       const items: Entry[] = [...(a.empty?.() ?? [])];
-      if (!a.single && a.ids().length) items.push(...(items.length ? [SEPARATOR] : []), { label: `すべての${a.noun}を選ぶ`, keys: LIST_KEYS.all, run: () => this.selectAll() });
+      if (!a.single && a.ids().length)
+        items.push(...(items.length ? [SEPARATOR] : []), {
+          label: `すべての${a.noun}を選ぶ`,
+          keys: LIST_KEYS.all,
+          run: () => this.selectAll(),
+        });
       if (items.length) openMenu(items, x, y, a.noun);
       return;
     }
@@ -323,7 +330,12 @@ export class ListPicker {
       const all = this.actions.ids();
       if (!all.length) return false;
       const from = this.current ? all.indexOf(this.current) : -1;
-      const to = key === "Home" ? 0 : key === "End" ? all.length - 1 : Math.max(0, Math.min(all.length - 1, from < 0 ? 0 : from + (key === "ArrowUp" ? -1 : 1)));
+      const to =
+        key === "Home"
+          ? 0
+          : key === "End"
+            ? all.length - 1
+            : Math.max(0, Math.min(all.length - 1, from < 0 ? 0 : from + (key === "ArrowUp" ? -1 : 1)));
       const id = all[to];
       if (event.shiftKey && !a.single) {
         if (!this.anchor) this.anchor = this.current ?? id;

@@ -31,7 +31,8 @@ export interface ExportMemory {
 /** How many names' exports are kept (the oldest go first). */
 export const EXPORT_MEMORIES = 60;
 
-const oneOf = <T extends string>(value: unknown, allowed: readonly T[], fallback: T): T => (allowed.includes(value as T) ? (value as T) : fallback);
+const oneOf = <T extends string>(value: unknown, allowed: readonly T[], fallback: T): T =>
+  allowed.includes(value as T) ? (value as T) : fallback;
 const text = (value: unknown): string => (typeof value === "string" ? value : "");
 const flag = (value: unknown, fallback: boolean): boolean => (typeof value === "boolean" ? value : fallback);
 
@@ -62,7 +63,10 @@ export function memoryFrom(value: unknown): ExportMemory | null {
     draftRough: flag(v.draftRough, true),
     notes: flag(v.notes, true),
     marks: flag(v.marks, true),
-    pdf: { area: oneOf(pdf.area, ["trim", "canvas"], "trim"), dpi: Number.isFinite(pdf.dpi) && (pdf.dpi as number) > 0 ? (pdf.dpi as number) : 200 },
+    pdf: {
+      area: oneOf(pdf.area, ["trim", "canvas"], "trim"),
+      dpi: Number.isFinite(pdf.dpi) && (pdf.dpi as number) > 0 ? (pdf.dpi as number) : 200,
+    },
     mini: {
       format: oneOf<MiniFormat>(mini.format, ["png", "jpeg", "pdf"], "png"),
       area: oneOf(mini.area, ["trim", "canvas"], MINI_DEFAULTS.area),
@@ -85,7 +89,12 @@ export function memoryKey(path: string): string {
 }
 
 /** The kept memories with `memory` for the name at `path`; the oldest beyond `max` go. */
-export function withMemory(kept: Record<string, ExportMemory>, path: string, memory: ExportMemory, max = EXPORT_MEMORIES): Record<string, ExportMemory> {
+export function withMemory(
+  kept: Record<string, ExportMemory>,
+  path: string,
+  memory: ExportMemory,
+  max = EXPORT_MEMORIES,
+): Record<string, ExportMemory> {
   const next = { ...kept, [memoryKey(path)]: memory };
   const keys = Object.keys(next).sort((a, b) => next[b].timeMs - next[a].timeMs);
   return Object.fromEntries(keys.slice(0, max).map((key) => [key, next[key]]));
@@ -119,7 +128,8 @@ const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 /** What 「書き出す」 will make, in a line: how many pages, of what, to where. */
 export function exportSummary(settings: Omit<ExportMemory, "timeMs" | "files">, of: SummaryOf): string {
   const pages = `${of.pages} ${of.scroll ? "区切り" : "ページ"}`;
-  if (settings.kind === "pdf") return `${pages}を 1 つの PDF に（${settings.pdf.dpi} dpi・${settings.pdf.area === "trim" ? "仕上がりで切る" : "キャンバス全体"}${of.marks ? (settings.marks ? "・指示付き" : "・指示なし") : ""}）`;
+  if (settings.kind === "pdf")
+    return `${pages}を 1 つの PDF に（${settings.pdf.dpi} dpi・${settings.pdf.area === "trim" ? "仕上がりで切る" : "キャンバス全体"}${of.marks ? (settings.marks ? "・指示付き" : "・指示なし") : ""}）`;
   if (settings.kind === "mini") {
     const across = settings.mini.columns > 0 ? `横に ${settings.mini.columns} ${of.scroll ? "列" : "見開き"}` : "並びはおまかせ";
     return `${pages}を 1 枚のミニネームに（${MINI_FORMATS[settings.mini.format]}・${settings.mini.dpi} dpi・${across}）`;
@@ -128,7 +138,9 @@ export function exportSummary(settings: Omit<ExportMemory, "timeMs" | "files">, 
   const builtin = settings.mode === "builtin" && of.page;
   const parts = [
     pages,
-    builtin ? (of.page!.preset ?? `仕上がり ${of.page!.trimMm[0]}×${of.page!.trimMm[1]} mm`) : `ひな形 ${settings.form.template ? fileName(settings.form.template) : "未選択"}`,
+    builtin
+      ? (of.page!.preset ?? `仕上がり ${of.page!.trimMm[0]}×${of.page!.trimMm[1]} mm`)
+      : `ひな形 ${settings.form.template ? fileName(settings.form.template) : "未選択"}`,
     builtin ? `${of.page!.resolution} dpi` : null,
     settings.editable ? "直せる線とセリフ" : "画像の線とセリフ",
     settings.draftRough ? "ラフは下描き" : null,

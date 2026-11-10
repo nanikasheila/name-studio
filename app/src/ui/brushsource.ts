@@ -7,7 +7,19 @@ import { ask } from "../platform/dialogs";
 import { addBrushes } from "../domain/brush";
 import { freeName } from "../domain/listorder";
 import { newId } from "../domain/project";
-import { brushPicks, brushRef, clampSize, reorderBrushes, sizeLabel, sizeOfSlider, sliderOf, SLIDER_STEPS, withoutPreset, withPreset, type BrushPick } from "../editing/brushpicks";
+import {
+  brushPicks,
+  brushRef,
+  clampSize,
+  reorderBrushes,
+  sizeLabel,
+  sizeOfSlider,
+  sliderOf,
+  SLIDER_STEPS,
+  withoutPreset,
+  withPreset,
+  type BrushPick,
+} from "../editing/brushpicks";
 import { applyCspSettings, ensureCspSettings, setSetting } from "../domain/cspsettings";
 import { element } from "../platform/dom";
 import { ERASE_MODE_LABELS, type EditorEraseMode, type PageEditor } from "./editor";
@@ -48,7 +60,12 @@ const tipsReady = new Set<string>();
 function sampleKey(brush: Brush | null, kind: BrushKind, width: number, height: number): string {
   if (!brush) return `${kind}/${width}x${height}`;
   const { csp: _csp, tip, id: _id, name: _name, source: _source, ...values } = brush;
-  const shape = tip && { enabled: tip.enabled, interval: tip.interval, size: [tip.width, tip.height], picture: tip.pngBase64.length + tip.pngBase64.slice(-24) };
+  const shape = tip && {
+    enabled: tip.enabled,
+    interval: tip.interval,
+    size: [tip.width, tip.height],
+    picture: tip.pngBase64.length + tip.pngBase64.slice(-24),
+  };
   return JSON.stringify([kind, width, height, values, shape]);
 }
 
@@ -208,7 +225,10 @@ export class BrushSource implements SubToolSource {
     this.host.edit((project) => {
       const copy = structuredClone(source);
       copy.id = newId(project, "brush");
-      copy.name = freeName(`${source.name} のコピー`, project.brushes.filter((b) => b.kind === source.kind).map((b) => b.name));
+      copy.name = freeName(
+        `${source.name} のコピー`,
+        project.brushes.filter((b) => b.kind === source.kind).map((b) => b.name),
+      );
       // Right under the one copied (when it is the name's own).
       const at = project.brushes.findIndex((b) => b.id === source.id);
       project.brushes.splice(at >= 0 ? at + 1 : project.brushes.length, 0, copy);
@@ -231,10 +251,13 @@ export class BrushSource implements SubToolSource {
     const lines = project.pages.reduce((sum, page) => sum + page.strokes.filter((stroke) => stroke.brush === brush.id).length, 0);
     if (
       lines &&
-      !(await ask(`「${brush.name}」で描いた線が ${lines} 本あります。削除すると、その線は${PLAIN[this.kind]}で描いた形になります。削除しますか？`, {
-        title: "Name Studio",
-        kind: "warning",
-      }))
+      !(await ask(
+        `「${brush.name}」で描いた線が ${lines} 本あります。削除すると、その線は${PLAIN[this.kind]}で描いた形になります。削除しますか？`,
+        {
+          title: "Name Studio",
+          kind: "warning",
+        },
+      ))
     )
       return;
     const inHand = this.inHand()?.id === brush.id;
@@ -254,7 +277,11 @@ export class BrushSource implements SubToolSource {
   }
 
   footer(box: HTMLElement): void {
-    const settings = element("button", { type: "button", textContent: "設定…", title: "ペン・消しゴムの設定: 新しく作る・複製・CSP のサブツール詳細の項目すべて・.sut に書き出して CSP へ" });
+    const settings = element("button", {
+      type: "button",
+      textContent: "設定…",
+      title: "ペン・消しゴムの設定: 新しく作る・複製・CSP のサブツール詳細の項目すべて・.sut に書き出して CSP へ",
+    });
     settings.addEventListener("click", () => this.host.openEditor(this.kind));
     const take = element("button", { type: "button", textContent: "取り込み…", title: "CLIP STUDIO PAINT のペン・消しゴムを取り込む" });
     take.addEventListener("click", () => this.host.importBrushes());
@@ -272,8 +299,12 @@ export class BrushSource implements SubToolSource {
     if (!plainEraser) box.append(this.presetRow());
     if (brush) {
       box.append(
-        this.percentRow("不透明度", Math.round(brush.opacity * 100), 1, 100, (value) => this.setCsp(brush, "Opacity", value, `不透明度 ${value}%`)),
-        this.percentRow("手ブレ補正", Math.round(brush.stabilization), 0, 100, (value) => this.setCsp(brush, "FlickerReduction", value, `手ブレ補正 ${value}`)),
+        this.percentRow("不透明度", Math.round(brush.opacity * 100), 1, 100, (value) =>
+          this.setCsp(brush, "Opacity", value, `不透明度 ${value}%`),
+        ),
+        this.percentRow("手ブレ補正", Math.round(brush.stabilization), 0, 100, (value) =>
+          this.setCsp(brush, "FlickerReduction", value, `手ブレ補正 ${value}`),
+        ),
       );
     } else if (kind === "pen") {
       // The 標準のペン keeps its 手ブレ補正 in the pen settings (all names alike).
@@ -282,7 +313,10 @@ export class BrushSource implements SubToolSource {
           penPreferences.update({ stabilization: value });
           this.host.status(`${PLAIN.pen}: 手ブレ補正 ${value}`);
         }),
-        element("p", { className: "subtool-note", textContent: "標準のペンは太さと手ブレ補正だけ変えられます。ほかの項目は「設定…」で作ったペンか、取り込んだペンで。" }),
+        element("p", {
+          className: "subtool-note",
+          textContent: "標準のペンは太さと手ブレ補正だけ変えられます。ほかの項目は「設定…」で作ったペンか、取り込んだペンで。",
+        }),
       );
     } else {
       box.append(element("p", { className: "subtool-note", textContent: "標準の消しゴムは画面の上で決まった大きさです。" }));
@@ -297,14 +331,23 @@ export class BrushSource implements SubToolSource {
           if (tip) tip.enabled = check.checked;
         });
       });
-      box.append(element("label", { className: "subtool-check", title: "CSP の素材のサムネイルから作った先端の形で描く" }, check, " 先端の形で描く"));
+      box.append(
+        element("label", { className: "subtool-check", title: "CSP の素材のサムネイルから作った先端の形で描く" }, check, " 先端の形で描く"),
+      );
     }
   }
 
   private sizeRow(disabled: boolean): HTMLElement {
     const kind = this.kind;
     const mm = this.sizeInHand();
-    const range = element("input", { type: "range", min: "0", max: String(SLIDER_STEPS), step: "1", value: String(sliderOf(kind, mm)), disabled });
+    const range = element("input", {
+      type: "range",
+      min: "0",
+      max: String(SLIDER_STEPS),
+      step: "1",
+      value: String(sliderOf(kind, mm)),
+      disabled,
+    });
     range.setAttribute("aria-label", "ブラシサイズ");
     const number = element("input", { type: "number", min: "0.05", max: "50", step: "0.05", value: disabled ? "" : String(mm), disabled });
     number.setAttribute("aria-label", "ブラシサイズ（mm）");
@@ -320,7 +363,14 @@ export class BrushSource implements SubToolSource {
       if (value > 0) this.host.setSize(kind, clampSize(kind, value));
       this.host.refresh();
     });
-    return element("label", { className: "subtool-field", title: "ブラシサイズ（mm）。] / [ でも変えられます" }, element("span", { textContent: "ブラシサイズ" }), range, number, element("span", { className: "unit", textContent: "mm" }));
+    return element(
+      "label",
+      { className: "subtool-field", title: "ブラシサイズ（mm）。] / [ でも変えられます" },
+      element("span", { textContent: "ブラシサイズ" }),
+      range,
+      number,
+      element("span", { className: "unit", textContent: "mm" }),
+    );
   }
 
   /** ブラシサイズ: round buttons for the sizes used most, as CSP's palette. */
@@ -337,7 +387,12 @@ export class BrushSource implements SubToolSource {
       // The dot grows with the size, but by ratio (a 20 mm eraser still fits).
       const d = 3 + 15 * Math.sqrt(mm / biggest);
       dot.style.width = dot.style.height = `${d.toFixed(1)}px`;
-      const button = element("button", { type: "button", className: mm === now ? "active" : "", title: `${sizeLabel(mm)} mm（右クリックで候補から外す）` }, dot, element("span", { textContent: sizeLabel(mm) }));
+      const button = element(
+        "button",
+        { type: "button", className: mm === now ? "active" : "", title: `${sizeLabel(mm)} mm（右クリックで候補から外す）` },
+        dot,
+        element("span", { textContent: sizeLabel(mm) }),
+      );
       button.addEventListener("click", () => {
         this.host.setSize(kind, mm);
         this.host.refresh();
@@ -350,7 +405,12 @@ export class BrushSource implements SubToolSource {
       });
       row.append(button);
     }
-    const add = element("button", { type: "button", className: "add", textContent: "＋", title: "今の太さを候補に足す（右クリックで候補を初めの並びに戻す）" });
+    const add = element("button", {
+      type: "button",
+      className: "add",
+      textContent: "＋",
+      title: "今の太さを候補に足す（右クリックで候補を初めの並びに戻す）",
+    });
     add.addEventListener("click", () => {
       saveSizePresets(withPreset(loadSizePresets(), kind, this.sizeInHand()));
       this.host.refresh();
@@ -395,7 +455,11 @@ export class BrushSource implements SubToolSource {
     row.setAttribute("role", "group");
     row.setAttribute("aria-label", "消し方");
     for (const mode of Object.keys(ERASE_MODE_LABELS) as EditorEraseMode[]) {
-      const button = element("button", { type: "button", textContent: ERASE_MODE_LABELS[mode], className: this.host.editor.eraseMode === mode ? "active" : "" });
+      const button = element("button", {
+        type: "button",
+        textContent: ERASE_MODE_LABELS[mode],
+        className: this.host.editor.eraseMode === mode ? "active" : "",
+      });
       button.addEventListener("click", () => this.host.setEraseMode(mode));
       row.append(button);
     }
@@ -407,6 +471,15 @@ export class BrushSource implements SubToolSource {
     const brush = this.inHand();
     const rows = this.list().map((tool) => [tool.ref, tool.name, tool.detail, tool.group]);
     const own = this.host.project()?.brushes.map((b) => [b.id, b.sizeMm, b.opacity, b.stabilization, b.tip?.enabled]);
-    return JSON.stringify([rows, own, this.current(), this.sizeInHand(), this.host.editor.eraseMode, brush?.id, loadSizePresets()[this.kind], penPreferences.settings.stabilization]);
+    return JSON.stringify([
+      rows,
+      own,
+      this.current(),
+      this.sizeInHand(),
+      this.host.editor.eraseMode,
+      brush?.id,
+      loadSizePresets()[this.kind],
+      penPreferences.settings.stabilization,
+    ]);
   }
 }

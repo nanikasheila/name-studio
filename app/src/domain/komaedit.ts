@@ -259,7 +259,12 @@ export function seamLines(page: Page, seam: Seam): [Point, Point][] {
  * within `tolerance`, else on the grid, and the line it went onto when that
  * is one to show. A slanted seam does not snap.
  */
-export function snapSeam(seam: Seam, distance: number, targets: SnapTargets, tolerance: number): { distance: number; guide: number | null } {
+export function snapSeam(
+  seam: Seam,
+  distance: number,
+  targets: SnapTargets,
+  tolerance: number,
+): { distance: number; guide: number | null } {
   const horizontal = Math.abs(seam.dir[1]) < 1e-6;
   const vertical = Math.abs(seam.dir[0]) < 1e-6;
   if (!horizontal && !vertical) return { distance, guide: null };

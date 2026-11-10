@@ -112,7 +112,9 @@ export function planTakeBack(project: Project, units: readonly ReadUnit[]): Take
     for (const text of unit.texts) if (!take(gone, textKey(text.text))) typed.push(text);
     if (!gone.length && !typed.length) continue;
     // The name's lines on these pages, and what of them is as written.
-    const lines = unit.pages.flatMap((page) => project.pages[page].lines.filter((line) => line.text.trim()).map((line) => ({ page, line })));
+    const lines = unit.pages.flatMap((page) =>
+      project.pages[page].lines.filter((line) => line.text.trim()).map((line) => ({ page, line })),
+    );
     const asWritten = written.map(textKey);
     const used = new Set<Line>();
     const lineFor = (key: string) => lines.find(({ line }) => !used.has(line) && textKey(line.text) === key);
@@ -197,11 +199,22 @@ export function pickTakeBack(plan: TakeBack, keep: { retyped: boolean[]; added: 
 export function takeBackSummary(plan: TakeBack): string[] {
   const lines: string[] = [];
   const where = (pages: number[]) => pages.map((page) => page + 1).join("–");
-  if (plan.retyped.length) lines.push(`CSP で直したセリフ ${plan.retyped.length}: ${plan.retyped.map((r) => `${r.page + 1}p「${short(r.from)}」→「${short(r.to)}」`).join("、")}`);
-  if (plan.added.length) lines.push(`CSP で足したセリフ ${plan.added.length}: ${plan.added.map((a) => `${a.page + 1}p「${short(a.text)}」`).join("、")}`);
-  if (plan.removed.length) lines.push(`CSP で消したセリフ ${plan.removed.length}: ${plan.removed.map((r) => `${r.page + 1}p「${short(r.text)}」`).join("、")}`);
-  if (plan.conflicts.length) lines.push(`ネームでも変えていたので、ネームのままにするもの ${plan.conflicts.length}: ${plan.conflicts.map((c) => `${c.page + 1}p CSP「${short(c.csp)}」`).join("、")}`);
-  if (plan.unrecorded.length) lines.push(`書き出したときの記録がないページ（前のバージョンで書き出したもの）は読み戻しません: ${plan.unrecorded.map(where).join("、")} ページ`);
+  if (plan.retyped.length)
+    lines.push(
+      `CSP で直したセリフ ${plan.retyped.length}: ${plan.retyped.map((r) => `${r.page + 1}p「${short(r.from)}」→「${short(r.to)}」`).join("、")}`,
+    );
+  if (plan.added.length)
+    lines.push(`CSP で足したセリフ ${plan.added.length}: ${plan.added.map((a) => `${a.page + 1}p「${short(a.text)}」`).join("、")}`);
+  if (plan.removed.length)
+    lines.push(`CSP で消したセリフ ${plan.removed.length}: ${plan.removed.map((r) => `${r.page + 1}p「${short(r.text)}」`).join("、")}`);
+  if (plan.conflicts.length)
+    lines.push(
+      `ネームでも変えていたので、ネームのままにするもの ${plan.conflicts.length}: ${plan.conflicts.map((c) => `${c.page + 1}p CSP「${short(c.csp)}」`).join("、")}`,
+    );
+  if (plan.unrecorded.length)
+    lines.push(
+      `書き出したときの記録がないページ（前のバージョンで書き出したもの）は読み戻しません: ${plan.unrecorded.map(where).join("、")} ページ`,
+    );
   if (plan.missing.length) lines.push(`ページのファイルがありません: ${plan.missing.map(where).join("、")} ページ`);
   return lines;
 }

@@ -102,7 +102,8 @@ export function readLine(raw: string): ScriptLine | null {
   const text = plain(raw);
   if (!text) return null;
   // 名前〔電話〕「…」 / 名前（叫び）「…」 / 名前「…」 / 名前『…』 / 「…」
-  let match = /^((?:[^「『（(：:\s〔［]{0,20})(?:\s*[〔［[<＜（(][^〕］\]>＞）)「『]{1,10}[〕］\]>＞）)])?)\s*[「『]([\s\S]*?)[」』]?$/.exec(text);
+  let match =
+    /^((?:[^「『（(：:\s〔［]{0,20})(?:\s*[〔［[<＜（(][^〕］\]>＞）)「『]{1,10}[〕］\]>＞）)])?)\s*[「『]([\s\S]*?)[」』]?$/.exec(text);
   if (match) {
     const { name, kind, shape } = tagged(match[1].trim());
     const said = match[2].trim();
@@ -202,7 +203,9 @@ export function parseScript(source: string): ScriptDoc {
     }
     // The app's own text: ◆ scene, ■ N ページ, ［N］ panel.
     if (line.startsWith("◆")) {
-      scene = plain(line.slice(1)).replace(/[（(].*[）)]$/, "").trim();
+      scene = plain(line.slice(1))
+        .replace(/[（(].*[）)]$/, "")
+        .trim();
       sceneStarted = false;
       page = null;
       continue;
@@ -211,7 +214,9 @@ export function parseScript(source: string): ScriptDoc {
       newPage();
       const number = /^\s*(\d+)\s*ページ/.exec(plain(line.slice(1)));
       if (number) page!.number = Number(number[1]);
-      const rest = plain(line.slice(1)).replace(/^\d+\s*ページ/, "").trim();
+      const rest = plain(line.slice(1))
+        .replace(/^\d+\s*ページ/, "")
+        .trim();
       if (rest) page!.notes.push(rest);
       continue;
     }
@@ -402,7 +407,11 @@ const SAME_LINE = 0.3;
  * the script line it most reads like), whatever order the balloons stand in
  * now; between equally alike ones, the nearest in order.
  */
-function pairLines(old: readonly Line[], said: readonly ScriptLine[], speakerOf: (line: ScriptLine) => string | undefined): [number, number][] {
+function pairLines(
+  old: readonly Line[],
+  said: readonly ScriptLine[],
+  speakerOf: (line: ScriptLine) => string | undefined,
+): [number, number][] {
   const candidates: [number, number, number][] = [];
   old.forEach((line, i) =>
     said.forEach((s, j) => {
@@ -438,7 +447,14 @@ export function retext(project: Project, line: Line, text: string, panel: Panel 
  * then as little off the faces in the rough and the panel's other balloons
  * (but those in `gone`) as it takes.
  */
-export function placeAfter(project: Project, page: Page, panel: Panel | undefined, line: Line, previous: Line | undefined, gone: ReadonlySet<Line> = new Set()): void {
+export function placeAfter(
+  project: Project,
+  page: Page,
+  panel: Panel | undefined,
+  line: Line,
+  previous: Line | undefined,
+  gone: ReadonlySet<Line> = new Set(),
+): void {
   const box = placingBox(project, panel);
   wrapToFit(line, box[3] - box[1] - 6);
   fitLine(line);
@@ -449,7 +465,10 @@ export function placeAfter(project: Project, page: Page, panel: Panel | undefine
     moveLine(line, Math.max(area[0] + 3 - x0, right - x1), top - y0);
   });
   if (panel) {
-    const avoid = [...faces(page, panel), ...page.lines.filter((other) => other !== line && other.panel === panel.id && !gone.has(other)).map(balloonExtent)];
+    const avoid = [
+      ...faces(page, panel),
+      ...page.lines.filter((other) => other !== line && other.panel === panel.id && !gone.has(other)).map(balloonExtent),
+    ];
     inReadingDirection(project.binding, [line], (flip) => moveClear(line, flip.box(box), avoid.map(flip.box)));
     line.panel = panel.id;
   }
@@ -537,7 +556,20 @@ function updatePage(project: Project, page: Page, used: ScriptPanel[], speakers:
 
 /** Put a script onto the name. */
 export function applyScript(project: Project, doc: ScriptDoc, options: ScriptImportOptions): ScriptImportReport {
-  const report: ScriptImportReport = { pages: 0, panels: 0, lines: 0, characters: [], scenes: 0, replacedScenes: 0, insertedPages: 0, leftPages: [], kept: 0, changed: 0, added: 0, removed: 0 };
+  const report: ScriptImportReport = {
+    pages: 0,
+    panels: 0,
+    lines: 0,
+    characters: [],
+    scenes: 0,
+    replacedScenes: 0,
+    insertedPages: 0,
+    leftPages: [],
+    kept: 0,
+    changed: 0,
+    added: 0,
+    removed: 0,
+  };
   if (doc.title && (!project.title || project.title === "新しいネーム")) project.title = doc.title;
   // Speakers by name; new names become characters.
   const speakers = new Map(project.characters.map((character) => [character.name, character.id]));
@@ -585,7 +617,8 @@ export function applyScript(project: Project, doc: ScriptDoc, options: ScriptImp
         page.panels = patternPanels(project, pattern, gutters(project), used.length);
         orderPanels(page, project.binding);
       } else {
-        for (const box of panelBoxes(basicBox(project.pageFormat), used.length, gutters(project), project.binding)) addPanel(project, page, rectShape(box));
+        for (const box of panelBoxes(basicBox(project.pageFormat), used.length, gutters(project), project.binding))
+          addPanel(project, page, rectShape(box));
       }
       report.panels += page.panels.length;
     }

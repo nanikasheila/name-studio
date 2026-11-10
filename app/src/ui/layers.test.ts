@@ -12,10 +12,35 @@ function sample() {
   const [page, facing] = project.pages;
   const first = addPanel(project, page, rectShape([20, 20, 100, 100]));
   const second = addPanel(project, page, rectShape([20, 110, 100, 190]));
-  const stroke = addStroke(project, page, [[30, 30, 1], [50, 40, 1]], 0.4)!;
+  const stroke = addStroke(
+    project,
+    page,
+    [
+      [30, 30, 1],
+      [50, 40, 1],
+    ],
+    0.4,
+  )!;
   const line = addLine(project, page, [70, 60], "やあ");
-  const outside = addStroke(project, page, [[150, 30, 1], [160, 40, 1]], 0.4)!;
-  const fill = addFill(project, page, [[25, 25], [40, 25], [40, 35]], "black");
+  const outside = addStroke(
+    project,
+    page,
+    [
+      [150, 30, 1],
+      [160, 40, 1],
+    ],
+    0.4,
+  )!;
+  const fill = addFill(
+    project,
+    page,
+    [
+      [25, 25],
+      [40, 25],
+      [40, 35],
+    ],
+    "black",
+  );
   const other = addPanel(project, facing, rectShape([30, 30, 90, 90]));
   return { project, page, facing, first, second, stroke, line, outside, fill, other };
 }
@@ -42,7 +67,10 @@ describe("layers like CSP's panel folders", () => {
     const { page, second, stroke } = sample();
     expect(moveIntoPanel(page, { kind: "strokes", pageId: page.id, ids: [stroke.id] }, page, second)).toBe(true);
     // 90 mm down: the second panel's middle is 90 mm below the first's.
-    expect(stroke.points.map(([x, y]) => [x, y])).toEqual([[30, 120], [50, 130]]);
+    expect(stroke.points.map(([x, y]) => [x, y])).toEqual([
+      [30, 120],
+      [50, 130],
+    ]);
     expect(pageLayers(page).panels.find((p) => p.panel.id === second.id)!.strokes).toEqual([stroke.id]);
   });
 

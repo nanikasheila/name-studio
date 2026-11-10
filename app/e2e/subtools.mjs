@@ -34,7 +34,10 @@ try {
     const { newProject } = await import("/src/domain/project.ts");
     window.nameStudio.show(newProject("ペンなし", 2));
   });
-  check((await page.locator("#side-subtools .subtool-row .subtool-name").allTextContents()).join("/") === "標準のペン", "a name with no pens shows the plain pen");
+  check(
+    (await page.locator("#side-subtools .subtool-row .subtool-name").allTextContents()).join("/") === "標準のペン",
+    "a name with no pens shows the plain pen",
+  );
   await page.evaluate(async () => {
     const { newProject } = await import("/src/domain/project.ts");
     const { newBrush } = await import("/src/domain/cspsettings.ts");
@@ -43,7 +46,14 @@ try {
     g.sizeMm = 0.6;
     const maru = newBrush("pen", "brush-2", "丸ペン");
     maru.sizeMm = 0.3;
-    maru.sizePressure = { min: 0, curve: [[0, 0], [0.6, 0.3], [1, 1]] };
+    maru.sizePressure = {
+      min: 0,
+      curve: [
+        [0, 0],
+        [0.6, 0.3],
+        [1, 1],
+      ],
+    };
     const kneaded = newBrush("eraser", "brush-3", "硬め");
     project.brushes.push(g, maru, kneaded);
     project.nextId = 10;
@@ -56,31 +66,47 @@ try {
   });
   const panel = page.locator("#side-subtools");
   check(await panel.isVisible(), "サブツール shows beside the pages out of the box");
-  check((await panel.locator(".subtool-tabs button").allTextContents()).join("/") === "ペン/消しゴム/塗り", "it has ペン, 消しゴム and 塗り");
+  check(
+    (await panel.locator(".subtool-tabs button").allTextContents()).join("/") === "ペン/消しゴム/塗り",
+    "it has ペン, 消しゴム and 塗り",
+  );
   const names = async () => (await panel.locator(".subtool-row .subtool-name").allTextContents()).join("/");
   check((await names()) === "標準のペン/Gペン/丸ペン/鉛筆", "the plain pen, the name's pens, then one of another name");
-  check((await panel.locator(".subtool-group").allTextContents()).includes("ほかのネームで取り込んだもの"), "the other name's pen is under its own heading");
-  const inHand = () => page.evaluate(() => ({ tool: window.nameStudio.workbench.editor.tool, brush: window.nameStudio.workbench.editor.penBrush, eraser: window.nameStudio.workbench.editor.eraserBrush, width: window.nameStudio.workbench.editor.penWidthMm, eraserSize: window.nameStudio.workbench.editor.eraserSizeMm }));
+  check(
+    (await panel.locator(".subtool-group").allTextContents()).includes("ほかのネームで取り込んだもの"),
+    "the other name's pen is under its own heading",
+  );
+  const inHand = () =>
+    page.evaluate(() => ({
+      tool: window.nameStudio.workbench.editor.tool,
+      brush: window.nameStudio.workbench.editor.penBrush,
+      eraser: window.nameStudio.workbench.editor.eraserBrush,
+      width: window.nameStudio.workbench.editor.penWidthMm,
+      eraserSize: window.nameStudio.workbench.editor.eraserSizeMm,
+    }));
 
   // A click on a row: that pen, with the pen tool.
   await panel.locator(".subtool-row", { hasText: "Gペン" }).click();
   let hand = await inHand();
   check(hand.tool === "pen" && hand.brush === "brush-1" && hand.width === 0.6, "a click takes the pen up with its size");
-  check(await panel.locator(".subtool-row.current", { hasText: "Gペン" }).count() === 1, "the pen in hand is marked");
+  check((await panel.locator(".subtool-row.current", { hasText: "Gペン" }).count()) === 1, "the pen in hand is marked");
   check((await panel.locator(".subtool-props-title").textContent()) === "Gペン", "ツールプロパティ shows the pen in hand");
-  const sample = await panel.locator(".subtool-row", { hasText: "丸ペン" }).locator("canvas").evaluate((canvas) => {
-    const data = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
-    let inked = 0;
-    for (let i = 3; i < data.length; i += 4) if (data[i] > 0) inked++;
-    return inked;
-  });
+  const sample = await panel
+    .locator(".subtool-row", { hasText: "丸ペン" })
+    .locator("canvas")
+    .evaluate((canvas) => {
+      const data = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+      let inked = 0;
+      for (let i = 3; i < data.length; i += 4) if (data[i] > 0) inked++;
+      return inked;
+    });
   check(sample > 30, "each row draws a sample line");
 
   // Size: the round buttons, and the pen keeps the size it was last used at.
   await panel.locator(".size-presets button", { hasText: /^1\.5$/ }).click();
   hand = await inHand();
   check(hand.width === 1.5, "a round size button sets the size");
-  check(await panel.locator(".size-presets button.active").textContent() === "1.5", "the size in hand is marked");
+  check((await panel.locator(".size-presets button.active").textContent()) === "1.5", "the size in hand is marked");
   await panel.locator(".subtool-row", { hasText: "丸ペン" }).click();
   check((await inHand()).width === 0.3, "another pen comes at its own size");
   await page.keyboard.press("]");
@@ -101,7 +127,10 @@ try {
   check((await inHand()).width > 5, "the size slider sets a size along its ratio scale");
   await page.locator(".size-presets button", { hasText: /^0\.5$/ }).click();
   await panel.locator(".size-presets button.add").click();
-  check(await page.evaluate(() => JSON.parse(localStorage.getItem("namestudio.sizePresets")).pen.includes(0.5)), "＋ keeps the size among the round buttons");
+  check(
+    await page.evaluate(() => JSON.parse(localStorage.getItem("namestudio.sizePresets")).pen.includes(0.5)),
+    "＋ keeps the size among the round buttons",
+  );
 
   // Opacity and 手ブレ補正 change the pen (one undoable step), and its CSP rows with it.
   const opacity = panel.locator(".subtool-field", { hasText: "不透明度" }).locator("input");
@@ -119,9 +148,12 @@ try {
 
   // A key from the row: press ⌨, then the key.
   await panel.locator(".subtool-row", { hasText: "Gペン" }).locator(".subtool-key").click();
-  check(await panel.locator(".subtool-row.waiting").count() === 1, "⌨ waits for a key");
+  check((await panel.locator(".subtool-row.waiting").count()) === 1, "⌨ waits for a key");
   await page.keyboard.press("1");
-  check((await panel.locator(".subtool-row", { hasText: "Gペン" }).locator(".subtool-key").textContent()) === "1", "the key shows on the row");
+  check(
+    (await panel.locator(".subtool-row", { hasText: "Gペン" }).locator(".subtool-key").textContent()) === "1",
+    "the key shows on the row",
+  );
   await page.keyboard.press("v");
   check((await inHand()).tool === "select", "V: the select tool");
   await page.keyboard.press("1");
@@ -143,14 +175,20 @@ try {
   await panel.locator(".subtool-tabs button", { hasText: "ペン" }).first().click();
   await panel.locator(".subtool-row", { hasText: "丸ペン" }).locator(".subtool-key").click();
   await page.keyboard.press("1");
-  check((await panel.locator(".subtool-row", { hasText: "Gペン" }).locator(".subtool-key").textContent()) === "⌨", "a key given to another pen leaves the first");
+  check(
+    (await panel.locator(".subtool-row", { hasText: "Gペン" }).locator(".subtool-key").textContent()) === "⌨",
+    "a key given to another pen leaves the first",
+  );
   await page.keyboard.press("1");
   check((await inHand()).brush === "brush-2", "and takes the other");
 
   // キー設定 and Ctrl+K know them.
   await page.click("#shortcuts");
   const dialog = await page.locator("#sc-list").textContent();
-  check(dialog.includes("サブツール") && dialog.includes("ペン: 丸ペン") && dialog.includes("消しゴム: 硬め"), "キー設定 lists every pen and eraser");
+  check(
+    dialog.includes("サブツール") && dialog.includes("ペン: 丸ペン") && dialog.includes("消しゴム: 硬め"),
+    "キー設定 lists every pen and eraser",
+  );
   await page.keyboard.press("Escape");
   await page.keyboard.press("Control+k");
   await page.keyboard.type("鉛筆");
@@ -158,7 +196,10 @@ try {
   await page.keyboard.press("Enter");
   const project = await page.evaluate(() => window.nameStudio.workbench.project.brushes.map((b) => b.name));
   hand = await inHand();
-  check(project.includes("鉛筆") && hand.brush && hand.width === 1.2, "picking another name's pen brings it into this name and takes it up");
+  check(
+    project.includes("鉛筆") && hand.brush && hand.width === 1.2,
+    "picking another name's pen brings it into this name and takes it up",
+  );
   check(!(await names()).includes("ほかのネーム") && (await panel.locator(".subtool-group").count()) === 0, "it is the name's own now");
 
   // Drag 鉛筆 above Gペン.
@@ -169,7 +210,10 @@ try {
   await page.mouse.move(from.x + 140, to.y + 3, { steps: 8 });
   await page.mouse.up();
   check((await names()) === "標準のペン/鉛筆/Gペン/丸ペン", "a row dragged goes to its new place");
-  check(await page.evaluate(() => window.nameStudio.workbench.project.brushes.map((b) => b.name).join("/")) === "鉛筆/Gペン/硬め/丸ペン", "in the name's brushes too (the erasers keep their places)");
+  check(
+    (await page.evaluate(() => window.nameStudio.workbench.project.brushes.map((b) => b.name).join("/"))) === "鉛筆/Gペン/硬め/丸ペン",
+    "in the name's brushes too (the erasers keep their places)",
+  );
 
   // Keys and sizes outlast a restart (they are kept on this computer, by the pen's name).
   await page.reload();
@@ -187,7 +231,10 @@ try {
   await page.keyboard.press("1");
   hand = await inHand();
   // 丸ペン was last at 0.5 (the round button above).
-  check(hand.tool === "pen" && hand.brush === "brush-1" && hand.width === 0.5, "in another name the same pen has the same key and its last size");
+  check(
+    hand.tool === "pen" && hand.brush === "brush-1" && hand.width === 0.5,
+    "in another name the same pen has the same key and its last size",
+  );
 
   if (shots) {
     await page.locator(".dock.left").screenshot({ path: `${shots}/subtools-pen.png` });

@@ -118,7 +118,9 @@ export function moveIntoPanel(from: Page, ref: LayerRef, to: Page, panel: Panel)
   const middle = middleOf(from, ref);
   if (!middle) return false;
   const source = pageLayers(from).panels.find((held) =>
-    ref.kind === "strokes" ? ref.ids.every((id) => held.strokes.includes(id)) : (ref.kind === "line" ? held.lines : held.fills).includes(ref.id),
+    ref.kind === "strokes"
+      ? ref.ids.every((id) => held.strokes.includes(id))
+      : (ref.kind === "line" ? held.lines : held.fills).includes(ref.id),
   );
   const target = bounds(panel.shape);
   const targetMiddle: Point = [(target[0] + target[2]) / 2, (target[1] + target[3]) / 2];
@@ -210,7 +212,8 @@ export class LayerView {
 
   private bind(container: HTMLElement): ListPicker {
     const refs = (ids: string[]) => ids.map((id) => this.refs.get(id)).filter((ref): ref is LayerRef => !!ref);
-    const keysOf = (list: LayerRef[]) => list.flatMap((ref) => this.listed.flatMap((layers) => (layers.page.id === ref.pageId ? hiddenKeys(layers, ref) : [])));
+    const keysOf = (list: LayerRef[]) =>
+      list.flatMap((ref) => this.listed.flatMap((layers) => (layers.page.id === ref.pageId ? hiddenKeys(layers, ref) : [])));
     return new ListPicker(container, {
       noun: "レイヤー",
       ids: () => [...this.refs.keys()],
@@ -231,7 +234,11 @@ export class LayerView {
         const page = picked[0]?.pageId;
         const others = this.listed
           .filter((layers) => layers.page.id === page)
-          .flatMap((layers) => [...this.refs.values()].filter((ref) => ref.pageId === page && !ids.includes(refKey(ref))).flatMap((ref) => hiddenKeys(layers, ref)))
+          .flatMap((layers) =>
+            [...this.refs.values()]
+              .filter((ref) => ref.pageId === page && !ids.includes(refKey(ref)))
+              .flatMap((ref) => hiddenKeys(layers, ref)),
+          )
           .filter((key) => !keys.includes(key));
         const panel = picked.length === 1 && picked[0].kind === "panel";
         return [
@@ -311,19 +318,27 @@ export class LayerView {
     rows.push(
       Object.assign(document.createElement("p"), {
         className: "hint layer-hint",
-        textContent: "行を押すと選び（Ctrl・Shift で複数）、目で画面から隠します（書き出しには入ります）。右クリックで複製・コピー・ほかを隠す・削除。セリフ・ラフ線・塗りの行をコマの行へドラッグするとそのコマへ移し、コマをコマへドラッグすると中身を入れ替えます。",
+        textContent:
+          "行を押すと選び（Ctrl・Shift で複数）、目で画面から隠します（書き出しには入ります）。右クリックで複製・コピー・ほかを隠す・削除。セリフ・ラフ線・塗りの行をコマの行へドラッグするとそのコマへ移し、コマをコマへドラッグすると中身を入れ替えます。",
       }),
     );
     container.replaceChildren(...rows);
     // The rows picked are what is selected on the page.
     const selected = [...this.refs.entries()].filter(([, ref]) => this.host.selected(ref)).map(([id]) => id);
     this.picker.pick(selected, false);
-    for (const row of container.querySelectorAll<HTMLElement>("[data-list-id]")) row.classList.toggle("picked", selected.includes(row.dataset.listId ?? ""));
+    for (const row of container.querySelectorAll<HTMLElement>("[data-list-id]"))
+      row.classList.toggle("picked", selected.includes(row.dataset.listId ?? ""));
   }
 
-  private contents(layers: PageLayers, page: Page, held: { lines: string[]; strokes: string[]; fills: string[] }, depth: number): HTMLElement[] {
+  private contents(
+    layers: PageLayers,
+    page: Page,
+    held: { lines: string[]; strokes: string[]; fills: string[] },
+    depth: number,
+  ): HTMLElement[] {
     const rows: HTMLElement[] = [];
-    for (const id of held.lines) rows.push(this.row(layers, { kind: "line", pageId: page.id, id }, depth, "セリフ", this.host.lineLabel(page, id)));
+    for (const id of held.lines)
+      rows.push(this.row(layers, { kind: "line", pageId: page.id, id }, depth, "セリフ", this.host.lineLabel(page, id)));
     const marks = held.strokes.filter((id) => this.host.isMark(page, id));
     const rough = held.strokes.filter((id) => !marks.includes(id));
     if (rough.length) rows.push(this.row(layers, { kind: "strokes", pageId: page.id, ids: rough }, depth, "ラフ線", `${rough.length} 本`));
@@ -335,7 +350,16 @@ export class LayerView {
     return rows;
   }
 
-  private row(layers: PageLayers, ref: LayerRef, depth: number, label: string, detail: string, lead?: HTMLElement, pageId?: string, panelId?: string): HTMLElement {
+  private row(
+    layers: PageLayers,
+    ref: LayerRef,
+    depth: number,
+    label: string,
+    detail: string,
+    lead?: HTMLElement,
+    pageId?: string,
+    panelId?: string,
+  ): HTMLElement {
     const keys = hiddenKeys(layers, ref);
     const hidden = keys.length > 0 && keys.every((key) => this.host.hidden().has(key));
     const row = document.createElement("div");

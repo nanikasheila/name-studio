@@ -11,8 +11,25 @@ import { addStroke } from "./strokes";
 
 /** A stick figure: head circle and body, `x` its middle, standing on `y`. */
 function figure(x: number, y: number): Point[][] {
-  const head: Point[] = Array.from({ length: 12 }, (_, i) => [x + 4 * Math.cos((i / 12) * 2 * Math.PI), y - 36 + 4 * Math.sin((i / 12) * 2 * Math.PI)]);
-  return [head, [[x, y - 32], [x, y - 12]], [[x, y - 12], [x - 5, y]], [[x, y - 12], [x + 5, y]]];
+  const head: Point[] = Array.from({ length: 12 }, (_, i) => [
+    x + 4 * Math.cos((i / 12) * 2 * Math.PI),
+    y - 36 + 4 * Math.sin((i / 12) * 2 * Math.PI),
+  ]);
+  return [
+    head,
+    [
+      [x, y - 32],
+      [x, y - 12],
+    ],
+    [
+      [x, y - 12],
+      [x - 5, y],
+    ],
+    [
+      [x, y - 12],
+      [x + 5, y],
+    ],
+  ];
 }
 
 describe("しっぽを付ける", () => {
@@ -20,7 +37,13 @@ describe("しっぽを付ける", () => {
     const project = newProject("t", 1);
     const page = project.pages[0];
     const panel = addPanel(project, page, rectShape([60, 60, 240, 160]));
-    for (const stroke of [...figure(200, 155), ...figure(100, 155)]) addStroke(project, page, stroke.map(([x, y]) => [x, y, 0.5]), 0.5);
+    for (const stroke of [...figure(200, 155), ...figure(100, 155)])
+      addStroke(
+        project,
+        page,
+        stroke.map(([x, y]) => [x, y, 0.5]),
+        0.5,
+      );
     expect(figures(page, panel).length).toBe(2);
     const a = addLine(project, page, [190, 80], "やあ");
     a.speaker = "a";

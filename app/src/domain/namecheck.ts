@@ -46,7 +46,11 @@ export function checkName(project: Project): NameIssue[] {
       issues.push({ kind, pageId: page.id, page: index + 1, lineId: line.id, text: line.text.replace(/\s+/g, "").slice(0, 14) });
     const extents = page.lines.map((line) => ({ line, box: balloonExtent(line) }));
     extents.forEach(({ line, box }, i) => {
-      if (extents.slice(i + 1).some((other) => other.line.linkTo !== line.id && line.linkTo !== other.line.id && overlapArea(box, other.box) > OVERLAP_MM2)) {
+      if (
+        extents
+          .slice(i + 1)
+          .some((other) => other.line.linkTo !== line.id && line.linkTo !== other.line.id && overlapArea(box, other.box) > OVERLAP_MM2)
+      ) {
         add("overlap", line);
       }
       const panel = page.panels.find((p) => p.id === line.panel);
@@ -55,7 +59,8 @@ export function checkName(project: Project): NameIssue[] {
       if (box[0] < tx0 || box[1] < ty0 || box[2] > tx1 || box[3] > ty1) add("trim", line);
       if (onFace(page, line)) add("face", line);
       const balloon = resolvedShape(line) !== "none";
-      if (balloon && line.kind === "speech" && !line.tails?.length && !line.linkTo && !page.lines.some((other) => other.linkTo === line.id)) add("tail", line);
+      if (balloon && line.kind === "speech" && !line.tails?.length && !line.linkTo && !page.lines.some((other) => other.linkTo === line.id))
+        add("tail", line);
     });
   });
   return issues;

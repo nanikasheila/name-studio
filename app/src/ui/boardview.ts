@@ -91,7 +91,8 @@ export interface LaneView {
 }
 
 export const ICONS: Record<LaneId | "fit" | "wide" | "narrow" | "fold" | "unfold" | "help", string> = {
-  shape: '<rect x="2" y="6.5" width="5" height="7" rx="1.2" class="fill"/><rect x="8" y="6.5" width="4" height="7" rx="1.2"/><rect x="13" y="6.5" width="5" height="7" rx="1.2" class="fill"/>',
+  shape:
+    '<rect x="2" y="6.5" width="5" height="7" rx="1.2" class="fill"/><rect x="8" y="6.5" width="4" height="7" rx="1.2"/><rect x="13" y="6.5" width="5" height="7" rx="1.2" class="fill"/>',
   scene: '<rect x="2" y="6" width="7.5" height="8" rx="2.5"/><rect x="11" y="6" width="7" height="8" rx="2.5"/>',
   time: '<path d="M2.5 4.5h6M7 10h6M11.5 15.5h6"/><path d="M8.5 4.5L7 10M13 10l-1.5 5.5" stroke-dasharray="1.5 1.5"/>',
   emotion: '<path d="M2.5 14c3 0 3-9 6-9s3 10 6 10 2-6 3-6"/>',
@@ -103,7 +104,6 @@ export const ICONS: Record<LaneId | "fit" | "wide" | "narrow" | "fold" | "unfold
   unfold: '<path d="M4 13l6-6 6 6"/><path d="M4 4h12"/>',
   help: '<circle cx="10" cy="10" r="7.5"/><path d="M7.8 7.8a2.3 2.3 0 1 1 3.2 2.1c-.7.3-1 .8-1 1.5v.6"/><circle cx="10" cy="14.6" r=".6" class="fill"/>',
 };
-
 
 export function icon(name: keyof typeof ICONS): SVGSVGElement {
   const node = svg("svg", { viewBox: "0 0 20 20", class: "icon", "aria-hidden": "true" });

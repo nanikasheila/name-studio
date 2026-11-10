@@ -1,5 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { dragCell, findPages, gripAt, gripCursor, gridPages, guessOrder, orderCells, placeOnPage, skewOf, toGray, turnGray, type Gray, type PxBox } from "./minisplit";
+import {
+  dragCell,
+  findPages,
+  gripAt,
+  gripCursor,
+  gridPages,
+  guessOrder,
+  orderCells,
+  placeOnPage,
+  skewOf,
+  toGray,
+  turnGray,
+  type Gray,
+  type PxBox,
+} from "./minisplit";
 import { newProject } from "./project";
 import { basicBox, trimBox } from "./pagebox";
 
@@ -26,7 +40,16 @@ function frame(gray: Gray, [x0, y0, x1, y1]: PxBox, line = 2, value = 40): void 
 function drawing(gray: Gray, [x0, y0, x1, y1]: PxBox, seed: number): void {
   const w = x1 - x0;
   const h = y1 - y0;
-  fill(gray, [x0 + Math.round(w * 0.1), y0 + Math.round(h * (0.3 + 0.05 * (seed % 3))), x1 - Math.round(w * 0.1), y0 + Math.round(h * (0.3 + 0.05 * (seed % 3))) + 1], 30);
+  fill(
+    gray,
+    [
+      x0 + Math.round(w * 0.1),
+      y0 + Math.round(h * (0.3 + 0.05 * (seed % 3))),
+      x1 - Math.round(w * 0.1),
+      y0 + Math.round(h * (0.3 + 0.05 * (seed % 3))) + 1,
+    ],
+    30,
+  );
   fill(gray, [x0 + Math.round(w * 0.5), y0 + Math.round(h * 0.1), x0 + Math.round(w * 0.5) + 1, y0 + Math.round(h * 0.6)], 30);
   fill(gray, [x0 + Math.round(w * 0.2), y0 + Math.round(h * 0.7), x0 + Math.round(w * 0.35), y0 + Math.round(h * 0.8)], 90);
 }
@@ -57,8 +80,14 @@ describe("finding the pages of a ミニネーム", () => {
     expect(guessOrder(found.cells, true)).toBe("rtl");
     // Top right first, along the row to the left, then the next row.
     expect(order.map(middle).map(([x, y]) => [Math.round(x), Math.round(y)])).toEqual([
-      [843, 169], [608, 169], [373, 169], [138, 169],
-      [843, 469], [608, 469], [373, 469], [138, 469],
+      [843, 169],
+      [608, 169],
+      [373, 169],
+      [138, 169],
+      [843, 469],
+      [608, 469],
+      [373, 469],
+      [138, 469],
     ]);
     expect(orderCells(found.cells, "ltr")[0][0]).toBe(found.cells.reduce((least, cell) => Math.min(least, cell[0]), Infinity));
   });
@@ -71,7 +100,12 @@ describe("finding the pages of a ミニネーム", () => {
     for (const left of [880, 60]) {
       for (let row = 0; row < 4; row++) {
         for (let column = 0; column < 4; column++) {
-          const box: PxBox = [left + column * cell.w, 40 + row * (cell.h + 14), left + (column + 1) * cell.w, 40 + row * (cell.h + 14) + cell.h];
+          const box: PxBox = [
+            left + column * cell.w,
+            40 + row * (cell.h + 14),
+            left + (column + 1) * cell.w,
+            40 + row * (cell.h + 14) + cell.h,
+          ];
           frame(gray, box, 2, 20);
           frame(gray, [box[0] + 16, box[1] + 22, box[2] - 16, box[3] - 22], 1, 60);
           if ((row + column) % 2) drawing(gray, [box[0] + 16, box[1] + 22, box[2] - 16, box[3] - 22], row);
@@ -175,7 +209,9 @@ describe("laying a page's picture on the page", () => {
     // Inside the 基本枠, touching it on the tighter side, centred on it.
     expect((innerBox[0] + innerBox[2]) / 2).toBeCloseTo((bx0 + bx1) / 2, 6);
     expect((innerBox[1] + innerBox[3]) / 2).toBeCloseTo((by0 + by1) / 2, 6);
-    expect(Math.min(Math.abs(innerBox[2] - innerBox[0] - (bx1 - bx0)), Math.abs(innerBox[3] - innerBox[1] - (by1 - by0)))).toBeLessThan(1e-6);
+    expect(Math.min(Math.abs(innerBox[2] - innerBox[0] - (bx1 - bx0)), Math.abs(innerBox[3] - innerBox[1] - (by1 - by0)))).toBeLessThan(
+      1e-6,
+    );
   });
 });
 
@@ -198,7 +234,11 @@ describe("a picture scanned a little askew", () => {
       expect(skew).toBeCloseTo(degrees, 1);
       const found = findPages(turnGray(tilted, -skew), 196 / 277);
       expect(found.cells).toHaveLength(8);
-      for (const page of pages) expect(found.cells.some((cell) => near(cell, page, 4)), `${degrees}°`).toBe(true);
+      for (const page of pages)
+        expect(
+          found.cells.some((cell) => near(cell, page, 4)),
+          `${degrees}°`,
+        ).toBe(true);
     }
   });
 });
@@ -224,6 +264,8 @@ describe("a page's box put right by hand", () => {
     // Moved whole, it stops at the picture's edge with its size kept.
     expect(dragCell(box, "move", 900, -30, [1000, 1000], 8)).toEqual([800, 70, 1000, 370]);
     // A page that was found reaching past the edge (a tilted scan) is not pulled in by a drag elsewhere.
-    expect(dragCell([-12, 0, 200, 300], { left: false, top: false, right: false, bottom: true }, 0, 10, [500, 500], 8)).toEqual([-12, 0, 200, 310]);
+    expect(dragCell([-12, 0, 200, 300], { left: false, top: false, right: false, bottom: true }, 0, 10, [500, 500], 8)).toEqual([
+      -12, 0, 200, 310,
+    ]);
   });
 });

@@ -76,7 +76,5 @@ export function sortScenes(project: Project): void {
 /** The scene a page belongs to (the first one that covers it). */
 export function sceneOf(project: Project, pageId: string): Scene | undefined {
   const index = pageIndex(project, pageId);
-  return project.scenes.find(
-    (scene) => pageIndex(project, scene.firstPage) <= index && index <= pageIndex(project, scene.lastPage),
-  );
+  return project.scenes.find((scene) => pageIndex(project, scene.firstPage) <= index && index <= pageIndex(project, scene.lastPage));
 }

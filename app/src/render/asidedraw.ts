@@ -7,7 +7,18 @@ import { bounds } from "../model/geometry";
 import type { HeldPanel, Page, Project } from "../model/model";
 import type { Slot } from "../editing/layout";
 import { ACCENT, drawSticky } from "./notedraw";
-import { drawBalloons, drawLineText, drawMarks, drawPageFills, drawPanelBorders, drawPanelFills, drawStrokes, INK, tracePath, type MmToPx } from "./pagedraw";
+import {
+  drawBalloons,
+  drawLineText,
+  drawMarks,
+  drawPageFills,
+  drawPanelBorders,
+  drawPanelFills,
+  drawStrokes,
+  INK,
+  tracePath,
+  type MmToPx,
+} from "./pagedraw";
 import { pictureOf } from "./pictures";
 import { drawGoingTo } from "./screendraw";
 import { imageOf, opacityOf } from "../domain/references";
@@ -39,16 +50,19 @@ export function drawAside(ctx: CanvasRenderingContext2D, project: Project, slots
   // The pages lie over the room around them.
   ctx.beginPath();
   ctx.rect(-1e5, -1e5, 2e5, 2e5);
-  for (const slot of slots) ctx.rect(slot.x + slot.shown[0] * slot.scale, slot.y, (slot.shown[1] - slot.shown[0]) * slot.scale, pageH * slot.scale);
+  for (const slot of slots)
+    ctx.rect(slot.x + slot.shown[0] * slot.scale, slot.y, (slot.shown[1] - slot.shown[0]) * slot.scale, pageH * slot.scale);
   ctx.clip("evenodd");
   for (const slot of slots) drawUnder(ctx, project, slot, marks.visible(slot.page), marks);
   ctx.restore();
   for (const slot of slots) {
-    if (marks.referenceFrames && slot.page.references?.some((reference) => reachesOff(reference.box, project.pageFormat))) marks.referenceFrames(slot);
+    if (marks.referenceFrames && slot.page.references?.some((reference) => reachesOff(reference.box, project.pageFormat)))
+      marks.referenceFrames(slot);
     for (const held of heldBeside(project, slot.page)) drawHeld(ctx, project, slot, held, marks.held?.heldId === held.id);
     const page = marks.visible(slot.page);
     for (const sticky of page.stickies ?? []) {
-      if (reachesOff(stickyBox(sticky), project.pageFormat)) drawSticky(ctx, slot, sticky, marks.selected(page, "sticky", sticky.id), marks.stickyHandle);
+      if (reachesOff(stickyBox(sticky), project.pageFormat))
+        drawSticky(ctx, slot, sticky, marks.selected(page, "sticky", sticky.id), marks.stickyHandle);
     }
   }
   const to = marks.held?.to;

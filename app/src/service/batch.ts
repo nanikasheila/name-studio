@@ -4,7 +4,16 @@
 import { call, type BatchExport } from "../platform/backend";
 export type { BatchExport } from "../platform/backend";
 import { updateRecord, updatedPages } from "./updatereport";
-import { checkSummary, dialogueUpdateSummary, exportToCsp, imagesNote, missingEditable, readCspDialogue, ROUGH_LAYERS, updateCspDialogue } from "./nameexport";
+import {
+  checkSummary,
+  dialogueUpdateSummary,
+  exportToCsp,
+  imagesNote,
+  missingEditable,
+  readCspDialogue,
+  ROUGH_LAYERS,
+  updateCspDialogue,
+} from "./nameexport";
 import { normalize, unknownFieldsNote } from "../domain/project";
 import { projectBody } from "../domain/projectjson";
 import { applyTakeBack, planTakeBack, takeBackSummary } from "../domain/readback";
@@ -13,17 +22,30 @@ import { installedFont } from "../domain/fonts";
 import type { Project } from "../model/model";
 
 /** The template page and work to write with, and pages to copy layers from: the given ones, or with --builtin those made from the name's CSP page settings. */
-async function templatesFor(task: BatchExport, project: Project): Promise<{ template: string; workTemplate: string | null; donors: string[]; pieces?: number }> {
+async function templatesFor(
+  task: BatchExport,
+  project: Project,
+): Promise<{ template: string; workTemplate: string | null; donors: string[]; pieces?: number }> {
   if (!task.builtin) {
     if (!task.template) throw new Error("--template（ページのひな形 .clip）がありません");
     return { template: task.template, workTemplate: task.workTemplate, donors: [] };
   }
-  const setup = pageSetup(project, cspPageOf(project), { title: task.workName ?? project.title, storyIndex: task.storyIndex ?? project.storyIndex ?? null, author: project.author }, (name) => installedFont(name)?.postscript);
+  const setup = pageSetup(
+    project,
+    cspPageOf(project),
+    { title: task.workName ?? project.title, storyIndex: task.storyIndex ?? project.storyIndex ?? null, author: project.author },
+    (name) => installedFont(name)?.postscript,
+  );
   const problem = setupProblem(setup);
   if (problem) throw new Error(problem);
   const built = await call("prepare_builtin_template", { setup });
   // A work only when it is given a name.
-  return { template: built.page, workTemplate: task.workName ? (task.workTemplate ?? built.work) : null, donors: [built.parts], pieces: piecesPerPage(project, cspPageOf(project)) };
+  return {
+    template: built.page,
+    workTemplate: task.workName ? (task.workTemplate ?? built.work) : null,
+    donors: [built.parts],
+    pieces: piecesPerPage(project, cspPageOf(project)),
+  };
 }
 
 /** The export the app was started for (or why its arguments are wrong), or null for a normal start. */
@@ -84,7 +106,10 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
         await call("adopt_name_dialogue", { paths: plan.paths });
       }
       ok = !plan.missing.length;
-      const summary = [changes ? `CSP のセリフを読み戻して ${task.project} に保存しました` : "CSP で直したセリフはありませんでした", ...takeBackSummary(plan)];
+      const summary = [
+        changes ? `CSP のセリフを読み戻して ${task.project} に保存しました` : "CSP で直したセリフはありませんでした",
+        ...takeBackSummary(plan),
+      ];
       result = { ok, seconds: (Date.now() - started) / 1000, summary, ...plan };
     } else if (task.updateDialogue) {
       const summary = await updateCspDialogue(
@@ -106,7 +131,10 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
       ok = check.ok;
       // The record kept with the CSP pages, as from the dialog.
       if (updatedPages(summary).length) {
-        await call("record_dialogue_update", { outDir: task.outDir, entry: updateRecord(summary, project.title, check.lines[0], new Date()) });
+        await call("record_dialogue_update", {
+          outDir: task.outDir,
+          entry: updateRecord(summary, project.title, check.lines[0], new Date()),
+        });
       }
       result = { ok, seconds: (Date.now() - started) / 1000, summary: [...notes, ...check.lines], ...summary };
     } else {

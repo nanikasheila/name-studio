@@ -1,10 +1,39 @@
 import { describe, expect, it } from "vitest";
-import { CAPTION, GRID_GAP_MM, captionRoom, MARGIN, GRID_GAP_PX, extent, fitContinuous, fittedTo, layoutPages, nearestTo, onStage, pageGapPx, rowCount, slotAt, spreadWidth, toPage, type Arrangement, type Pair, type Slot } from "./layout";
+import {
+  CAPTION,
+  GRID_GAP_MM,
+  captionRoom,
+  MARGIN,
+  GRID_GAP_PX,
+  extent,
+  fitContinuous,
+  fittedTo,
+  layoutPages,
+  nearestTo,
+  onStage,
+  pageGapPx,
+  rowCount,
+  slotAt,
+  spreadWidth,
+  toPage,
+  type Arrangement,
+  type Pair,
+  type Slot,
+} from "./layout";
 import type { Project } from "../model/model";
 import { trimBox } from "../domain/pagebox";
 import { newProject } from "../domain/project";
 
-const view = (change: Partial<Arrangement> = {}): Arrangement => ({ single: false, continuous: false, rows: 1, zoom: 1, pan: [0, 0], width: 1200, height: 800, ...change });
+const view = (change: Partial<Arrangement> = {}): Arrangement => ({
+  single: false,
+  continuous: false,
+  rows: 1,
+  zoom: 1,
+  pan: [0, 0],
+  width: 1200,
+  height: 800,
+  ...change,
+});
 const onScreen = (slot: Slot, [x, y]: [number, number]): [number, number] => [slot.x + x * slot.scale, slot.y + y * slot.scale];
 
 function project(binding: Project["binding"], pages = 8): Project {
@@ -53,7 +82,12 @@ describe("the pages on screen", () => {
 
   it("lays every spread out in reading order on one canvas (連続)", () => {
     const p = project("right", 8);
-    const list: Pair[] = [[1, null], [2, 3], [4, 5], [6, 7]];
+    const list: Pair[] = [
+      [1, null],
+      [2, 3],
+      [4, 5],
+      [6, 7],
+    ];
     const slots = layoutPages(p, list, 0, view({ continuous: true, rows: 2 }));
     const at = (page: number) => slots.find((slot) => slot.index === page - 1)!;
     // Right binding: along a row from right to left, then the next row down.
@@ -71,7 +105,12 @@ describe("the pages on screen", () => {
     p.pages[3].memo = "long";
     // A long memo takes 5 rows, any other caption one.
     const captionRows = (page: { memo?: string }) => (page.memo === "long" ? 5 : 1);
-    const list: Pair[] = [[1, null], [2, 3], [4, 5], [6, 7]];
+    const list: Pair[] = [
+      [1, null],
+      [2, 3],
+      [4, 5],
+      [6, 7],
+    ];
     const plain = layoutPages(p, list, 0, view({ continuous: true, rows: 2 }));
     const slots = layoutPages(p, list, 0, view({ continuous: true, rows: 2, captionRows }));
     const at = (all: Slot[], page: number) => all.find((slot) => slot.index === page - 1)!;
@@ -141,7 +180,10 @@ describe("the room between spreads (連続)", () => {
 
   it("puts spreads that far apart", () => {
     const p = project("right");
-    const pairs: Pair[] = [[1, 2], [3, 4]];
+    const pairs: Pair[] = [
+      [1, 2],
+      [3, 4],
+    ];
     const xs = (gapMm: number) => {
       const slots = layoutPages(p, pairs, 0, view({ continuous: true, rows: 1, gapMm }));
       const first = slots.filter((s) => s.index < 2);
@@ -158,9 +200,20 @@ describe("the room between spreads (連続)", () => {
 
   it("finds the page nearest a point of the stage, and the point of it there, on or off the page", () => {
     const p = project("right");
-    const slots = layoutPages(p, [[1, 2], [3, 4]], 0, view({ continuous: true }));
+    const slots = layoutPages(
+      p,
+      [
+        [1, 2],
+        [3, 4],
+      ],
+      0,
+      view({ continuous: true }),
+    );
     const third = slots.find((s) => s.index === 2)!;
-    expect(nearestTo(slots, p.pageFormat, onScreen(third, [50, 60]))).toEqual({ index: 2, point: [expect.closeTo(50), expect.closeTo(60)] });
+    expect(nearestTo(slots, p.pageFormat, onScreen(third, [50, 60]))).toEqual({
+      index: 2,
+      point: [expect.closeTo(50), expect.closeTo(60)],
+    });
     // Just above a page: that page, at a point above its top.
     const above = nearestTo(slots, p.pageFormat, onScreen(third, [50, -5]));
     expect(above?.index).toBe(2);
@@ -170,7 +223,17 @@ describe("the room between spreads (連続)", () => {
 
   it("fits 連続 to the stage: every page, or the rows as tall as it, and tells which it was", () => {
     const p = project("right", 16);
-    const pairs: Pair[] = [[1, null], [2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13], [14, 15], [16, null]];
+    const pairs: Pair[] = [
+      [1, null],
+      [2, 3],
+      [4, 5],
+      [6, 7],
+      [8, 9],
+      [10, 11],
+      [12, 13],
+      [14, 15],
+      [16, null],
+    ];
     const stage = view({ continuous: true, width: 1000, height: 600 });
     const pageH = p.pageFormat.canvasMm[1];
     const laid = (fit: { zoom: number; pan: [number, number] }) => layoutPages(p, pairs, 0, { ...stage, ...fit });

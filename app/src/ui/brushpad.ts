@@ -94,7 +94,12 @@ export class BrushPad {
     if (!this.brush) return;
     this.canvas.setPointerCapture(event.pointerId);
     const point = this.point(event);
-    this.drawing = { stroke: { id: `try${this.count++}`, points: [point], widthMm: 1, closed: false }, last: point, time: event.timeStamp, speed: 0 };
+    this.drawing = {
+      stroke: { id: `try${this.count++}`, points: [point], widthMm: 1, closed: false },
+      last: point,
+      time: event.timeStamp,
+      speed: 0,
+    };
   }
 
   private move(event: PointerEvent): void {
@@ -242,7 +247,8 @@ export class GraphBox {
     const [x, y] = this.fromGraph(event.offsetX, event.offsetY);
     const last = this.points.length - 1;
     // The ends stay at the edges (as CSP's graph); the points between keep their order.
-    const nx = index === 0 ? 0 : index === last ? 1 : Math.min(Math.max(x, this.points[index - 1][0] + 0.01), this.points[index + 1][0] - 0.01);
+    const nx =
+      index === 0 ? 0 : index === last ? 1 : Math.min(Math.max(x, this.points[index - 1][0] + 0.01), this.points[index + 1][0] - 0.01);
     this.points[index] = [nx, y];
     this.draw();
     this.changing(this.copy());

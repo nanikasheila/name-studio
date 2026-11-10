@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { addLine } from "./dialogue";
 import { newProject } from "./project";
-import { applyShared, folderOf, newSeries, nextStoryIndex, relativePath, resolvePath, samePath, sharedOf, withEpisode, withoutEpisode } from "./series";
+import {
+  applyShared,
+  folderOf,
+  newSeries,
+  nextStoryIndex,
+  relativePath,
+  resolvePath,
+  samePath,
+  sharedOf,
+  withEpisode,
+  withoutEpisode,
+} from "./series";
 
 describe("シリーズ", () => {
   it("shares characters, fonts and look; the series wins, what the name still uses stays", () => {

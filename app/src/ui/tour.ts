@@ -54,7 +54,12 @@ export class Tour {
       (event) => {
         if (this.root.hidden || event.ctrlKey || event.altKey || event.metaKey) return;
         const target = event.target as HTMLElement | null;
-        if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) && !this.card.contains(target)) return;
+        if (
+          target &&
+          (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) &&
+          !this.card.contains(target)
+        )
+          return;
         const step = event.key === "ArrowRight" || event.key === "Enter" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
         if (event.key === "Escape") this.close();
         else if (step) this.go(this.index + step);
@@ -157,8 +162,9 @@ export class Tour {
     const clampX = (x: number) => Math.max(8, Math.min(w - card.width - 8, x));
     const clampY = (y: number) => Math.max(8, Math.min(h - card.height - 8, y));
     // Clamped along the side it is on, the card still keeps clear of the part.
-    const placed =
-      tries.map(([x, y], i) => (i < 2 ? ([clampX(x), y] as [number, number]) : ([x, clampY(y)] as [number, number]))).find(fits) ?? [clampX(centreX), clampY(bottom - card.height - GAP)];
+    const placed = tries
+      .map(([x, y], i) => (i < 2 ? ([clampX(x), y] as [number, number]) : ([x, clampY(y)] as [number, number])))
+      .find(fits) ?? [clampX(centreX), clampY(bottom - card.height - GAP)];
     Object.assign(this.card.style, { left: `${placed[0]}px`, top: `${placed[1]}px` });
   }
 }

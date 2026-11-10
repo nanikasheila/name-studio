@@ -28,7 +28,7 @@ export function clipHalfPlane(shape: readonly Point[], side: (p: Point) => numbe
     const sc = side(current);
     const sn = side(next);
     if (sc >= 0) result.push(current);
-    if ((sc >= 0) !== (sn >= 0)) {
+    if (sc >= 0 !== sn >= 0) {
       const t = sc / (sc - sn);
       result.push([current[0] + t * (next[0] - current[0]), current[1] + t * (next[1] - current[1])]);
     }

@@ -50,7 +50,13 @@ export interface InPlaceHost {
  * Opens a field over `panel`'s memo or over `line` on the page `pageId`, inside `container`.
  * `fresh`: the line was just placed, in the step already begun (it ends here).
  */
-export function writeInPlace(host: InPlaceHost, container: HTMLElement, pageId: string, target: { panel: Panel } | { line: Line }, fresh = false): void {
+export function writeInPlace(
+  host: InPlaceHost,
+  container: HTMLElement,
+  pageId: string,
+  target: { panel: Panel } | { line: Line },
+  fresh = false,
+): void {
   const panel = "panel" in target ? target.panel : undefined;
   const line = "line" in target ? target.line : undefined;
   const field = document.createElement("textarea");
@@ -95,7 +101,10 @@ export function writeInPlace(host: InPlaceHost, container: HTMLElement, pageId: 
       const along = (longest + 1) * size + 2 * pad;
       const [w, h] = line.vertical ? [across, along] : [along, across];
       // Vertical text starts at the right, as it is read.
-      const [ax, ay] = host.onScreen([line.vertical ? slot.x + x1 * slot.scale + pad : slot.x + x0 * slot.scale - pad, slot.y + y0 * slot.scale - pad]);
+      const [ax, ay] = host.onScreen([
+        line.vertical ? slot.x + x1 * slot.scale + pad : slot.x + x0 * slot.scale - pad,
+        slot.y + y0 * slot.scale - pad,
+      ]);
       style.left = `${line.vertical ? ax - w : ax}px`;
       style.top = `${ay}px`;
       style.width = `${w}px`;

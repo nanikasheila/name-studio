@@ -53,7 +53,8 @@ try {
         count++;
         pixels += canvas.width * canvas.height;
       }
-      for (const canvas of document.querySelectorAll("canvas")) if (![...made].some((ref) => ref.deref() === canvas)) (count++, (pixels += canvas.width * canvas.height));
+      for (const canvas of document.querySelectorAll("canvas"))
+        if (![...made].some((ref) => ref.deref() === canvas)) count++, (pixels += canvas.width * canvas.height);
       return { count, mb: Math.round((pixels * 4) / 104857.6) / 10 };
     };
   });
@@ -66,10 +67,23 @@ try {
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Performance.enable");
   const settle = () => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-  const at = (n, mm) => page.evaluate(([n, mm]) => window.nameStudio.workbench.editor.clientOf(window.nameStudio.workbench.project.pages[n - 1].id, mm), [n, mm]);
+  const at = (n, mm) =>
+    page.evaluate(
+      ([n, mm]) => window.nameStudio.workbench.editor.clientOf(window.nameStudio.workbench.project.pages[n - 1].id, mm),
+      [n, mm],
+    );
   const tool = (name) => page.evaluate((name) => window.nameStudio.workbench.setTool(name), name);
   const pen = (type, [x, y], pressure, buttons = 1) =>
-    cdp.send("Input.dispatchMouseEvent", { type, x, y, button: type === "mouseMoved" && !buttons ? "none" : "left", buttons, clickCount: type === "mouseMoved" ? 0 : 1, pointerType: "pen", force: pressure });
+    cdp.send("Input.dispatchMouseEvent", {
+      type,
+      x,
+      y,
+      button: type === "mouseMoved" && !buttons ? "none" : "left",
+      buttons,
+      clickCount: type === "mouseMoved" ? 0 : 1,
+      pointerType: "pen",
+      force: pressure,
+    });
   async function penLine(points) {
     await pen("mouseMoved", points[0], 0, 0);
     await pen("mousePressed", points[0], 0.4);
@@ -83,11 +97,12 @@ try {
     await page.mouse.up();
   }
   /** The spread showing page `n`. */
-  const show = (n) => page.evaluate((n) => {
-    const editor = window.nameStudio.workbench.editor;
-    editor.showPage(n);
-    editor.draw();
-  }, n);
+  const show = (n) =>
+    page.evaluate((n) => {
+      const editor = window.nameStudio.workbench.editor;
+      editor.showPage(n);
+      editor.draw();
+    }, n);
 
   /** Lines drawn on page `n` with the pen (as a person sketches a panel). */
   async function sketch(n, lines, seed) {
@@ -112,7 +127,19 @@ try {
     const { metrics } = await cdp.send("Performance.getMetrics");
     const metric = (name) => metrics.find((m) => m.name === name)?.value ?? 0;
     const app = await page.evaluate(() => ({ canvases: window.__canvases(), ...window.nameStudio.workbench.resources() }));
-    const row = { label, heapMb: Math.round(heap.usedSize / 104857.6) / 10, nodes: metric("Nodes"), listeners: metric("JSEventListeners"), canvases: app.canvases.count, canvasMb: app.canvases.mb, undo: app.undo, redo: app.redo, strokes: app.strokes, linePictures: app.linePictures, linePicturesMb: app.linePicturesMb };
+    const row = {
+      label,
+      heapMb: Math.round(heap.usedSize / 104857.6) / 10,
+      nodes: metric("Nodes"),
+      listeners: metric("JSEventListeners"),
+      canvases: app.canvases.count,
+      canvasMb: app.canvases.mb,
+      undo: app.undo,
+      redo: app.redo,
+      strokes: app.strokes,
+      linePictures: app.linePictures,
+      linePicturesMb: app.linePicturesMb,
+    };
     samples.push(row);
     return row;
   }
@@ -153,14 +180,18 @@ try {
   }
   const worked = await sample("worked");
   const minutes = ((Date.now() - began) / 60000).toFixed(1);
-  console.log(`     ${ROUNDS} rounds in ${minutes} min: ${worked.strokes - start.strokes} lines more, ${(worked.heapMb - start.heapMb).toFixed(1)} MB more`);
+  console.log(
+    `     ${ROUNDS} rounds in ${minutes} min: ${worked.strokes - start.strokes} lines more, ${(worked.heapMb - start.heapMb).toFixed(1)} MB more`,
+  );
   check(worked.undo <= 200, `undo keeps at most 200 steps (${worked.undo})`);
   if (full) {
     // Undo's first steps cost a copy of the page each (its text); once it keeps no more, what grows is what is drawn.
     const perStep = ((full.heapMb - start.heapMb) * 1024) / full.undo;
     const lines = worked.strokes - full.strokes;
     const perLine = lines > 0 ? ((worked.heapMb - full.heapMb) * 1024) / lines : 0;
-    console.log(`     while undo fills: ${perStep.toFixed(0)} KB a step; once it is full: ${perLine.toFixed(1)} KB for each of ${lines} lines more`);
+    console.log(
+      `     while undo fills: ${perStep.toFixed(0)} KB a step; once it is full: ${perLine.toFixed(1)} KB for each of ${lines} lines more`,
+    );
     check(perStep < 400, `an undo step of a heavy page keeps ${perStep.toFixed(0)} KB (400 KB at most)`);
     check(perLine < 40, `once undo is full, memory grows only with what is drawn: ${perLine.toFixed(1)} KB a line (40 KB at most)`);
   } else {
@@ -184,8 +215,14 @@ try {
   console.log(`     ${line(before)}`);
   console.log(`     ${line(after)}`);
   check(after.strokes === before.strokes, `the lines drawn and undone leave the name as it was (${before.strokes} → ${after.strokes})`);
-  check(after.heapMb - before.heapMb < 8, `memory does not grow when nothing is kept: ${before.heapMb} → ${after.heapMb} MB (8 MB at most)`);
-  check(after.canvases <= before.canvases + 2 && after.canvasMb <= before.canvasMb + 16, `canvases do not pile up: ${before.canvases} (${before.canvasMb} MB) → ${after.canvases} (${after.canvasMb} MB)`);
+  check(
+    after.heapMb - before.heapMb < 8,
+    `memory does not grow when nothing is kept: ${before.heapMb} → ${after.heapMb} MB (8 MB at most)`,
+  );
+  check(
+    after.canvases <= before.canvases + 2 && after.canvasMb <= before.canvasMb + 16,
+    `canvases do not pile up: ${before.canvases} (${before.canvasMb} MB) → ${after.canvases} (${after.canvasMb} MB)`,
+  );
   check(after.nodes <= before.nodes + 300, `the page's elements do not pile up: ${before.nodes} → ${after.nodes}`);
   check(after.listeners <= before.listeners + 50, `listeners do not pile up: ${before.listeners} → ${after.listeners}`);
   check(errors.length === 0, `no errors (${errors.join(" / ")})`);

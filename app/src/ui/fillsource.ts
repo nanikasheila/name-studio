@@ -21,7 +21,12 @@ export class FillSource implements SubToolSource {
   ) {}
 
   list(): SubTool[] {
-    return FILL_WAYS.map((way) => ({ ref: `${PREFIX}${way}`, name: FILL_WAY_LABELS[way], detail: this.detail(way), sample: (canvas) => drawSample(canvas, way) }));
+    return FILL_WAYS.map((way) => ({
+      ref: `${PREFIX}${way}`,
+      name: FILL_WAY_LABELS[way],
+      detail: this.detail(way),
+      sample: (canvas) => drawSample(canvas, way),
+    }));
   }
 
   /** Beside the name: how small a gap it closes. */

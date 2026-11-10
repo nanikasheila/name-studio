@@ -25,7 +25,11 @@ export type Decode = (image: StoredImage) => Promise<{ close(): void }>;
  * The pictures `takes` picks on the pages (their parts on the page, as written
  * out) that cannot be read, in page order. Each picture is tried once.
  */
-export async function unreadablePictures(project: Project, takes: (reference: ReferenceImage) => boolean, decode: Decode = decodePicture): Promise<UnreadablePicture[]> {
+export async function unreadablePictures(
+  project: Project,
+  takes: (reference: ReferenceImage) => boolean,
+  decode: Decode = decodePicture,
+): Promise<UnreadablePicture[]> {
   const found = new Map<string, UnreadablePicture>();
   const readable = new Set<string>();
   for (const [index, page] of project.pages.entries()) {
@@ -37,7 +41,12 @@ export async function unreadablePictures(project: Project, takes: (reference: Re
         continue;
       }
       const image = imageOf(project, reference);
-      const reason = !image ? "missing" : await decode(image).then((picture) => (picture.close(), null), () => "broken" as const);
+      const reason = !image
+        ? "missing"
+        : await decode(image).then(
+            (picture) => (picture.close(), null),
+            () => "broken" as const,
+          );
       if (reason) found.set(reference.image, { name: image?.name || reference.image, pages: [index + 1], reason });
       else readable.add(reference.image);
     }
@@ -68,7 +77,10 @@ export interface UnreadableRoughs {
  * null when it can), or null when all can. They are read again from the sheet
  * each time the name is opened, so a sheet moved or deleted since loses them.
  */
-export async function unreadableRoughs(project: Project, problem: (rough: RoughImage) => Promise<string | null>): Promise<UnreadableRoughs | null> {
+export async function unreadableRoughs(
+  project: Project,
+  problem: (rough: RoughImage) => Promise<string | null>,
+): Promise<UnreadableRoughs | null> {
   const pages: number[] = [];
   let reason: string | null = null;
   for (const [index, page] of project.pages.entries()) {

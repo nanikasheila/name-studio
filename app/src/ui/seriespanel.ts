@@ -169,10 +169,19 @@ export class SeriesPanel {
         if (!mine(entry)) void this.host.open(fileOf(entry));
       },
       copy: (ids) =>
-        void copyText(fileOf(ids[0])).then((ok) => this.host.status(ok ? `ファイルの場所をコピーしました: ${fileOf(ids[0])}` : "クリップボードに入れられませんでした")),
+        void copyText(fileOf(ids[0])).then((ok) =>
+          this.host.status(ok ? `ファイルの場所をコピーしました: ${fileOf(ids[0])}` : "クリップボードに入れられませんでした"),
+        ),
       remove: (ids) => void (mine(ids[0]) ? this.leave() : this.drop(ids[0])),
       removeLabel: "シリーズから外す（ファイルは残します）",
-      extra: (ids) => [{ label: mine(ids[0]) ? "開いているネームです" : "開く", keys: "Enter", disabled: mine(ids[0]), run: () => void this.host.open(fileOf(ids[0])) }],
+      extra: (ids) => [
+        {
+          label: mine(ids[0]) ? "開いているネームです" : "開く",
+          keys: "Enter",
+          disabled: mine(ids[0]),
+          run: () => void this.host.open(fileOf(ids[0])),
+        },
+      ],
       empty: () => [{ label: "次の話を作る…", run: () => void this.createNext() }],
     });
   }
@@ -182,7 +191,12 @@ export class SeriesPanel {
     const current = this.current;
     const episode = current?.data.episodes.find((one) => one.path === entry);
     if (!current || !episode) return;
-    if (!(await ask(`「${episode.title}」をシリーズ「${current.data.title}」の一覧から外しますか？（ネームのファイルはそのまま残ります。そのネームを開いて保存すると、また一覧に入ります）`, { title: "Name Studio", kind: "info" })))
+    if (
+      !(await ask(
+        `「${episode.title}」をシリーズ「${current.data.title}」の一覧から外しますか？（ネームのファイルはそのまま残ります。そのネームを開いて保存すると、また一覧に入ります）`,
+        { title: "Name Studio", kind: "info" },
+      ))
+    )
       return;
     const problem = await this.write(current, withoutEpisode(current.data, entry));
     this.host.status(problem ?? `「${episode.title}」をシリーズの一覧から外しました`);
@@ -208,8 +222,12 @@ export class SeriesPanel {
       make.title = "このネームを第 1 話として、シリーズのファイル（.nameseries）を作る";
       const join = plainButton("シリーズに入れる…", () => void this.join());
       join.id = "series-join";
-      join.title = "すでにあるシリーズのファイルを選んで、このネームを加える（人物・設定はシリーズに合わせ、このネームだけの人物も残します）";
-      container.replaceChildren(element("p", { className: "hint", textContent: note }), element("div", { className: "series-tools" }, make, join));
+      join.title =
+        "すでにあるシリーズのファイルを選んで、このネームを加える（人物・設定はシリーズに合わせ、このネームだけの人物も残します）";
+      container.replaceChildren(
+        element("p", { className: "hint", textContent: note }),
+        element("div", { className: "series-tools" }, make, join),
+      );
       return;
     }
     const { data } = current;
@@ -232,7 +250,13 @@ export class SeriesPanel {
       row.dataset.episode = episode.path;
       list.append(this.picker.row(row, episode.path));
     }
-    const pages = element("input", { type: "number", id: "series-next-pages", min: "1", max: "400", value: String(this.nextPages ?? project.plan?.targetPages ?? project.pages.length) });
+    const pages = element("input", {
+      type: "number",
+      id: "series-next-pages",
+      min: "1",
+      max: "400",
+      value: String(this.nextPages ?? project.plan?.targetPages ?? project.pages.length),
+    });
     pages.addEventListener("change", () => (this.nextPages = Math.max(1, Math.min(400, Math.round(Number(pages.value)) || 1))));
     const next = plainButton("次の話を作る…", () => void this.createNext());
     next.id = "series-next";
@@ -243,8 +267,17 @@ export class SeriesPanel {
     container.replaceChildren(
       head,
       list,
-      element("p", { className: "hint", textContent: `共有: ${sharedSummary(data.shared)}。保存するとシリーズにも入り、ほかの話を開くとそれに合わせます。` }),
-      element("div", { className: "series-tools" }, element("label", { className: "row-field", title: "次の話のページ数（目標ページ数にもなる）" }, "ページ数 ", pages), next, leave),
+      element("p", {
+        className: "hint",
+        textContent: `共有: ${sharedSummary(data.shared)}。保存するとシリーズにも入り、ほかの話を開くとそれに合わせます。`,
+      }),
+      element(
+        "div",
+        { className: "series-tools" },
+        element("label", { className: "row-field", title: "次の話のページ数（目標ページ数にもなる）" }, "ページ数 ", pages),
+        next,
+        leave,
+      ),
     );
   }
 
@@ -313,7 +346,13 @@ export class SeriesPanel {
     const current = this.current;
     const namePath = this.host.path();
     if (!current || !namePath) return;
-    if (!(await ask(`このネームをシリーズ「${current.data.title}」から外しますか？（人物・設定はネームに残ります）`, { title: "Name Studio", kind: "info" }))) return;
+    if (
+      !(await ask(`このネームをシリーズ「${current.data.title}」から外しますか？（人物・設定はネームに残ります）`, {
+        title: "Name Studio",
+        kind: "info",
+      }))
+    )
+      return;
     const entry = relativePath(folderOf(current.path), namePath);
     const problem = entry ? await this.write(current, withoutEpisode(current.data, entry)) : null;
     if (problem) {
@@ -356,6 +395,10 @@ export class SeriesPanel {
     next.pageFormat = structuredClone(project.pageFormat);
     applyShared(next, current.data.shared);
     next.series = link;
-    await this.host.adopt(next, path, `シリーズ「${current.data.title}」の${title}を作りました（${next.pages.length} ページ、人物 ${next.characters.length}）`);
+    await this.host.adopt(
+      next,
+      path,
+      `シリーズ「${current.data.title}」の${title}を作りました（${next.pages.length} ページ、人物 ${next.characters.length}）`,
+    );
   }
 }

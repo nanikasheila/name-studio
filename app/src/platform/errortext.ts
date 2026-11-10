@@ -39,7 +39,8 @@ const UNIX: Record<number, string> = {
   36: "ファイルの名前が長すぎます",
 };
 
-const NETWORK = /error sending request|dns error|failed to lookup|connection (refused|reset|closed)|timed out|network|Failed to fetch|Load failed/i;
+const NETWORK =
+  /error sending request|dns error|failed to lookup|connection (refused|reset|closed)|timed out|network|Failed to fetch|Load failed/i;
 
 /** The text an error carries (an `Error`'s message without its name; anything else as text). */
 export function rawText(error: unknown): string {
@@ -63,7 +64,8 @@ export function explain(error: unknown, windows = onWindows()): Explained {
   const code = /\(os error (\d+)\)/.exec(raw);
   const known = code ? (windows ? WINDOWS : UNIX)[Number(code[1])] : undefined;
   if (known) return { text: known, detail: raw };
-  if (NETWORK.test(raw) && !japanese(raw)) return { text: "ネットワークにつながりませんでした。つながっているか確かめて、もう一度試してください", detail: raw };
+  if (NETWORK.test(raw) && !japanese(raw))
+    return { text: "ネットワークにつながりませんでした。つながっているか確かめて、もう一度試してください", detail: raw };
   // Written here, for people: it is the explanation.
   if (japanese(raw)) return { text: raw, detail: null };
   if (!raw) return { text: "理由は分かりません", detail: null };

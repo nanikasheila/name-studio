@@ -74,7 +74,9 @@ export function bleedPanel(panel: Panel, side: Side, format: PageFormat, on: boo
   const [x0, y0, x1, y1] = bounds(panel.shape);
   const vertical = side === "top" || side === "bottom";
   const extreme = { top: y0, bottom: y1, left: x0, right: x1 }[side];
-  const target = on ? { top: 0, bottom: h, left: 0, right: w }[side] : { top: basic[1], bottom: basic[3], left: basic[0], right: basic[2] }[side];
+  const target = on
+    ? { top: 0, bottom: h, left: 0, right: w }[side]
+    : { top: basic[1], bottom: basic[3], left: basic[0], right: basic[2] }[side];
   // Corners within a millimetre of the panel's edge on that side move together.
   const tolerance = 1;
   const before = edgesAlong(panel.shape, side, format);
@@ -166,7 +168,9 @@ export function addInset(project: Project, page: Page, parent: Panel): Panel {
   const out = 3;
   // The bottom corner read last: the left one in a right-bound book, the right one in a left-bound book.
   const shape =
-    project.binding === "right" ? rectShape([x0 - out, y1 - h + out, x0 - out + w, y1 + out]) : rectShape([x1 + out - w, y1 - h + out, x1 + out, y1 + out]);
+    project.binding === "right"
+      ? rectShape([x0 - out, y1 - h + out, x0 - out + w, y1 + out])
+      : rectShape([x1 + out - w, y1 - h + out, x1 + out, y1 + out]);
   const panel: Panel = { id: newId(project, "panel"), shape, order: 0, fill: "white", z: (parent.z ?? 0) + 1 };
   page.panels.push(panel);
   orderPanels(page, project.binding);
@@ -186,7 +190,8 @@ export function addDrawnPanel(project: Project, page: Page, outline: readonly Po
     const last = shape[shape.length - 1];
     if (!last || Math.hypot(point[0] - last[0], point[1] - last[1]) > 0.05) shape.push([point[0], point[1]]);
   }
-  while (shape.length > 1 && Math.hypot(shape[0][0] - shape[shape.length - 1][0], shape[0][1] - shape[shape.length - 1][1]) <= 0.05) shape.pop();
+  while (shape.length > 1 && Math.hypot(shape[0][0] - shape[shape.length - 1][0], shape[0][1] - shape[shape.length - 1][1]) <= 0.05)
+    shape.pop();
   if (shape.length < 3 || area(shape) < 4) return null;
   // Clockwise on the page (y down), as rectShape.
   let signed = 0;
@@ -275,7 +280,9 @@ export function spreadPanel(project: Project, page: Page, panel: Panel, firstAlo
   const [w] = format.canvasMm;
   // Mirrored across the gutter; reversed so the outline keeps its winding.
   const shape: Point[] = panel.shape.map(([x, y]): Point => [w - x, y]).reverse();
-  const sides = (["top", "bottom", "left", "right"] as Side[]).filter((side) => isBled(panel, side, format)).map((side) => (side === "top" || side === "bottom" ? side : OPPOSITE[side]));
+  const sides = (["top", "bottom", "left", "right"] as Side[])
+    .filter((side) => isBled(panel, side, format))
+    .map((side) => (side === "top" || side === "bottom" ? side : OPPOSITE[side]));
   const open = [...new Set(sides.flatMap((side) => edgesAlong(shape, side, format)))].sort((a, b) => a - b);
   panel.spread = newId(project, "spread");
   const { id: _id, shape: _shape, order: _order, openEdges: _open, ...style } = panel;
@@ -323,20 +330,29 @@ export function spanGutter(project: Project, page: Page, panel: Panel, firstAlon
   const ownShape = own.map(([x, y]): Point => [atCut(x) ? edge : x, y]);
   // No further than the facing page's canvas.
   const twinShape = over.map(([x, y]): Point => [atCut(x) ? facingEdge : Math.min(Math.max(x + shift, 0), w), y]);
-  const opened = (shape: Point[], open: number[], side: Side) => [...new Set([...open, ...edgesAlong(shape, side, format)])].sort((a, b) => a - b);
+  const opened = (shape: Point[], open: number[], side: Side) =>
+    [...new Set([...open, ...edgesAlong(shape, side, format)])].sort((a, b) => a - b);
   const ownEdges = opened(ownShape, ownOpen, facing.gutter);
   const twinEdges = opened(twinShape, overOpen, OPPOSITE[facing.gutter]);
   // What the panel holds past the gutter is on the facing page now.
   const held = panelContents(page, panel);
   const centreOver = (box: BoxMm) => past((box[0] + box[2]) / 2) > 0;
   const lines = page.lines.filter((line) => held.lines.includes(line.id) && centreOver(line.box));
-  const strokes = page.strokes.filter((stroke) => held.strokes.includes(stroke.id) && centreOver(bounds(stroke.points.map(([x, y]): Point => [x, y]))));
+  const strokes = page.strokes.filter(
+    (stroke) => held.strokes.includes(stroke.id) && centreOver(bounds(stroke.points.map(([x, y]): Point => [x, y]))),
+  );
   panel.shape = ownShape;
   if (ownEdges.length) panel.openEdges = ownEdges;
   else delete panel.openEdges;
   panel.spread = newId(project, "spread");
   const { id: _id, shape: _shape, order: _order, openEdges: _open, note: _note, noteAt: _noteAt, ...style } = panel;
-  const twin: Panel = { ...style, id: newId(project, "panel"), shape: twinShape, order: 0, ...(twinEdges.length ? { openEdges: twinEdges } : {}) };
+  const twin: Panel = {
+    ...style,
+    id: newId(project, "panel"),
+    shape: twinShape,
+    order: 0,
+    ...(twinEdges.length ? { openEdges: twinEdges } : {}),
+  };
   facing.page.panels.push(twin);
   page.lines = page.lines.filter((line) => !lines.includes(line));
   page.strokes = page.strokes.filter((stroke) => !strokes.includes(stroke));
@@ -689,7 +705,12 @@ export function patternPanels(project: Project, patternId: string, gaps = gutter
       for (const side of (sides ?? []).map(sideOf)) {
         // Only cells that touch that side of the frame run off the page.
         const [x0, y0, x1, y1] = bounds(panel.shape);
-        const touches = { top: Math.abs(y0 - by0) < 1, bottom: Math.abs(y1 - by1) < 1, left: Math.abs(x0 - bx0) < 1, right: Math.abs(x1 - bx1) < 1 }[side];
+        const touches = {
+          top: Math.abs(y0 - by0) < 1,
+          bottom: Math.abs(y1 - by1) < 1,
+          left: Math.abs(x0 - bx0) < 1,
+          right: Math.abs(x1 - bx1) < 1,
+        }[side];
         if (touches) bleedPanel(panel, side, format, true);
       }
     }
@@ -725,7 +746,9 @@ export function applyPattern(project: Project, page: Page, patternId: string, co
 
 /** Replace the page's panels with `panels`, what was in the old ones going along as `applyPattern` says. */
 export function replacePanels(project: Project, page: Page, panels: Panel[]): void {
-  const before = [...page.panels].sort((a, b) => a.order - b.order).map((panel) => ({ note: panel.note, carried: carryContents(page, panel) }));
+  const before = [...page.panels]
+    .sort((a, b) => a.order - b.order)
+    .map((panel) => ({ note: panel.note, carried: carryContents(page, panel) }));
   page.panels = panels;
   orderPanels(page, project.binding);
   const after = [...page.panels].sort((a, b) => a.order - b.order);
@@ -769,7 +792,11 @@ function crossing(a: Point, b: Point, c: Point, d: Point): number | null {
 }
 
 /** The parts of a polyline outside every one of `covers`. */
-export function clipOutside(points: readonly Point[], closed: boolean, covers: readonly (readonly Point[])[]): { points: Point[]; closed: boolean }[] {
+export function clipOutside(
+  points: readonly Point[],
+  closed: boolean,
+  covers: readonly (readonly Point[])[],
+): { points: Point[]; closed: boolean }[] {
   if (!covers.length) return [{ points: [...points], closed }];
   const count = closed ? points.length : points.length - 1;
   const pieces: [Point, Point][] = [];
@@ -873,7 +900,10 @@ export function borderLines(page: Page): BorderLine[] {
   panels.forEach((panel, index) => {
     const border = panel.border ?? "solid";
     if (border === "none") return;
-    const above = panels.slice(index + 1).filter((other) => covers(other) && (other.z ?? 0) > (panel.z ?? 0)).map((other) => other.shape);
+    const above = panels
+      .slice(index + 1)
+      .filter((other) => covers(other) && (other.z ?? 0) > (panel.z ?? 0))
+      .map((other) => other.shape);
     for (const run of borderRuns(panel)) {
       const points = border === "wavy" ? wavy(run.points, run.closed) : run.points;
       for (const piece of clipOutside(points, run.closed, [...above, ...breakouts])) lines.push({ panel, ...piece });

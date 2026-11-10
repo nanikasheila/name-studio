@@ -50,7 +50,6 @@ export const ERASE_MODE_LABELS: Record<EditorEraseMode, string> = {
   lasso: "囲って消す",
 };
 
-
 export class PageEditor {
   tool: Tool = "select";
 
@@ -143,7 +142,10 @@ export class PageEditor {
   /** The drawing of all that. */
   readonly painter: EditorPainter;
 
-  constructor(private readonly canvas: HTMLCanvasElement, private readonly host: EditorHost) {
+  constructor(
+    private readonly canvas: HTMLCanvasElement,
+    private readonly host: EditorHost,
+  ) {
     // Low latency: the pen line reaches the screen without waiting for the compositor.
     const ctx = canvas.getContext("2d", { desynchronized: true })!;
     this.stage = new EditorStage(canvas, ctx, {
@@ -180,7 +182,14 @@ export class PageEditor {
       "keydown",
       (event) => {
         if (!this.polygon || isTyping(event)) return;
-        const done = event.key === "Enter" ? this.finishPolygon() : event.key === "Backspace" ? this.cancelPolygon(true) : event.key === "Escape" ? this.cancelPolygon() : false;
+        const done =
+          event.key === "Enter"
+            ? this.finishPolygon()
+            : event.key === "Backspace"
+              ? this.cancelPolygon(true)
+              : event.key === "Escape"
+                ? this.cancelPolygon()
+                : false;
         if (done) {
           event.preventDefault();
           event.stopImmediatePropagation();
@@ -518,7 +527,10 @@ export class PageEditor {
     if (!slot || !facing) return 0;
     let count = 0;
     for (const panel of [...slot.page.panels]) if (spanGutter(project, slot.page, panel, this.stage.firstAlone)) count++;
-    if (count) this.host.status(`コマがのどを越えたので、${slot.index + 1}・${facing.index + 1} ページの見開きコマにしました（「見開きをやめる」で戻せます）`);
+    if (count)
+      this.host.status(
+        `コマがのどを越えたので、${slot.index + 1}・${facing.index + 1} ページの見開きコマにしました（「見開きをやめる」で戻せます）`,
+      );
     return count;
   }
 
@@ -633,7 +645,9 @@ export class PageEditor {
     const polygon = this.polygon?.pageId === slot.page.id ? this.polygon : null;
     if (!polygon) {
       this.polygon = { pageId: slot.page.id, points: [this.nextCorner(slot, point, free)] };
-      this.host.status("多角形: クリックで角を置く。最初の角をクリック・ダブルクリック・Enter で閉じてコマに（Backspace で 1 つ戻す、Esc でやめる）");
+      this.host.status(
+        "多角形: クリックで角を置く。最初の角をクリック・ダブルクリック・Enter で閉じてコマに（Backspace で 1 つ戻す、Esc でやめる）",
+      );
       this.painter.requestOverlay();
       return;
     }
@@ -688,7 +702,14 @@ export class PageEditor {
 
   /** What the select tool would grab under the pointer, for the help bar: "item.panel", "seam", "tail.tip", "handle". */
   get hovered(): string | null {
-    return this.hover && (this.hover.kind === "item" ? `item.${this.hover.target.kind}` : this.hover.kind === "tail" ? `tail.${this.hover.hit.part}` : this.hover.kind);
+    return (
+      this.hover &&
+      (this.hover.kind === "item"
+        ? `item.${this.hover.target.kind}`
+        : this.hover.kind === "tail"
+          ? `tail.${this.hover.hit.part}`
+          : this.hover.kind)
+    );
   }
 
   /** The brush chosen for the pen or the eraser, if it is still in the project. */
@@ -732,7 +753,14 @@ export class PageEditor {
   private updateCursor(): void {
     const hover = this.hover && (this.hover.kind === "tail" ? { kind: "tail" as const, part: this.hover.hit.part } : this.hover);
     const lasso = this.eraseMode === "lasso";
-    this.canvas.style.cursor = editorCursor({ tool: this.tool, panning: this.spaceHeld, erasing: this.erasing(), lasso, hover, penLook: penPreferences.settings.cursor });
+    this.canvas.style.cursor = editorCursor({
+      tool: this.tool,
+      panning: this.spaceHeld,
+      erasing: this.erasing(),
+      lasso,
+      hover,
+      penLook: penPreferences.settings.cursor,
+    });
   }
 
   private pointerDown(event: PointerEvent): void {
@@ -809,7 +837,10 @@ export class PageEditor {
     const mid: Point = [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2];
     const zoom = Math.min(Math.max((drag.zoom * Math.hypot(pb[0] - pa[0], pb[1] - pa[1])) / drag.dist, 0.3), 12);
     // Upright again when close to it.
-    if (penPreferences.settings.pinchRotate && this.view.turnTo(drag.rotation + Math.atan2(pb[1] - pa[1], pb[0] - pa[0]) - drag.angle, (3 * Math.PI) / 180)) {
+    if (
+      penPreferences.settings.pinchRotate &&
+      this.view.turnTo(drag.rotation + Math.atan2(pb[1] - pa[1], pb[0] - pa[0]) - drag.angle, (3 * Math.PI) / 180)
+    ) {
       this.stage.applyViewTransform();
     }
     this.view.holdAnchor(drag.v, mid, zoom);
@@ -880,7 +911,10 @@ export class PageEditor {
     if (this.tool === "select" && !this.tipEraser && pressHeld(this.core, project, sx, sy)) return;
     let slot = this.stage.slotAt(sx, sy, project);
     // The selected panel's corners, also where they lie past its page (over the facing one).
-    const selectedOn = this.tool === "select" && this.picks.selection?.kind === "panel" ? this.slots.find((x) => x.page.id === this.picks.selection!.pageId) : undefined;
+    const selectedOn =
+      this.tool === "select" && this.picks.selection?.kind === "panel"
+        ? this.slots.find((x) => x.page.id === this.picks.selection!.pageId)
+        : undefined;
     if (selectedOn && selectedOn !== slot && this.picks.vertexAt(selectedOn, sx, sy) >= 0) slot = selectedOn;
     // Off every page: in the 欄外 of the nearest one.
     slot ??= asideSlot(this.core, this.tipEraser ? "eraser" : this.tool, project, sx, sy);
@@ -995,7 +1029,8 @@ export class PageEditor {
    */
   private rawMove(event: PointerEvent): void {
     const drag = this.drag;
-    if (drag?.kind !== "pen" || !this.painter.takesRaw || event.pointerId !== this.dragPointer || !penPreferences.settings.lowLatency) return;
+    if (drag?.kind !== "pen" || !this.painter.takesRaw || event.pointerId !== this.dragPointer || !penPreferences.settings.lowLatency)
+      return;
     const [ex, ey] = this.stage.at(event);
     this.pointer = [ex, ey];
     const coalesced = event.getCoalescedEvents?.() ?? [];
@@ -1135,7 +1170,15 @@ export class PageEditor {
       }
     }
     const key = (h: Hover | null) =>
-      !h ? "" : h.kind === "tail" ? `tail:${h.hit.lineId}:${h.hit.index}:${h.hit.part}` : h.kind === "handle" ? `handle:${h.handle}` : h.kind === "seam" ? `seam:${h.slot.page.id}:${h.seam.edges.map((e) => `${e.panelId}.${e.edge}`).join(",")}` : `item:${h.target.pageId}:${h.target.kind}:${h.target.id}`;
+      !h
+        ? ""
+        : h.kind === "tail"
+          ? `tail:${h.hit.lineId}:${h.hit.index}:${h.hit.part}`
+          : h.kind === "handle"
+            ? `handle:${h.handle}`
+            : h.kind === "seam"
+              ? `seam:${h.slot.page.id}:${h.seam.edges.map((e) => `${e.panelId}.${e.edge}`).join(",")}`
+              : `item:${h.target.pageId}:${h.target.kind}:${h.target.id}`;
     if (key(hover) === key(this.hover)) return;
     this.hover = hover;
     this.canvas.dispatchEvent(new Event("hoverchange"));
@@ -1160,7 +1203,8 @@ export class PageEditor {
       return;
     }
     // 付箋: write in it, in the right panel.
-    if (target?.kind === "sticky") return void (this.picks.select(target), document.querySelector<HTMLTextAreaElement>("#inspector textarea")?.focus());
+    if (target?.kind === "sticky")
+      return void (this.picks.select(target), document.querySelector<HTMLTextAreaElement>("#inspector textarea")?.focus());
     if (target && target.kind !== "panel") return;
     // Inside a panel: its memo.
     const panel = panelAt(slot.page, point);

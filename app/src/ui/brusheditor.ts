@@ -276,12 +276,15 @@ export class BrushEditor {
     const lines = project.pages.reduce((sum, page) => sum + page.strokes.filter((stroke) => stroke.brush === brush.id).length, 0);
     if (lines) {
       const { ask } = await import("../platform/dialogs");
-      const sure = await ask(`「${brush.name}」で描いた線が ${lines} 本あります。削除すると、その線は標準の${brush.kind === "pen" ? "ペン" : "消しゴム"}で描いた形になります。削除しますか？`, {
-        title: "Name Studio",
-        kind: "warning",
-        okLabel: "削除する",
-        cancelLabel: "やめる",
-      });
+      const sure = await ask(
+        `「${brush.name}」で描いた線が ${lines} 本あります。削除すると、その線は標準の${brush.kind === "pen" ? "ペン" : "消しゴム"}で描いた形になります。削除しますか？`,
+        {
+          title: "Name Studio",
+          kind: "warning",
+          okLabel: "削除する",
+          cancelLabel: "やめる",
+        },
+      );
       if (!sure) return;
     }
     const id = brush.id;
@@ -329,7 +332,11 @@ export class BrushEditor {
     if (!brushes.some((b) => b.id === this.selected)) this.selected = brushes[0]?.id ?? null;
     const inHand = this.host.inHand(this.kind)?.id;
     for (const brush of brushes) {
-      const row = element("button", { type: "button", className: `be-item${brush.id === this.selected ? " selected" : ""}`, title: brush.source ?? "" });
+      const row = element("button", {
+        type: "button",
+        className: `be-item${brush.id === this.selected ? " selected" : ""}`,
+        title: brush.source ?? "",
+      });
       row.append(element("span", { textContent: brush.name }));
       if (brush.id === inHand) row.append(element("span", { className: "badge", textContent: "使用中" }));
       row.addEventListener("click", () => {
@@ -340,7 +347,12 @@ export class BrushEditor {
       list.append(row);
     }
     if (!brushes.length) {
-      list.append(element("p", { className: "hint", textContent: `${this.kind === "pen" ? "ペン" : "消しゴム"}はまだありません。「新規」で作るか、CSP から取り込みます。` }));
+      list.append(
+        element("p", {
+          className: "hint",
+          textContent: `${this.kind === "pen" ? "ペン" : "消しゴム"}はまだありません。「新規」で作るか、CSP から取り込みます。`,
+        }),
+      );
     }
     const brush = this.brush();
     for (const id of ["be-duplicate", "be-delete", "be-export"]) $<HTMLButtonElement>(id).disabled = !brush;
@@ -348,7 +360,11 @@ export class BrushEditor {
     const name = $<HTMLInputElement>("be-name");
     name.value = brush?.name ?? "";
     name.disabled = !brush;
-    $("be-source").textContent = brush ? (brush.csp ? (brush.source ?? "") : `${brush.source ?? ""}（CSP の設定は、この道具の値から作りました）`) : "";
+    $("be-source").textContent = brush
+      ? brush.csp
+        ? (brush.source ?? "")
+        : `${brush.source ?? ""}（CSP の設定は、この道具の値から作りました）`
+      : "";
     this.pad.show(brush);
     this.renderSettings();
   }
@@ -379,7 +395,8 @@ export class BrushEditor {
       const isPenGroup = PEN_GROUPS.includes(group) || group === "その他";
       const used = tool.settings[column.column] !== undefined;
       if (!this.everything && !isPenGroup && !used) continue;
-      const rowMatches = matches(column) || [`${column.column}Unit`, `${column.column}Effector`].some((c) => COLUMNS.has(c) && matches(COLUMNS.get(c)!));
+      const rowMatches =
+        matches(column) || [`${column.column}Unit`, `${column.column}Effector`].some((c) => COLUMNS.has(c) && matches(COLUMNS.get(c)!));
       if (!rowMatches) continue;
       if (!groups.has(group)) groups.set(group, []);
       groups.get(group)!.push(column);
@@ -410,7 +427,11 @@ export class BrushEditor {
   private row(tool: CspToolData, column: CspColumn): HTMLElement {
     const row = element("div", { className: "be-row" });
     const value = tool.settings[column.column];
-    const label = element("span", { className: "be-label", textContent: column.label, title: [column.column, column.values, column.sure ? "" : "（意味は推測）"].filter(Boolean).join("\n") });
+    const label = element("span", {
+      className: "be-label",
+      textContent: column.label,
+      title: [column.column, column.values, column.sure ? "" : "（意味は推測）"].filter(Boolean).join("\n"),
+    });
     if (!column.sure) label.classList.add("unsure");
     const field = element("span", { className: "be-field" });
     // An 影響元設定 of its own is edited under the row.
@@ -422,7 +443,13 @@ export class BrushEditor {
       if (typeof value === "number") {
         const dpi = tool.dpi || DEFAULT_BRUSH_DPI;
         const mm = (value * (tool.settings[unit.column] === 2 ? 10 : 1) * 25.4) / dpi;
-        field.append(element("small", { className: "be-mm", textContent: `= ${mm >= 10 ? mm.toFixed(1) : mm.toFixed(2)} mm`, title: `${dpi} dpi の原稿で` }));
+        field.append(
+          element("small", {
+            className: "be-mm",
+            textContent: `= ${mm >= 10 ? mm.toFixed(1) : mm.toFixed(2)} mm`,
+            title: `${dpi} dpi の原稿で`,
+          }),
+        );
       }
     }
     if (value !== undefined && column.edit.kind !== "fixed" && column.edit.kind !== "materials") {
@@ -456,7 +483,11 @@ export class BrushEditor {
         return select;
       }
       case "number": {
-        const input = element("input", { type: "number", value: typeof value === "number" ? String(Math.round(value * 1000) / 1000) : "", placeholder: "初期値" });
+        const input = element("input", {
+          type: "number",
+          value: typeof value === "number" ? String(Math.round(value * 1000) / 1000) : "",
+          placeholder: "初期値",
+        });
         if (edit.min !== undefined) input.min = String(edit.min);
         if (edit.max !== undefined) input.max = String(edit.max);
         input.step = edit.integer ? "1" : "any";
@@ -486,11 +517,24 @@ export class BrushEditor {
       case "materials": {
         const blob = value && typeof value === "object" ? value.blob : null;
         const names = blob ? materialNames(bytesOf(blob)) : [];
-        return element("span", { className: "be-fixed", textContent: names.length ? names.join("、") : "なし", title: "素材は CSP で選び直してください（.sut には素材も入れて書き出します）" });
+        return element("span", {
+          className: "be-fixed",
+          textContent: names.length ? names.join("、") : "なし",
+          title: "素材は CSP で選び直してください（.sut には素材も入れて書き出します）",
+        });
       }
       default:
         if (name === "BrushInOutTarget") return this.inOutTargets(value);
-        return element("span", { className: "be-fixed", textContent: value === undefined ? "（なし）" : typeof value === "object" ? `${Math.round((value.blob.length * 3) / 4)} バイト` : String(value), title: "CSP の値のまま書き出します" });
+        return element("span", {
+          className: "be-fixed",
+          textContent:
+            value === undefined
+              ? "（なし）"
+              : typeof value === "object"
+                ? `${Math.round((value.blob.length * 3) / 4)} バイト`
+                : String(value),
+          title: "CSP の値のまま書き出します",
+        });
     }
   }
 
@@ -514,9 +558,26 @@ export class BrushEditor {
       on.addEventListener("change", () => commit((next) => (next[index].on = on.checked)));
       const item = element("label", { className: "check" }, on, ` ${label}`);
       if (target.on) {
-        const min = element("input", { type: "number", min: "0", max: "100", step: "1", value: String(target.min), title: "入り抜きの端での値（%）" });
-        min.addEventListener("change", () => commit((next) => (next[index].min = Math.min(100, Math.max(0, Math.round(Number(min.value) || 0))))));
-        item.append(element("span", { className: "be-number" }, element("small", { textContent: "最小値" }), min, element("small", { textContent: "%" })));
+        const min = element("input", {
+          type: "number",
+          min: "0",
+          max: "100",
+          step: "1",
+          value: String(target.min),
+          title: "入り抜きの端での値（%）",
+        });
+        min.addEventListener("change", () =>
+          commit((next) => (next[index].min = Math.min(100, Math.max(0, Math.round(Number(min.value) || 0))))),
+        );
+        item.append(
+          element(
+            "span",
+            { className: "be-number" },
+            element("small", { textContent: "最小値" }),
+            min,
+            element("small", { textContent: "%" }),
+          ),
+        );
       }
       box.append(item);
     });
@@ -529,7 +590,9 @@ export class BrushEditor {
     const stored = blobOf(tool, column);
     const effector = effectorOf(tool, column);
     if (stored && !effector) {
-      box.append(element("small", { className: "hint", textContent: "影響元設定（このツールの形式は読めないので、そのまま書き出します）" }));
+      box.append(
+        element("small", { className: "hint", textContent: "影響元設定（このツールの形式は読めないので、そのまま書き出します）" }),
+      );
       return box;
     }
     const current: Effector = effector ?? newEffector();
@@ -565,10 +628,22 @@ export class BrushEditor {
       const readMinimum = () => Math.min(100, Math.max(0, Math.round(Number(minimum.value) || 0)));
       minimum.addEventListener("input", () => live((next) => (next.minimum[index] = readMinimum())));
       minimum.addEventListener("change", () => commit((next) => (next.minimum[index] = readMinimum())));
-      cell.append(element("small", { textContent: `${label} 最小値` }), element("span", { className: "be-number" }, minimum, element("small", { textContent: "%" })));
+      cell.append(
+        element("small", { textContent: `${label} 最小値` }),
+        element("span", { className: "be-number" }, minimum, element("small", { textContent: "%" })),
+      );
       const key = (["pressure", "tilt", "speed"] as const)[index];
       if (key) {
-        const fallback: Graph = key === "speed" ? [[0, 1], [1, 0]] : [[0, 0], [1, 1]];
+        const fallback: Graph =
+          key === "speed"
+            ? [
+                [0, 1],
+                [1, 0],
+              ]
+            : [
+                [0, 0],
+                [1, 1],
+              ];
         const graph = new GraphBox(
           current[key] ?? fallback,
           (points) => live((next) => (next[key] = points)),

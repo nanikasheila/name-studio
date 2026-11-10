@@ -1,7 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { type AiModel, Conversation, changedPrompt, choiceProblem, firstPrompt, modelFor, orderTalks, readAssistSettings, readSavedTalk, talkTitle } from "./assistchat";
+import {
+  type AiModel,
+  Conversation,
+  changedPrompt,
+  choiceProblem,
+  firstPrompt,
+  modelFor,
+  orderTalks,
+  readAssistSettings,
+  readSavedTalk,
+  talkTitle,
+} from "./assistchat";
 
-const model = (value: string, efforts: string[], isDefault = false): AiModel => ({ value, label: value || "Default", description: "", efforts, defaultEffort: null, isDefault });
+const model = (value: string, efforts: string[], isDefault = false): AiModel => ({
+  value,
+  label: value || "Default",
+  description: "",
+  efforts,
+  defaultEffort: null,
+  isDefault,
+});
 const claude = [model("", ["low", "high", "max"], true), model("opus", ["low", "medium", "high", "xhigh", "max"]), model("legacy", [])];
 const codex = [model("gpt-a", ["low", "high"], true), model("gpt-b", ["medium"])];
 
@@ -51,7 +69,21 @@ describe("kept conversations", () => {
   it("are named by the first question and read back only when whole", () => {
     expect(talkTitle([{ role: "user", text: "  1ページの\n間を相談  " }])).toBe("1ページの 間を相談");
     expect(talkTitle([{ role: "user", text: "あ".repeat(50) }])).toHaveLength(40);
-    const talk = readSavedTalk({ id: "t-1", kind: "codex", name: "a.namestudio", created: 1, updated: 2, session: "019c", dir: "C:\\s", entries: [{ role: "user", text: "q" }, { role: "nope", text: "x" }, { role: "assistant", text: "a" }], applied: ["1:1", 3] });
+    const talk = readSavedTalk({
+      id: "t-1",
+      kind: "codex",
+      name: "a.namestudio",
+      created: 1,
+      updated: 2,
+      session: "019c",
+      dir: "C:\\s",
+      entries: [
+        { role: "user", text: "q" },
+        { role: "nope", text: "x" },
+        { role: "assistant", text: "a" },
+      ],
+      applied: ["1:1", 3],
+    });
     expect(talk?.entries).toEqual([
       { role: "user", text: "q" },
       { role: "assistant", text: "a" },
@@ -69,7 +101,19 @@ describe("kept conversations", () => {
   });
 
   it("list this name's first, newest first", () => {
-    const summary = (id: string, name: string, updated: number) => ({ id, kind: "claude" as const, name, title: id, created: 0, updated, count: 1 });
-    expect(orderTalks([summary("a", "x", 3), summary("b", "me", 1), summary("c", "me", 2)], "me").map((talk) => talk.id)).toEqual(["c", "b", "a"]);
+    const summary = (id: string, name: string, updated: number) => ({
+      id,
+      kind: "claude" as const,
+      name,
+      title: id,
+      created: 0,
+      updated,
+      count: 1,
+    });
+    expect(orderTalks([summary("a", "x", 3), summary("b", "me", 1), summary("c", "me", 2)], "me").map((talk) => talk.id)).toEqual([
+      "c",
+      "b",
+      "a",
+    ]);
   });
 });

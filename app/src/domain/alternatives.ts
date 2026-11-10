@@ -113,7 +113,10 @@ export function useAlternative(project: Project, setId: string, optionId: string
   for (const point of project.emotions) point.page = mapped.get(point.page) ?? point.page;
   // Fewer pages: one value per character and page (the later one).
   const seen = new Set<string>();
-  project.emotions = project.emotions.reverse().filter((point) => !seen.has(`${point.character} ${point.page}`) && !!seen.add(`${point.character} ${point.page}`)).reverse();
+  project.emotions = project.emotions
+    .reverse()
+    .filter((point) => !seen.has(`${point.character} ${point.page}`) && !!seen.add(`${point.character} ${point.page}`))
+    .reverse();
   current.pages = leaving;
   next.pages = [];
   set.pageIds = coming.map((page) => page.id);

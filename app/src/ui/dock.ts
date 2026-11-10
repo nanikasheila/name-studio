@@ -399,7 +399,8 @@ export class Docks {
     };
     const mark = (before: PaletteId | null) => {
       dock.classList.add("drop-target");
-      for (const section of dock.querySelectorAll<HTMLElement>(".palette")) section.classList.toggle("drop-before", section.dataset.palette === before);
+      for (const section of dock.querySelectorAll<HTMLElement>(".palette"))
+        section.classList.toggle("drop-before", section.dataset.palette === before);
       dock.querySelector(".dock-stack")?.classList.toggle("drop-end", before === null);
     };
     dock.addEventListener("dragover", (event) => {

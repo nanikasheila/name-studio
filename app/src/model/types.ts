@@ -18,4 +18,3 @@ export interface TextView extends SheetText {
 export interface LayerView extends Omit<SheetLayer, "texts"> {
   texts: TextView[];
 }
-

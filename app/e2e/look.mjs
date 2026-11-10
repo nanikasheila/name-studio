@@ -39,7 +39,8 @@ try {
   await start();
 
   /** The colour of `property` on the element, as the screen shows it. */
-  const colour = (selector, property) => page.evaluate(([selector, property]) => getComputedStyle(document.querySelector(selector))[property], [selector, property]);
+  const colour = (selector, property) =>
+    page.evaluate(([selector, property]) => getComputedStyle(document.querySelector(selector))[property], [selector, property]);
   /** The page's paper, read from the canvas in the middle of the first page. */
   const paper = () =>
     page.evaluate(() => {
@@ -67,7 +68,10 @@ try {
   await page.fill("#st-search", "");
   await page.locator(".settings-nav-item", { hasText: "画面の見た目" }).click();
   check((await page.locator(".theme-card").count()) === 6, "six themes to choose from");
-  check((await page.locator('.theme-card[aria-checked="true"]').textContent()).includes("Windows に合わせる"), "out of the box the theme follows Windows");
+  check(
+    (await page.locator('.theme-card[aria-checked="true"]').textContent()).includes("Windows に合わせる"),
+    "out of the box the theme follows Windows",
+  );
 
   // --- a theme recolours the screen, not the page ---
   await page.locator(".theme-card", { hasText: "暗い" }).click();
@@ -78,7 +82,11 @@ try {
   check((await paper()) === lightPaper, "暗い: the page stays white");
   await page.locator(".theme-card", { hasText: "高コントラスト（黒）" }).click();
   await settle();
-  check((await colour(".toolbar", "backgroundColor")) === "rgb(0, 0, 0)" && (await colour("button.primary", "backgroundColor")) === "rgb(255, 212, 0)", "高コントラスト（黒）: black, with yellow for what is chosen");
+  check(
+    (await colour(".toolbar", "backgroundColor")) === "rgb(0, 0, 0)" &&
+      (await colour("button.primary", "backgroundColor")) === "rgb(255, 212, 0)",
+    "高コントラスト（黒）: black, with yellow for what is chosen",
+  );
   check((await paper()) === lightPaper, "高コントラスト: the page stays white");
   // Each sample shows its own theme whatever the window's is.
   const sepiaSample = await colour('.theme-card[data-theme-id="sepia"] .ts-bar', "backgroundColor");
@@ -88,14 +96,20 @@ try {
   check((await colour(".toolbar", "backgroundColor")) === sepiaSample, "目にやさしい: the bars as its sample");
 
   // --- the screen's words: their size grows, the page's do not ---
-  const sizeOf = (selector) => page.evaluate((selector) => Number.parseFloat(getComputedStyle(document.querySelector(selector)).fontSize), selector);
+  const sizeOf = (selector) =>
+    page.evaluate((selector) => Number.parseFloat(getComputedStyle(document.querySelector(selector)).fontSize), selector);
   const hint = await sizeOf(".tool-hint");
   const status = await sizeOf("#status");
   await page.fill("#st-ui-size", "18");
   await page.locator("#st-ui-size").press("Tab");
   await settle();
-  check(Math.abs((await sizeOf(".tool-hint")) - (hint * 18) / 14) < 0.01 && Math.abs((await sizeOf("#status")) - (status * 18) / 14) < 0.01, `18 px: the screen's words grow by 18/14 (${hint} → ${await sizeOf(".tool-hint")})`);
-  const railFits = await page.evaluate(() => [...document.querySelectorAll("#editor-tools button")].every((b) => b.scrollWidth <= b.clientWidth + 1));
+  check(
+    Math.abs((await sizeOf(".tool-hint")) - (hint * 18) / 14) < 0.01 && Math.abs((await sizeOf("#status")) - (status * 18) / 14) < 0.01,
+    `18 px: the screen's words grow by 18/14 (${hint} → ${await sizeOf(".tool-hint")})`,
+  );
+  const railFits = await page.evaluate(() =>
+    [...document.querySelectorAll("#editor-tools button")].every((b) => b.scrollWidth <= b.clientWidth + 1),
+  );
   check(railFits, "18 px: the tools' names still fit their buttons");
   check((await paper()) === lightPaper, "18 px: the page as it was");
   await page.click("#st-ui-size-reset");
@@ -106,8 +120,14 @@ try {
   const field = page.locator("#st-ui-font input");
   await field.fill("Noto Serif CJK JP");
   await field.press("Enter");
-  check((await colour(".toolbar", "fontFamily")).startsWith('"Noto Serif CJK JP", "Yu Gothic UI"'), "the screen's font is the one chosen, then the app's");
-  check((await page.evaluate(() => JSON.parse(localStorage.getItem("namestudio.look")).font)) === "Noto Serif CJK JP", "and kept on this computer");
+  check(
+    (await colour(".toolbar", "fontFamily")).startsWith('"Noto Serif CJK JP", "Yu Gothic UI"'),
+    "the screen's font is the one chosen, then the app's",
+  );
+  check(
+    (await page.evaluate(() => JSON.parse(localStorage.getItem("namestudio.look")).font)) === "Noto Serif CJK JP",
+    "and kept on this computer",
+  );
   await page.locator("#st-ui-font .font-clear").click();
   check((await colour(".toolbar", "fontFamily")).startsWith('"Yu Gothic UI"'), "× puts back the app's font");
 
@@ -124,7 +144,10 @@ try {
   check((await page.evaluate(() => JSON.parse(localStorage.getItem("namestudio.look")).cssOn)) === false, "not kept while it is tried");
   await page.clock.runFor(16_000);
   await settle();
-  check((await colour("button.primary", "backgroundColor")) === sepiaAccent && !(await page.locator("#look-trial").isVisible()), "not kept in 15 seconds: put back by itself");
+  check(
+    (await colour("button.primary", "backgroundColor")) === sepiaAccent && !(await page.locator("#look-trial").isVisible()),
+    "not kept in 15 seconds: put back by itself",
+  );
   check(!(await page.locator("#st-css-on").isChecked()), "and the box says it is off");
   check((await page.inputValue("#st-css")) === accentCss, "the CSS tried is still in the box, to be put right");
 
@@ -135,7 +158,11 @@ try {
   check((await colour("button.primary", "backgroundColor")) === "rgb(208, 69, 122)", "このままにする: it stays after the 15 seconds");
   await start();
   await settle();
-  check((await colour("button.primary", "backgroundColor")) === "rgb(208, 69, 122)" && (await page.evaluate(() => document.documentElement.dataset.theme)) === "sepia", "the next start: the theme and the CSS kept");
+  check(
+    (await colour("button.primary", "backgroundColor")) === "rgb(208, 69, 122)" &&
+      (await page.evaluate(() => document.documentElement.dataset.theme)) === "sepia",
+    "the next start: the theme and the CSS kept",
+  );
 
   // --- CSS that hides the whole screen: the fixed keys put the look back ---
   await page.evaluate(async () => {
@@ -150,7 +177,10 @@ try {
   await settle();
   check(await page.locator("#settings").isVisible(), "Ctrl+Shift+Alt+R: the screen is back");
   const kept = await page.evaluate(() => JSON.parse(localStorage.getItem("namestudio.look")));
-  check(kept.theme === "system" && kept.cssOn === false && kept.css.includes("display: none"), "the look as it comes, the CSS off but kept");
+  check(
+    kept.theme === "system" && kept.cssOn === false && kept.css.includes("display: none"),
+    "the look as it comes, the CSS off but kept",
+  );
   check((await colour(".toolbar", "backgroundColor")) === lightBar, "the colours as they come");
 
   // --- started with Shift held: the CSS left off that time only ---
@@ -170,7 +200,10 @@ try {
   check((await page.evaluate(() => JSON.parse(localStorage.getItem("namestudio.look")).cssOn)) === true, "what is kept is not changed");
   await page.click("#settings");
   await page.locator(".settings-nav-item", { hasText: "画面の見た目" }).click();
-  check((await page.locator("#st-css-note").textContent()).includes("今回は当てていません"), "the settings say the CSS was left off this time");
+  check(
+    (await page.locator("#st-css-note").textContent()).includes("今回は当てていません"),
+    "the settings say the CSS was left off this time",
+  );
 
   // --- Windows に合わせる: with Windows dark, dark; 明るい stays light there ---
   const night = await browser.newContext({ viewport: { width: 1000, height: 700 }, colorScheme: "dark" });

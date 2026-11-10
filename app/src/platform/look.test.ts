@@ -8,7 +8,14 @@ describe("画面の見た目 kept on this computer", () => {
   it("reads back what was kept, and the default for what does not read", () => {
     expect(lookFrom(null)).toEqual(DEFAULT_LOOK);
     expect(lookFrom({ theme: "neon", font: "  ", sizePx: "big", css: 3, cssOn: true })).toEqual(DEFAULT_LOOK);
-    expect(lookFrom({ theme: "sepia", font: " メイリオ ", sizePx: 16.4, large: true, css: "a{}", cssOn: true })).toEqual({ theme: "sepia", font: "メイリオ", sizePx: 16, large: true, css: "a{}", cssOn: true });
+    expect(lookFrom({ theme: "sepia", font: " メイリオ ", sizePx: 16.4, large: true, css: "a{}", cssOn: true })).toEqual({
+      theme: "sepia",
+      font: "メイリオ",
+      sizePx: 16,
+      large: true,
+      css: "a{}",
+      cssOn: true,
+    });
     // 大きめ is on only when it was turned on.
     expect(lookFrom({ large: "yes" }).large).toBe(false);
   });
@@ -53,7 +60,8 @@ describe("the user's CSS", () => {
     const values = Object.fromEntries(COLOR_TOKENS.map(([name], i) => [name, `#00000${i % 10}`]));
     const template = cssTemplate(values);
     expect(cssNotes(template)).toEqual([]);
-    for (const [name, what] of COLOR_TOKENS) expect(template).toMatch(new RegExp(`${name}: ${values[name]};\\s+/\\* ${what.replace(/[()]/g, "\\$&")} \\*/`));
+    for (const [name, what] of COLOR_TOKENS)
+      expect(template).toMatch(new RegExp(`${name}: ${values[name]};\\s+/\\* ${what.replace(/[()]/g, "\\$&")} \\*/`));
   });
 
   it("writes colours as the screen shows them", () => {

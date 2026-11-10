@@ -62,7 +62,9 @@ export function pickAt(page: Page, point: Point, scale: number, state: PickState
   const breakout = [...page.breakouts].reverse().find((breakout) => insidePolygon(breakout.shape, point));
   if (breakout) return { kind: "breakout", id: breakout.id };
   // Panels on top (はめ込み) first, then the smaller.
-  const panel = [...page.panels].sort((a, b) => (b.z ?? 0) - (a.z ?? 0) || bounds(a.shape)[2] - bounds(b.shape)[2]).find((panel) => insidePolygon(panel.shape, point));
+  const panel = [...page.panels]
+    .sort((a, b) => (b.z ?? 0) - (a.z ?? 0) || bounds(a.shape)[2] - bounds(b.shape)[2])
+    .find((panel) => insidePolygon(panel.shape, point));
   return panel ? { kind: "panel", id: panel.id } : null;
 }
 
@@ -84,11 +86,18 @@ export function panelAt(page: Page, point: Point): Panel | undefined {
 
 /** The corner of `panel` under a point of the screen (px), or -1. */
 export function cornerAt(slot: Slot, panel: Panel, sx: number, sy: number): number {
-  return panel.shape.findIndex(([x, y]) => Math.abs(slot.x + x * slot.scale - sx) <= HANDLE + 2 && Math.abs(slot.y + y * slot.scale - sy) <= HANDLE + 2);
+  return panel.shape.findIndex(
+    ([x, y]) => Math.abs(slot.x + x * slot.scale - sx) <= HANDLE + 2 && Math.abs(slot.y + y * slot.scale - sy) <= HANDLE + 2,
+  );
 }
 
 /** Where a panel's number sits (screen px). Numbers stay inside the page even for panels that run off it. */
-export function panelBadge(slot: Slot, panel: Panel, format: PageFormat | undefined, pageW: number): { x: number; y: number; radius: number } {
+export function panelBadge(
+  slot: Slot,
+  panel: Panel,
+  format: PageFormat | undefined,
+  pageW: number,
+): { x: number; y: number; radius: number } {
   const [, y0, x1] = bounds(panel.shape);
   const radius = Math.max(4 * slot.scale, 7);
   const [, ty0, tx1] = format ? trimBox(format) : [0, 0, pageW];
@@ -139,5 +148,7 @@ export function tailAt(slot: Slot, sx: number, sy: number, shown: ReadonlySet<st
 export function referenceCornerAt(slot: Slot, chosenId: string | null, sx: number, sy: number): number {
   const chosen = chosenId === null ? undefined : slot.page.references?.find((r) => r.id === chosenId);
   if (!chosen) return -1;
-  return corners(chosen.box).findIndex(([x, y]) => Math.hypot(slot.x + x * slot.scale - sx, slot.y + y * slot.scale - sy) <= REFERENCE_HANDLE + 2);
+  return corners(chosen.box).findIndex(
+    ([x, y]) => Math.hypot(slot.x + x * slot.scale - sx, slot.y + y * slot.scale - sy) <= REFERENCE_HANDLE + 2,
+  );
 }

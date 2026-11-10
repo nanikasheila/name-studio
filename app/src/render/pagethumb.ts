@@ -5,7 +5,13 @@ import { withoutMarks } from "../domain/roughlayers";
 import { drawBalloons, drawPageFills, drawPageTexts, drawPanelBorders, drawPanelFills, drawStrokes, type MmToPx } from "./pagedraw";
 
 /** `text`: the words themselves (else grey boxes where they go). */
-export function drawThumb(ctx: CanvasRenderingContext2D, project: Project, sheet: Project["pages"][number], m: MmToPx, text: boolean): void {
+export function drawThumb(
+  ctx: CanvasRenderingContext2D,
+  project: Project,
+  sheet: Project["pages"][number],
+  m: MmToPx,
+  text: boolean,
+): void {
   // The 指示 would only clutter so small a page.
   const page = { ...sheet, strokes: withoutMarks(project, sheet.strokes) };
   const [pageW, pageH] = project.pageFormat.canvasMm;

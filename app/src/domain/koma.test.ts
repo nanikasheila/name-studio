@@ -1,5 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { PATTERNS, addDrawnPanel, applyPattern, fitPattern, patternCount, bleedPanel, facingPage, spanGutter, spreadPanel, spreadTwin, unspreadPanel, borderLines, borderRuns, clipOutside, dashes, framePanels, isBled, patternPanels, wavy } from "./koma";
+import {
+  PATTERNS,
+  addDrawnPanel,
+  applyPattern,
+  fitPattern,
+  patternCount,
+  bleedPanel,
+  facingPage,
+  spanGutter,
+  spreadPanel,
+  spreadTwin,
+  unspreadPanel,
+  borderLines,
+  borderRuns,
+  clipOutside,
+  dashes,
+  framePanels,
+  isBled,
+  patternPanels,
+  wavy,
+} from "./koma";
 import { bounds, boxCenter, inheritOpenEdges, insidePolygon, rectShape } from "../model/geometry";
 import { addLine } from "./dialogue";
 import type { Panel, Point } from "../model/model";
@@ -231,7 +251,15 @@ describe("型を当てる", () => {
     old[1].note = "ストラの顔";
     const first = addLine(project, page, boxCenter(bounds(old[0].shape)), "おはよう");
     const second = addLine(project, page, boxCenter(bounds(old[1].shape)), "うん");
-    const stroke = addStroke(project, page, [[...boxCenter(bounds(old[1].shape)), 1], [boxCenter(bounds(old[1].shape))[0] + 5, boxCenter(bounds(old[1].shape))[1], 1]], 0.4)!;
+    const stroke = addStroke(
+      project,
+      page,
+      [
+        [...boxCenter(bounds(old[1].shape)), 1],
+        [boxCenter(bounds(old[1].shape))[0] + 5, boxCenter(bounds(old[1].shape))[1], 1],
+      ],
+      0.4,
+    )!;
     old[old.length - 1].note = "引き";
     applyPattern(project, page, "three");
     const panels = [...page.panels].sort((a, b) => a.order - b.order);
@@ -328,7 +356,13 @@ describe("コマを描く", () => {
     const page = project.pages[0];
     page.panels.push({ id: "p1", shape: rectShape([30, 30, 100, 100]), order: 1 });
     // A trapezoid drawn the other way round, with a repeated corner.
-    const panel = addDrawnPanel(project, page, [[150, 40], [120, 100], [260, 100], [230, 40], [230, 40]])!;
+    const panel = addDrawnPanel(project, page, [
+      [150, 40],
+      [120, 100],
+      [260, 100],
+      [230, 40],
+      [230, 40],
+    ])!;
     expect(panel.shape).toHaveLength(4);
     expect(panel.shape[0]).toEqual([230, 40]);
     expect(panel.z).toBeUndefined();
@@ -349,8 +383,19 @@ describe("コマを描く", () => {
   it("makes nothing of an outline too small or with too few corners", () => {
     const project = newProject("t", 1);
     const page = project.pages[0];
-    expect(addDrawnPanel(project, page, [[10, 10], [11, 10], [10, 11]])).toBeNull();
-    expect(addDrawnPanel(project, page, [[10, 10], [60, 10]])).toBeNull();
+    expect(
+      addDrawnPanel(project, page, [
+        [10, 10],
+        [11, 10],
+        [10, 11],
+      ]),
+    ).toBeNull();
+    expect(
+      addDrawnPanel(project, page, [
+        [10, 10],
+        [60, 10],
+      ]),
+    ).toBeNull();
     expect(page.panels).toHaveLength(0);
   });
 });

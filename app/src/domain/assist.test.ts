@@ -216,7 +216,10 @@ describe("applyOps", () => {
   it("previews without changing the name", () => {
     const project = drafted();
     const before = JSON.stringify(project);
-    const preview = previewOps(project, [{ op: "setTitle", title: "別" }, { op: "addPages", count: 3 }]);
+    const preview = previewOps(project, [
+      { op: "setTitle", title: "別" },
+      { op: "addPages", count: 3 },
+    ]);
     expect(preview.done).toEqual(["題名を「別」に", "5〜7 ページを足しました"]);
     expect(JSON.stringify(project)).toBe(before);
   });

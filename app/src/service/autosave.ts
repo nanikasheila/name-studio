@@ -169,7 +169,8 @@ export class Written {
 
   /** What to write of `snapshot` (name `id` at `path`), to its file if `toFile`, else to the copy. */
   need(id: number, path: string | null, toFile: boolean, snapshot: Snapshot | null): AutosaveNeed {
-    const holds = (held: Held | null) => snapshot !== null && held !== null && held.id === id && held.path === path && sameSnapshot(held.snapshot, snapshot);
+    const holds = (held: Held | null) =>
+      snapshot !== null && held !== null && held.id === id && held.path === path && sameSnapshot(held.snapshot, snapshot);
     if (path !== null && holds(this.file)) return "clean";
     if (toFile && path !== null) return "file";
     return holds(this.copy) ? "none" : "copy";
@@ -216,8 +217,7 @@ export function formatTime(timeMs: number, now = Date.now()): string {
   const pad = (value: number) => String(value).padStart(2, "0");
   const clock = `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
   const today = new Date(now);
-  const sameDay =
-    date.getFullYear() === today.getFullYear() && date.getMonth() === today.getMonth() && date.getDate() === today.getDate();
+  const sameDay = date.getFullYear() === today.getFullYear() && date.getMonth() === today.getMonth() && date.getDate() === today.getDate();
   if (sameDay) return `今日 ${clock}`;
   const year = date.getFullYear() === today.getFullYear() ? "" : `${date.getFullYear()}/`;
   return `${year}${date.getMonth() + 1}/${date.getDate()} ${clock}`;

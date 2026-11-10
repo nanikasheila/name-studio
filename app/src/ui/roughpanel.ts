@@ -6,7 +6,17 @@
 import type { PageEditor, Tool } from "./editor";
 import { ListPicker } from "./listops";
 import type { Project, RoughLayer } from "../model/model";
-import { layerOf, layerStrokeCount, markColor, markLayersOf, MARK_COLORS, MARK_COLOR_NAMES, opacityOfLayer, roughLayersOf, setRoughLayer } from "../domain/roughlayers";
+import {
+  layerOf,
+  layerStrokeCount,
+  markColor,
+  markLayersOf,
+  MARK_COLORS,
+  MARK_COLOR_NAMES,
+  opacityOfLayer,
+  roughLayersOf,
+  setRoughLayer,
+} from "../domain/roughlayers";
 import { markPen } from "./toolmark";
 
 export type RoughChange =
@@ -100,12 +110,25 @@ export class RoughPanel {
         if (!layer) return [];
         const picked = this.host.selectedStrokes();
         return [
-          { label: layer.hidden ? "画面に出す" : "画面から隠す", run: () => this.host.change({ kind: "look", id: layer.id, change: { hidden: !layer.hidden } }) },
+          {
+            label: layer.hidden ? "画面に出す" : "画面から隠す",
+            run: () => this.host.change({ kind: "look", id: layer.id, change: { hidden: !layer.hidden } }),
+          },
           { label: "ほかのレイヤーを隠す（もう一度で全部出す）", run: () => this.host.change({ kind: "solo", id: layer.id }) },
-          { label: layer.locked ? "ロックを外す" : "ロックする", run: () => this.host.change({ kind: "look", id: layer.id, change: { locked: !layer.locked } }) },
-          { label: "下のレイヤーと結合", keys: "Ctrl+E", disabled: !this.canStep(layer.id, 1), run: () => this.host.change({ kind: "remove", id: layer.id, mergeDown: true }) },
+          {
+            label: layer.locked ? "ロックを外す" : "ロックする",
+            run: () => this.host.change({ kind: "look", id: layer.id, change: { locked: !layer.locked } }),
+          },
+          {
+            label: "下のレイヤーと結合",
+            keys: "Ctrl+E",
+            disabled: !this.canStep(layer.id, 1),
+            run: () => this.host.change({ kind: "remove", id: layer.id, mergeDown: true }),
+          },
           { label: "このページの、このレイヤーの線を選ぶ", run: () => this.host.change({ kind: "selectLines", id: layer.id }) },
-          ...(picked && !layer.marks ? [{ label: `選んだラフ線 ${picked} 本をこのレイヤーへ`, run: () => this.host.change({ kind: "takeSelected", id: layer.id }) }] : []),
+          ...(picked && !layer.marks
+            ? [{ label: `選んだラフ線 ${picked} 本をこのレイヤーへ`, run: () => this.host.change({ kind: "takeSelected", id: layer.id }) }]
+            : []),
         ];
       },
       empty: () => [
@@ -114,7 +137,14 @@ export class RoughPanel {
       ],
       key: (event, ids) => {
         // CSP's 下のレイヤーと結合.
-        if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "e" && ids[0] && this.canStep(ids[0], 1)) {
+        if (
+          (event.ctrlKey || event.metaKey) &&
+          !event.shiftKey &&
+          !event.altKey &&
+          event.key.toLowerCase() === "e" &&
+          ids[0] &&
+          this.canStep(ids[0], 1)
+        ) {
           this.host.change({ kind: "remove", id: ids[0], mergeDown: true });
           return true;
         }
@@ -136,12 +166,17 @@ export class RoughPanel {
     const activeMark = (marks.find((layer) => layer.id === markPen.layer) ?? marks[marks.length - 1])?.id;
     const markHead = element("div", "rough-head");
     markHead.append(element("span", "layer-page", "指示のレイヤー"));
-    const addMarks = button("＋", marks.length ? "別の色の指示のレイヤーを足す" : "指示のレイヤーを作る（指示ツール R で描いても作られます）", () => this.host.change({ kind: "addMarks" }));
+    const addMarks = button(
+      "＋",
+      marks.length ? "別の色の指示のレイヤーを足す" : "指示のレイヤーを作る（指示ツール R で描いても作られます）",
+      () => this.host.change({ kind: "addMarks" }),
+    );
     addMarks.id = "marks-add";
     markHead.append(addMarks);
     // The row worked on follows the layer drawn on.
     const working = this.picker?.targets()[0];
-    if (!working || !this.layer(working)) this.picker?.pick([this.host.editor().tool === "mark" && activeMark ? activeMark : active], false);
+    if (!working || !this.layer(working))
+      this.picker?.pick([this.host.editor().tool === "mark" && activeMark ? activeMark : active], false);
     const markRows = [...marks].reverse().map((layer, fromTop) => this.row(project, layer, layer.id === activeMark, fromTop, marks.length));
     const head = element("div", "rough-head");
     head.append(element("span", "layer-page", "ラフ線のレイヤー"));
@@ -198,7 +233,11 @@ export class RoughPanel {
       const color = markColor(layer);
       const named = (c: string) => MARK_COLOR_NAMES[c as (typeof MARK_COLORS)[number]] ?? c;
       const next = MARK_COLORS[(MARK_COLORS.indexOf(color as (typeof MARK_COLORS)[number]) + 1) % MARK_COLORS.length];
-      const swatch = button("", `色: ${named(color)}（押すと${named(next)}に）`, look({ kind: "look", id: layer.id, change: { color: next } }));
+      const swatch = button(
+        "",
+        `色: ${named(color)}（押すと${named(next)}に）`,
+        look({ kind: "look", id: layer.id, change: { color: next } }),
+      );
       swatch.className = "mark-swatch";
       swatch.style.background = color;
       swatch.setAttribute("aria-label", `${layer.name}の色: ${named(color)}`);

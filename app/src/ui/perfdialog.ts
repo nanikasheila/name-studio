@@ -32,12 +32,16 @@ export function reportLines(report: PerfReport): string[] {
   else {
     lines.push(`${report.long.count} 回・合わせて ${ms(report.long.total)}。長かった順:`);
     for (const long of report.long.worst.slice(0, 5)) {
-      const parts = long.script === null ? "" : `うちスクリプト ${ms(long.script)}${long.layout ? `・レイアウト ${ms(long.layout)}` : ""}・`;
-      lines.push(`  ${long.at} 秒目に ${ms(long.duration)}（${parts}${long.scripts.length ? long.scripts.join("、") : "スクリプトは短い"}）`);
+      const parts =
+        long.script === null ? "" : `うちスクリプト ${ms(long.script)}${long.layout ? `・レイアウト ${ms(long.layout)}` : ""}・`;
+      lines.push(
+        `  ${long.at} 秒目に ${ms(long.duration)}（${parts}${long.scripts.length ? long.scripts.join("、") : "スクリプトは短い"}）`,
+      );
     }
   }
   lines.push("■ メモリ");
-  if (report.memory) lines.push(`使っている量: 起動時 ${report.memory.first} MB・今 ${report.memory.now} MB・いちばん多いとき ${report.memory.most} MB`);
+  if (report.memory)
+    lines.push(`使っている量: 起動時 ${report.memory.first} MB・今 ${report.memory.now} MB・いちばん多いとき ${report.memory.most} MB`);
   else lines.push("この画面では分かりません");
   const r = report.resources;
   if (r.pages) {
@@ -46,7 +50,11 @@ export function reportLines(report: PerfReport): string[] {
   }
   if (report.startup) {
     lines.push("■ 起動");
-    lines.push(report.startup.process !== null ? `アプリの起動から使えるまで ${ms(report.startup.process)}（画面の読み込みからは ${ms(report.startup.page)}）` : `画面の読み込みから使えるまで ${ms(report.startup.page)}`);
+    lines.push(
+      report.startup.process !== null
+        ? `アプリの起動から使えるまで ${ms(report.startup.process)}（画面の読み込みからは ${ms(report.startup.page)}）`
+        : `画面の読み込みから使えるまで ${ms(report.startup.page)}`,
+    );
   }
   return lines;
 }
@@ -74,7 +82,11 @@ export class PerfDialog {
       "form",
       { method: "dialog" },
       element("h2", { textContent: "動作の記録" }),
-      element("p", { className: "hint", textContent: "この PC で使っている間の、ペンが画面に出るまでの時間・止まった時間・メモリです。描き心地が気になるときは、いつものように描いてから開き、「コピー」して送ってください。" }),
+      element("p", {
+        className: "hint",
+        textContent:
+          "この PC で使っている間の、ペンが画面に出るまでの時間・止まった時間・メモリです。描き心地が気になるときは、いつものように描いてから開き、「コピー」して送ってください。",
+      }),
       this.body,
       element("div", { className: "actions" }, again, copy, close),
     );

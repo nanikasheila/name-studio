@@ -59,7 +59,8 @@ export function dropPlan(
   where: { page: Page; point: Point; panel?: Panel },
 ): { kind: DropKind; shape: Point[]; text: string } {
   const number = project.pages.indexOf(where.page) + 1;
-  if (pointOff(where.point, project.pageFormat)) return { kind: "aside", shape: centred(held.panel.shape, where.point), text: `${number} ページの欄外に置く` };
+  if (pointOff(where.point, project.pageFormat))
+    return { kind: "aside", shape: centred(held.panel.shape, where.point), text: `${number} ページの欄外に置く` };
   if (where.panel) return { kind: "into", shape: where.panel.shape, text: `${number} ページのコマ ${where.panel.order} に中身を入れる` };
   return { kind: "place", shape: centred(held.panel.shape, where.point), text: `${number} ページのここに置く` };
 }

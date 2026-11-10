@@ -33,7 +33,8 @@ const work = mkdtempSync(join(tmpdir(), "name-studio-feel-"));
 // The heavy name as a file.
 const server = await createServer({ root, logLevel: "error", server: { middlewareMode: true } });
 const m = {};
-for (const module of ["project", "panels", "dialogue", "geometry", "pagebox"]) Object.assign(m, await server.ssrLoadModule(`/src/${module}.ts`));
+for (const module of ["project", "panels", "dialogue", "geometry", "pagebox"])
+  Object.assign(m, await server.ssrLoadModule(`/src/${module}.ts`));
 const { projectJson } = await server.ssrLoadModule("/src/domain/projectjson.ts");
 await server.close();
 const name = join(work, "重いネーム.namestudio");
@@ -49,7 +50,11 @@ try {
 
 const spawned = Date.now();
 const child = spawn(app, [], {
-  env: { ...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${PORT}`, WEBVIEW2_USER_DATA_FOLDER: join(work, "webview") },
+  env: {
+    ...process.env,
+    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${PORT}`,
+    WEBVIEW2_USER_DATA_FOLDER: join(work, "webview"),
+  },
   stdio: "ignore",
 });
 let browser = null;
@@ -87,11 +92,25 @@ try {
   const cdp = await context.newCDPSession(page);
   const box = await page.locator("#editor-canvas").boundingBox();
   const pen = (type, [x, y], pressure, buttons = 1) =>
-    cdp.send("Input.dispatchMouseEvent", { type, x, y, button: type === "mouseMoved" && !buttons ? "none" : "left", buttons, clickCount: type === "mouseMoved" ? 0 : 1, pointerType: "pen", force: pressure, tiltX: 12, tiltY: 4 });
+    cdp.send("Input.dispatchMouseEvent", {
+      type,
+      x,
+      y,
+      button: type === "mouseMoved" && !buttons ? "none" : "left",
+      buttons,
+      clickCount: type === "mouseMoved" ? 0 : 1,
+      pointerType: "pen",
+      force: pressure,
+      tiltX: 12,
+      tiltY: 4,
+    });
   await page.keyboard.press("p");
   // Lines over the middle of the spread, each 120 moves (half a second of drawing).
   for (let l = 0; l < LINES; l++) {
-    const [x0, y0] = [box.x + box.width * (0.25 + 0.5 * ((l * 37) % 100) / 100), box.y + box.height * (0.2 + 0.6 * ((l * 53) % 100) / 100)];
+    const [x0, y0] = [
+      box.x + box.width * (0.25 + (0.5 * ((l * 37) % 100)) / 100),
+      box.y + box.height * (0.2 + (0.6 * ((l * 53) % 100)) / 100),
+    ];
     const points = Array.from({ length: 120 }, (_, i) => [x0 + i * 2.2, y0 + Math.sin(i / 9 + l) * 30]);
     await pen("mouseMoved", points[0], 0, 0);
     await pen("mousePressed", points[0], 0.3);
@@ -123,9 +142,18 @@ try {
 const r = out.pen;
 const s = out.session;
 console.log(`app ${sizes.appMb} MB, its page ${sizes.pageKb} KB`);
-console.log(`start: process to first screen ${out.startup.process} ms (page ${out.startup.page} ms); the heavy name opened in ${out.openMs} ms`);
-console.log(`pen (${r.penLatency?.count} frames, ${r.penRate} events/s): input to screen ${JSON.stringify(r.penLatency)}, a frame ${JSON.stringify(r.penFrame)}, between frames ${JSON.stringify(r.penInterval)}`);
+console.log(
+  `start: process to first screen ${out.startup.process} ms (page ${out.startup.page} ms); the heavy name opened in ${out.openMs} ms`,
+);
+console.log(
+  `pen (${r.penLatency?.count} frames, ${r.penRate} events/s): input to screen ${JSON.stringify(r.penLatency)}, a frame ${JSON.stringify(r.penFrame)}, between frames ${JSON.stringify(r.penInterval)}`,
+);
 console.log(`the session: frames that stopped the screen ${s.long.count} (${s.long.total} ms)`);
-for (const long of s.long.worst.slice(0, 8)) console.log(`  ${long.at}s ${long.duration} ms (blocking ${long.blocking}, scripts ${long.script}, layout ${long.layout}) ${long.scripts.join(" / ")}`);
-console.log(`memory: ${JSON.stringify(s.memory && { first: s.memory.first, now: s.memory.now, most: s.memory.most })}; ${JSON.stringify(s.resources)}`);
+for (const long of s.long.worst.slice(0, 8))
+  console.log(
+    `  ${long.at}s ${long.duration} ms (blocking ${long.blocking}, scripts ${long.script}, layout ${long.layout}) ${long.scripts.join(" / ")}`,
+  );
+console.log(
+  `memory: ${JSON.stringify(s.memory && { first: s.memory.first, now: s.memory.now, most: s.memory.most })}; ${JSON.stringify(s.resources)}`,
+);
 if (report) writeFileSync(report, `${JSON.stringify(out, null, 1)}\n`);

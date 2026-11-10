@@ -24,7 +24,11 @@ export interface FillShape {
 }
 
 export function fillShape(fill: FillShape): FillShape {
-  return { id: fill.id, shape: fill.shape.map((p) => [...p] as Point), ...(fill.holes?.length ? { holes: fill.holes.map((hole) => hole.map((p) => [...p] as Point)) } : {}) };
+  return {
+    id: fill.id,
+    shape: fill.shape.map((p) => [...p] as Point),
+    ...(fill.holes?.length ? { holes: fill.holes.map((hole) => hole.map((p) => [...p] as Point)) } : {}),
+  };
 }
 
 /** Whether a point is in a fill (not in one of its holes). */
@@ -42,13 +46,7 @@ export function moveStroke(stroke: Stroke, dx: number, dy: number): void {
   stroke.points = stroke.points.map(([x, y, ...rest]) => [x + dx, y + dy, ...rest] as StrokePoint);
 }
 
-export function addStroke(
-  project: Project,
-  page: Page,
-  points: StrokePoint[],
-  widthMm: number,
-  brush?: string,
-): Stroke | null {
+export function addStroke(project: Project, page: Page, points: StrokePoint[], widthMm: number, brush?: string): Stroke | null {
   if (points.length < 2) return null;
   const stroke: Stroke = { id: newId(project, "stroke"), points: simplify(points, 0.15), widthMm, closed: false };
   // Point lists are shared by undo and saving (snapshot.ts, projectjson.ts) and
@@ -90,7 +88,14 @@ export function eraseStrokes(page: Page, point: Point, radius: number, editable:
 }
 
 /** Erase like a CSP vector eraser; returns how many strokes changed. Lines not `editable` (a locked layer) stay. */
-export function eraseWith(project: Project, page: Page, point: Point, radius: number, mode: EraseMode, editable: (stroke: Stroke) => boolean = () => true): number {
+export function eraseWith(
+  project: Project,
+  page: Page,
+  point: Point,
+  radius: number,
+  mode: EraseMode,
+  editable: (stroke: Stroke) => boolean = () => true,
+): number {
   if (mode === "whole") return eraseStrokes(page, point, radius, editable);
   const others = page.strokes.slice();
   let changed = 0;
@@ -101,9 +106,7 @@ export function eraseWith(project: Project, page: Page, point: Point, radius: nu
       continue;
     }
     const pieces =
-      mode === "touched"
-        ? cutAround(stroke.points, point, radius + stroke.widthMm / 2)
-        : cutBetweenCrossings(stroke, others, point);
+      mode === "touched" ? cutAround(stroke.points, point, radius + stroke.widthMm / 2) : cutBetweenCrossings(stroke, others, point);
     changed++;
     for (const [index, piece] of pieces.entries()) {
       const part: Stroke = { ...stroke, id: index === 0 ? stroke.id : newId(project, "stroke"), points: piece.points };
@@ -190,8 +193,9 @@ function cutBetweenCrossings(stroke: Stroke, others: Stroke[], center: Point): P
     { points: slicePolyline(pts, lengths, 0, from), cutStart: false, cutEnd: true },
     { points: slicePolyline(pts, lengths, to, total), cutStart: true, cutEnd: false },
   ];
-  return pieces.filter(({ points: piece }) =>
-    piece.length >= 2 && Math.hypot(piece[0][0] - piece[piece.length - 1][0], piece[0][1] - piece[piece.length - 1][1]) > 1e-6,
+  return pieces.filter(
+    ({ points: piece }) =>
+      piece.length >= 2 && Math.hypot(piece[0][0] - piece[piece.length - 1][0], piece[0][1] - piece[piece.length - 1][1]) > 1e-6,
   );
 }
 
@@ -240,7 +244,12 @@ function slicePolyline(pts: StrokePoint[], lengths: number[], from: number, to: 
 
 /** 囲って消す: remove the parts of rough lines inside `shape` (as CSP deletes
  * a selection on a vector layer); returns how many lines changed. */
-export function eraseInside(project: Project, page: Page, shape: readonly Point[], editable: (stroke: Stroke) => boolean = () => true): number {
+export function eraseInside(
+  project: Project,
+  page: Page,
+  shape: readonly Point[],
+  editable: (stroke: Stroke) => boolean = () => true,
+): number {
   if (shape.length < 3) return 0;
   const [x0, y0, x1, y1] = bounds([...shape]);
   let changed = 0;
@@ -307,7 +316,10 @@ function cutInside(points: StrokePoint[], shape: readonly Point[]): Piece[] {
 }
 
 /** 範囲選択: rough lines mostly inside `shape`, dialogue whose box centre is, and panels, fills and はみ出し wholly inside (not halves of 見開き panels). */
-export function pickInside(page: Page, shape: readonly Point[]): { strokes: string[]; lines: string[]; panels: string[]; fills: string[]; breakouts: string[] } {
+export function pickInside(
+  page: Page,
+  shape: readonly Point[],
+): { strokes: string[]; lines: string[]; panels: string[]; fills: string[]; breakouts: string[] } {
   if (shape.length < 3) return { strokes: [], lines: [], panels: [], fills: [], breakouts: [] };
   // Panels, fills and はみ出し only when all of them is inside.
   const whole = (points: readonly Point[]) => points.length > 0 && points.every((point) => insidePolygon(shape, point));

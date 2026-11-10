@@ -19,13 +19,23 @@ export function emotionLane(view: LaneView, project: Project, top: number): SVGG
   group.append(bg);
   if (!project.characters.length) {
     // Nothing to trace yet: a line on how to start, not an empty chart.
-    group.append(svg("text", { x: 8, y: top + EMOTION / 2 + 4, class: "lane-hint" }, "左の欄の「人物」で登場人物を足すと、ここをなぞって感情の移り変わりを描けます"));
+    group.append(
+      svg(
+        "text",
+        { x: 8, y: top + EMOTION / 2 + 4, class: "lane-hint" },
+        "左の欄の「人物」で登場人物を足すと、ここをなぞって感情の移り変わりを描けます",
+      ),
+    );
     return group;
   }
-  for (const value of [1, 0.5, 0, -0.5, -1]) group.append(svg("line", { x1: 0, x2: width, y1: y(value), y2: y(value), class: value === 0 ? "axis" : "grid" }));
+  for (const value of [1, 0.5, 0, -0.5, -1])
+    group.append(svg("line", { x1: 0, x2: width, y1: y(value), y2: y(value), class: value === 0 ? "axis" : "grid" }));
   // At the first page's end; the names go after the last values.
   const start: Record<string, string | number> = view.reversed ? { x: width - 4, "text-anchor": "end" } : { x: 4 };
-  group.append(svg("text", { ...start, y: y(1) + 12, class: "lane-hint small" }, "前向き"), svg("text", { ...start, y: y(-1) - 4, class: "lane-hint small" }, "後ろ向き"));
+  group.append(
+    svg("text", { ...start, y: y(1) + 12, class: "lane-hint small" }, "前向き"),
+    svg("text", { ...start, y: y(-1) - 4, class: "lane-hint small" }, "後ろ向き"),
+  );
   const center = (index: number) => view.cell(index) + view.column / 2;
   const series = project.characters.map((character) => ({ character, samples: emotionSeries(project, character.id) }));
   series.sort((a, b) => Number(a.character.id === view.character) - Number(b.character.id === view.character));
@@ -35,20 +45,52 @@ export function emotionLane(view: LaneView, project: Project, top: number): SVGG
     // Solid over pages next to each other; dotted across pages with no value.
     const runs = emotionRuns(samples);
     runs.forEach((run, i) => {
-      if (run.length > 1) group.append(svg("polyline", { points: run.map((s) => `${center(s.index)},${y(s.value)}`).join(" "), class: `curve${editing ? " editing" : ""}`, stroke: color }));
+      if (run.length > 1)
+        group.append(
+          svg("polyline", {
+            points: run.map((s) => `${center(s.index)},${y(s.value)}`).join(" "),
+            class: `curve${editing ? " editing" : ""}`,
+            stroke: color,
+          }),
+        );
       const next = runs[i + 1]?.[0];
       const end = run[run.length - 1];
-      if (next) group.append(svg("line", { x1: center(end.index), y1: y(end.value), x2: center(next.index), y2: y(next.value), class: `curve gap${editing ? " editing" : ""}`, stroke: color }));
+      if (next)
+        group.append(
+          svg("line", {
+            x1: center(end.index),
+            y1: y(end.value),
+            x2: center(next.index),
+            y2: y(next.value),
+            class: `curve gap${editing ? " editing" : ""}`,
+            stroke: color,
+          }),
+        );
     });
     // Where the character speaks: ticks along the bottom.
     if (editing) {
       for (const index of speakingPages(project, character.id)) {
-        group.append(svg("rect", { x: center(index) - 1.5, y: top + EMOTION - 7, width: 3, height: 5, rx: 1, class: "speaks", fill: color }));
+        group.append(
+          svg("rect", { x: center(index) - 1.5, y: top + EMOTION - 7, width: 3, height: 5, rx: 1, class: "speaks", fill: color }),
+        );
       }
     }
-    for (const sample of samples) group.append(svg("circle", { cx: center(sample.index), cy: y(sample.value), r: editing ? 4 : 3, class: "curve-point", fill: color }));
+    for (const sample of samples)
+      group.append(svg("circle", { cx: center(sample.index), cy: y(sample.value), r: editing ? 4 : 3, class: "curve-point", fill: color }));
     const last = samples[samples.length - 1];
-    if (last && project.characters.length <= 5) group.append(svg("text", { x: center(last.index) + (view.reversed ? -7 : 7), y: y(last.value) + 4, class: "curve-label", "text-anchor": view.reversed ? "end" : "start" }, character.name));
+    if (last && project.characters.length <= 5)
+      group.append(
+        svg(
+          "text",
+          {
+            x: center(last.index) + (view.reversed ? -7 : 7),
+            y: y(last.value) + 4,
+            class: "curve-label",
+            "text-anchor": view.reversed ? "end" : "start",
+          },
+          character.name,
+        ),
+      );
   }
   const preview = svg("g", { class: "curve-preview" });
   group.append(preview);
@@ -128,8 +170,17 @@ export function textLane(view: LaneView, project: Project, top: number): SVGGEle
   amounts.forEach((amount, index) => {
     if (!amount) return;
     const h = ((TEXT - 8) * amount) / max;
-    const bar = svg("rect", { x: view.cell(index) + (view.column - barWidth) / 2, y: top + TEXT - 4 - h, width: barWidth, height: h, rx: 2, class: `amount${amount > HEAVY_TEXT ? " heavy" : ""}` });
-    bar.addEventListener("mousemove", (event) => view.tip.show(event, [`${index + 1} ページ`, `${amount} 字${amount > HEAVY_TEXT ? "（多め）" : ""}`]));
+    const bar = svg("rect", {
+      x: view.cell(index) + (view.column - barWidth) / 2,
+      y: top + TEXT - 4 - h,
+      width: barWidth,
+      height: h,
+      rx: 2,
+      class: `amount${amount > HEAVY_TEXT ? " heavy" : ""}`,
+    });
+    bar.addEventListener("mousemove", (event) =>
+      view.tip.show(event, [`${index + 1} ページ`, `${amount} 字${amount > HEAVY_TEXT ? "（多め）" : ""}`]),
+    );
     bar.addEventListener("mouseleave", () => view.tip.hide());
     group.append(bar);
   });

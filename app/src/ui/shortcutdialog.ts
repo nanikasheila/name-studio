@@ -45,7 +45,11 @@ export class ShortcutDialog {
         this.listening = null;
         const taken = this.shortcuts.bind(action, combo);
         const label = (id: ActionId) => this.shortcuts.actions.find((a) => a.id === id)?.label ?? id;
-        this.message(taken ? `${combo} を「${label(taken)}」から外して「${label(action)}」に割り当てました` : `${combo} を「${label(action)}」に割り当てました`);
+        this.message(
+          taken
+            ? `${combo} を「${label(taken)}」から外して「${label(action)}」に割り当てました`
+            : `${combo} を「${label(action)}」に割り当てました`,
+        );
         this.render();
       },
       { capture: true },
@@ -70,7 +74,12 @@ export class ShortcutDialog {
       const keys = document.createElement("span");
       keys.className = "sc-keys";
       for (const combo of this.shortcuts.keys(action.id)) {
-        const chip = Object.assign(document.createElement("button"), { type: "button", className: "sc-key", textContent: `${combo} ×`, title: "外す" });
+        const chip = Object.assign(document.createElement("button"), {
+          type: "button",
+          className: "sc-key",
+          textContent: `${combo} ×`,
+          title: "外す",
+        });
         chip.addEventListener("click", () => {
           this.shortcuts.unbind(action.id, combo);
           this.render();

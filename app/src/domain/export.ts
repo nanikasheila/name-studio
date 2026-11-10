@@ -20,7 +20,11 @@ export function folderOf(path: string): string {
 }
 
 function samePath(a: string, b: string): boolean {
-  const normal = (path: string) => path.replace(/[\\/]+$/, "").replace(/\\/g, "/").toLowerCase();
+  const normal = (path: string) =>
+    path
+      .replace(/[\\/]+$/, "")
+      .replace(/\\/g, "/")
+      .toLowerCase();
   return normal(a) === normal(b);
 }
 

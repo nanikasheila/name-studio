@@ -21,7 +21,10 @@ const noInput = {
   tiltCurve: [],
   velocity: false,
   velocityMin: 1,
-  velocityCurve: [[0, 1], [1, 0]] as [number, number][],
+  velocityCurve: [
+    [0, 1],
+    [1, 0],
+  ] as [number, number][],
   random: false,
   randomMin: 1,
 };
@@ -35,7 +38,11 @@ const maruPen: CspSubTool = {
   sizeDynamics: {
     pressure: true,
     pressureMin: 0,
-    pressureCurve: [[0, 0], [0.6636, 0.0818], [1, 1]],
+    pressureCurve: [
+      [0, 0],
+      [0.6636, 0.0818],
+      [1, 1],
+    ],
     ...noInput,
   },
   opacity: 1,
@@ -79,12 +86,24 @@ function brush(overrides: Partial<Brush> = {}): Brush {
 describe("pressure curves", () => {
   it("is the straight line without control points", () => {
     expect(curveAt(undefined, 0.3)).toBeCloseTo(0.3);
-    expect(curveAt([[0, 0], [1, 1]], 0.7)).toBeCloseTo(0.7);
+    expect(
+      curveAt(
+        [
+          [0, 0],
+          [1, 1],
+        ],
+        0.7,
+      ),
+    ).toBeCloseTo(0.7);
   });
 
   it("bends towards the middle point like CSP's graph", () => {
     // Three points: a quadratic Bézier; at t = 0.45 it is at (0.531, 0.243).
-    const curve: [number, number][] = [[0, 0], [0.664, 0.082], [1, 1]];
+    const curve: [number, number][] = [
+      [0, 0],
+      [0.664, 0.082],
+      [1, 1],
+    ];
     expect(curveAt(curve, 0.531)).toBeCloseTo(0.243, 2);
     expect(curveAt(curve, 0)).toBe(0);
     expect(curveAt(curve, 1)).toBeCloseTo(1);
@@ -103,13 +122,32 @@ describe("pressure curves", () => {
 describe("widths along a stroke", () => {
   const line: Stroke = {
     id: "s",
-    points: [[0, 0, 1], [1, 0, 1], [2, 0, 1], [5, 0, 1], [8, 0, 1], [9, 0, 1], [10, 0, 1]],
+    points: [
+      [0, 0, 1],
+      [1, 0, 1],
+      [2, 0, 1],
+      [5, 0, 1],
+      [8, 0, 1],
+      [9, 0, 1],
+      [10, 0, 1],
+    ],
     widthMm: 1,
     closed: false,
   };
 
   it("keeps the old thinning for strokes without a brush", () => {
-    expect(widthFactors({ ...line, points: [[0, 0, 0], [1, 0, 1]] }, undefined)).toEqual([0.35, 1]);
+    expect(
+      widthFactors(
+        {
+          ...line,
+          points: [
+            [0, 0, 0],
+            [1, 0, 1],
+          ],
+        },
+        undefined,
+      ),
+    ).toEqual([0.35, 1]);
   });
 
   it("tapers both ends over the 入り抜き lengths", () => {
@@ -122,7 +160,14 @@ describe("widths along a stroke", () => {
   });
 
   it("shares a short stroke between the tapers", () => {
-    const short: Stroke = { ...line, points: [[0, 0, 1], [1, 0, 1], [2, 0, 1]] };
+    const short: Stroke = {
+      ...line,
+      points: [
+        [0, 0, 1],
+        [1, 0, 1],
+        [2, 0, 1],
+      ],
+    };
     const factors = widthFactors(short, brush({ taperInMm: 3, taperOutMm: 1 }));
     // 2 mm long: 1.5 mm in, 0.5 mm out; the middle is 2/3 of the way in.
     expect(factors[1]).toBeCloseTo(1 / 1.5);
@@ -175,7 +220,16 @@ describe("taking CSP sub tools over", () => {
     const project = newProject("t", 1);
     const page = project.pages[0];
     const [pen] = addBrushes(project, [brush({ sizePressure: { min: 0.5 } })]);
-    addStroke(project, page, [[0, 0, 0], [5, 0, 1]], 1, pen.id);
+    addStroke(
+      project,
+      page,
+      [
+        [0, 0, 0],
+        [5, 0, 1],
+      ],
+      1,
+      pen.id,
+    );
     const [line] = vectorLines(page, "strokes", { scale: 10, x: 0, y: 0 }, project.brushes);
     expect(line.points.map((point) => point[2])).toEqual([0.5, 1]);
   });
@@ -183,14 +237,30 @@ describe("taking CSP sub tools over", () => {
 
 describe("tilt, speed and chance", () => {
   const pen = brush({
-    sizeTilt: { min: 0.5, curve: [[0, 1], [1, 0]] },
-    sizeSpeed: { min: 0.2, curve: [[0, 1], [1, 0]] },
+    sizeTilt: {
+      min: 0.5,
+      curve: [
+        [0, 1],
+        [1, 0],
+      ],
+    },
+    sizeSpeed: {
+      min: 0.2,
+      curve: [
+        [0, 1],
+        [1, 0],
+      ],
+    },
   });
 
   it("thins the line as the pen tilts and speeds up", () => {
     const stroke: Stroke = {
       id: "s",
-      points: [[0, 0, 1, 0, 0], [5, 0, 1, 1, 0], [10, 0, 1, 0, 1]],
+      points: [
+        [0, 0, 1, 0, 0],
+        [5, 0, 1, 1, 0],
+        [10, 0, 1, 0, 1],
+      ],
       widthMm: 1,
       closed: false,
     };
@@ -198,7 +268,15 @@ describe("tilt, speed and chance", () => {
   });
 
   it("takes lines without tilt and speed as upright and slow", () => {
-    const stroke: Stroke = { id: "s", points: [[0, 0, 1], [5, 0, 1]], widthMm: 1, closed: false };
+    const stroke: Stroke = {
+      id: "s",
+      points: [
+        [0, 0, 1],
+        [5, 0, 1],
+      ],
+      widthMm: 1,
+      closed: false,
+    };
     expect(widthFactors(stroke, pen)).toEqual([1, 1]);
   });
 
@@ -214,22 +292,60 @@ describe("tilt, speed and chance", () => {
   it("takes the inputs over from CSP", () => {
     const tool: CspSubTool = {
       ...maruPen,
-      sizeDynamics: { ...maruPen.sizeDynamics!, tilt: true, tiltMin: 0.85, tiltCurve: [[0, 1], [1, 0]], velocity: true, velocityMin: 0.7, random: true, randomMin: 0.3 },
+      sizeDynamics: {
+        ...maruPen.sizeDynamics!,
+        tilt: true,
+        tiltMin: 0.85,
+        tiltCurve: [
+          [0, 1],
+          [1, 0],
+        ],
+        velocity: true,
+        velocityMin: 0.7,
+        random: true,
+        randomMin: 0.3,
+      },
       opacityDynamics: null,
       flowDynamics: { ...maruPen.opacityDynamics!, velocity: true, velocityMin: 0.5 },
     };
     const taken = brushFromSubTool(tool, 600, "b");
-    expect(taken.sizeTilt).toEqual({ min: 0.85, curve: [[0, 1], [1, 0]] });
-    expect(taken.sizeSpeed).toEqual({ min: 0.7, curve: [[0, 1], [1, 0]] });
+    expect(taken.sizeTilt).toEqual({
+      min: 0.85,
+      curve: [
+        [0, 1],
+        [1, 0],
+      ],
+    });
+    expect(taken.sizeSpeed).toEqual({
+      min: 0.7,
+      curve: [
+        [0, 1],
+        [1, 0],
+      ],
+    });
     expect(taken.sizeRandom).toEqual({ min: 0.3 });
-    expect(taken.opacitySpeed).toEqual({ min: 0.5, curve: [[0, 1], [1, 0]] });
+    expect(taken.opacitySpeed).toEqual({
+      min: 0.5,
+      curve: [
+        [0, 1],
+        [1, 0],
+      ],
+    });
     expect(taken.opacityPressure).toBeUndefined();
   });
 
   it("keeps tilt and speed through the eraser", () => {
     const project = newProject("t", 1);
     const page = project.pages[0];
-    addStroke(project, page, [[0, 0, 1, 0, 0], [10, 0, 1, 1, 1]], 0.2);
+    addStroke(
+      project,
+      page,
+      [
+        [0, 0, 1, 0, 0],
+        [10, 0, 1, 1, 1],
+      ],
+      0.2,
+    );
     eraseWith(project, page, [5, 0], 0.5, "touched");
     for (const piece of page.strokes) for (const point of piece.points) expect(point).toHaveLength(5);
     const right = page.strokes[1].points[0];
@@ -242,9 +358,33 @@ describe("erasers", () => {
     const project = newProject("t", 1);
     const page = project.pages[0];
     // A horizontal line crossed by two vertical ones at x = 3 and x = 7.
-    addStroke(project, page, [[0, 5, 1], [10, 5, 1]], 0.2);
-    addStroke(project, page, [[3, 0, 1], [3, 10, 1]], 0.2);
-    addStroke(project, page, [[7, 0, 1], [7, 10, 1]], 0.2);
+    addStroke(
+      project,
+      page,
+      [
+        [0, 5, 1],
+        [10, 5, 1],
+      ],
+      0.2,
+    );
+    addStroke(
+      project,
+      page,
+      [
+        [3, 0, 1],
+        [3, 10, 1],
+      ],
+      0.2,
+    );
+    addStroke(
+      project,
+      page,
+      [
+        [7, 0, 1],
+        [7, 10, 1],
+      ],
+      0.2,
+    );
     return { project, page };
   }
 
@@ -285,7 +425,20 @@ describe("ends left by an eraser", () => {
     const project = newProject("t", 1);
     const page = project.pages[0];
     const [pen] = addBrushes(project, [brush({ taperInMm: 1, taperOutMm: 1 })]);
-    addStroke(project, page, [[0, 0, 1], [2, 0, 1], [4, 0, 1], [6, 0, 1], [8, 0, 1], [10, 0, 1]], 0.2, pen.id);
+    addStroke(
+      project,
+      page,
+      [
+        [0, 0, 1],
+        [2, 0, 1],
+        [4, 0, 1],
+        [6, 0, 1],
+        [8, 0, 1],
+        [10, 0, 1],
+      ],
+      0.2,
+      pen.id,
+    );
     eraseWith(project, page, [5, 0], 0.4, "touched");
     expect(page.strokes).toHaveLength(2);
     const [left, right] = page.strokes;

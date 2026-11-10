@@ -125,7 +125,9 @@ export function layoutPages(project: Project, list: Pair[], current: number, vie
     // 単独 (and a piece of a 縦スクロール strip): the whole page in the middle.
     const page = pair[0] ?? pair[1];
     if (page === null) return [];
-    const [fit, room] = fitWithCaptions(project, list, view, (caption) => Math.min((width - 2 * MARGIN) / pageW, (height - 2 * MARGIN - caption) / pageH));
+    const [fit, room] = fitWithCaptions(project, list, view, (caption) =>
+      Math.min((width - 2 * MARGIN) / pageW, (height - 2 * MARGIN - caption) / pageH),
+    );
     const scale = fit * view.zoom;
     const x = (width - pageW * scale) / 2 + view.pan[0];
     const y = (height - room - pageH * scale) / 2 + view.pan[1];
@@ -279,7 +281,13 @@ export function onStage(slot: Slot, pageH: number, width: number, height: number
  * (`rows`, the screen x that `across` gives for the laid-out pages put in
  * the middle).
  */
-export function fitContinuous(project: Project, list: Pair[], view: Arrangement, what: "all" | "rows", across: (slots: Slot[]) => number | null): { zoom: number; pan: Point } {
+export function fitContinuous(
+  project: Project,
+  list: Pair[],
+  view: Arrangement,
+  what: "all" | "rows",
+  across: (slots: Slot[]) => number | null,
+): { zoom: number; pan: Point } {
   const pageH = project.pageFormat.canvasMm[1];
   let zoom = 1;
   const slots = (pan: [number, number] = [0, 0]) => layoutPages(project, list, 0, { ...view, continuous: true, zoom, pan });
@@ -301,7 +309,14 @@ export function fitContinuous(project: Project, list: Pair[], view: Arrangement,
  * they were: every page inside and filling it across or down (`all`), or
  * the rows filling its height (`rows`, or in its middle at zoom 1).
  */
-export function fittedTo(slots: Slot[], pageH: number, width: number, height: number, zoom: number, rooms?: readonly Room[]): "all" | "rows" | null {
+export function fittedTo(
+  slots: Slot[],
+  pageH: number,
+  width: number,
+  height: number,
+  zoom: number,
+  rooms?: readonly Room[],
+): "all" | "rows" | null {
   const box = extent(slots, pageH, rooms);
   if (!box) return null;
   const [w, h] = [box[2] - box[0], box[3] - box[1]];

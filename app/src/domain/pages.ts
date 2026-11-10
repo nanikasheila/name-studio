@@ -79,8 +79,6 @@ export function dialogueByPage(sheet: SheetView, visible: Map<number, boolean>):
     const cell = sheet.cells[index];
     const band = (cell.rect.y1 - cell.rect.y0) / 6;
     const key = (text: TextView) => Math.floor((text.bbox![1] - cell.rect.y0) / band);
-    return entries
-      .sort((a, b) => key(a.text) - key(b.text) || b.text.bbox![2] - a.text.bbox![2])
-      .map((entry) => entry.line);
+    return entries.sort((a, b) => key(a.text) - key(b.text) || b.text.bbox![2] - a.text.bbox![2]).map((entry) => entry.line);
   });
 }

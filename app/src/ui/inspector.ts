@@ -37,7 +37,23 @@ import { tidyPanels } from "../domain/tidy";
 import { addCharacter } from "../domain/cast";
 import { fitLine, KIND_LABELS, setDefaultLineSize, setDefaultShape, setLineKind, setLineText, wrapTypedLine } from "../domain/dialogue";
 import { rectShape } from "../model/geometry";
-import type { Alternatives, BalloonShape, Fill, FillTone, Line, LineKind, Page, Panel, PanelBorder, PanelEffect, PanelFill, Project, Sticky, StickyColor, TailStyle } from "../model/model";
+import type {
+  Alternatives,
+  BalloonShape,
+  Fill,
+  FillTone,
+  Line,
+  LineKind,
+  Page,
+  Panel,
+  PanelBorder,
+  PanelEffect,
+  PanelFill,
+  Project,
+  Sticky,
+  StickyColor,
+  TailStyle,
+} from "../model/model";
 import { basicBox } from "../domain/pagebox";
 import { addPanel, wantsSpread } from "../domain/panels";
 import { pageIndex, pageIsEmpty } from "../domain/project";
@@ -111,8 +127,12 @@ export class Inspector {
           if (created) this.host.editor.select({ kind: "panel", pageId: page.id, id: (created as Panel).id });
         });
         const hasLines = page.lines.some((line) => line.panel === panel.id);
-        const arrange = button("セリフを並べる", "このコマのセリフを読む順に右上から並べ直す（長いセリフは改行）", () => this.host.arrange(page.id, panel.id));
-        const hold = button("保留", "中身ごと保留にする: 置き場所を決めるまで、ページの上の欄外に置いておく（左の「保留」にも並ぶ）", () => this.host.holdSelected(page, panel));
+        const arrange = button("セリフを並べる", "このコマのセリフを読む順に右上から並べ直す（長いセリフは改行）", () =>
+          this.host.arrange(page.id, panel.id),
+        );
+        const hold = button("保留", "中身ごと保留にする: 置き場所を決めるまで、ページの上の欄外に置いておく（左の「保留」にも並ぶ）", () =>
+          this.host.holdSelected(page, panel),
+        );
         const moveTo = element("select", { title: "中身ごとほかのページへ移す" });
         moveTo.append(element("option", { value: "", textContent: "移す…" }));
         project.pages.forEach((other, index) => {
@@ -123,7 +143,9 @@ export class Inspector {
           if (to) this.host.moveSelectedTo(page, panel, to);
         });
         return [
-          button("メモ", "このコマのメモをその場で書く（コマをダブルクリックでも）", () => this.host.editor.editInPlace(page.id, "note", panel.id)),
+          button("メモ", "このコマのメモをその場で書く（コマをダブルクリックでも）", () =>
+            this.host.editor.editInPlace(page.id, "note", panel.id),
+          ),
           transform,
           ...(hasLines ? [arrange] : []),
           inset,
@@ -156,7 +178,15 @@ export class Inspector {
           remove.textContent = "しっぽを消す";
           remove.title = `選んだ ${selection.tail + 1} 本目のしっぽだけ消す（Delete）`;
         }
-        return [button("書く", "その場で書き直す（ダブルクリックでも）", () => this.host.editor.editInPlace(page.id, "line", line.id)), kind, tail, ...(line.panel ? [mask] : []), transform, copy, remove];
+        return [
+          button("書く", "その場で書き直す（ダブルクリックでも）", () => this.host.editor.editInPlace(page.id, "line", line.id)),
+          kind,
+          tail,
+          ...(line.panel ? [mask] : []),
+          transform,
+          copy,
+          remove,
+        ];
       }
       case "stroke":
       case "group":
@@ -184,7 +214,10 @@ export class Inspector {
     const memo = page.memo.trim();
     if (!memo) return [];
     const box = element("div", { className: "page-memo", title: "ページのメモ（ページを選ぶと直せます）" });
-    box.append(element("span", { className: "label", textContent: `${pageIndex(project, page.id) + 1} ページのメモ` }), element("div", { textContent: memo }));
+    box.append(
+      element("span", { className: "label", textContent: `${pageIndex(project, page.id) + 1} ページのメモ` }),
+      element("div", { textContent: memo }),
+    );
     return [box];
   }
 
@@ -202,7 +235,9 @@ export class Inspector {
     const s = this.host.editor.selection;
     const page = s ? project.pages.find((p) => p.id === s.pageId) : this.host.editor.focusPage();
     if (!page) {
-      panel.replaceChildren(element("p", { className: "hint", textContent: "ページがありません。左の「最後にページを足す」で始めましょう。" }));
+      panel.replaceChildren(
+        element("p", { className: "hint", textContent: "ページがありません。左の「最後にページを足す」で始めましょう。" }),
+      );
       return;
     }
     if (s?.kind === "line") {
@@ -211,7 +246,8 @@ export class Inspector {
     }
     if (s?.kind === "panel") {
       const target = page.panels.find((p) => p.id === s.id);
-      if (target) return panel.replaceChildren(...this.pageMemo(project, page), ...this.panelInspector(project, page, target.id, target.order));
+      if (target)
+        return panel.replaceChildren(...this.pageMemo(project, page), ...this.panelInspector(project, page, target.id, target.order));
     }
     if (s?.kind === "sticky") {
       const sticky = page.stickies?.find((n) => n.id === s.id);
@@ -287,7 +323,8 @@ export class Inspector {
           element("h2", { textContent: "はみ出し" }),
           element("p", {
             className: "hint",
-            textContent: "この中ではコマ枠と間白が消えます。中でペンを描き始めた線は、コマ枠の上に描かれます（CSP では「はみ出し（ラフ線）」レイヤー）。",
+            textContent:
+              "この中ではコマ枠と間白が消えます。中でペンを描き始めた線は、コマ枠の上に描かれます（CSP では「はみ出し（ラフ線）」レイヤー）。",
           }),
           element("label", {}, "メモ", note),
           ...this.transformButtons(),
@@ -309,7 +346,15 @@ export class Inspector {
     const panel = $("inspector");
     const kind = this.host.board.selected ? "story" : (this.host.editor.selection?.kind ?? "page");
     panel.dataset.kind = kind;
-    const tool = { panel: "tool-cut", line: "tool-text", sticky: "tool-sticky", fill: "tool-fill", stroke: "tool-pen", breakout: "tool-breakout", group: "tool-select" }[kind as string];
+    const tool = {
+      panel: "tool-cut",
+      line: "tool-text",
+      sticky: "tool-sticky",
+      fill: "tool-fill",
+      stroke: "tool-pen",
+      breakout: "tool-breakout",
+      group: "tool-select",
+    }[kind as string];
     const icon = tool ? document.getElementById(tool)?.querySelector("svg") : kind === "page" ? pageIcon() : null;
     const title = panel.querySelector("h2");
     if (icon && title && !title.querySelector("svg")) title.prepend(icon.cloneNode(true));
@@ -318,7 +363,12 @@ export class Inspector {
       const cut = text.indexOf("。") + 1;
       if (cut <= 0 || cut >= text.length - 1 || text.length < 40) continue;
       const head = cut <= 46 ? text.slice(0, cut) : "使い方";
-      const fold = element("details", { className: "hint-fold" }, element("summary", { textContent: head }), element("p", { textContent: head === "使い方" ? text : text.slice(cut) }));
+      const fold = element(
+        "details",
+        { className: "hint-fold" },
+        element("summary", { textContent: head }),
+        element("p", { textContent: head === "使い方" ? text : text.slice(cut) }),
+      );
       fold.open = this.openHints.has(text);
       fold.addEventListener("toggle", () => (fold.open ? this.openHints.add(text) : this.openHints.delete(text)));
       hint.replaceWith(fold);
@@ -329,12 +379,16 @@ export class Inspector {
     const text = element("textarea", { value: line.text, spellcheck: false });
     this.host.liveText(text, (value) => setLineText(line, value));
     // Done typing a long line in one go: broken into short lines (before the change is recorded).
-    text.addEventListener("change", () => {
-      if (wrapTypedLine(line)) {
-        text.value = line.text;
-        this.host.editor.draw();
-      }
-    }, { capture: true });
+    text.addEventListener(
+      "change",
+      () => {
+        if (wrapTypedLine(line)) {
+          text.value = line.text;
+          this.host.editor.draw();
+        }
+      },
+      { capture: true },
+    );
     const kind = element("select");
     for (const [value, label] of Object.entries(KIND_LABELS)) kind.append(element("option", { value, textContent: label }));
     kind.value = line.kind;
@@ -357,7 +411,14 @@ export class Inspector {
         }
       }),
     );
-    const size = element("input", { type: "number", min: "4", max: "72", step: "0.5", value: String(round(line.fontSizePt)), title: "文字の大きさ（pt）。マウスのホイールでも変えられます" });
+    const size = element("input", {
+      type: "number",
+      min: "4",
+      max: "72",
+      step: "0.5",
+      value: String(round(line.fontSizePt)),
+      title: "文字の大きさ（pt）。マウスのホイールでも変えられます",
+    });
     this.host.liveNumber(size, (value) => {
       line.fontSizePt = value;
       setLineText(line, line.text);
@@ -374,7 +435,9 @@ export class Inspector {
       let changed = 0;
       const pt = line.fontSizePt;
       this.host.edit((p) => (changed = setDefaultLineSize(p, line.kind, pt)));
-      this.host.status(`「${KIND_LABELS[line.kind]}」の文字の大きさの既定を ${round(pt)} pt にしました（同じ種類のほかのセリフ ${changed} 個も変えました）`);
+      this.host.status(
+        `「${KIND_LABELS[line.kind]}」の文字の大きさの既定を ${round(pt)} pt にしました（同じ種類のほかのセリフ ${changed} 個も変えました）`,
+      );
     });
     const vertical = element("input", { type: "checkbox", checked: line.vertical });
     vertical.addEventListener("change", () =>
@@ -441,7 +504,9 @@ export class Inspector {
       this.host.edit((p) => {
         changed = setDefaultShape(p, line.kind, current);
       });
-      this.host.status(`「${KIND_LABELS[line.kind]}」の形を「${SHAPE_LABELS[current]}」にしました（同じ種類のほかのセリフ ${changed} 個も変えました）。台本の取り込みや新しいセリフもこの形になります`);
+      this.host.status(
+        `「${KIND_LABELS[line.kind]}」の形を「${SHAPE_LABELS[current]}」にしました（同じ種類のほかのセリフ ${changed} 個も変えました）。台本の取り込みや新しいセリフもこの形になります`,
+      );
     });
     const flag = (label: string, checked: boolean, set: (on: boolean) => void) => {
       const box = element("input", { type: "checkbox", checked });
@@ -468,7 +533,10 @@ export class Inspector {
       this.host.editor.select({ kind: "line", pageId: page.id, id: line.id, tail: (line.tails?.length ?? 1) - 1 });
     });
     // しっぽ: one row each, to choose (its tip is filled on the page), restyle or remove that tail alone.
-    const chosen = this.host.editor.selection?.kind === "line" && this.host.editor.selection.id === line.id ? this.host.editor.selection.tail : undefined;
+    const chosen =
+      this.host.editor.selection?.kind === "line" && this.host.editor.selection.id === line.id
+        ? this.host.editor.selection.tail
+        : undefined;
     const tailRows = tails.map((tail, index) => {
       const pick = element("button", {
         className: `tail-pick${index === chosen ? " active" : ""}`,
@@ -476,7 +544,9 @@ export class Inspector {
         title: `${index + 1} 本目のしっぽを選ぶ（先が塗られます。Delete で消せます）`,
       });
       pick.addEventListener("click", () =>
-        this.host.editor.select(index === chosen ? { kind: "line", pageId: page.id, id: line.id } : { kind: "line", pageId: page.id, id: line.id, tail: index }),
+        this.host.editor.select(
+          index === chosen ? { kind: "line", pageId: page.id, id: line.id } : { kind: "line", pageId: page.id, id: line.id, tail: index },
+        ),
       );
       const style = choice(TAIL_LABELS, tail.style ?? defaultTailStyle(line), (value: TailStyle) =>
         this.host.edit(() => {
@@ -526,17 +596,35 @@ export class Inspector {
       element("h2", { textContent: `${pageIndex(project, page.id) + 1} ページのセリフ${panelNumber ? `（${panelNumber} コマ目）` : ""}` }),
       element("label", {}, "文字", text),
       element("div", { className: "row" }, element("label", {}, "種類", kind), element("label", {}, "話者", speaker)),
-      ...(toneOf(project, line.speaker) ? [element("p", { className: "hint tone-hint", textContent: `口調: ${toneOf(project, line.speaker)}` })] : []),
-      element("div", { className: "row" }, element("label", {}, "文字の大きさ（pt）", element("span", { className: "with-button" }, size, sizeDefault)), element("label", { className: "inline" }, vertical, "縦書き")),
+      ...(toneOf(project, line.speaker)
+        ? [element("p", { className: "hint tone-hint", textContent: `口調: ${toneOf(project, line.speaker)}` })]
+        : []),
+      element(
+        "div",
+        { className: "row" },
+        element("label", {}, "文字の大きさ（pt）", element("span", { className: "with-button" }, size, sizeDefault)),
+        element("label", { className: "inline" }, vertical, "縦書き"),
+      ),
       element("div", { className: "row" }, emphasis, inverted),
       element("label", {}, "フォント", font),
       element("h3", { textContent: "フキダシ" }),
       element("label", {}, "形", shape),
       makeDefault,
       mask,
-      element("label", { className: "inline", title: "切ると、変形の枠でフキダシだけ広げたり細くしたりでき、文字の大きさはそのまま" }, follows, "変形で文字の大きさも変える"),
+      element(
+        "label",
+        { className: "inline", title: "切ると、変形の枠でフキダシだけ広げたり細くしたりでき、文字の大きさはそのまま" },
+        follows,
+        "変形で文字の大きさも変える",
+      ),
       fitBalloon,
-      element("div", { className: "tails-head" }, element("span", { textContent: `しっぽ（${tails.length} 本）` }), ...(tailStyleAll ? [tailStyleAll] : []), addTail),
+      element(
+        "div",
+        { className: "tails-head" },
+        element("span", { textContent: `しっぽ（${tails.length} 本）` }),
+        ...(tailStyleAll ? [tailStyleAll] : []),
+        addTail,
+      ),
       ...(tailRows.length ? [element("div", { className: "tail-rows" }, ...tailRows)] : []),
       element("label", {}, "つなぐ（連結フキダシ）", link),
       element("p", {
@@ -606,10 +694,14 @@ export class Inspector {
     const tiltLeft = button("⟲ 2°", () => rotatePanel(panel, -2), "左に傾ける");
     const tiltRight = button("⟳ 2°", () => rotatePanel(panel, 2), "右に傾ける");
     const raise = button("前へ", () => (panel.z = (panel.z ?? 0) + 1), "重なりで上にする");
-    const lower = button("後ろへ", () => {
-      panel.z = (panel.z ?? 0) - 1;
-      if (!panel.z) delete panel.z;
-    }, "重なりで下にする");
+    const lower = button(
+      "後ろへ",
+      () => {
+        panel.z = (panel.z ?? 0) - 1;
+        if (!panel.z) delete panel.z;
+      },
+      "重なりで下にする",
+    );
     const inset = element("button", { textContent: "はめ込みコマを足す", title: "このコマの左下に重ねる小さなコマ" });
     inset.addEventListener("click", () => {
       let created: Panel | null = null;
@@ -618,7 +710,11 @@ export class Inspector {
     });
     const firstAlone = this.host.editor.firstAlone;
     const spread = panel.spread
-      ? button("見開きをやめる", (p) => unspreadPanel(p, page, panel, firstAlone), "向かいのページの半分を消して、このページだけのコマに戻す")
+      ? button(
+          "見開きをやめる",
+          (p) => unspreadPanel(p, page, panel, firstAlone),
+          "向かいのページの半分を消して、このページだけのコマに戻す",
+        )
       : button("見開きにする", (p) => spreadPanel(p, page, panel, firstAlone), "のどをまたいで向かいのページまで伸ばす");
     spread.disabled = !panel.spread && !facingPage(project, page, firstAlone);
     const carries = element("input", { type: "checkbox", checked: this.host.editor.panelCarries });
@@ -627,9 +723,17 @@ export class Inspector {
       writeFlag(PANEL_CARRIES_KEY, carries.checked);
     });
     // 仮のコマ: still rough; 整える makes it exact, lined up with the panels around.
-    const draft = element("input", { type: "checkbox", checked: !!panel.draft, title: "まだ決めていないコマ。鉛筆の線で描かれます（書き出しはふつうのコマと同じ）" });
+    const draft = element("input", {
+      type: "checkbox",
+      checked: !!panel.draft,
+      title: "まだ決めていないコマ。鉛筆の線で描かれます（書き出しはふつうのコマと同じ）",
+    });
     draft.addEventListener("change", () => set("draft", draft.checked, false));
-    const tidy = element("button", { className: "small", textContent: "整える", title: "このコマの線をまっすぐに、まわりのコマ・基本枠にそろえ、コマ間を設定の幅にする（仮でなくなります）" });
+    const tidy = element("button", {
+      className: "small",
+      textContent: "整える",
+      title: "このコマの線をまっすぐに、まわりのコマ・基本枠にそろえ、コマ間を設定の幅にする（仮でなくなります）",
+    });
     tidy.addEventListener("click", () => {
       this.host.edit((p) => {
         const at = p.pages.find((x) => x.id === page.id);
@@ -660,7 +764,10 @@ export class Inspector {
       ...(lines
         ? [
             (() => {
-              const b = element("button", { textContent: "このコマのセリフを並べ直す", title: "読む順に右上から並べ直す。長いセリフは句読点や助詞のあとで改行する" });
+              const b = element("button", {
+                textContent: "このコマのセリフを並べ直す",
+                title: "読む順に右上から並べ直す。長いセリフは句読点や助詞のあとで改行する",
+              });
               b.addEventListener("click", () => this.host.arrange(page.id, panel.id));
               return b;
             })(),
@@ -709,7 +816,10 @@ export class Inspector {
     const buttons = found
       .sort((a, b) => order[a.side] - order[b.side])
       .map(({ panel: other, side }) => {
-        const b = element("button", { textContent: `${SIDE_LABELS[side]}の ${other.order} とつなげる`, title: "間白をなくして 1 つのコマにする" });
+        const b = element("button", {
+          textContent: `${SIDE_LABELS[side]}の ${other.order} とつなげる`,
+          title: "間白をなくして 1 つのコマにする",
+        });
         b.disabled = !!panel.spread || !!other.spread || !joinedShape(panel, other);
         if (b.disabled) b.title = "形がそろっていないか見開きのコマなので、つなげられません";
         b.addEventListener("click", () => {
@@ -738,7 +848,11 @@ export class Inspector {
     const text = element("textarea", { value: sticky.text, placeholder: "気づいたこと、直したいこと" });
     this.host.liveText(text, (value) => (sticky.text = value));
     const colors = (Object.keys(STICKY_COLORS) as StickyColor[]).map((color) => {
-      const chip = element("button", { className: `sticky-color${(sticky.color ?? "yellow") === color ? " active" : ""}`, textContent: STICKY_COLORS[color].label, title: `${STICKY_COLORS[color].label}色` });
+      const chip = element("button", {
+        className: `sticky-color${(sticky.color ?? "yellow") === color ? " active" : ""}`,
+        textContent: STICKY_COLORS[color].label,
+        title: `${STICKY_COLORS[color].label}色`,
+      });
       chip.style.background = STICKY_COLORS[color].fill;
       chip.addEventListener("click", () =>
         this.host.edit(() => {
@@ -758,9 +872,21 @@ export class Inspector {
       element("div", { className: "row sticky-colors" }, ...colors),
       element("h3", { textContent: "紐づけ" }),
       linkLabel(page, sticky)
-        ? element("div", { className: "row link-row" }, element("span", { className: "link-target", textContent: `→ ${linkLabel(page, sticky)}` }), plainButton("外す", () => this.host.edit(() => delete sticky.link)))
-        : element("p", { className: "hint", textContent: "どこにも紐づいていません。付箋の左下の丸を、コマかセリフの上へドラッグすると紐づきます。" }),
-      element("p", { className: "hint", textContent: "付箋は作業用のメモで、CSP・PDF には書き出しません。ドラッグで好きな所へ動かせ、紐づけた先とは線でつながったままです（コマやセリフを動かすと付いてきます）。" }),
+        ? element(
+            "div",
+            { className: "row link-row" },
+            element("span", { className: "link-target", textContent: `→ ${linkLabel(page, sticky)}` }),
+            plainButton("外す", () => this.host.edit(() => delete sticky.link)),
+          )
+        : element("p", {
+            className: "hint",
+            textContent: "どこにも紐づいていません。付箋の左下の丸を、コマかセリフの上へドラッグすると紐づきます。",
+          }),
+      element("p", {
+        className: "hint",
+        textContent:
+          "付箋は作業用のメモで、CSP・PDF には書き出しません。ドラッグで好きな所へ動かせ、紐づけた先とは線でつながったままです（コマやセリフを動かすと付いてきます）。",
+      }),
       remove,
     ];
   }
@@ -787,10 +913,18 @@ export class Inspector {
       }),
     );
     const pattern = element("select");
-    for (const item of PATTERNS) pattern.append(element("option", { value: item.id, textContent: `${item.label}（${patternCount(item.id)}）`, title: item.note }));
+    for (const item of PATTERNS)
+      pattern.append(element("option", { value: item.id, textContent: `${item.label}（${patternCount(item.id)}）`, title: item.note }));
     const patternNote = element("p", { className: "hint", textContent: PATTERNS[0].note });
     // コマ数: empty keeps the pattern's own; the page's count is one click away.
-    const count = element("input", { type: "number", min: "1", max: "12", step: "1", className: "count", title: "コマ数（空なら型のまま）" });
+    const count = element("input", {
+      type: "number",
+      min: "1",
+      max: "12",
+      step: "1",
+      className: "count",
+      title: "コマ数（空なら型のまま）",
+    });
     count.placeholder = String(patternCount(pattern.value));
     pattern.addEventListener("change", () => {
       patternNote.textContent = PATTERNS.find((item) => item.id === pattern.value)?.note ?? "";
@@ -811,10 +945,15 @@ export class Inspector {
     // With its 見開き partner, past the whole 見開き next to it (as dragging in the list).
     const [blockFirst, blockLast] = pageBlock(project, index);
     const earlier = button("1 つ前へ", () => this.host.edit((p) => moveBlock(p, pageIndex(p, page.id), -1)), blockFirst === 0);
-    const later = button("1 つ後ろへ", () => this.host.edit((p) => moveBlock(p, pageIndex(p, page.id), 1)), blockLast === project.pages.length - 1);
+    const later = button(
+      "1 つ後ろへ",
+      () => this.host.edit((p) => moveBlock(p, pageIndex(p, page.id), 1)),
+      blockLast === project.pages.length - 1,
+    );
     const remove = button("このページを消す", async () => {
       const filled = !pageIsEmpty(page);
-      if (filled && !(await ask(`${index + 1} ページを消しますか？（元に戻すで戻せます）`, { title: "Name Studio", kind: "warning" }))) return;
+      if (filled && !(await ask(`${index + 1} ページを消しますか？（元に戻すで戻せます）`, { title: "Name Studio", kind: "warning" })))
+        return;
       const why = cannotRemove(project, [page.id]);
       if (why) this.host.status(why);
       else this.host.edit((p) => deletePages(p, [page.id]));
@@ -857,15 +996,35 @@ export class Inspector {
           button("比べる…", () => this.host.compare(set.id)),
           button("もう 1 案", () => this.host.makeOption(first, last)),
         ),
-        element("p", { className: "hint", textContent: "案を押すとその案に入れ替わります。ページを足すと、その案だけのページになります（ページ配分の案）。" }),
+        element("p", {
+          className: "hint",
+          textContent: "案を押すとその案に入れ替わります。ページを足すと、その案だけのページになります（ページ配分の案）。",
+        }),
       );
     } else {
-      altSection.push(element("div", { className: "row" }, button("このページの別案を作る", () => this.host.makeOption(index, index))));
+      altSection.push(
+        element(
+          "div",
+          { className: "row" },
+          button("このページの別案を作る", () => this.host.makeOption(index, index)),
+        ),
+      );
       if (pair) {
         const pairIndex = pageIndex(project, pair[0].id);
-        altSection.push(element("div", { className: "row" }, button(`${pairIndex + 1}–${pairIndex + 2} ページの別案を作る`, () => this.host.makeOption(pairIndex, pairIndex + 1))));
+        altSection.push(
+          element(
+            "div",
+            { className: "row" },
+            button(`${pairIndex + 1}–${pairIndex + 2} ページの別案を作る`, () => this.host.makeOption(pairIndex, pairIndex + 1)),
+          ),
+        );
       }
-      altSection.push(element("p", { className: "hint", textContent: "今のページを写した案ができ、そちらを編集します。元の案はそのまま残り、比べて選べます。" }));
+      altSection.push(
+        element("p", {
+          className: "hint",
+          textContent: "今のページを写した案ができ、そちらを編集します。元の案はそのまま残り、比べて選べます。",
+        }),
+      );
     }
     return [
       element("h2", { textContent: `${index + 1} ページ` }),
@@ -875,7 +1034,11 @@ export class Inspector {
       element("div", { className: "row" }, frame, reorder),
       button("このページのセリフを並べ直す", () => this.host.arrange(page.id), !page.lines.length),
       button("しっぽのないセリフにしっぽを付ける", () => this.host.addTails(page.id), !page.lines.some((line) => wantsTail(page, line))),
-      element("p", { className: "hint", textContent: "コマ割り: コマを横切るように線を引くと割れます（ほぼ水平・垂直はまっすぐに。Alt で斜め）。コマの外をドラッグすると新しいコマ。" }),
+      element("p", {
+        className: "hint",
+        textContent:
+          "コマ割り: コマを横切るように線を引くと割れます（ほぼ水平・垂直はまっすぐに。Alt で斜め）。コマの外をドラッグすると新しいコマ。",
+      }),
       element("h3", { textContent: "コマ割りの型" }),
       element("div", { className: "row" }, pattern, element("label", { className: "inline" }, count, "コマ")),
       applyButton,

@@ -10,7 +10,9 @@ describe("選択の決まり", () => {
   });
 
   it("lets the other tools keep only what they make", () => {
-    const kept = Object.fromEntries(TOOLS.filter((tool) => tool !== "select").map((tool) => [tool, KINDS.filter((kind) => toolHolds(tool, kind))]));
+    const kept = Object.fromEntries(
+      TOOLS.filter((tool) => tool !== "select").map((tool) => [tool, KINDS.filter((kind) => toolHolds(tool, kind))]),
+    );
     expect(kept).toEqual({
       cut: ["panel"],
       text: ["line"],

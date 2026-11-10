@@ -16,7 +16,15 @@ function setUp() {
   const other = addLine(project, first, [150, 150], "下のコマ");
   line.panel = top.id;
   other.panel = bottom.id;
-  const stroke = addStroke(project, first, [[40, 40, 1], [80, 80, 1]], 0.4)!;
+  const stroke = addStroke(
+    project,
+    first,
+    [
+      [40, 40, 1],
+      [80, 80, 1],
+    ],
+    0.4,
+  )!;
   const sticky = addSticky(project, first, [200, 30], "間を長く");
   linkSticky(first, sticky, "panel", top.id, [30, 30]);
   top.note = "引き";

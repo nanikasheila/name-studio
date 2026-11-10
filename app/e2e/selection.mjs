@@ -44,7 +44,15 @@ try {
     page.panels = [];
     addPanel(project, page, rectShape([x0, y0, x1, (y0 + y1) / 2 - 2]));
     addPanel(project, page, rectShape([x0, (y0 + y1) / 2 + 2, x1, y1]));
-    page.strokes.push({ id: "stroke-a", points: [[x0 + 20, y0 + 20, 1], [x0 + 60, y0 + 50, 1], [x0 + 90, y0 + 25, 1]], widthMm: 0.4 });
+    page.strokes.push({
+      id: "stroke-a",
+      points: [
+        [x0 + 20, y0 + 20, 1],
+        [x0 + 60, y0 + 50, 1],
+        [x0 + 90, y0 + 25, 1],
+      ],
+      widthMm: 0.4,
+    });
     addFill(project, page, rectShape([x0 + 10, y1 - 60, x0 + 50, y1 - 20]));
     window.nameStudio.show(project);
     const wb = window.nameStudio.workbench;
@@ -70,7 +78,11 @@ try {
       };
     });
   const tool = (name) => page.evaluate((name) => window.nameStudio.workbench.setTool(name), name);
-  const at = (mm) => page.evaluate((mm) => { const wb = window.nameStudio.workbench; return wb.editor.clientOf(wb.project.pages[1].id, mm); }, mm);
+  const at = (mm) =>
+    page.evaluate((mm) => {
+      const wb = window.nameStudio.workbench;
+      return wb.editor.clientOf(wb.project.pages[1].id, mm);
+    }, mm);
   const settle = () => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   async function drag(points, keys = []) {
     for (const key of keys) await page.keyboard.down(key);
@@ -118,7 +130,10 @@ try {
     wb.editor.select({ kind: "stroke", pageId: wb.project.pages[1].id, id: "stroke-a" });
   });
   s = await state();
-  check(s.tool === "select" && s.activeButton === "tool-select" && s.selection?.kind === "stroke", "picking with the pen in hand takes up the select tool (button too)");
+  check(
+    s.tool === "select" && s.activeButton === "tool-select" && s.selection?.kind === "stroke",
+    "picking with the pen in hand takes up the select tool (button too)",
+  );
   check(s.frame, "a rough line shows the transform frame at once");
 
   // A fill shows the frame at once too; a panel only with 変形.
@@ -145,7 +160,10 @@ try {
   await page.keyboard.press("ArrowRight");
   s = await state();
   const moved = (a, b) => a.some((p, i) => Math.abs(p[0] - b[i][0]) > 0.01);
-  const panelMoved = moved(s.panels.find((p) => p.id === still.selection.id).shape, still.panels.find((p) => p.id === still.selection.id).shape);
+  const panelMoved = moved(
+    s.panels.find((p) => p.id === still.selection.id).shape,
+    still.panels.find((p) => p.id === still.selection.id).shape,
+  );
   check(panelMoved && moved(s.stroke, still.stroke), "→ moves the panel and its rough line with it");
   await page.keyboard.press("Control+z");
   await settle();
@@ -153,7 +171,13 @@ try {
   // Alt + drag a panel: moved without snapping, not swapped.
   const plain = await state();
   const [ax, ay] = await at(top);
-  await drag([[ax, ay], [ax + 7, ay + 5]], ["Alt"]);
+  await drag(
+    [
+      [ax, ay],
+      [ax + 7, ay + 5],
+    ],
+    ["Alt"],
+  );
   s = await state();
   const id = plain.panels[0].id;
   check(
@@ -170,7 +194,10 @@ try {
   check(s.selection === null, "Esc lets the selection go");
   const strokes = await page.evaluate(() => window.nameStudio.workbench.project.pages[1].strokes.length);
   await page.keyboard.press("Delete");
-  check((await page.evaluate(() => window.nameStudio.workbench.project.pages[1].strokes.length)) === strokes, "Delete with nothing picked takes nothing");
+  check(
+    (await page.evaluate(() => window.nameStudio.workbench.project.pages[1].strokes.length)) === strokes,
+    "Delete with nothing picked takes nothing",
+  );
 
   // 資料: a picture pasted is chosen; the arrows move it, Esc lets it go, Delete takes it away.
   await page.evaluate(async () => {
@@ -183,7 +210,11 @@ try {
     await wb.references.pasteImages([new File([blob], "a.png", { type: "image/png" })], { page: wb.project.pages[1] });
   });
   await settle();
-  const picture = () => page.evaluate(() => ({ chosen: window.nameStudio.workbench.editor.reference, boxes: (window.nameStudio.workbench.project.pages[1].references ?? []).map((r) => r.box) }));
+  const picture = () =>
+    page.evaluate(() => ({
+      chosen: window.nameStudio.workbench.editor.reference,
+      boxes: (window.nameStudio.workbench.project.pages[1].references ?? []).map((r) => r.box),
+    }));
   let p = await picture();
   check(p.chosen && p.boxes.length === 1, "a pasted picture is chosen with the 資料 tool");
   await page.keyboard.press("ArrowDown");
@@ -229,7 +260,10 @@ try {
     wb.board.select({ kind: "scene", sceneId: wb.project.scenes[0].id });
   });
   await page.keyboard.press("Delete");
-  check((await page.evaluate(() => window.nameStudio.workbench.project.scenes.length)) === 0, "Delete takes the picked scene away (its pages stay)");
+  check(
+    (await page.evaluate(() => window.nameStudio.workbench.project.scenes.length)) === 0,
+    "Delete takes the picked scene away (its pages stay)",
+  );
   await page.keyboard.press("Control+z");
 
   // A double-click on a 付箋 writes in it, as on a balloon or a panel's memo.
@@ -253,7 +287,11 @@ try {
   check((await title()).endsWith("（P / F9）"), "and the keys as changed in キー設定");
   await page.evaluate(() => window.nameStudio.workbench.shortcuts.reset());
   check(
-    await page.evaluate(() => window.nameStudio.workbench.shortcuts.actionFor("Ctrl+O") === "button.open" && window.nameStudio.workbench.shortcuts.actionFor("Ctrl+N") === "button.new-project"),
+    await page.evaluate(
+      () =>
+        window.nameStudio.workbench.shortcuts.actionFor("Ctrl+O") === "button.open" &&
+        window.nameStudio.workbench.shortcuts.actionFor("Ctrl+N") === "button.new-project",
+    ),
     "Ctrl+O opens and Ctrl+N makes a new name in the editor too",
   );
 

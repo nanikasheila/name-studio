@@ -111,7 +111,10 @@ try {
   await page.keyboard.press("Escape");
   await page.locator("#side-cast").focus();
   await page.keyboard.press("Control+v");
-  check(await wb(() => document.querySelector("#status")?.textContent?.includes("同じ名前")), "pasting a character the name has is left out (said so)");
+  check(
+    await wb(() => document.querySelector("#status")?.textContent?.includes("同じ名前")),
+    "pasting a character the name has is left out (said so)",
+  );
 
   // --- 台本 ---------------------------------------------------------------------------
   await open("script");
@@ -144,7 +147,10 @@ try {
   check((await page.locator("#side-notes .note-item.picked").count()) === 3, "Ctrl+A picks every 付箋");
   await page.locator("#side-notes .note-item").first().click({ button: "right" });
   await menuItem("桃にする").click();
-  check((await project((p) => p.pages.flatMap((pg) => pg.stickies ?? []).every((s) => s.color === "pink"))) === true, "the menu gives them all another colour");
+  check(
+    (await project((p) => p.pages.flatMap((pg) => pg.stickies ?? []).every((s) => s.color === "pink"))) === true,
+    "the menu gives them all another colour",
+  );
   await page.locator("#side-notes .note-filter").nth(1).click();
   check((await page.locator("#side-notes .note-item").count()) === 3, "the colour filter keeps the pink ones");
   await page.locator("#side-notes .note-filter").nth(1).click();
@@ -159,17 +165,32 @@ try {
   await open("held");
   const heldWords = () => project((p) => (p.held ?? []).map((h) => h.lines[0]?.text).join(","));
   check((await heldWords()) === "保留20,保留100", `two held panels (${await heldWords()})`);
-  await page.locator("#side-held .held-item").first().click({ position: { x: 4, y: 4 } });
+  await page
+    .locator("#side-held .held-item")
+    .first()
+    .click({ position: { x: 4, y: 4 } });
   await page.keyboard.press("Control+d");
   check((await heldWords()) === "保留20,保留20,保留100", `Ctrl+D copies a held panel (${await heldWords()})`);
-  await page.locator("#side-held .held-item").nth(2).click({ position: { x: 4, y: 4 } });
+  await page
+    .locator("#side-held .held-item")
+    .nth(2)
+    .click({ position: { x: 4, y: 4 } });
   await page.keyboard.press("Alt+ArrowUp");
   check((await heldWords()) === "保留20,保留100,保留20", `Alt+↑ moves it up (${await heldWords()})`);
-  await page.locator("#side-held .held-item").nth(1).click({ button: "right", position: { x: 4, y: 4 } });
+  await page
+    .locator("#side-held .held-item")
+    .nth(1)
+    .click({ button: "right", position: { x: 4, y: 4 } });
   check(await menuItem("このページに置く").isVisible(), "the menu puts it on the page");
   await page.keyboard.press("Escape");
-  await page.locator("#side-held .held-item").nth(0).click({ position: { x: 4, y: 4 } });
-  await page.locator("#side-held .held-item").nth(1).click({ position: { x: 4, y: 4 }, modifiers: ["Control"] });
+  await page
+    .locator("#side-held .held-item")
+    .nth(0)
+    .click({ position: { x: 4, y: 4 } });
+  await page
+    .locator("#side-held .held-item")
+    .nth(1)
+    .click({ position: { x: 4, y: 4 }, modifiers: ["Control"] });
   await page.keyboard.press("Delete");
   check((await heldWords()) === "保留20", `Delete drops the two picked (${await heldWords()})`);
 
@@ -202,10 +223,12 @@ try {
   await wb(() => window.nameStudio.workbench.board.toggleWide(true));
   await page.waitForTimeout(300);
   const opened = await wb(() => {
-    const bar = document.querySelector('.scene-lane rect.scene[data-scene]');
+    const bar = document.querySelector(".scene-lane rect.scene[data-scene]");
     if (!bar) return false;
     const box = bar.getBoundingClientRect();
-    bar.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: box.left + box.width / 2, clientY: box.top + 4 }));
+    bar.dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: box.left + box.width / 2, clientY: box.top + 4 }),
+    );
     return true;
   });
   check(opened, "the story band shows the scenes");
@@ -216,7 +239,7 @@ try {
     check((await scenes()).split(",").length === 3, `「分ける」 splits it (${await scenes()})`);
     await page.waitForTimeout(150);
     await wb(() => {
-      const bar = document.querySelectorAll('.scene-lane rect.scene[data-scene]')[1];
+      const bar = document.querySelectorAll(".scene-lane rect.scene[data-scene]")[1];
       const box = bar.getBoundingClientRect();
       bar.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: box.left + 4, clientY: box.top + 4 }));
     });

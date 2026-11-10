@@ -93,7 +93,8 @@ export function fillSettingsFrom(raw: unknown): FillSettings {
 function optionsFrom(raw: unknown, fallback: FillOptions): FillOptions {
   if (!raw || typeof raw !== "object") return fallback;
   const value = raw as Partial<Record<keyof FillOptions, unknown>>;
-  const number = (x: unknown, min: number, max: number, none: number) => (typeof x === "number" && Number.isFinite(x) ? clamp(x, min, max) : none);
+  const number = (x: unknown, min: number, max: number, none: number) =>
+    typeof x === "number" && Number.isFinite(x) ? clamp(x, min, max) : none;
   return {
     gapMm: number(value.gapMm, 0, GAP_STEPS[GAP_STEPS.length - 1].mm, fallback.gapMm),
     center: typeof value.center === "boolean" ? value.center : fallback.center,

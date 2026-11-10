@@ -19,7 +19,11 @@ function sample() {
 describe("story", () => {
   it("finds scenes and the pages between them", () => {
     const { project } = sample();
-    expect(sceneSpans(project).map((span) => [span.first, span.last])).toEqual([[0, 1], [2, 3], [5, 5]]);
+    expect(sceneSpans(project).map((span) => [span.first, span.last])).toEqual([
+      [0, 1],
+      [2, 3],
+      [5, 5],
+    ]);
     expect(uncoveredRuns(project)).toEqual([[4, 4]]);
   });
 

@@ -51,7 +51,15 @@ describe("settings kept on this computer", () => {
   });
 
   it("carries on when there is no storage or it refuses", () => {
-    const refusing = { ...memoryStorage(), getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("full"); } };
+    const refusing = {
+      ...memoryStorage(),
+      getItem: () => {
+        throw new Error("blocked");
+      },
+      setItem: () => {
+        throw new Error("full");
+      },
+    };
     vi.stubGlobal("localStorage", refusing);
     expect(() => writeFlag("f", true)).not.toThrow();
     expect(readFlag("f", true)).toBe(true);

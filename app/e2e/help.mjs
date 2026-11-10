@@ -60,21 +60,34 @@ try {
   const pageBefore = await page.evaluate(() => window.nameStudio.workbench.editor.currentPages());
   await page.keyboard.press("ArrowLeft");
   check((await count()).startsWith("1 /"), "← goes back");
-  check(JSON.stringify(await page.evaluate(() => window.nameStudio.workbench.editor.currentPages())) === JSON.stringify(pageBefore), "and does not turn the page");
+  check(
+    JSON.stringify(await page.evaluate(() => window.nameStudio.workbench.editor.currentPages())) === JSON.stringify(pageBefore),
+    "and does not turn the page",
+  );
   await page.keyboard.press("Escape");
   check(await page.locator("#tour").isHidden(), "Esc closes it");
-  check((await page.evaluate(() => localStorage.getItem("namestudio.tourSeen"))) === JSON.stringify({ start: true, editor: true }), "and both guides are kept as seen");
+  check(
+    (await page.evaluate(() => localStorage.getItem("namestudio.tourSeen"))) === JSON.stringify({ start: true, editor: true }),
+    "and both guides are kept as seen",
+  );
 
   // --- the help bar ---
   const bar = () => page.locator("#help-bar-text").textContent();
   const settle = () => page.waitForTimeout(120);
-  const at = (mm) => page.evaluate((mm) => { const wb = window.nameStudio.workbench; return wb.editor.clientOf(wb.project.pages[1].id, mm); }, mm);
+  const at = (mm) =>
+    page.evaluate((mm) => {
+      const wb = window.nameStudio.workbench;
+      return wb.editor.clientOf(wb.project.pages[1].id, mm);
+    }, mm);
   const [px, py] = await at([60, 100]);
   await page.mouse.move(px, py);
   await page.mouse.move(px + 2, py + 2);
   await settle();
   let text = await bar();
-  check(text.startsWith("コマ") && text.includes("ドラッグ動かす") && text.includes("ダブルクリックコマのメモを書く"), `over a panel: its name and what the mouse does (${text.slice(0, 40)}…)`);
+  check(
+    text.startsWith("コマ") && text.includes("ドラッグ動かす") && text.includes("ダブルクリックコマのメモを書く"),
+    `over a panel: its name and what the mouse does (${text.slice(0, 40)}…)`,
+  );
   check(text.includes("Ctrl+T変形"), "and the keys");
   // A key set anew in キー設定 is the one named.
   await page.evaluate(() => {
@@ -110,7 +123,10 @@ try {
   await page.mouse.move(px, py);
   await settle();
   text = await bar();
-  check(text.startsWith("ペン") && text.includes("Shift+ドラッグまっすぐな線") && text.includes("]太く"), "with the pen: what the pen does, and its keys");
+  check(
+    text.startsWith("ペン") && text.includes("Shift+ドラッグまっすぐな線") && text.includes("]太く"),
+    "with the pen: what the pen does, and its keys",
+  );
   await page.evaluate(() => window.nameStudio.workbench.setTool("select"));
 
   // Off the pages: a part's own words.
@@ -118,7 +134,10 @@ try {
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await settle();
   text = await bar();
-  check(text.startsWith("コマ割り") && text.includes("K持ち替える") && text.includes("K を押したままその間だけ持ち替える"), "over a tool's button: the tool, its key, holding it");
+  check(
+    text.startsWith("コマ割り") && text.includes("K持ち替える") && text.includes("K を押したままその間だけ持ち替える"),
+    "over a tool's button: the tool, its key, holding it",
+  );
   const save = await page.locator("#save").boundingBox();
   await page.mouse.move(save.x + 10, save.y + 10);
   await settle();
@@ -133,7 +152,13 @@ try {
   // Hidden from the bar itself, shown again from the settings; kept.
   await page.locator("#help-bar-hide").click();
   check(await page.locator("#help-bar").isHidden(), "× hides the help bar");
-  check(await page.locator("#status").isVisible().then(() => true), "the messages stay");
+  check(
+    await page
+      .locator("#status")
+      .isVisible()
+      .then(() => true),
+    "the messages stay",
+  );
   check((await page.evaluate(() => localStorage.getItem("namestudio.helpBar"))) === "0", "kept on this computer");
   await page.evaluate(() => document.getElementById("settings").click());
   check(!(await page.locator("#st-help-bar").isChecked()), "the settings show it hidden");
@@ -159,14 +184,28 @@ try {
   );
   check(labels.length >= 25, `the parts are named (${labels.length})`);
   for (const name of ["選択V", "コマ割りK", "紙面Ctrl+0", "物語の帯F6", "書き出すCtrl+Shift+E", "ヘルプ?"]) {
-    check(labels.some((label) => label.text.startsWith(name)), `${name.replace(/[A-Z0-9+?]+$/, "")} with its key`);
+    check(
+      labels.some((label) => label.text.startsWith(name)),
+      `${name.replace(/[A-Z0-9+?]+$/, "")} with its key`,
+    );
   }
   check(labels.some((label) => label.text.startsWith("変形")) === false, "parts not on screen are left out");
-  const overlapping = labels.flatMap((a, i) => labels.slice(i + 1).filter((b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom).map((b) => `${a.text.slice(0, 6)} / ${b.text.slice(0, 6)}`));
+  const overlapping = labels.flatMap((a, i) =>
+    labels
+      .slice(i + 1)
+      .filter((b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom)
+      .map((b) => `${a.text.slice(0, 6)} / ${b.text.slice(0, 6)}`),
+  );
   check(overlapping.length === 0, `no words over other words (${overlapping.join(", ")})`);
-  check(labels.every((l) => l.left >= 0 && l.top >= 0 && l.right <= 1600 && l.bottom <= 1000), "all inside the window");
+  check(
+    labels.every((l) => l.left >= 0 && l.top >= 0 && l.right <= 1600 && l.bottom <= 1000),
+    "all inside the window",
+  );
   const head = await page.locator(".help-head").boundingBox();
-  check(labels.every((l) => l.right <= head.x || l.left >= head.x + head.width || l.bottom <= head.y || l.top >= head.y + head.height), "and none under its header");
+  check(
+    labels.every((l) => l.right <= head.x || l.left >= head.x + head.width || l.bottom <= head.y || l.top >= head.y + head.height),
+    "and none under its header",
+  );
   // While it is open the keys are its own: V does not change the tool.
   await page.keyboard.press("p");
   check((await page.evaluate(() => window.nameStudio.workbench.editor.tool)) === "select", "keys do nothing else while it is open");
@@ -189,10 +228,12 @@ try {
       return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
     }),
   );
-  const crowded = narrow.filter((a, i) => narrow.slice(i + 1).some((b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom)).length;
+  const crowded = narrow.filter((a, i) =>
+    narrow.slice(i + 1).some((b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom),
+  ).length;
   check(crowded <= 2, `a narrow window: hardly any words over others (${crowded})`);
   await page.locator("#help-tour").click();
-  check(await overlay.isHidden() && (await page.locator("#tour").isVisible()), "its 使い方の案内 starts the guide again");
+  check((await overlay.isHidden()) && (await page.locator("#tour").isVisible()), "its 使い方の案内 starts the guide again");
   await page.keyboard.press("Escape");
   await page.setViewportSize({ width: 1600, height: 1000 });
 
@@ -200,7 +241,11 @@ try {
   await page.keyboard.press("Control+k");
   await page.keyboard.type("使い方の案内");
   await page.waitForTimeout(100);
-  const found = await page.locator(".palette-list, #palette-list, .command-palette").first().textContent().catch(() => "");
+  const found = await page
+    .locator(".palette-list, #palette-list, .command-palette")
+    .first()
+    .textContent()
+    .catch(() => "");
   check(found.includes("使い方の案内を始める"), "the palette finds 使い方の案内");
   await page.keyboard.press("Enter");
   await page.waitForTimeout(100);

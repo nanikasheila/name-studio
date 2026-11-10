@@ -43,7 +43,11 @@ export function addReference(project: Project, page: Page, image: StoredImage, a
     width = height / aspect;
   }
   const [cx, cy] = at ?? [(tx0 + tx1) / 2, (ty0 + ty1) / 2];
-  const reference: ReferenceImage = { id: newId(project, "reference"), image: image.id, box: [cx - width / 2, cy - height / 2, cx + width / 2, cy + height / 2] };
+  const reference: ReferenceImage = {
+    id: newId(project, "reference"),
+    image: image.id,
+    box: [cx - width / 2, cy - height / 2, cx + width / 2, cy + height / 2],
+  };
   // Beside the page (in the 欄外) it is looked at, not drawn over: at full strength.
   if (offPage(reference.box, project.pageFormat)) reference.opacity = 1;
   page.references = [...(page.references ?? []), reference];

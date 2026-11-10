@@ -19,7 +19,14 @@ export interface Picked {
 export function stillThere(project: Project | null, s: Picked): boolean {
   const page = project?.pages.find((p) => p.id === s.pageId);
   if (!page) return false;
-  const lists = { panel: page.panels, line: page.lines, stroke: page.strokes, breakout: page.breakouts, sticky: page.stickies ?? [], fill: page.fills ?? [] };
+  const lists = {
+    panel: page.panels,
+    line: page.lines,
+    stroke: page.strokes,
+    breakout: page.breakouts,
+    sticky: page.stickies ?? [],
+    fill: page.fills ?? [],
+  };
   if (s.kind === "group") return !!s.items?.every((item) => lists[item.kind].some((x: { id: string }) => x.id === item.id));
   return lists[s.kind].some((item: { id: string }) => item.id === s.id);
 }

@@ -14,10 +14,22 @@ export function duplicateHeld(project: Project, ids: readonly string[]): HeldPan
     // The panel with what it holds, copied as a page so every id is new and every link follows.
     const page: Page = {
       ...emptyPage("held"),
-      ...structuredClone({ panels: [source.panel], lines: source.lines, strokes: source.strokes, fills: source.fills ?? [], stickies: source.stickies ?? [] }),
+      ...structuredClone({
+        panels: [source.panel],
+        lines: source.lines,
+        strokes: source.strokes,
+        fills: source.fills ?? [],
+        stickies: source.stickies ?? [],
+      }),
     };
     const [copy] = copyPages(project, [page]);
-    const made: HeldPanel = { ...structuredClone(source), id: newId(project, "held"), panel: copy.panels[0], lines: copy.lines, strokes: copy.strokes };
+    const made: HeldPanel = {
+      ...structuredClone(source),
+      id: newId(project, "held"),
+      panel: copy.panels[0],
+      lines: copy.lines,
+      strokes: copy.strokes,
+    };
     if (source.fills) made.fills = copy.fills;
     if (source.stickies) made.stickies = copy.stickies;
     // A copy is only in the list until it is put somewhere.

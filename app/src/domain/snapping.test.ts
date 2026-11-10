@@ -7,7 +7,14 @@ import { basicBox, trimBox } from "./pagebox";
 import { DEFAULT_GUTTERS, newProject } from "./project";
 import { writeText } from "../platform/settings";
 
-const only = (change: Partial<SnapSettings>): SnapSettings => ({ axis: false, panels: false, frame: false, grid: false, gridMm: 5, ...change });
+const only = (change: Partial<SnapSettings>): SnapSettings => ({
+  axis: false,
+  panels: false,
+  frame: false,
+  grid: false,
+  gridMm: 5,
+  ...change,
+});
 
 function pageWith(...boxes: [number, number, number, number][]): Page {
   const project = newProject("t", 1);
@@ -48,7 +55,10 @@ describe("吸着", () => {
   it("lines a corner up with the corners beside it (水平・垂直)", () => {
     const shape = rectShape([40, 40, 100, 120]);
     const beside = besideCorners(shape, 2);
-    expect(beside).toEqual([[100, 40], [40, 120]]);
+    expect(beside).toEqual([
+      [100, 40],
+      [40, 120],
+    ]);
     const { point } = snapPointTo([101.5, 118], { xs: [], ys: [], grid: null }, 3, beside);
     expect(point).toEqual([100, 120]);
   });

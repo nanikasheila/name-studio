@@ -56,7 +56,13 @@ describe("Autosaver", () => {
   it("writes once changes stop", async () => {
     const timers = new FakeTimers();
     let writes = 0;
-    const saver = new Autosaver(async () => void writes++, () => false, timers, 1000, 10000);
+    const saver = new Autosaver(
+      async () => void writes++,
+      () => false,
+      timers,
+      1000,
+      10000,
+    );
     saver.notify();
     await timers.advance(500);
     saver.notify();
@@ -70,7 +76,13 @@ describe("Autosaver", () => {
   it("writes while changes keep coming", async () => {
     const timers = new FakeTimers();
     let writes = 0;
-    const saver = new Autosaver(async () => void writes++, () => false, timers, 1000, 3000);
+    const saver = new Autosaver(
+      async () => void writes++,
+      () => false,
+      timers,
+      1000,
+      3000,
+    );
     for (let i = 0; i < 10; i++) {
       saver.notify();
       await timers.advance(500);
@@ -82,7 +94,13 @@ describe("Autosaver", () => {
     const timers = new FakeTimers();
     let writes = 0;
     let busy = true;
-    const saver = new Autosaver(async () => void writes++, () => busy, timers, 1000, 3000);
+    const saver = new Autosaver(
+      async () => void writes++,
+      () => busy,
+      timers,
+      1000,
+      3000,
+    );
     saver.notify();
     await timers.advance(5000);
     expect(writes).toBe(0);
@@ -117,7 +135,11 @@ describe("Autosaver", () => {
   it("does nothing on flush or after reset when nothing changed", async () => {
     const timers = new FakeTimers();
     let writes = 0;
-    const saver = new Autosaver(async () => void writes++, () => false, timers);
+    const saver = new Autosaver(
+      async () => void writes++,
+      () => false,
+      timers,
+    );
     await saver.flush();
     saver.notify();
     saver.reset();
@@ -130,7 +152,13 @@ describe("自動保存の間隔", () => {
   it("goes by times set later, also for a write already waiting", async () => {
     const timers = new FakeTimers();
     let writes = 0;
-    const saver = new Autosaver(async () => void writes++, () => false, timers, 1000, 10000);
+    const saver = new Autosaver(
+      async () => void writes++,
+      () => false,
+      timers,
+      1000,
+      10000,
+    );
     saver.notify();
     saver.setTiming(5000, 60000);
     await timers.advance(4000);

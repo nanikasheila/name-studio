@@ -91,8 +91,18 @@ function place(mark: HTMLDivElement, items: HTMLElement[], target: number, axis:
   const box = items[after ? items.length - 1 : target]?.getBoundingClientRect();
   if (!box) return;
   if (axis === "y") {
-    Object.assign(mark.style, { left: `${box.left}px`, width: `${box.width}px`, top: `${(after ? box.bottom : box.top) - 1}px`, height: "" });
+    Object.assign(mark.style, {
+      left: `${box.left}px`,
+      width: `${box.width}px`,
+      top: `${(after ? box.bottom : box.top) - 1}px`,
+      height: "",
+    });
   } else {
-    Object.assign(mark.style, { top: `${box.top}px`, height: `${box.height}px`, left: `${(after ? box.right : box.left) - 2}px`, width: "" });
+    Object.assign(mark.style, {
+      top: `${box.top}px`,
+      height: `${box.height}px`,
+      left: `${(after ? box.right : box.left) - 2}px`,
+      width: "",
+    });
   }
 }

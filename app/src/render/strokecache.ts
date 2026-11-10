@@ -99,7 +99,16 @@ export class StrokeCache {
    * `drawStrokes` would, at `m` on `ctx` (whose transform maps to device pixels).
    * `layer` keeps the picture of each ラフ線のレイヤー apart, with only its lines.
    */
-  draw(ctx: CanvasRenderingContext2D, page: Page, size: [number, number], m: MmToPx, over: boolean, style: StrokeStyle, layerId = "", only?: Stroke[]): void {
+  draw(
+    ctx: CanvasRenderingContext2D,
+    page: Page,
+    size: [number, number],
+    m: MmToPx,
+    over: boolean,
+    style: StrokeStyle,
+    layerId = "",
+    only?: Stroke[],
+  ): void {
     const strokes = (only ?? page.strokes).filter((stroke) => !!stroke.over === over);
     if (!strokes.length) return;
     const t = ctx.getTransform();
@@ -164,7 +173,15 @@ export class StrokeCache {
   private paintAdded(layer: Layer, strokes: Stroke[], content: Content, style: StrokeStyle): void {
     const ctx = layer.canvas.getContext("2d")!;
     ctx.setTransform(layer.pixelScale, 0, 0, layer.pixelScale, 0, 0);
-    drawStrokes(ctx, { strokes } as Page, { scale: layer.scale, x: 0, y: 0 }, !!strokes[0]?.over, style.color, style.minWidthPx, style.brushes);
+    drawStrokes(
+      ctx,
+      { strokes } as Page,
+      { scale: layer.scale, x: 0, y: 0 },
+      !!strokes[0]?.over,
+      style.color,
+      style.minWidthPx,
+      style.brushes,
+    );
     layer.content = content;
   }
 

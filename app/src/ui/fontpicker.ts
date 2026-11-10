@@ -21,7 +21,11 @@ function remember(name: string): void {
 }
 
 /** What the list shows for `query`: groups of names, recently used first. */
-export function fontGroups(query: string, choices: readonly string[] = fontChoices(), recent: readonly string[] = recentFonts()): { title: string; names: string[] }[] {
+export function fontGroups(
+  query: string,
+  choices: readonly string[] = fontChoices(),
+  recent: readonly string[] = recentFonts(),
+): { title: string; names: string[] }[] {
   const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const matches = (name: string) => {
     const face = installedFont(name);
@@ -212,7 +216,10 @@ class FontMenu {
         ),
       ),
     );
-    if (!groups.length) this.list.append(element("p", { className: "font-menu-empty", textContent: "合うフォントがありません。Enter でこの名前のまま使います" }));
+    if (!groups.length)
+      this.list.append(
+        element("p", { className: "font-menu-empty", textContent: "合うフォントがありません。Enter でこの名前のまま使います" }),
+      );
     const at = current ? this.items.findIndex((item) => item.textContent === current) : -1;
     this.setActive(at >= 0 ? at : query.trim() ? 0 : -1, true);
     if (at < 0 && !query.trim()) this.preview(current || null);
@@ -322,6 +329,9 @@ class FontMenu {
     this.root.style.left = `${left}px`;
     this.root.style.width = `${width}px`;
     this.root.style.maxHeight = `${height}px`;
-    this.root.style.top = below >= Math.min(300, above) ? `${field.bottom + 2}px` : `${Math.max(8, field.top - 2 - Math.min(height, this.root.offsetHeight || height))}px`;
+    this.root.style.top =
+      below >= Math.min(300, above)
+        ? `${field.bottom + 2}px`
+        : `${Math.max(8, field.top - 2 - Math.min(height, this.root.offsetHeight || height))}px`;
   }
 }

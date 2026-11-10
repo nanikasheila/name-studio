@@ -17,9 +17,56 @@ export interface PlacedImage {
 
 const INK = "#1b1a18";
 // Characters that are turned 90° in vertical writing.
-const ROTATED = new Set(["ー", "－", "―", "—", "〜", "～", "…", "‥", "(", ")", "（", "）", "「", "」", "『", "』", "[", "]", "【", "】", "-", "=", "＝"]);
+const ROTATED = new Set([
+  "ー",
+  "－",
+  "―",
+  "—",
+  "〜",
+  "～",
+  "…",
+  "‥",
+  "(",
+  ")",
+  "（",
+  "）",
+  "「",
+  "」",
+  "『",
+  "』",
+  "[",
+  "]",
+  "【",
+  "】",
+  "-",
+  "=",
+  "＝",
+]);
 // Small punctuation that sits in the upper right of its cell when vertical.
-const SHIFTED = new Set(["、", "。", "，", "．", "っ", "ゃ", "ゅ", "ょ", "ッ", "ャ", "ュ", "ョ", "ぁ", "ぃ", "ぅ", "ぇ", "ぉ", "ァ", "ィ", "ゥ", "ェ", "ォ"]);
+const SHIFTED = new Set([
+  "、",
+  "。",
+  "，",
+  "．",
+  "っ",
+  "ゃ",
+  "ゅ",
+  "ょ",
+  "ッ",
+  "ャ",
+  "ュ",
+  "ョ",
+  "ぁ",
+  "ぃ",
+  "ぅ",
+  "ぇ",
+  "ぉ",
+  "ァ",
+  "ィ",
+  "ゥ",
+  "ェ",
+  "ォ",
+]);
 
 export function drawSheet(
   ctx: CanvasRenderingContext2D,

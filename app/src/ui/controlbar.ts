@@ -204,8 +204,10 @@ export class ControlBar {
     if (index >= 0) this.editor.showPage(index + 1);
     if (this.editor.continuous && !project?.scroll) this.editor.fitRows();
     this.host.renderAll();
-    if (this.editor.continuous && project?.scroll) this.host.status("区切りを縦の帯に並べました。ホイールで上下、Ctrl+ホイールで拡大縮小、列数は下のつまみ（Alt+↑↓）");
-    else if (this.editor.continuous) this.host.status("全ページを一枚に並べました。行数は下のつまみ（Alt+↑↓）、全体は Ctrl+Alt+0、横へは Shift+ホイール");
+    if (this.editor.continuous && project?.scroll)
+      this.host.status("区切りを縦の帯に並べました。ホイールで上下、Ctrl+ホイールで拡大縮小、列数は下のつまみ（Alt+↑↓）");
+    else if (this.editor.continuous)
+      this.host.status("全ページを一枚に並べました。行数は下のつまみ（Alt+↑↓）、全体は Ctrl+Alt+0、横へは Shift+ホイール");
   }
 
   /** 連続: the spreads in `rows` rows. */
@@ -215,7 +217,6 @@ export class ControlBar {
     writeCount(ROWS_KEY, this.editor.rows);
     this.showRows();
   }
-
 
   // --- pens and erasers -------------------------------------------------------------------
 
@@ -315,10 +316,12 @@ export class ControlBar {
   /** ] / [: the pen or eraser in hand a size up or down. */
   resizeBrush(factor: number): boolean {
     const tool = this.editor.tool;
-    if (tool === "mark") return this.marks.resize(factor), this.editor.draw(), true;
+    if (tool === "mark") return (this.marks.resize(factor), this.editor.draw(), true);
     if (tool !== "pen" && tool !== "eraser") return false;
     this.setSize(tool, (tool === "pen" ? this.editor.penWidthMm : this.editor.eraserSizeMm) * factor);
-    this.host.status(`${tool === "pen" ? "ペン" : "消しゴム"}の太さ: ${tool === "pen" ? this.editor.penWidthMm : this.editor.eraserSizeMm} mm`);
+    this.host.status(
+      `${tool === "pen" ? "ペン" : "消しゴム"}の太さ: ${tool === "pen" ? this.editor.penWidthMm : this.editor.eraserSizeMm} mm`,
+    );
     return true;
   }
 

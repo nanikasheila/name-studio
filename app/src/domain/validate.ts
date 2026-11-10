@@ -39,7 +39,8 @@ export function validate(project: Project): string[] {
       checkId(panel.id);
       if (panel.shape.length < 3) problems.push(`${number} ページのコマ ${panel.id} の頂点が足りません`);
       if (panel.spread) spreads.set(panel.spread, [...(spreads.get(panel.spread) ?? []), number]);
-      if ((panel.openEdges ?? []).some((edge) => edge >= panel.shape.length)) problems.push(`${number} ページのコマ ${panel.id} の開いた辺の番号が範囲外です`);
+      if ((panel.openEdges ?? []).some((edge) => edge >= panel.shape.length))
+        problems.push(`${number} ページのコマ ${panel.id} の開いた辺の番号が範囲外です`);
     }
     for (const breakout of page.breakouts ?? []) {
       checkId(breakout.id);
@@ -48,8 +49,10 @@ export function validate(project: Project): string[] {
     const lines = new Set(page.lines.map((l) => l.id));
     for (const line of page.lines) {
       checkId(line.id);
-      if (line.speaker !== undefined && !characters.has(line.speaker)) problems.push(`${number} ページのセリフ ${line.id} の話者 ${line.speaker} がいません`);
-      if (line.panel !== undefined && !panels.has(line.panel)) problems.push(`${number} ページのセリフ ${line.id} のコマ ${line.panel} がありません`);
+      if (line.speaker !== undefined && !characters.has(line.speaker))
+        problems.push(`${number} ページのセリフ ${line.id} の話者 ${line.speaker} がいません`);
+      if (line.panel !== undefined && !panels.has(line.panel))
+        problems.push(`${number} ページのセリフ ${line.id} のコマ ${line.panel} がありません`);
       if (line.linkTo !== undefined && (line.linkTo === line.id || !lines.has(line.linkTo))) {
         problems.push(`${number} ページのセリフ ${line.id} のつなぎ先 ${line.linkTo} が同じページにありません`);
       }

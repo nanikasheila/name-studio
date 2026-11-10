@@ -179,7 +179,11 @@ function newName(): void {
         if (kept) adoptShape(project, kept);
         else if (shape.value) project.plan = { ...(project.plan ?? {}), structure: shape.value };
         showWorkspace("editor");
-        workbench.show(project, null, `${pages} ページの白紙のネーム「${title}」を作りました${usedDefaults ? "（設定の「新しいネームの既定」を使いました）" : ""}`);
+        workbench.show(
+          project,
+          null,
+          `${pages} ページの白紙のネーム「${title}」を作りました${usedDefaults ? "（設定の「新しいネームの既定」を使いました）" : ""}`,
+        );
       },
       { once: true },
     );
@@ -229,8 +233,22 @@ const startPalette = new CommandPalette(
       ...startScreen.commands(),
       ...(viewer.sheet
         ? [
-            { id: "sheet.import", label: "このネーム用紙を編集する", group: "ネーム用紙", keys: [], words: "取り込む ネームデータ", run: () => ($("import-project").click(), true) },
-            { id: "sheet.export", label: "ページに書き出す", group: "ネーム用紙", keys: [], words: "CSP 分割", run: () => ($("export").click(), true) },
+            {
+              id: "sheet.import",
+              label: "このネーム用紙を編集する",
+              group: "ネーム用紙",
+              keys: [],
+              words: "取り込む ネームデータ",
+              run: () => ($("import-project").click(), true),
+            },
+            {
+              id: "sheet.export",
+              label: "ページに書き出す",
+              group: "ネーム用紙",
+              keys: [],
+              words: "CSP 分割",
+              run: () => ($("export").click(), true),
+            },
           ]
         : []),
     ],

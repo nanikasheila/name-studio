@@ -16,7 +16,9 @@ function pointsText(points: readonly unknown[]): string {
       parts.push(JSON.stringify(point) ?? "null");
       continue;
     }
-    parts.push(`[${point.map((value, i) => (typeof value === "number" ? number(value, i < 2 ? 100 : 1000) : JSON.stringify(value))).join(",")}]`);
+    parts.push(
+      `[${point.map((value, i) => (typeof value === "number" ? number(value, i < 2 ? 100 : 1000) : JSON.stringify(value))).join(",")}]`,
+    );
   }
   return `[${parts.join(",")}]`;
 }
@@ -25,7 +27,11 @@ function pointsText(points: readonly unknown[]): string {
 function outlineText(outline: readonly unknown[]): string {
   const parts: string[] = [];
   for (const point of outline) {
-    parts.push(Array.isArray(point) ? `[${point.map((value) => (typeof value === "number" ? number(value, 1000) : JSON.stringify(value))).join(",")}]` : (JSON.stringify(point) ?? "null"));
+    parts.push(
+      Array.isArray(point)
+        ? `[${point.map((value) => (typeof value === "number" ? number(value, 1000) : JSON.stringify(value))).join(",")}]`
+        : (JSON.stringify(point) ?? "null"),
+    );
   }
   return `[${parts.join(",")}]`;
 }
@@ -55,8 +61,10 @@ export function writeAhead(project: { pages: readonly unknown[] }, idle: (run: (
     // At least a page each time: when the app is never idle, the time left is 0.
     do {
       const { strokes, lines } = project.pages[next++] as { strokes?: unknown; lines?: unknown };
-      if (Array.isArray(strokes)) for (const stroke of strokes as { points?: unknown }[]) if (Array.isArray(stroke?.points)) listBytes(stroke.points, pointsText);
-      if (Array.isArray(lines)) for (const line of lines as { balloon?: unknown }[]) if (Array.isArray(line?.balloon)) listBytes(line.balloon, outlineText);
+      if (Array.isArray(strokes))
+        for (const stroke of strokes as { points?: unknown }[]) if (Array.isArray(stroke?.points)) listBytes(stroke.points, pointsText);
+      if (Array.isArray(lines))
+        for (const line of lines as { balloon?: unknown }[]) if (Array.isArray(line?.balloon)) listBytes(line.balloon, outlineText);
     } while (next < project.pages.length && time.timeRemaining() > 2);
     if (next < project.pages.length) idle(step);
   };
@@ -188,7 +196,9 @@ export function projectBody(meta: unknown, project: unknown): Uint8Array {
   const strings = parts.filter((piece) => typeof piece === "string");
   const texts = encoder.encode(strings.join("\u0000"));
   let length = 4 + head.length + texts.length - Math.max(0, strings.length - 1);
-  const lists = parts.map((piece) => (typeof piece === "string" ? null : "points" in piece ? listBytes(piece.points, pointsText) : listBytes(piece.outline, outlineText)));
+  const lists = parts.map((piece) =>
+    typeof piece === "string" ? null : "points" in piece ? listBytes(piece.points, pointsText) : listBytes(piece.outline, outlineText),
+  );
   for (const list of lists) if (list) length += list.length;
   const body = new Uint8Array(length);
   new DataView(body.buffer).setUint32(0, head.length, true);

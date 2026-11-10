@@ -20,7 +20,9 @@ export function pressPen(editor: EditorCore, press: Press): void {
   // A hidden or locked ラフ線のレイヤー is not drawn on.
   const layer = layerOf(press.project, { layer: editor.roughLayer });
   if (layer.hidden || layer.locked) {
-    editor.host.status(`レイヤー「${layer.name}」は${layer.hidden ? "隠して" : "ロックして"}います。レイヤーの欄で${layer.hidden ? "目を開ける" : "ロックを外す"}か、ほかのレイヤーを選んでください`);
+    editor.host.status(
+      `レイヤー「${layer.name}」は${layer.hidden ? "隠して" : "ロックして"}います。レイヤーの欄で${layer.hidden ? "目を開ける" : "ロックを外す"}か、ほかのレイヤーを選んでください`,
+    );
     return;
   }
   startLine(editor, press);
@@ -175,7 +177,12 @@ const AHEAD_EVENTS = 3;
 const AHEAD_PX = 24;
 
 /** 先読み: the line on through where the pen is predicted to be, smoothed as the line is; not kept. */
-function ahead(editor: EditorLook, drag: DragOf<"pen">, event: PointerEvent, brush: ReturnType<EditorLook["brush"]>): StrokePoint[] | undefined {
+function ahead(
+  editor: EditorLook,
+  drag: DragOf<"pen">,
+  event: PointerEvent,
+  brush: ReturnType<EditorLook["brush"]>,
+): StrokePoint[] | undefined {
   const predicted = event.getPredictedEvents?.() ?? [];
   if (!predicted.length) return undefined;
   const points: StrokePoint[] = [];

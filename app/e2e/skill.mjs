@@ -32,7 +32,10 @@ if (!/\[line\d+\] ミカ「おはよう」/.test(brief) || !brief.includes("付�
 if (!ns("script", name).includes("ソラ「おそいよ」")) fail("script");
 if (!existsSync(`${name}.bak`)) fail("no .bak");
 const before = readFileSync(name, "utf8");
-const bad = spawnSync("node", [cli, "apply", name, "-"], { input: '[{"op":"setTitle","title":"x"},{"op":"removeLine","line":"line999"}]', encoding: "utf8" });
+const bad = spawnSync("node", [cli, "apply", name, "-"], {
+  input: '[{"op":"setTitle","title":"x"},{"op":"removeLine","line":"line999"}]',
+  encoding: "utf8",
+});
 if (bad.status !== 1 || readFileSync(name, "utf8") !== before) fail(`a bad change was saved: ${bad.stdout}`);
 if (spawnSync("node", [cli, "nope"]).status !== 2) fail("usage");
 if (!ns("ops").includes("- addLine: ")) fail("ops");

@@ -29,7 +29,13 @@ export function movePagesTo(project: Project, first: number, last: number, targe
   const staying = new Map(
     project.scenes.map((scene) => {
       const [a, b] = [pageIndex(project, scene.firstPage), pageIndex(project, scene.lastPage)];
-      return [scene, pages.slice(a, b + 1).filter((page) => !moved.has(page.id)).map((page) => page.id)];
+      return [
+        scene,
+        pages
+          .slice(a, b + 1)
+          .filter((page) => !moved.has(page.id))
+          .map((page) => page.id),
+      ];
     }),
   );
   const block = pages.splice(first, last - first + 1);

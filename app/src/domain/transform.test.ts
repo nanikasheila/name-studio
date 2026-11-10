@@ -6,13 +6,36 @@ import type { Point } from "../model/model";
 import { addPanel, carryContents, followPanel, movePanel, panelContents } from "./panels";
 import { newProject } from "./project";
 import { addFill, addStroke, eraseInside, pickInside } from "./strokes";
-import { applyAffine, baseBounds, densify, straightEnd, copySelection, moveItems, pasteClip, rotation, scaling, toggleItem, transformBase, transformItems, withContents } from "./transform";
+import {
+  applyAffine,
+  baseBounds,
+  densify,
+  straightEnd,
+  copySelection,
+  moveItems,
+  pasteClip,
+  rotation,
+  scaling,
+  toggleItem,
+  transformBase,
+  transformItems,
+  withContents,
+} from "./transform";
 
 function sample() {
   const project = newProject("t", 2);
   const page = project.pages[0];
   const panel = addPanel(project, page, rectShape([20, 20, 100, 100]));
-  const stroke = addStroke(project, page, [[30, 30, 1], [50, 30, 1], [50, 50, 1]], 0.4)!;
+  const stroke = addStroke(
+    project,
+    page,
+    [
+      [30, 30, 1],
+      [50, 30, 1],
+      [50, 50, 1],
+    ],
+    0.4,
+  )!;
   const line = addLine(project, page, [70, 60], "やあ");
   line.tails = [{ tip: [60, 90] }];
   return { project, page, panel, stroke, line };
@@ -30,7 +53,10 @@ describe("affine", () => {
 describe("transforming a selection", () => {
   it("scales rough lines with their width; dialogue keeps its size and moves with its centre", () => {
     const { page, stroke, line } = sample();
-    const items = [{ kind: "stroke" as const, id: stroke.id }, { kind: "line" as const, id: line.id }];
+    const items = [
+      { kind: "stroke" as const, id: stroke.id },
+      { kind: "line" as const, id: line.id },
+    ];
     const base = transformBase(page, items);
     const box = baseBounds(base)!;
     const [w, h] = [line.box[2] - line.box[0], line.box[3] - line.box[1]];
@@ -49,7 +75,11 @@ describe("transforming a selection", () => {
     const flip = scaling(-1, 1, [40, 40]);
     transformItems(page, base, flip);
     transformItems(page, base, flip);
-    expect(stroke.points.map((p) => p.slice(0, 2))).toEqual([[50, 30], [30, 30], [30, 50]]);
+    expect(stroke.points.map((p) => p.slice(0, 2))).toEqual([
+      [50, 30],
+      [30, 30],
+      [30, 50],
+    ]);
     // Pressure stays.
     expect(stroke.points[0][2]).toBe(1);
   });
@@ -80,7 +110,15 @@ describe("copy and paste", () => {
     const copy = page.lines.find((l) => l.id === pasted.lines[0])!;
     expect(copy.linkTo).toBeUndefined();
     expect(copy.box[0]).toBeCloseTo(second.box[0] + 5);
-    const both = copySelection(page, { kind: "group", pageId: page.id, id: "group", items: [{ kind: "line", id: line.id }, { kind: "line", id: second.id }] })!;
+    const both = copySelection(page, {
+      kind: "group",
+      pageId: page.id,
+      id: "group",
+      items: [
+        { kind: "line", id: line.id },
+        { kind: "line", id: second.id },
+      ],
+    })!;
     const again = pasteClip(project, page, both);
     const linked = page.lines.find((l) => again.lines.includes(l.id) && l.linkTo);
     expect(again.lines).toContain(linked!.linkTo);
@@ -101,7 +139,10 @@ describe("straight lines", () => {
   });
 
   it("puts points along the line with pressure going evenly", () => {
-    const points = densify([[0, 0, 0.2], [2, 0, 1]]);
+    const points = densify([
+      [0, 0, 0.2],
+      [2, 0, 1],
+    ]);
     expect(points).toHaveLength(5);
     expect(points[2][0]).toBeCloseTo(1);
     expect(points[2][2]).toBeCloseTo(0.6);
@@ -130,7 +171,10 @@ describe("fills", () => {
 describe("transforming panels, balloons and free deform", () => {
   it("scales a panel with what is drawn in it", () => {
     const { page, panel, stroke } = sample();
-    const items = [{ kind: "panel" as const, id: panel.id }, { kind: "stroke" as const, id: stroke.id }];
+    const items = [
+      { kind: "panel" as const, id: panel.id },
+      { kind: "stroke" as const, id: stroke.id },
+    ];
     transformItems(page, transformBase(page, items), scaling(0.5, 0.5, [20, 20]));
     expect(bounds(panel.shape)).toEqual([20, 20, 60, 60]);
     expect(stroke.points[1].slice(0, 2)).toEqual([35, 25]);
@@ -193,15 +237,37 @@ describe("transforming panels, balloons and free deform", () => {
     const { page, panel } = sample();
     const base = transformBase(page, [{ kind: "panel", id: panel.id }]);
     // Pull the top right corner up and out: a slanted top.
-    transformItems(page, base, { box: [20, 20, 100, 100], corners: [[20, 20], [110, 5], [100, 100], [20, 100]] });
-    expect(panel.shape).toEqual(expect.arrayContaining([[110, 5], [20, 20], [100, 100], [20, 100]]));
+    transformItems(page, base, {
+      box: [20, 20, 100, 100],
+      corners: [
+        [20, 20],
+        [110, 5],
+        [100, 100],
+        [20, 100],
+      ],
+    });
+    expect(panel.shape).toEqual(
+      expect.arrayContaining([
+        [110, 5],
+        [20, 20],
+        [100, 100],
+        [20, 100],
+      ]),
+    );
   });
 });
 
 describe("picking several things", () => {
   it("takes along what is drawn in the picked panels, each thing once", () => {
     const { page, panel, stroke, line } = sample();
-    const items = withContents(page, [{ kind: "panel", id: panel.id }, { kind: "line", id: line.id }], true);
+    const items = withContents(
+      page,
+      [
+        { kind: "panel", id: panel.id },
+        { kind: "line", id: line.id },
+      ],
+      true,
+    );
     expect(items).toEqual([
       { kind: "panel", id: panel.id },
       { kind: "line", id: line.id },
@@ -214,7 +280,14 @@ describe("picking several things", () => {
     const { project, page, panel, stroke, line } = sample();
     const fill = addFill(project, page, rectShape([30, 60, 40, 70]), "black");
     page.breakouts.push({ id: "b1", shape: rectShape([90, 90, 110, 110]) });
-    const items = withContents(page, [{ kind: "panel", id: panel.id }, { kind: "breakout", id: "b1" }], true);
+    const items = withContents(
+      page,
+      [
+        { kind: "panel", id: panel.id },
+        { kind: "breakout", id: "b1" },
+      ],
+      true,
+    );
     const box = [...line.box];
     moveItems(page, items, 5, -2);
     expect(bounds(panel.shape)).toEqual([25, 18, 105, 98]);
@@ -247,7 +320,14 @@ describe("picking several things", () => {
     const { project, page, panel, stroke } = sample();
     addFill(project, page, rectShape([30, 60, 40, 70]), "black");
     page.breakouts.push({ id: "b1", shape: rectShape([90, 90, 110, 110]) });
-    const items = withContents(page, [{ kind: "panel", id: panel.id }, { kind: "breakout", id: "b1" }], true);
+    const items = withContents(
+      page,
+      [
+        { kind: "panel", id: panel.id },
+        { kind: "breakout", id: "b1" },
+      ],
+      true,
+    );
     const clip = copySelection(page, { kind: "group", pageId: page.id, id: "group", items })!;
     expect(clip.panels).toHaveLength(1);
     expect(clip.breakouts).toHaveLength(1);

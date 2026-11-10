@@ -134,10 +134,24 @@ export class NoteList {
       swatch.style.background = STICKY_COLORS[sticky.color ?? "yellow"].fill;
       const text = element("span", { className: "note-text", textContent: sticky.text.trim() || "（空の付箋）" });
       const about = linkLabel(page, sticky);
-      const where = element("span", { className: "count", textContent: `${index + 1}`, title: about ? `${index + 1} ページの${about}` : `${index + 1} ページ` });
+      const where = element("span", {
+        className: "count",
+        textContent: `${index + 1}`,
+        title: about ? `${index + 1} ページの${about}` : `${index + 1} ページ`,
+      });
       if (about) text.append(element("small", { className: "note-link", textContent: ` → ${about}` }));
-      const row = element("div", { className: "note-item", title: "押すとこの付箋へ（Ctrl・Shift で複数選ぶ・右クリックで色・コピー・済み）" }, swatch, where, text);
-      const done = element("button", { className: "small", textContent: "済み", title: "決まったので付箋を外す（Delete・元に戻すで戻せます）" });
+      const row = element(
+        "div",
+        { className: "note-item", title: "押すとこの付箋へ（Ctrl・Shift で複数選ぶ・右クリックで色・コピー・済み）" },
+        swatch,
+        where,
+        text,
+      );
+      const done = element("button", {
+        className: "small",
+        textContent: "済み",
+        title: "決まったので付箋を外す（Delete・元に戻すで戻せます）",
+      });
       done.addEventListener("click", (event) => {
         event.stopPropagation();
         this.done([sticky.id]);
@@ -148,7 +162,11 @@ export class NoteList {
     // 絞り込み: a colour, the pages on screen.
     const filters = element("div", { className: "note-filters", title: "色・今のページで絞り込む" });
     for (const color of COLORS) {
-      const chip = element("button", { type: "button", className: `note-filter${this.colors.has(color) ? " active" : ""}`, title: `${STICKY_COLORS[color].label}の付箋だけ（もう一度で全部）` });
+      const chip = element("button", {
+        type: "button",
+        className: `note-filter${this.colors.has(color) ? " active" : ""}`,
+        title: `${STICKY_COLORS[color].label}の付箋だけ（もう一度で全部）`,
+      });
       chip.style.setProperty("--chip", STICKY_COLORS[color].fill);
       chip.setAttribute("aria-label", `${STICKY_COLORS[color].label}の付箋だけ`);
       chip.setAttribute("aria-pressed", String(this.colors.has(color)));
@@ -159,7 +177,12 @@ export class NoteList {
       });
       filters.append(chip);
     }
-    const here = element("button", { type: "button", className: `note-filter here${this.here ? " active" : ""}`, textContent: "このページ", title: "画面に出ているページの付箋だけ" });
+    const here = element("button", {
+      type: "button",
+      className: `note-filter here${this.here ? " active" : ""}`,
+      textContent: "このページ",
+      title: "画面に出ているページの付箋だけ",
+    });
     here.setAttribute("aria-pressed", String(this.here));
     here.addEventListener("click", () => {
       this.here = !this.here;
@@ -170,7 +193,13 @@ export class NoteList {
     const tools = toolRow(
       [
         { id: "note-add", text: "＋", title: "今のページに付箋を足す（Insert）", run: () => this.add(), disabled: !this.host.focusPage() },
-        { id: "note-done", text: "済み", title: "選んだ付箋を外す（Delete・元に戻すで戻せます）", run: () => this.done(picked), disabled: !picked.length },
+        {
+          id: "note-done",
+          text: "済み",
+          title: "選んだ付箋を外す（Delete・元に戻すで戻せます）",
+          run: () => this.done(picked),
+          disabled: !picked.length,
+        },
       ],
       `${shown.length === all ? `${all} 枚` : `${shown.length} / ${all} 枚`}${picked.length > 1 ? `・${picked.length} 枚選択中` : ""}`,
     );

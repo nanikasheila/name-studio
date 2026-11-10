@@ -15,12 +15,21 @@ import { stickyBox } from "../domain/stickies";
 import { wantsSpread } from "../domain/panels";
 import { stacked } from "../domain/koma";
 import { ACCENT, drawLeader, drawNote, drawSticky, wrapText } from "./notedraw";
-import { INK, PENCIL, drawBalloons, drawLineText, drawPageFills, drawPanelBorders, drawPanelFills, drawStrokes, tracePath } from "./pagedraw";
+import {
+  INK,
+  PENCIL,
+  drawBalloons,
+  drawLineText,
+  drawPageFills,
+  drawPanelBorders,
+  drawPanelFills,
+  drawStrokes,
+  tracePath,
+} from "./pagedraw";
 import { pictureOf } from "./pictures";
 import { imageOf, opacityOf } from "../domain/references";
 import { markColor, markLayersOf, opacityOfLayer, roughLayersOf, strokesOn } from "../domain/roughlayers";
 import type { StrokeCache } from "./strokecache";
-
 
 /** What a page shows of the editor's state: what is selected, dragged onto, and how close it is seen. */
 export interface PageMarks {
@@ -196,7 +205,16 @@ export function drawScreenPage(ctx: CanvasRenderingContext2D, project: Project, 
     if (!lines.length) continue;
     const color = markColor(layer);
     ctx.globalAlpha = opacityOfLayer(layer);
-    marks.strokes.draw(ctx, page, project.pageFormat.canvasMm, m, false, { ...style, color: (stroke) => (marks.selected("stroke", stroke.id) ? ACCENT : color) }, `mark:${layer.id}`, lines);
+    marks.strokes.draw(
+      ctx,
+      page,
+      project.pageFormat.canvasMm,
+      m,
+      false,
+      { ...style, color: (stroke) => (marks.selected("stroke", stroke.id) ? ACCENT : color) },
+      `mark:${layer.id}`,
+      lines,
+    );
     ctx.globalAlpha = 1;
   }
   if (marks.showNotes && !small) for (const panel of page.panels) if (panel.note) drawNote(ctx, slot, panel, project.pageFormat);
@@ -238,7 +256,10 @@ export function captionRows(ctx: CanvasRenderingContext2D, page: Page, index: nu
  * narrower (to the 2 px below): never fewer rows than drawn, and fewer to
  * measure while zooming.
  */
-export function captionMeter(context: () => CanvasRenderingContext2D, smallPx: number): (page: Page, index: number, widthPx: number) => number {
+export function captionMeter(
+  context: () => CanvasRenderingContext2D,
+  smallPx: number,
+): (page: Page, index: number, widthPx: number) => number {
   const known = new Map<string, number>();
   return (page, index, widthPx) => {
     const width = Math.floor(widthPx / 2) * 2;
@@ -325,7 +346,13 @@ export function drawGoingTo(ctx: CanvasRenderingContext2D, project: Project, to:
  * facing page and the room between pages), the one with `corners` with its
  * corners to drag.
  */
-export function drawOverflowPanels(ctx: CanvasRenderingContext2D, project: Project, slot: Slot, panels: Panel[], corners: string | null): void {
+export function drawOverflowPanels(
+  ctx: CanvasRenderingContext2D,
+  project: Project,
+  slot: Slot,
+  panels: Panel[],
+  corners: string | null,
+): void {
   const [, pageH] = project.pageFormat.canvasMm;
   const left = slot.x + slot.shown[0] * slot.scale;
   const right = slot.x + slot.shown[1] * slot.scale;
@@ -409,7 +436,13 @@ export function drawSketch(ctx: CanvasRenderingContext2D, slot: Slot, points: re
 }
 
 /** 付箋の紐づけ: a leader from the sticky to the pointer, the panel it would link to lit, and what letting go does. */
-export function drawStickyLink(ctx: CanvasRenderingContext2D, slot: Slot, stickyId: string, to: { kind: string; id: string } | null, pointer: Point): void {
+export function drawStickyLink(
+  ctx: CanvasRenderingContext2D,
+  slot: Slot,
+  stickyId: string,
+  to: { kind: string; id: string } | null,
+  pointer: Point,
+): void {
   const sticky = slot.page.stickies?.find((n) => n.id === stickyId);
   if (!sticky) return;
   const [x0, y0, x1, y1] = stickyBox(sticky);
@@ -419,8 +452,24 @@ export function drawStickyLink(ctx: CanvasRenderingContext2D, slot: Slot, sticky
     ctx.fillStyle = "rgba(201, 154, 18, 0.18)";
     ctx.fill();
   }
-  drawLeader(ctx, pointer[0], pointer[1], [slot.x + x0 * slot.scale, slot.y + y0 * slot.scale, slot.x + x1 * slot.scale, slot.y + y1 * slot.scale], ACCENT);
-  drawPointerNote(ctx, pointer, to ? (to.kind === "panel" ? "このコマに紐づける" : "このセリフに紐づける") : sticky.link ? "ここで離すと紐づけを外す" : "コマかセリフの上で離す");
+  drawLeader(
+    ctx,
+    pointer[0],
+    pointer[1],
+    [slot.x + x0 * slot.scale, slot.y + y0 * slot.scale, slot.x + x1 * slot.scale, slot.y + y1 * slot.scale],
+    ACCENT,
+  );
+  drawPointerNote(
+    ctx,
+    pointer,
+    to
+      ? to.kind === "panel"
+        ? "このコマに紐づける"
+        : "このセリフに紐づける"
+      : sticky.link
+        ? "ここで離すと紐づけを外す"
+        : "コマかセリフの上で離す",
+  );
 }
 
 /** The area as it will be filled (`color`), while it is drawn round. */
@@ -434,8 +483,15 @@ export function drawFillArea(ctx: CanvasRenderingContext2D, slot: Slot, points: 
 }
 
 /** 塗り being drawn: the area as it will be filled (投げなわ塗り), the lasso (囲って塗る) or where the brush went (塗り残し). */
-export function drawFillDrag(ctx: CanvasRenderingContext2D, slot: Slot, points: Point[], way: FillWay, fill: Pick<FillSettings, "tone" | "brushMm">): void {
-  const tone = fill.tone === "black" ? "rgba(40, 38, 34, 0.55)" : fill.tone === "gray" ? "rgba(150, 146, 140, 0.55)" : "rgba(255, 255, 255, 0.8)";
+export function drawFillDrag(
+  ctx: CanvasRenderingContext2D,
+  slot: Slot,
+  points: Point[],
+  way: FillWay,
+  fill: Pick<FillSettings, "tone" | "brushMm">,
+): void {
+  const tone =
+    fill.tone === "black" ? "rgba(40, 38, 34, 0.55)" : fill.tone === "gray" ? "rgba(150, 146, 140, 0.55)" : "rgba(255, 255, 255, 0.8)";
   if (way === "lasso" && points.length > 2) drawFillArea(ctx, slot, points, tone);
   if (way === "enclose" && points.length > 1) drawLasso(ctx, slot, points, ACCENT);
   if (way !== "remaining" || !points.length) return;
@@ -492,7 +548,12 @@ export function drawPenCursor(ctx: CanvasRenderingContext2D, [px, py]: Point, ra
   ctx.beginPath();
   ctx.arc(px, py, radius, 0, Math.PI * 2);
   if (radius < 5) {
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    for (const [dx, dy] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ]) {
       ctx.moveTo(px + dx * (radius + 2), py + dy * (radius + 2));
       ctx.lineTo(px + dx * (radius + 6), py + dy * (radius + 6));
     }
@@ -511,7 +572,14 @@ export function drawRing(ctx: CanvasRenderingContext2D, [px, py]: Point, radius:
 }
 
 /** The lines snapped to (mm across `slot`'s page), in `color`. */
-export function drawGuideLines(ctx: CanvasRenderingContext2D, project: Project, slot: Slot, xs: readonly number[], ys: readonly number[], color: string): void {
+export function drawGuideLines(
+  ctx: CanvasRenderingContext2D,
+  project: Project,
+  slot: Slot,
+  xs: readonly number[],
+  ys: readonly number[],
+  color: string,
+): void {
   const [pageW, pageH] = project.pageFormat.canvasMm;
   ctx.save();
   ctx.strokeStyle = color;
@@ -635,7 +703,12 @@ export function drawReferenceFrames(ctx: CanvasRenderingContext2D, slot: Slot, c
     if (chosen) {
       ctx.setLineDash([]);
       ctx.fillStyle = "#ffffff";
-      for (const [x, y] of [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]) {
+      for (const [x, y] of [
+        [x0, y0],
+        [x1, y0],
+        [x1, y1],
+        [x0, y1],
+      ]) {
         ctx.fillRect(x - HANDLE, y - HANDLE, HANDLE * 2, HANDLE * 2);
         ctx.strokeRect(x - HANDLE, y - HANDLE, HANDLE * 2, HANDLE * 2);
       }

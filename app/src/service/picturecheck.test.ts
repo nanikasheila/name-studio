@@ -5,7 +5,14 @@ import { unreadableNote, unreadablePictures, unreadableRoughs, unreadableRoughsN
 import { newProject } from "../domain/project";
 import { addReference, isNamePicture } from "../domain/references";
 
-const picture = (id: string, name = `${id}.jpg`): StoredImage => ({ id, name, mime: "image/jpeg", dataBase64: `ok-${id}`, widthPx: 400, heightPx: 300 });
+const picture = (id: string, name = `${id}.jpg`): StoredImage => ({
+  id,
+  name,
+  mime: "image/jpeg",
+  dataBase64: `ok-${id}`,
+  widthPx: 400,
+  heightPx: 300,
+});
 
 /** Decodes what was stored whole; "broken" data fails as the browser would. Counts the tries and the closes. */
 function decoder() {
@@ -75,7 +82,13 @@ describe("unreadableNote", () => {
 });
 
 describe("unreadableRoughs", () => {
-  const rough = (layerId: number): RoughImage => ({ id: `r${layerId}`, layerId, layerName: `ラフ${layerId}`, sheetCrop: [0, 0, 100, 100], box: [0, 0, 100, 100] });
+  const rough = (layerId: number): RoughImage => ({
+    id: `r${layerId}`,
+    layerId,
+    layerName: `ラフ${layerId}`,
+    sheetCrop: [0, 0, 100, 100],
+    box: [0, 0, 100, 100],
+  });
 
   it("names the pages whose roughs the sheet no longer gives, with the sheet and why", async () => {
     const project = newProject("a", 4);
@@ -84,9 +97,16 @@ describe("unreadableRoughs", () => {
     project.pages[2].roughs.push(rough(3), rough(4));
     const tried: number[] = [];
     // The sheet was moved: every rough fails the same way.
-    const found = await unreadableRoughs(project, async (r) => (tried.push(r.layerId), "D:/ネーム/第4話_ネーム.clip: 指定されたファイルが見つかりません。 (os error 2)"));
+    const found = await unreadableRoughs(
+      project,
+      async (r) => (tried.push(r.layerId), "D:/ネーム/第4話_ネーム.clip: 指定されたファイルが見つかりません。 (os error 2)"),
+    );
     expect(tried).toEqual([1, 3, 4]);
-    expect(found).toEqual({ sheet: "D:/ネーム/第4話_ネーム.clip", pages: [1, 3], reason: "D:/ネーム/第4話_ネーム.clip: 指定されたファイルが見つかりません。 (os error 2)" });
+    expect(found).toEqual({
+      sheet: "D:/ネーム/第4話_ネーム.clip",
+      pages: [1, 3],
+      reason: "D:/ネーム/第4話_ネーム.clip: 指定されたファイルが見つかりません。 (os error 2)",
+    });
     expect(unreadableRoughsNote(found!).split("\n")).toEqual([
       "元のネーム用紙のラフを 2 ページ分読めません。書き出すと、そのラフは入りません。",
       "・ページ: 1・3",

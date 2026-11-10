@@ -69,7 +69,8 @@ function item(row: string): { text: string; listed: boolean } {
 }
 
 /** A sentence that only says when: 現在。 回想。 翌朝。 3日後。 */
-const WHEN = /^(?:現在|過去|回想|未来|当日|前日|翌日|翌朝|翌晩|朝|昼|夕方|夜|深夜|(?:[一二三四五六七八九十数]+|\d+)(?:日|週間|か月|ヶ月|年)(?:前|後))$/;
+const WHEN =
+  /^(?:現在|過去|回想|未来|当日|前日|翌日|翌朝|翌晩|朝|昼|夕方|夜|深夜|(?:[一二三四五六七八九十数]+|\d+)(?:日|週間|か月|ヶ月|年)(?:前|後))$/;
 
 /** The opening word of time, if the text starts with one. */
 function opening(text: string): string | undefined {
@@ -134,16 +135,28 @@ export function parsePlot(source: string): PlotDoc {
     }
     // Table rows: 1〜3 | 3 | 場面.
     if (line.startsWith("|")) {
-      const cells = line.replace(/^\||\|$/g, "").split("|").map((cell) => plain(cell));
+      const cells = line
+        .replace(/^\||\|$/g, "")
+        .split("|")
+        .map((cell) => plain(cell));
       if (cells.every((cell) => /^:?-{2,}:?$/.test(cell) || !cell)) continue;
       const range = RANGE.exec(cells[0] ?? "");
       if (range && cells.length >= 2) {
         const first = Number(range[1]);
         const description = cells.slice(1).find((cell) => cell && !/^\d+$/.test(cell)) ?? "";
         const when = opening(description);
-        doc.scenes.push({ first, last: Math.max(first, Number(range[2] ?? first)), title: shortTitle(description) || `${first} ページ`, summary: description, ...(when ? { storyTime: when } : {}) });
+        doc.scenes.push({
+          first,
+          last: Math.max(first, Number(range[2] ?? first)),
+          title: shortTitle(description) || `${first} ページ`,
+          summary: description,
+          ...(when ? { storyTime: when } : {}),
+        });
       } else if (/^(合計|計|total)$/i.test(cells[0] ?? "")) {
-        const total = cells.slice(1).map((cell) => Number.parseInt(cell, 10)).find((n) => Number.isInteger(n) && n > 0);
+        const total = cells
+          .slice(1)
+          .map((cell) => Number.parseInt(cell, 10))
+          .find((n) => Number.isInteger(n) && n > 0);
         if (total) doc.total = total;
       }
       continue;
@@ -158,7 +171,15 @@ export function parsePlot(source: string): PlotDoc {
       if (!s.pages.length || /ページ|頁/.test(s.heading)) continue;
       const first = Math.min(...s.pages.map((p) => p.number));
       const last = Math.max(...s.pages.map((p) => p.last));
-      doc.scenes.push({ first, last, title: s.heading, summary: s.rows.filter(Boolean).map((row) => item(row).text).join("\n") });
+      doc.scenes.push({
+        first,
+        last,
+        title: s.heading,
+        summary: s.rows
+          .filter(Boolean)
+          .map((row) => item(row).text)
+          .join("\n"),
+      });
     }
   }
   // A scene's time, when its first page opens with one.
@@ -191,7 +212,11 @@ export function parsePlot(source: string): PlotDoc {
     for (const text of notes) {
       const mention = MENTION.exec(text);
       const guess = mention || SUMMARY.test(s.heading) ? undefined : likelyPage(doc.pages, text);
-      doc.notes.push({ section: s.heading, text, ...(mention ? { page: Number(mention[1]) } : guess ? { page: guess, guessed: true } : {}) });
+      doc.notes.push({
+        section: s.heading,
+        text,
+        ...(mention ? { page: Number(mention[1]) } : guess ? { page: guess, guessed: true } : {}),
+      });
     }
   }
   return doc;
@@ -288,7 +313,9 @@ export function applyPlot(project: Project, doc: PlotDoc, firstAlone = true): Pl
     const index = Math.min(Math.max((note.page ?? 1) - 1, 0), project.pages.length - 1);
     const page = project.pages[index];
     if (!page) continue;
-    const left = spreads(project.pages.length, firstAlone).some((pair) => pair.includes(index + 1) && onLeftHand(pair, index + 1, project.binding));
+    const left = spreads(project.pages.length, firstAlone).some(
+      (pair) => pair.includes(index + 1) && onLeftHand(pair, index + 1, project.binding),
+    );
     let [x, y] = next.get(index) ?? [left ? 6 : pageW - STICKY_WIDTH_MM - 6, 6];
     const text = `【${note.section}】${note.text}`;
     // Its height before it goes down, so it never slides up over the one above.

@@ -39,7 +39,11 @@ try {
   });
   await page.waitForTimeout(300);
 
-  const at = (n, mm) => page.evaluate(([n, mm]) => window.nameStudio.workbench.editor.clientOf(window.nameStudio.workbench.project.pages[n - 1].id, mm), [n, mm]);
+  const at = (n, mm) =>
+    page.evaluate(
+      ([n, mm]) => window.nameStudio.workbench.editor.clientOf(window.nameStudio.workbench.project.pages[n - 1].id, mm),
+      [n, mm],
+    );
   const settle = () => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   // A line drawn by hand: through the points, a little wavy.
   async function draw(n, points, wobble = 0.8) {
@@ -59,8 +63,22 @@ try {
     await settle();
   }
   const panels = (n) =>
-    page.evaluate((n) => window.nameStudio.workbench.project.pages[n - 1].panels.map((p) => ({ id: p.id, draft: !!p.draft, shape: p.shape, open: p.openEdges ?? [] })), n);
-  const box = (shape) => [Math.min(...shape.map((p) => p[0])), Math.min(...shape.map((p) => p[1])), Math.max(...shape.map((p) => p[0])), Math.max(...shape.map((p) => p[1]))];
+    page.evaluate(
+      (n) =>
+        window.nameStudio.workbench.project.pages[n - 1].panels.map((p) => ({
+          id: p.id,
+          draft: !!p.draft,
+          shape: p.shape,
+          open: p.openEdges ?? [],
+        })),
+      n,
+    );
+  const box = (shape) => [
+    Math.min(...shape.map((p) => p[0])),
+    Math.min(...shape.map((p) => p[1])),
+    Math.max(...shape.map((p) => p[0])),
+    Math.max(...shape.map((p) => p[1])),
+  ];
   const status = () => page.evaluate(() => document.getElementById("status").textContent);
   let step = 0;
   const shot = async (name) => {
@@ -74,11 +92,19 @@ try {
   check(await page.locator("#panel-tidy").isVisible(), "整える is in the options row with コマ割り");
 
   // Page 1, empty: a line across cuts the 基本枠 into two 仮のコマ.
-  await draw(1, [[50, 180], [150, 182], [248, 179]]);
+  await draw(1, [
+    [50, 180],
+    [150, 182],
+    [248, 179],
+  ]);
   let now = await panels(1);
   check(now.length === 2 && now.every((p) => p.draft), "a line across an empty page cuts its 基本枠 into two 仮のコマ");
   // Then the top one cut again, upright and wobbly.
-  await draw(1, [[150, 70], [149, 120], [151, 172]]);
+  await draw(1, [
+    [150, 70],
+    [149, 120],
+    [151, 172],
+  ]);
   now = await panels(1);
   check(now.length === 3 && now.every((p) => p.draft), "a line across a panel cuts it again");
   await shot("cut by hand");
@@ -86,7 +112,17 @@ try {
   // Page 2, empty: three boxes drawn round, loosely.
   await page.evaluate(() => window.nameStudio.workbench.editor.showPage(2));
   await settle();
-  const loop = (x0, y0, x1, y1) => [[x0 + 3, y0], [x1 - 2, y0 + 1.5], [x1, y0 + 4], [x1 - 1, y1 - 2], [x1 - 4, y1], [x0 + 2, y1 - 1.5], [x0, y1 - 4], [x0 + 1, y0 + 5], [x0 + 4, y0 + 0.5]];
+  const loop = (x0, y0, x1, y1) => [
+    [x0 + 3, y0],
+    [x1 - 2, y0 + 1.5],
+    [x1, y0 + 4],
+    [x1 - 1, y1 - 2],
+    [x1 - 4, y1],
+    [x0 + 2, y1 - 1.5],
+    [x0, y1 - 4],
+    [x0 + 1, y0 + 5],
+    [x0 + 4, y0 + 0.5],
+  ];
   await draw(2, loop(60, 77, 146, 160));
   await draw(2, loop(151, 75, 237, 161));
   await draw(2, loop(57, 168, 240, 344));
@@ -116,9 +152,18 @@ try {
     return basicBox(window.nameStudio.workbench.project.pageFormat);
   });
   const [right, left, bottom] = boxes;
-  check(second.every((p) => !p.draft), "整える makes them no longer 仮");
-  check(left[0] === frame[0] && right[2] === frame[2] && right[1] === frame[1] && bottom[3] === frame[3], "the outer edges go onto the 基本枠");
-  check(Math.abs(right[0] - left[2] - 2) < 0.01 && Math.abs(bottom[1] - right[3] - 6) < 0.01, "the gutters become the name's (2 mm side by side, 6 mm between rows)");
+  check(
+    second.every((p) => !p.draft),
+    "整える makes them no longer 仮",
+  );
+  check(
+    left[0] === frame[0] && right[2] === frame[2] && right[1] === frame[1] && bottom[3] === frame[3],
+    "the outer edges go onto the 基本枠",
+  );
+  check(
+    Math.abs(right[0] - left[2] - 2) < 0.01 && Math.abs(bottom[1] - right[3] - 6) < 0.01,
+    "the gutters become the name's (2 mm side by side, 6 mm between rows)",
+  );
   check(/整えました/.test(await status()), "and the status line says so");
   await shot("tidied");
 
@@ -128,11 +173,17 @@ try {
   await page.keyboard.press("Shift+K");
   await settle();
   now = await panels(1);
-  check(now.every((p) => !p.draft), "Shift+K tidies the page worked on");
+  check(
+    now.every((p) => !p.draft),
+    "Shift+K tidies the page worked on",
+  );
   await page.keyboard.press("Control+z");
   await settle();
   now = await panels(1);
-  check(now.every((p) => p.draft), "and undo makes them 仮 again");
+  check(
+    now.every((p) => p.draft),
+    "and undo makes them 仮 again",
+  );
 
   // The inspector of a 仮のコマ: marked, with a box to unmark and its own 整える.
   await page.evaluate((id) => {
@@ -141,7 +192,7 @@ try {
     wb.editor.select({ kind: "panel", pageId: wb.project.pages[0].id, id });
   }, now[0].id);
   await settle();
-  check(await page.locator("#inspector h2", { hasText: "（仮）" }).count() === 1, "the inspector names a 仮のコマ");
+  check((await page.locator("#inspector h2", { hasText: "（仮）" }).count()) === 1, "the inspector names a 仮のコマ");
   await page.locator("#inspector button", { hasText: "整える" }).first().click();
   await settle();
   now = await panels(1);
@@ -156,7 +207,10 @@ try {
   await page.locator("#ne-check-list button", { hasText: "仮のコマ" }).click();
   await settle();
   now = await panels(1);
-  check(now.every((p) => !p.draft), "and tidies them all at a click");
+  check(
+    now.every((p) => !p.draft),
+    "and tidies them all at a click",
+  );
   await page.keyboard.press("Escape");
 
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(" / ")}` : ""}`);

@@ -23,7 +23,12 @@ const centre = (box: BoxMm): Point => [(box[0] + box[2]) / 2, (box[1] + box[3]) 
  * there (a line lets go of the balloon it was joined to); panels, fills and
  * はみ出し stay. Returns what went, and to which pages.
  */
-export function carryItems(project: Project, from: Page, items: readonly ItemRef[], under: (point: Point) => Destination | null): { moved: ItemRef[]; to: Set<Page> } {
+export function carryItems(
+  project: Project,
+  from: Page,
+  items: readonly ItemRef[],
+  under: (point: Point) => Destination | null,
+): { moved: ItemRef[]; to: Set<Page> } {
   const moved: ItemRef[] = [];
   const to = new Set<Page>();
   for (const item of items) {

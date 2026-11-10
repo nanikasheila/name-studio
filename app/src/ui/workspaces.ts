@@ -30,9 +30,27 @@ export interface WorkspaceDef {
 }
 
 export const WORKSPACES: WorkspaceDef[] = [
-  { id: "draw", label: "描く", buttonId: "ws-draw", keys: ["Ctrl+1"], tip: "描く配置: ページを大きく、サブツールとレイヤーだけ。物語の帯はたたむ" },
-  { id: "overview", label: "全体", buttonId: "ws-overview", keys: ["Ctrl+2"], tip: "全体を見る配置: 全ページを一枚に並べ、ページ・台本・付箋の一覧と物語の帯を出す" },
-  { id: "handoff", label: "CSP", buttonId: "ws-handoff", keys: ["Ctrl+3"], tip: "CSP に渡す配置: ページ・付箋（未決）・保留とレイヤー・詳細。書き出す前に残りを確かめる" },
+  {
+    id: "draw",
+    label: "描く",
+    buttonId: "ws-draw",
+    keys: ["Ctrl+1"],
+    tip: "描く配置: ページを大きく、サブツールとレイヤーだけ。物語の帯はたたむ",
+  },
+  {
+    id: "overview",
+    label: "全体",
+    buttonId: "ws-overview",
+    keys: ["Ctrl+2"],
+    tip: "全体を見る配置: 全ページを一枚に並べ、ページ・台本・付箋の一覧と物語の帯を出す",
+  },
+  {
+    id: "handoff",
+    label: "CSP",
+    buttonId: "ws-handoff",
+    keys: ["Ctrl+3"],
+    tip: "CSP に渡す配置: ページ・付箋（未決）・保留とレイヤー・詳細。書き出す前に残りを確かめる",
+  },
 ];
 
 export const WORKSPACES_KEY = "namestudio.workspaces";

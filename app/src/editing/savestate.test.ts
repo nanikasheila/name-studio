@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { saveState, type SaveFacts } from "./savestate";
 
-const facts = (change: Partial<SaveFacts> = {}): SaveFacts => ({ hasPath: true, dirty: false, writing: false, savedAt: null, copyAt: null, failed: null, seriesBehind: false, ...change });
+const facts = (change: Partial<SaveFacts> = {}): SaveFacts => ({
+  hasPath: true,
+  dirty: false,
+  writing: false,
+  savedAt: null,
+  copyAt: null,
+  failed: null,
+  seriesBehind: false,
+  ...change,
+});
 const at = (ms: number) => `T${ms}`;
 
 describe("the save state", () => {
@@ -25,7 +34,10 @@ describe("the save state", () => {
   });
 
   it("adds a series that lags behind", () => {
-    expect(saveState(facts({ savedAt: 1, seriesBehind: true }), at)).toMatchObject({ text: "保存済み T1・シリーズ未反映", tone: "warning" });
+    expect(saveState(facts({ savedAt: 1, seriesBehind: true }), at)).toMatchObject({
+      text: "保存済み T1・シリーズ未反映",
+      tone: "warning",
+    });
     expect(saveState(facts({ dirty: true, seriesBehind: true }), at).text).toBe("未保存の変更あり・シリーズ未反映");
   });
 });

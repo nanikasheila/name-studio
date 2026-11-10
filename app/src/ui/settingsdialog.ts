@@ -3,7 +3,14 @@
 // one kind at a time from the list on the left, or all that match what is
 // typed in the search box. Changes apply at once.
 import { ask } from "../platform/dialogs";
-import { AUTOSAVE_DELAY_MS, AUTOSAVE_MAX_WAIT_MS, autosaveTiming, autosaveToFile, setAutosaveTiming, setAutosaveToFile } from "../service/autosave";
+import {
+  AUTOSAVE_DELAY_MS,
+  AUTOSAVE_MAX_WAIT_MS,
+  autosaveTiming,
+  autosaveToFile,
+  setAutosaveTiming,
+  setAutosaveToFile,
+} from "../service/autosave";
 import { call } from "../platform/backend";
 import { SHAPE_LABELS } from "../domain/balloon";
 import { $, choice, element } from "../platform/dom";
@@ -12,13 +19,33 @@ import { APP_FONT_LABEL, FONT_ROLES, FONT_ROLE_LABELS, roleFont, setRoleFont } f
 import type { PageEditor } from "./editor";
 import { helpBarShown, showHelpBar } from "./helpbar";
 import { LookPane } from "./lookpane";
-import { BALLOON_TEXT_KEY, PAGE_GAP_KEY, PANEL_CARRIES_KEY, saveNewNameDefaults, saveSnap, setStripOrder, setSwapFit, stripOrder, swapFit } from "../platform/prefs";
+import {
+  BALLOON_TEXT_KEY,
+  PAGE_GAP_KEY,
+  PANEL_CARRIES_KEY,
+  saveNewNameDefaults,
+  saveSnap,
+  setStripOrder,
+  setSwapFit,
+  stripOrder,
+  swapFit,
+} from "../platform/prefs";
 import { GRID_GAP_MM } from "../editing/layout";
 import type { BalloonShape, LineKind, Project } from "../model/model";
 import { KIND_LABELS, setBinding, setDefaultLineSize, setDefaultShape, setLineSpacing } from "../domain/dialogue";
 import { gutters, nameKind, setGutters } from "../domain/project";
 import { readText, writeFlag, writeNumber, writeText } from "../platform/settings";
-import { appVersion, checkNow, installRelease, releases, setUpdateChannel, setUpdateMode, updateChannel, updateMode, type UpdateMode } from "./updater";
+import {
+  appVersion,
+  checkNow,
+  installRelease,
+  releases,
+  setUpdateChannel,
+  setUpdateMode,
+  updateChannel,
+  updateMode,
+  type UpdateMode,
+} from "./updater";
 import { DEFAULT_SNAP, MAX_GRID_MM, MIN_GRID_MM, type SnapSettings } from "../domain/snapping";
 import {
   APP_BALLOON_LINE_MM,
@@ -105,7 +132,10 @@ export class SettingsDialog {
         this.host.edit((project) => setGutters(project, { across, down }));
         this.render();
         const now = this.host.project();
-        if (now) this.host.status(`コマ間を 左右 ${gutters(now).across} mm・上下 ${gutters(now).down} mm にしました（これから割るコマに効きます）`);
+        if (now)
+          this.host.status(
+            `コマ間を 左右 ${gutters(now).across} mm・上下 ${gutters(now).down} mm にしました（これから割るコマに効きます）`,
+          );
       });
     }
     for (const [key, id, , label] of LINE_FIELDS) {
@@ -146,13 +176,17 @@ export class SettingsDialog {
       notes.checked = (event.target as HTMLInputElement).checked;
       notes.dispatchEvent(new Event("change"));
     });
-    $<HTMLInputElement>("st-show-stickies").addEventListener("change", (event) => this.host.editor.setStickiesShown((event.target as HTMLInputElement).checked));
+    $<HTMLInputElement>("st-show-stickies").addEventListener("change", (event) =>
+      this.host.editor.setStickiesShown((event.target as HTMLInputElement).checked),
+    );
     $<HTMLInputElement>("st-help-bar").addEventListener("change", (event) => showHelpBar((event.target as HTMLInputElement).checked));
     $<HTMLSelectElement>("st-strip-order").addEventListener("change", (event) => {
       const order = (event.target as HTMLSelectElement).value === "binding" ? "binding" : "left";
       setStripOrder(order);
       this.host.stripOrderChanged();
-      this.host.status(order === "binding" ? "下の帯のページを編集画面と同じ向きに並べます（右綴じは右から左）" : "下の帯のページを左から右に並べます");
+      this.host.status(
+        order === "binding" ? "下の帯のページを編集画面と同じ向きに並べます（右綴じは右から左）" : "下の帯のページを左から右に並べます",
+      );
     });
     $<HTMLInputElement>("st-panel-carries").addEventListener("change", (event) => {
       this.host.editor.panelCarries = (event.target as HTMLInputElement).checked;
@@ -161,7 +195,11 @@ export class SettingsDialog {
     $<HTMLSelectElement>("st-swap-fit").addEventListener("change", (event) => {
       const fit = (event.target as HTMLSelectElement).value === "keep" ? "keep" : "stretch";
       setSwapFit(fit);
-      this.host.status(fit === "keep" ? "コマの入れ替えで、中身の縦横比を保つようにしました" : "コマの入れ替えで、中身を入れ替え先のコマに合わせるようにしました");
+      this.host.status(
+        fit === "keep"
+          ? "コマの入れ替えで、中身の縦横比を保つようにしました"
+          : "コマの入れ替えで、中身を入れ替え先のコマに合わせるようにしました",
+      );
     });
     $<HTMLInputElement>("st-balloon-text").addEventListener("change", (event) => {
       this.host.editor.balloonTextFollows = (event.target as HTMLInputElement).checked;
@@ -179,7 +217,10 @@ export class SettingsDialog {
       // The longest wait is never below the quiet: moving one past the other takes it along.
       if (changed === "delay" && asked.delay > asked.maxWait) asked.maxWait = asked.delay;
       if (changed === "maxWait" && asked.maxWait < asked.delay) asked.delay = asked.maxWait;
-      const kept = setAutosaveTiming({ delay: Number.isFinite(asked.delay) ? asked.delay : now.delay, maxWait: Number.isFinite(asked.maxWait) ? asked.maxWait : now.maxWait });
+      const kept = setAutosaveTiming({
+        delay: Number.isFinite(asked.delay) ? asked.delay : now.delay,
+        maxWait: Number.isFinite(asked.maxWait) ? asked.maxWait : now.maxWait,
+      });
       delay.value = String(kept.delay);
       maxWait.value = String(kept.maxWait);
       this.host.autosaveTimingChanged();
@@ -195,13 +236,21 @@ export class SettingsDialog {
     $<HTMLInputElement>("st-update-beta").addEventListener("change", (event) => {
       const beta = (event.target as HTMLInputElement).checked;
       setUpdateChannel(beta ? "beta" : "stable");
-      this.host.status(beta ? "試験版も受け取ります（CSP での確認前の新しい版。困ったら「前の版に戻す」で）" : "正式版だけを受け取ります（確認の済んだ版）");
+      this.host.status(
+        beta
+          ? "試験版も受け取ります（CSP での確認前の新しい版。困ったら「前の版に戻す」で）"
+          : "正式版だけを受け取ります（確認の済んだ版）",
+      );
     });
     $<HTMLButtonElement>("st-check-update").addEventListener("click", async (event) => {
       const button = event.currentTarget as HTMLButtonElement;
       button.disabled = true;
       try {
-        await checkNow({ status: (message) => this.host.status(message), busy: () => this.host.busy(), prepare: () => this.host.prepareRestart() });
+        await checkNow({
+          status: (message) => this.host.status(message),
+          busy: () => this.host.busy(),
+          prepare: () => this.host.prepareRestart(),
+        });
       } finally {
         button.disabled = false;
       }
@@ -214,13 +263,17 @@ export class SettingsDialog {
     $("st-install-release").addEventListener("click", async () => {
       const version = release.value;
       if (!version) return;
-      const sure = await ask(`版 ${version} に入れ替えて、アプリを起動し直します。\n\n入れ替えたあとは、新しい版を自動では入れず知らせるだけにします（設定の「更新」で戻せます）。`, {
-        title: "Name Studio",
-        kind: "warning",
-        okLabel: "入れ替える",
-        cancelLabel: "やめる",
-      });
-      if (sure) await installRelease(version, { status: (message) => this.host.status(message), prepare: () => this.host.prepareRestart() });
+      const sure = await ask(
+        `版 ${version} に入れ替えて、アプリを起動し直します。\n\n入れ替えたあとは、新しい版を自動では入れず知らせるだけにします（設定の「更新」で戻せます）。`,
+        {
+          title: "Name Studio",
+          kind: "warning",
+          okLabel: "入れ替える",
+          cancelLabel: "やめる",
+        },
+      );
+      if (sure)
+        await installRelease(version, { status: (message) => this.host.status(message), prepare: () => this.host.prepareRestart() });
     });
     $("st-open-pen").addEventListener("click", () => this.host.openPenSettings());
     $("st-open-keys").addEventListener("click", () => this.host.openShortcuts());
@@ -258,7 +311,9 @@ export class SettingsDialog {
       this.look.resetToDefault();
       this.host.autosaveTimingChanged();
       this.render();
-      this.host.status("この PC の設定（画面の見た目・ページの間隔・吸着・コマと中身・コマの入れ替え・フキダシの変形・自動保存の間隔・ヘルプの帯）を初期に戻しました（カスタム CSS は切るだけで、中身は残します）");
+      this.host.status(
+        "この PC の設定（画面の見た目・ページの間隔・吸着・コマと中身・コマの入れ替え・フキダシの変形・自動保存の間隔・ヘルプの帯）を初期に戻しました（カスタム CSS は切るだけで、中身は残します）",
+      );
     });
     $<HTMLInputElement>("st-search").addEventListener("input", () => this.filter());
     // Esc empties the search box first; the dialog closes on the next one.
@@ -357,7 +412,11 @@ export class SettingsDialog {
         const field = fontField(project?.fonts?.[role] ?? "", fallback, (name) => {
           this.host.edit((p) => setRoleFont(p, role, name));
           this.render();
-          this.host.status(name ? `「${FONT_ROLE_LABELS[role]}」のフォントを ${name} にしました` : `「${FONT_ROLE_LABELS[role]}」のフォントの指定をやめました`);
+          this.host.status(
+            name
+              ? `「${FONT_ROLE_LABELS[role]}」のフォントを ${name} にしました`
+              : `「${FONT_ROLE_LABELS[role]}」のフォントの指定をやめました`,
+          );
         });
         field.querySelectorAll("input, button").forEach((control) => ((control as HTMLInputElement).disabled ||= !project));
         return element("label", { className: "font-role" }, element("span", { textContent: FONT_ROLE_LABELS[role] }), field);
@@ -389,9 +448,18 @@ export class SettingsDialog {
           this.host.edit((p) => (changed = setDefaultLineSize(p, kind, pt)));
           const now = this.host.project();
           this.render();
-          if (now) this.host.status(`「${KIND_LABELS[kind]}」の文字の大きさの既定を ${defaultFontPt(kind, now.style)} pt にしました（既定の大きさだったセリフ ${changed} 個も変えました）`);
+          if (now)
+            this.host.status(
+              `「${KIND_LABELS[kind]}」の文字の大きさの既定を ${defaultFontPt(kind, now.style)} pt にしました（既定の大きさだったセリフ ${changed} 個も変えました）`,
+            );
         });
-        return element("label", { className: "kind-row" }, element("span", { textContent: KIND_LABELS[kind] }), input, element("small", { textContent: "pt" }));
+        return element(
+          "label",
+          { className: "kind-row" },
+          element("span", { textContent: KIND_LABELS[kind] }),
+          input,
+          element("small", { textContent: "pt" }),
+        );
       }),
     );
   }
@@ -409,7 +477,9 @@ export class SettingsDialog {
             let changed = 0;
             this.host.edit((p) => (changed = setDefaultShape(p, kind, shape)));
             this.render();
-            this.host.status(`「${KIND_LABELS[kind]}」のフキダシの形の既定を「${SHAPE_LABELS[shape]}」にしました（既定の形だったセリフ ${changed} 個も変えました）`);
+            this.host.status(
+              `「${KIND_LABELS[kind]}」のフキダシの形の既定を「${SHAPE_LABELS[shape]}」にしました（既定の形だったセリフ ${changed} 個も変えました）`,
+            );
           },
           ["custom"],
         );
@@ -439,7 +509,8 @@ export class SettingsDialog {
     const spacing = $<HTMLInputElement>("st-line-spacing");
     spacing.disabled = !project;
     spacing.placeholder = String(APP_LINE_SPACING);
-    if (document.activeElement !== spacing) spacing.value = project?.style?.lineSpacing === undefined ? "" : String(project.style.lineSpacing);
+    if (document.activeElement !== spacing)
+      spacing.value = project?.style?.lineSpacing === undefined ? "" : String(project.style.lineSpacing);
     const binding = $<HTMLSelectElement>("st-binding");
     // 縦スクロール is chosen when the name is made (its pieces are a size of their own).
     binding.value = project ? nameKind(project) : "right";
@@ -458,7 +529,10 @@ export class SettingsDialog {
     $<HTMLSelectElement>("st-swap-fit").value = swapFit();
     $<HTMLInputElement>("st-autosave").checked = autosaveToFile();
     const timing = autosaveTiming();
-    for (const [id, value] of [["st-autosave-delay", timing.delay], ["st-autosave-max-wait", timing.maxWait]] as const) {
+    for (const [id, value] of [
+      ["st-autosave-delay", timing.delay],
+      ["st-autosave-max-wait", timing.maxWait],
+    ] as const) {
       const field = $<HTMLInputElement>(id);
       if (document.activeElement !== field) field.value = String(value);
     }
@@ -496,7 +570,8 @@ export class SettingsDialog {
         ...list.map((release) =>
           element("option", {
             value: release.version,
-            textContent: `v${release.version}（${release.date}${release.beta ? "・試験版" : ""}）${release.version === this.version ? " ← 今の版" : ""} ${release.title}`.trim(),
+            textContent:
+              `v${release.version}（${release.date}${release.beta ? "・試験版" : ""}）${release.version === this.version ? " ← 今の版" : ""} ${release.title}`.trim(),
           }),
         ),
       );
@@ -507,5 +582,4 @@ export class SettingsDialog {
       note.textContent = explain(error).text;
     }
   }
-
 }

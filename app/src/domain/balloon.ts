@@ -233,7 +233,12 @@ export function star(line: Line): Star | null {
       const a1 = a0 + TAU / teeth / 2;
       const inner = (a: number) => radius(a, 0);
       const outer = (a: number) => radius(a, 1);
-      samples.push(at(center, a0, inner(a0)), at(center, a0 + 1e-6, outer(a0)), at(center, a1, outer(a1)), at(center, a1 + 1e-6, inner(a1)));
+      samples.push(
+        at(center, a0, inner(a0)),
+        at(center, a0 + 1e-6, outer(a0)),
+        at(center, a1, outer(a1)),
+        at(center, a1 + 1e-6, inner(a1)),
+      );
     }
   } else {
     // Corners (box, polygon) come first, then the even samples; spikes count by the latter.
