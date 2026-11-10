@@ -27,7 +27,7 @@ interface Layer {
   content: Content;
   scale: number;
   pixelScale: number;
-  canvas: HTMLCanvasElement;
+  picture: Picture;
   /** The scale asked for last and when that changed (to tell a zoom from a still view). */
   asked: number;
   askedAt: number;
@@ -39,23 +39,39 @@ interface Content {
   lines: string[];
 }
 
+/** A page's lines as pixels: an ImageBitmap where there is OffscreenCanvas, else a canvas element. */
+type Picture = HTMLCanvasElement | ImageBitmap;
+
 /**
- * Have what was drawn on `canvas` painted into it now. Chrome keeps what is
- * drawn on a canvas as a list of commands until something takes a picture of
- * it; a page's lines picture is only drawn on (a line added each time the pen
- * lets go) and drawn from, so the list grew with every line and was played
- * again on the GPU each time the picture was used: on a PC, the frame after
- * the pen let go stopped 2.4 ms longer for each line drawn since the picture
- * was made (50–94 ms after 25–40 lines). A snapshot (thrown away) paints the
- * list into the picture once; it is taken at once, the painting is done on the
- * GPU without waiting for it here.
+ * Somewhere to draw a page's lines picture, and the picture once drawn.
+ * Chrome keeps what is drawn on a canvas as a list of commands; a picture
+ * that is only ever drawn on (a line added each time the pen lets go) and
+ * drawn from kept them all, and the GPU played them again each time the
+ * picture was used: on a PC the frame after the pen let go stopped 2.4 ms
+ * longer for every line drawn since the picture was made (50–94 ms after
+ * 25–40 lines). So each picture is drawn on a new OffscreenCanvas and handed
+ * over as an ImageBitmap: pixels, with no commands behind them. A line added
+ * is the old picture copied (one image) and the new line over it.
+ * Without OffscreenCanvas the canvas element `reuse` (or a new one) is drawn on.
  */
-function settleCommands(canvas: HTMLCanvasElement): void {
-  if (typeof createImageBitmap !== "function") return;
-  createImageBitmap(canvas).then(
-    (bitmap) => bitmap.close(),
-    () => undefined,
-  );
+function surface(width: number, height: number, reuse?: Picture): { ctx: CanvasRenderingContext2D; done: () => Picture } {
+  if (typeof OffscreenCanvas === "function") {
+    const canvas = new OffscreenCanvas(width, height);
+    const ctx = canvas.getContext("2d")! as unknown as CanvasRenderingContext2D;
+    return { ctx, done: () => canvas.transferToImageBitmap() };
+  }
+  const canvas = reuse instanceof HTMLCanvasElement ? reuse : document.createElement("canvas");
+  // (Setting the size, even to the same, makes the canvas anew.)
+  if (canvas.width !== width || canvas.height !== height) [canvas.width, canvas.height] = [width, height];
+  const ctx = canvas.getContext("2d")!;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  return { ctx, done: () => canvas };
+}
+
+/** Let a picture go (its memory at once, not when it is collected). */
+function release(picture: Picture): void {
+  if (picture instanceof HTMLCanvasElement) picture.width = 0;
+  else picture.close();
 }
 
 function sameContent(a: Content, b: Content): boolean {
@@ -109,7 +125,7 @@ export class StrokeCache {
   /** The pictures kept: how many, and their device pixels together. */
   get kept(): { pictures: number; pixels: number } {
     let pixels = 0;
-    for (const layer of this.layers.values()) pixels += layer.canvas.width * layer.canvas.height;
+    for (const layer of this.layers.values()) pixels += layer.picture.width * layer.picture.height;
     return { pictures: this.layers.size, pixels };
   }
 
@@ -173,7 +189,7 @@ export class StrokeCache {
       y = (Math.round(t.d * y + t.f) - t.f) / t.d;
     }
     const k = m.scale / layer.scale;
-    ctx.drawImage(layer.canvas, x, y, (layer.canvas.width / layer.pixelScale) * k, (layer.canvas.height / layer.pixelScale) * k);
+    ctx.drawImage(layer.picture, x, y, (layer.picture.width / layer.pixelScale) * k, (layer.picture.height / layer.pixelScale) * k);
   }
 
   private content(strokes: Stroke[], style: StrokeStyle): Content {
@@ -190,7 +206,10 @@ export class StrokeCache {
 
   /** Paint lines added on top of those in the picture, as drawing all of them would. */
   private paintAdded(layer: Layer, strokes: Stroke[], content: Content, style: StrokeStyle): void {
-    const ctx = layer.canvas.getContext("2d")!;
+    const before = layer.picture;
+    const { ctx, done } = surface(before.width, before.height, before);
+    // The lines so far as they are (unless this is the same canvas, which has them).
+    if (!(before instanceof HTMLCanvasElement)) ctx.drawImage(before, 0, 0);
     ctx.setTransform(layer.pixelScale, 0, 0, layer.pixelScale, 0, 0);
     drawStrokes(
       ctx,
@@ -201,8 +220,9 @@ export class StrokeCache {
       style.minWidthPx,
       style.brushes,
     );
+    layer.picture = done();
+    if (layer.picture !== before) release(before);
     layer.content = content;
-    settleCommands(layer.canvas);
   }
 
   private paint(
@@ -215,16 +235,14 @@ export class StrokeCache {
     content: Content,
     style: StrokeStyle,
   ): Layer {
-    const canvas = old?.canvas ?? document.createElement("canvas");
     const [width, height] = [Math.max(1, Math.ceil(size[0] * scale * pixelScale)), Math.max(1, Math.ceil(size[1] * scale * pixelScale))];
-    // (Setting the size, even to the same, makes the canvas anew.)
-    if (canvas.width !== width || canvas.height !== height) [canvas.width, canvas.height] = [width, height];
-    const ctx = canvas.getContext("2d")!;
+    const { ctx, done } = surface(width, height, old?.picture);
     ctx.setTransform(pixelScale, 0, 0, pixelScale, 0, 0);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, width, height);
     drawStrokes(ctx, { strokes } as Page, { scale, x: 0, y: 0 }, !!strokes[0]?.over, style.color, style.minWidthPx, style.brushes);
-    settleCommands(canvas);
-    const layer: Layer = { content, scale, pixelScale, canvas, asked: scale, askedAt: old?.askedAt ?? 0, used: ++this.clock };
+    const picture = done();
+    if (old && old.picture !== picture) release(old.picture);
+    const layer: Layer = { content, scale, pixelScale, picture, asked: scale, askedAt: old?.askedAt ?? 0, used: ++this.clock };
     this.layers.set(key, layer);
     this.keepBudget();
     return layer;
@@ -232,13 +250,13 @@ export class StrokeCache {
 
   private keepBudget(): void {
     let total = 0;
-    for (const layer of this.layers.values()) total += layer.canvas.width * layer.canvas.height;
+    for (const layer of this.layers.values()) total += layer.picture.width * layer.picture.height;
     if (total <= BUDGET_PIXELS) return;
     const oldest = [...this.layers.entries()].sort((a, b) => a[1].used - b[1].used);
     for (const [key, layer] of oldest) {
       if (total <= BUDGET_PIXELS) break;
-      total -= layer.canvas.width * layer.canvas.height;
-      layer.canvas.width = 0;
+      total -= layer.picture.width * layer.picture.height;
+      release(layer.picture);
       this.layers.delete(key);
     }
   }
