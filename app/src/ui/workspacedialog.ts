@@ -4,20 +4,36 @@
 // away.
 import { $, element } from "../platform/dom";
 import { openMenu, SEPARATOR, type MenuItem } from "./popupmenu";
-import { MAX_MINE, myKey, type Workspaces } from "./workspaces";
+import { MAX_MINE, myKey, WORKSPACES, type Workspaces } from "./workspaces";
 
 export class WorkspaceDialog {
-  constructor(
-    private readonly workspaces: Workspaces,
-    /** After any change: the buttons show which is in use. */
-    private readonly changed: () => void,
-  ) {
+  constructor(private readonly workspaces: Workspaces) {
     $("ws-save").addEventListener("click", () => this.save());
     $<HTMLInputElement>("ws-name").addEventListener("keydown", (event) => {
       if (event.key !== "Enter" || event.isComposing) return;
       event.preventDefault();
       this.save();
     });
+  }
+
+  /** The buttons show which arrangement is in use (after any change). */
+  show(): void {
+    for (const def of WORKSPACES) {
+      const button = $(def.buttonId);
+      button.classList.toggle("active", def.id === this.workspaces.current);
+      button.setAttribute("aria-pressed", String(def.id === this.workspaces.current));
+    }
+    const mine = this.workspaces.currentMine;
+    const button = $("ws-mine");
+    button.classList.toggle("active", mine !== null);
+    $("ws-mine-name").textContent = mine ?? "";
+    button.title = mine
+      ? `名前をつけた配置「${mine}」を使っています。押すとほかの配置へ・上書き・整理`
+      : "名前をつけた配置: 今の配置を名前をつけて残す・残した配置に切り替える（CSP のワークスペースのように）";
+  }
+
+  private changed(): void {
+    this.show();
   }
 
   /** The icon's menu: the ones of one's own, then naming the one on screen. */

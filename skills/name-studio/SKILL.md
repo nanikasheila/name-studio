@@ -55,6 +55,8 @@ NS apply ネーム.namestudio 案.json --out 別案.namestudio   # 元はその�
 | setPanelNote | `{"op":"setPanelNote","page":3,"panel":2,"note":"アップ、間をとる"}` |
 | addLine | `{"op":"addLine","page":3,"panel":2,"speaker":"ミカ","text":"…","kind":"speech","after":"line12"}` |
 | setLine / removeLine | `{"op":"setLine","line":"line12","text":"…","shape":"spike"}` `{"op":"removeLine","line":"line12"}` |
+| moveLine | `{"op":"moveLine","line":"line12","page":4,"panel":1}` セリフを別のコマ・ページへ（しっぽは外れる） |
+| arrangeLines / addTails | `{"op":"arrangeLines","page":3,"panel":2}` 読む順に並べ直す `{"op":"addTails","page":3}` 話者へしっぽ |
 | addSticky | `{"op":"addSticky","page":3,"panel":2,"text":"ここは見開きにしてもいいかも"}` 提案を紙面に残す |
 | addCharacter / setCharacter | `{"op":"addCharacter","name":"…","tone":"口調のメモ"}` |
 | setScene | `{"op":"setScene","title":"…","firstPage":1,"lastPage":4,"summary":"…"}` |

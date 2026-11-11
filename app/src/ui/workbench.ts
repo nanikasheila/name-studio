@@ -125,6 +125,11 @@ export class Workbench {
     openPalette: (id) => this.docks.open(id),
     path: () => this.session.path,
     rough: (rough) => this.roughs.load(rough),
+    commands: () => this.commands,
+    undo: () => this.undo(),
+    redo: () => this.redo(),
+    version: () => `${this.session.id}:${this.session.revision}`,
+    restore: (project) => (this.session.replace(project), this.renderAll()),
   });
   /** The palettes beside the pages (left or right, several at once). */
   private docks!: Docks;
@@ -551,7 +556,7 @@ export class Workbench {
   useWorkspace(id: WorkspaceId | "reset"): void {
     if (id === "reset") this.workspaces.reset();
     else this.workspaces.use(id);
-    this.showWorkspace();
+    this.workspaceDialog.show();
   }
 
   /** The 名前をつけた配置 icon's menu: the ones of one's own, and naming the one on screen. */
@@ -562,21 +567,6 @@ export class Workbench {
   /** 今の配置に名前をつけて残す (the dialog, the name box ready). */
   nameWorkspace(): void {
     this.workspaceDialog.open(true);
-  }
-
-  private showWorkspace(): void {
-    for (const def of WORKSPACES) {
-      const button = $(def.buttonId);
-      button.classList.toggle("active", def.id === this.workspaces.current);
-      button.setAttribute("aria-pressed", String(def.id === this.workspaces.current));
-    }
-    const mine = this.workspaces.currentMine;
-    const button = $("ws-mine");
-    button.classList.toggle("active", mine !== null);
-    $("ws-mine-name").textContent = mine ?? "";
-    button.title = mine
-      ? `名前をつけた配置「${mine}」を使っています。押すとほかの配置へ・上書き・整理`
-      : "名前をつけた配置: 今の配置を名前をつけて残す・残した配置に切り替える（CSP のワークスペースのように）";
   }
 
   /** The palettes, the way the pages are shown and the band as a workspace has them. */
@@ -880,7 +870,7 @@ export class Workbench {
     if (open("held")) this.lists.held(project);
     if (open("layers")) this.renderLayers();
     if (open("series")) this.seriesPanel.render($("side-series"));
-    if (open("assist")) this.lists.assist();
+    this.lists.assist(open("assist"));
   }
 
   // --- レイヤー（コマ枠フォルダ） ----------------------------------------------------------
@@ -995,7 +985,7 @@ export class Workbench {
       status: (message) => this.setStatus(message),
     });
     for (const def of WORKSPACES) $(def.buttonId).addEventListener("click", () => this.useWorkspace(def.id));
-    this.workspaceDialog = new WorkspaceDialog(this.workspaces, () => this.showWorkspace());
+    this.workspaceDialog = new WorkspaceDialog(this.workspaces);
     // At the foot of the left icons, as CSP keeps its workspaces under ウィンドウ.
     const mine = document.createElement("button");
     mine.id = "ws-mine";
@@ -1007,7 +997,7 @@ export class Workbench {
     mine.addEventListener("click", () => this.workspaceMenu());
     this.docks.railExtra.left = mine;
     this.docks.render();
-    this.showWorkspace();
+    this.workspaceDialog.show();
     $("held-badge").addEventListener("click", () => this.docks.open("held"));
     $("panel-tidy").addEventListener("click", () => this.edits.tidyPanels());
     this.references.bind();

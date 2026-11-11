@@ -20,7 +20,15 @@ import {
   withPreset,
   type BrushPick,
 } from "../editing/brushpicks";
-import { applyCspSettings, bytesOf, cspSettingsFor, ensureCspSettings, parseEffector, setSetting } from "../domain/cspsettings";
+import {
+  applyCspSettings,
+  bytesOf,
+  cspSettingsFor,
+  ensureCspSettings,
+  parseEffector,
+  setSetting,
+  settingsSignature,
+} from "../domain/cspsettings";
 import { brushPropItems, COLUMNS, defaultBrushItems, effectorOfColumn, ERASE_MODE, SIZE_BUTTONS, TIP_SHAPE } from "../editing/brushitems";
 import type { CspColumn } from "../generated/csp-columns";
 import type { PropItem } from "../editing/toolprops";
@@ -144,7 +152,7 @@ export class BrushSource implements SubToolSource {
       return {
         ref: pick.ref,
         name: pick.brush?.name ?? PLAIN[this.kind],
-        detail: size === null || (this.kind === "eraser" && !pick.brush) ? "" : sizeLabel(size),
+        detail: size === null ? "" : sizeLabel(size),
         group: pick.library ? OTHER_NAMES : undefined,
         movable: !!pick.brush && !pick.library,
         sample: (canvas) => this.drawSample(canvas, pick.brush),
@@ -312,16 +320,15 @@ export class BrushSource implements SubToolSource {
   item(id: string): HTMLElement | null {
     const brush = this.inHand();
     const kind = this.kind;
-    const plainEraser = kind === "eraser" && !brush;
     const words = (node: HTMLElement, label: string) => {
       node.dataset.setting = label;
       return node;
     };
     switch (id) {
       case "BrushSize":
-        return words(this.withEffector(this.sizeRow(plainEraser), brush, "BrushSize"), "ブラシサイズ");
+        return words(this.withEffector(this.sizeRow(), brush, "BrushSize"), "ブラシサイズ");
       case SIZE_BUTTONS:
-        return plainEraser ? null : this.presetRow();
+        return this.presetRow();
       case ERASE_MODE:
         return kind === "eraser" ? this.eraseRow() : null;
       case TIP_SHAPE:
@@ -368,16 +375,12 @@ export class BrushSource implements SubToolSource {
       textContent:
         this.kind === "pen"
           ? "標準のペンは太さと手ブレ補正だけ変えられます。ほかの項目は「設定…」で作ったペンか、取り込んだペンで。"
-          : "標準の消しゴムは画面の上で決まった大きさです。",
+          : "標準の消しゴムは太さと消し方だけ変えられます。ほかの項目は「設定…」で作った消しゴムか、取り込んだ消しゴムで。",
     });
   }
 
   /** ブラシサイズ palette: the round buttons, large. */
   sizes(box: HTMLElement): void {
-    if (this.kind === "eraser" && !this.inHand()) {
-      box.append(element("p", { className: "subtool-note", textContent: "標準の消しゴムは画面の上で決まった大きさです。" }));
-      return;
-    }
     const row = this.presetRow();
     row.classList.add("large");
     box.append(
@@ -503,7 +506,7 @@ export class BrushSource implements SubToolSource {
     );
   }
 
-  private sizeRow(disabled: boolean): HTMLElement {
+  private sizeRow(): HTMLElement {
     const kind = this.kind;
     const mm = this.sizeInHand();
     const range = element("input", {
@@ -512,10 +515,9 @@ export class BrushSource implements SubToolSource {
       max: String(SLIDER_STEPS),
       step: "1",
       value: String(sliderOf(kind, mm)),
-      disabled,
     });
     range.setAttribute("aria-label", "ブラシサイズ");
-    const number = element("input", { type: "number", min: "0.05", max: "50", step: "0.05", value: disabled ? "" : String(mm), disabled });
+    const number = element("input", { type: "number", min: "0.05", max: "50", step: "0.05", value: String(mm) });
     number.setAttribute("aria-label", "ブラシサイズ（mm）");
     // While dragged the pen in hand follows at once; the palette is drawn again when let go.
     range.addEventListener("input", () => {
@@ -644,12 +646,8 @@ export class BrushSource implements SubToolSource {
       this.sizeInHand(),
       this.host.editor.eraseMode,
       brush?.id,
-      // The settings ツールプロパティ may show (not the pictures and graphs).
-      brush?.csp && Object.entries(brush.csp.settings).filter(([, value]) => typeof value !== "object"),
-      brush?.csp &&
-        Object.keys(brush.csp.settings)
-          .filter((key) => key.endsWith("Effector"))
-          .map((key) => (brush.csp?.settings[key] as { blob: string } | undefined)?.blob.length),
+      // The settings ツールプロパティ may show, and of the pictures and graphs (影響元設定) their size.
+      brush?.csp && settingsSignature(brush.csp.settings),
       loadSizePresets()[this.kind],
       penPreferences.settings.stabilization,
     ]);

@@ -19,6 +19,7 @@ import {
   parseEffector,
   parseInOutTargets,
   setSetting,
+  settingsSignature,
 } from "./cspsettings";
 import type { CspToolData } from "../model/model";
 
@@ -74,6 +75,18 @@ function maruPen(): CspToolData {
   setSetting(tool, "BrushSizeEffector", effector(40, INPUT_PRESSURE, [0, 100, 100, 100], curve));
   return tool;
 }
+
+describe("settingsSignature", () => {
+  it("takes every setting, numbers as they are and blobs by their length", () => {
+    // CSP keeps 向きの影響元 as a number though its name ends in Effector (every brush of its own: 3).
+    expect(settingsSignature({ BrushSize: 60, BrushRotationEffector: 3, BrushSizeEffector: { blob: "AAAA" }, Name: "硬め" })).toEqual([
+      ["BrushSize", 60],
+      ["BrushRotationEffector", 3],
+      ["BrushSizeEffector", 4],
+      ["Name", "硬め"],
+    ]);
+  });
+});
 
 describe("影響元設定 (effector blobs)", () => {
   it("reads and writes back the bytes of every header size", () => {

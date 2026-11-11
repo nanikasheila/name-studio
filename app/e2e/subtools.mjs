@@ -55,6 +55,8 @@ try {
       ],
     };
     const kneaded = newBrush("eraser", "brush-3", "硬め");
+    // As CSP's own erasers: 向きの影響元 is a number though its name ends in Effector.
+    kneaded.csp.settings.BrushRotationEffector = 3;
     project.brushes.push(g, maru, kneaded);
     project.nextId = 10;
     // A pen taken in another name, kept on this computer.
@@ -173,6 +175,35 @@ try {
   hand = await inHand();
   check(hand.tool === "eraser" && hand.eraser === "brush-3", "2 takes the eraser up (its menu gave the key)");
   check((await names()) === "標準の消しゴム/硬め", "the palette follows the tool taken up");
+  check(
+    (await panel.locator(".subtool-tabs button.active").textContent()) === "消しゴム" &&
+      (await props.locator(".subtool-props-title").textContent()) === "硬め" &&
+      (await page.$eval("#brush-select", (select) => select.selectedOptions[0]?.textContent)) === "硬め",
+    "the tabs, ツールプロパティ and the bar above the pages show the eraser in hand",
+  );
+  // The eraser's size, from the round buttons and from the bar above the pages.
+  await props.locator(".size-presets button", { hasText: /^12$/ }).click();
+  check((await inHand()).eraserSize === 12, "a round button sizes the eraser in hand");
+  await page.fill("#brush-size", "7");
+  await page.dispatchEvent("#brush-size", "change");
+  check(
+    (await inHand()).eraserSize === 7 && (await props.locator('.subtool-field input[type="number"]').first().inputValue()) === "7",
+    "the size box above the pages sizes it too, and ツールプロパティ follows",
+  );
+  // 標準の消しゴム has a size of its own too.
+  await panel.locator(".subtool-row", { hasText: "標準の消しゴム" }).click();
+  hand = await inHand();
+  check(
+    hand.eraser === null && hand.eraserSize === 5 && !(await page.isDisabled("#brush-size")),
+    "標準の消しゴム comes at 5 mm, its size open to change",
+  );
+  await props.locator(".size-presets button", { hasText: /^2$/ }).click();
+  check((await inHand()).eraserSize === 2, "and a round button sizes it");
+  await panel.locator(".subtool-row", { hasText: "硬め" }).click();
+  check((await inHand()).eraserSize === 7, "硬め again: the size it was last used at");
+  await panel.locator(".subtool-row", { hasText: "標準の消しゴム" }).click();
+  check((await inHand()).eraserSize === 2, "標準の消しゴム again: its own");
+  await panel.locator(".subtool-row", { hasText: "硬め" }).click();
   // A key given again moves from one pen to the other.
   await panel.locator(".subtool-tabs button", { hasText: "ペン" }).first().click();
   await panel.locator(".subtool-row", { hasText: "丸ペン" }).locator(".subtool-key").click();
