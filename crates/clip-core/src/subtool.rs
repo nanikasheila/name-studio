@@ -190,6 +190,9 @@ pub struct TipImage {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubTool {
+    /// `NodeUuid` in hex: the same sub tool in CSP's tool database from one
+    /// read to the next (renamed or moved, too).
+    pub uuid: String,
     pub name: String,
     /// Tool and group names above it (empty in a .sut).
     pub group: Vec<String>,
@@ -574,6 +577,7 @@ fn sub_tool(
         }
     });
     SubTool {
+        uuid: node.uuid.iter().map(|byte| format!("{byte:02x}")).collect(),
         name: node.name.clone(),
         group,
         kind,

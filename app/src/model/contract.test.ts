@@ -212,6 +212,7 @@ export const FULL_PROJECT: Full<Project> = {
         dpi: 600,
         materials: [{ originalPath: ".:56:16:abc:data:material_0.layer", catalogPath: ".:56:16:abc", installFolder: 0, data: "dGFy" }],
       },
+      cspLink: { uuid: "00112233445566778899aabbccddeeff", stamp: "1a2b3c4d5e6f7081", name: "鉛筆" },
     },
   ],
   alternatives: [

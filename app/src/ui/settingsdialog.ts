@@ -21,10 +21,13 @@ import { helpBarShown, showHelpBar } from "./helpbar";
 import { LookPane } from "./lookpane";
 import {
   BALLOON_TEXT_KEY,
+  cspSyncMode,
+  type CspSyncMode,
   PAGE_GAP_KEY,
   PANEL_CARRIES_KEY,
   saveNewNameDefaults,
   saveSnap,
+  setCspSyncMode,
   setStripOrder,
   setSwapFit,
   stripOrder,
@@ -80,12 +83,21 @@ export interface SettingsHost {
   /** True while a name is open (a new version then waits for the button). */
   busy(): boolean;
   openPenSettings(): void;
+  /** The list of CSP's sub tools to take pens and erasers from. */
+  openCspTools(): void;
   openShortcuts(): void;
   /** Before the app is closed for another version: false to stay. */
   prepareRestart(): Promise<boolean>;
   /** 使われ方: what a counted command, tool or export is called. */
   useLabel: UseLabel;
 }
+
+/** Said when 「CSP で変えたペン・消しゴム」 is changed. */
+const CSP_SYNC_NOTES: Record<CspSyncMode, string> = {
+  auto: "CSP の一覧から取り込んだペン・消しゴムは、CSP で変えると自動で合わせます",
+  notify: "CSP で変わったペン・消しゴムは知らせるだけにします（知らせの「合わせる」で合わせます）",
+  off: "CSP で変えても合わせません（取り込み直すと CSP のものになります）",
+};
 
 /** Said when the update setting is changed. */
 const UPDATE_MODE_NOTES: Record<UpdateMode, string> = {
@@ -282,6 +294,12 @@ export class SettingsDialog {
         await installRelease(version, { status: (message) => this.host.status(message), prepare: () => this.host.prepareRestart() });
     });
     $("st-open-pen").addEventListener("click", () => this.host.openPenSettings());
+    $("st-csp-list").addEventListener("click", () => this.host.openCspTools());
+    $<HTMLSelectElement>("st-csp-sync").addEventListener("change", (event) => {
+      const mode = (event.target as HTMLSelectElement).value as CspSyncMode;
+      setCspSyncMode(mode);
+      this.host.status(CSP_SYNC_NOTES[mode]);
+    });
     $("st-open-keys").addEventListener("click", () => this.host.openShortcuts());
     for (const [key, id] of SNAP_BOXES) {
       $<HTMLInputElement>(id).addEventListener("change", (event) => {
@@ -544,6 +562,7 @@ export class SettingsDialog {
       if (document.activeElement !== field) field.value = String(value);
     }
     $<HTMLSelectElement>("st-update-mode").value = updateMode();
+    $<HTMLSelectElement>("st-csp-sync").value = cspSyncMode();
     $<HTMLInputElement>("st-update-beta").checked = updateChannel() === "beta";
     const snap = this.host.editor.snapping;
     for (const [key, id] of SNAP_BOXES) $<HTMLInputElement>(id).checked = snap[key] as boolean;

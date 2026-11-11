@@ -212,6 +212,18 @@ export interface Brush {
   source?: string;
   /** The CSP sub tool behind it, every setting as CSP keeps it (see cspsettings.ts). */
   csp?: CspToolData;
+  /** The sub tool of CSP's own tool list it was taken from, to follow changes made to it there. */
+  cspLink?: CspLink;
+}
+
+/** Which sub tool of CSP's tool list a brush came from, and its settings then (see csplink.ts). */
+export interface CspLink {
+  /** `NodeUuid` in hex. */
+  uuid: string;
+  /** Digest of `csp.settings` as taken: CSP changed them when its own differ, Name Studio when the brush's do. */
+  stamp: string;
+  /** CSP's name of it then (a name changed in Name Studio is kept). */
+  name: string;
 }
 
 /** One value of a CSP sub tool setting: a number, text, or bytes in base64. */

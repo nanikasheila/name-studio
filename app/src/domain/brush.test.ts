@@ -31,6 +31,7 @@ const noInput = {
 
 /** 丸ペン as CSP EX 5.1.4 exports it (sizes in px). */
 const maruPen: CspSubTool = {
+  uuid: "0123456789abcdef0123456789abcdef",
   name: "丸ペン",
   group: ["ペン", "ペン"],
   kind: "pen",

@@ -58,6 +58,7 @@ fn declarations() -> String {
         PressureCurve::decl(&cfg),
         BrushTip::decl(&cfg),
         Brush::decl(&cfg),
+        CspLink::decl(&cfg),
         CspValue::decl(&cfg),
         CspMaterial::decl(&cfg),
         CspToolData::decl(&cfg),

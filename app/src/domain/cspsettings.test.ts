@@ -204,6 +204,7 @@ describe("drawing values from the CSP settings", () => {
 
 function subTool(): CspSubTool {
   return {
+    uuid: "0123456789abcdef0123456789abcdef",
     name: "丸ペン",
     group: ["ペン"],
     kind: "pen",

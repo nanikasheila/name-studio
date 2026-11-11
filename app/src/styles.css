@@ -472,8 +472,23 @@ dialog.brushes { width: min(720px, calc(100vw - 32px)); }
 .brush-list h3 {
   margin: 0; padding: 6px 10px 2px; font-size: calc(12 * var(--px)); color: var(--muted); display: flex; gap: 8px; align-items: center;
 }
-.brush-list h3 button { font-size: calc(11 * var(--px)); padding: 0 6px; }
-.brush-row { display: grid; grid-template-columns: auto 28px 1fr auto auto; gap: 8px; align-items: center; padding: 2px 10px; }
+.brush-list h3 button, .brush-list h4 button { font-size: calc(11 * var(--px)); padding: 0 6px; }
+.brush-list .bd-tool + .bd-tool { border-top: 1px solid var(--line); margin-top: 4px; }
+.brush-list .bd-tool h3 { position: sticky; top: -4px; background: var(--panel); z-index: 1; color: var(--text); font-size: calc(13 * var(--px)); }
+.brush-list .bd-tool h3 small { color: var(--muted); font-weight: normal; }
+.brush-list h4 {
+  margin: 0; padding: 4px 10px 2px 18px; font-size: calc(12 * var(--px)); color: var(--muted); font-weight: normal;
+  display: flex; gap: 8px; align-items: center;
+}
+.brush-list .bd-follow { display: inline-flex; align-items: center; gap: 2px; font-size: calc(11 * var(--px)); margin-left: auto; }
+.bd-picks { align-items: center; gap: 6px; margin-top: 4px; }
+.bd-picks > span { color: var(--muted); font-size: calc(12 * var(--px)); }
+.brush-row { display: grid; grid-template-columns: auto 28px 1fr auto auto auto; gap: 8px; align-items: center; padding: 2px 10px 2px 18px; }
+.brush-row .bd-state { font-size: calc(11 * var(--px)); color: var(--muted); }
+.brush-row .bd-state:empty { display: none; }
+.brush-row .bd-state.changed, .brush-row .bd-state.both, .brush-row .bd-state.differs {
+  color: var(--warn-text); background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 4px; padding: 0 4px;
+}
 .brush-row:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .brush-row img, .brush-row .round {
   width: 24px; height: 24px; object-fit: contain; background: #fff; border-radius: 4px; border: 1px solid var(--line);
