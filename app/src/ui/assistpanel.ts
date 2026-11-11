@@ -560,6 +560,11 @@ export class AssistPanel {
     const log = this.part("log");
     // Keep where the user is reading; follow the end only when they were at it.
     const atEnd = log.scrollHeight - log.scrollTop - log.clientHeight < 48;
+    // The groups of steps as they are on screen now (a toggle event may not have come yet).
+    for (const box of log.querySelectorAll<HTMLDetailsElement>("details.assist-steps[data-key]")) {
+      if (box.open) this.openSteps.add(box.dataset.key!);
+      else this.openSteps.delete(box.dataset.key!);
+    }
     const entries = this.talk?.conversation.entries ?? [];
     this.root.classList.toggle("talking", entries.length > 0);
     if (!entries.length) {
@@ -636,7 +641,7 @@ export class AssistPanel {
         const what = stepsSummary(piece.steps);
         const box = element(
           "details",
-          { class: "assist-steps" },
+          { class: "assist-steps", "data-key": key },
           element(
             "summary",
             { title: "AI が読んだもの・動かしたコマンド（押すと開く）" },
