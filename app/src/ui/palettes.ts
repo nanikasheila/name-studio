@@ -75,7 +75,7 @@ export function editorDocks(changed: () => void): Docks {
       palette(
         "assist",
         "相談",
-        "AI に相談（Claude Code・Codex・ローカル LLM）。ネームを見せて行き詰まりを話し、変更の案を当てる",
+        "AI に相談（Claude Code・Codex・ローカル LLM）。ネームを見せて行き詰まりを話し、使い方も聞ける。変更の案は画面で確かめて採用・却下",
         ASSIST_ICON,
       ),
       palette("inspector", "詳細", "選んだもの（ページ・コマ・セリフ・付箋など）の設定", INSPECTOR_ICON),

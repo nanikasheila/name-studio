@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { brushPropItems, defaultBrushItems, ERASE_MODE, SIZE_BUTTONS, TIP_SHAPE } from "./brushitems";
+import { brushPropItems, defaultBrushItems, effectorOfColumn, ERASE_MODE, partnerOf, SIZE_BUTTONS, TIP_SHAPE } from "./brushitems";
 import { newBrush } from "../domain/cspsettings";
 import { showItemsBytes } from "../domain/cspshow";
 import { base64Of } from "../domain/cspsettings";
@@ -7,7 +7,17 @@ import { base64Of } from "../domain/cspsettings";
 describe("ツールプロパティに出せる項目（ペン・消しゴム）", () => {
   it("offers the plain pen and eraser only what they can change", () => {
     expect(brushPropItems("pen", null).map((i) => i.id)).toEqual(["BrushSize", SIZE_BUTTONS, "FlickerReduction"]);
-    expect(brushPropItems("eraser", null).map((i) => i.id)).toEqual(["BrushSize", ERASE_MODE]);
+    expect(brushPropItems("eraser", null).map((i) => i.id)).toEqual(["BrushSize", SIZE_BUTTONS, ERASE_MODE]);
+    expect(defaultBrushItems("eraser", null)).toEqual(["BrushSize", SIZE_BUTTONS, ERASE_MODE]);
+  });
+
+  it("keeps 向きの影響元 (a number in CSP, not a graph) as an item of its own", () => {
+    // Every brush of CSP's own has BrushRotationEffector = 3: it is not shown on ブラシ先端の向き's row as a graph.
+    expect(partnerOf("BrushRotationEffector")).toBeNull();
+    expect(partnerOf("BrushSizeEffector")).toBe("BrushSize");
+    expect(partnerOf("BrushOpacityEffector")).toBe("Opacity");
+    expect(partnerOf("BrushSizeUnit")).toBe("BrushSize");
+    expect(effectorOfColumn("BrushRotation")).toBeNull();
   });
 
   it("offers a brush of its own every setting changed in a row, in CSP's order", () => {
