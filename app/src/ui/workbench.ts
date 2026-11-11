@@ -344,6 +344,7 @@ export class Workbench {
       edit: (change) => this.edit(change),
       status: (message) => this.setStatus(message),
       snapChanged: () => this.bars.showPanelModes(),
+      setPickMode: (mode) => this.bars.setPickMode(mode),
       stripOrderChanged: () => this.board.redraw(),
       // What is unsaved goes where autosave says now.
       autosaveChanged: () => this.saver.settingsChanged(),
@@ -367,6 +368,7 @@ export class Workbench {
       setRows: (rows) => this.bars.setRows(rows),
       setTool: (tool) => this.setTool(tool),
       setEraseMode: (mode) => this.setEraseMode(mode),
+      togglePickMode: () => this.bars.togglePickMode(),
       setFillWay: (way) => (way === "next" ? this.bars.fills.nextWay() : this.bars.fills.setWay(way)),
       setPanelMode: (mode) => this.bars.setPanelMode(mode),
       holdSelected: () => this.edits.holdSelection(),

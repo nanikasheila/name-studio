@@ -15,6 +15,7 @@ import { shapesFrom } from "../domain/shapes";
 import { snapFrom, type SnapSettings } from "../domain/snapping";
 import type { Brush, Project, StoryShape } from "../model/model";
 import type { PanelFit } from "../domain/panels";
+import type { PickMode } from "../domain/strokes";
 
 // --- the page editor's choices ------------------------------------------------------
 
@@ -43,6 +44,18 @@ export function swapFit(): PanelFit {
 
 export function setSwapFit(fit: PanelFit): void {
   writeText(SWAP_FIT_KEY, fit);
+}
+
+/** 範囲選択の選び方: "inside" (囲んだものだけ) or "touch" (少しでもかかったもの). */
+export const PICK_MODE_KEY = "namestudio.pickMode";
+
+/** Out of the box a 範囲選択 takes what it surrounds, as before. */
+export function pickMode(): PickMode {
+  return readText(PICK_MODE_KEY) === "touch" ? "touch" : "inside";
+}
+
+export function setPickMode(mode: PickMode): void {
+  writeText(PICK_MODE_KEY, mode);
 }
 
 // --- 物語の帯 -------------------------------------------------------------------------

@@ -17,6 +17,7 @@ import { $, choice, element } from "../platform/dom";
 import { fontField } from "./fontpicker";
 import { APP_FONT_LABEL, FONT_ROLES, FONT_ROLE_LABELS, roleFont, setRoleFont } from "../domain/fonts";
 import type { PageEditor } from "./editor";
+import type { PickMode } from "../domain/strokes";
 import { helpBarShown, showHelpBar } from "./helpbar";
 import { LookPane } from "./lookpane";
 import {
@@ -31,6 +32,7 @@ import {
   setStripOrder,
   setSwapFit,
   stripOrder,
+  pickMode,
   swapFit,
 } from "../platform/prefs";
 import { GRID_GAP_MM } from "../editing/layout";
@@ -74,6 +76,8 @@ export interface SettingsHost {
   status(message: string): void;
   /** The snap settings changed (the grid box beside the panel tool shows them). */
   snapChanged(): void;
+  /** How a drag around things with the select tool picks them (the tool's bar shows it too). */
+  setPickMode(mode: PickMode): void;
   /** The order of the pages in the strip under the pages changed. */
   stripOrderChanged(): void;
   /** 自動保存 was turned on or off. */
@@ -219,6 +223,9 @@ export class SettingsDialog {
           : "コマの入れ替えで、中身を入れ替え先のコマに合わせるようにしました",
       );
     });
+    $<HTMLSelectElement>("st-pick-mode").addEventListener("change", (event) => {
+      this.host.setPickMode((event.target as HTMLSelectElement).value === "touch" ? "touch" : "inside");
+    });
     $<HTMLInputElement>("st-balloon-text").addEventListener("change", (event) => {
       this.host.editor.balloonTextFollows = (event.target as HTMLInputElement).checked;
       writeFlag(BALLOON_TEXT_KEY, this.host.editor.balloonTextFollows);
@@ -330,6 +337,7 @@ export class SettingsDialog {
       this.host.editor.balloonTextFollows = true;
       writeFlag(BALLOON_TEXT_KEY, true);
       setSwapFit("stretch");
+      this.host.setPickMode("inside");
       setAutosaveTiming({ delay: AUTOSAVE_DELAY_MS / 1000, maxWait: AUTOSAVE_MAX_WAIT_MS / 1000 });
       showHelpBar(true);
       this.look.resetToDefault();
@@ -552,6 +560,7 @@ export class SettingsDialog {
     $<HTMLInputElement>("st-panel-carries").checked = this.host.editor.panelCarries;
     $<HTMLInputElement>("st-balloon-text").checked = this.host.editor.balloonTextFollows;
     $<HTMLSelectElement>("st-swap-fit").value = swapFit();
+    $<HTMLSelectElement>("st-pick-mode").value = pickMode();
     $<HTMLInputElement>("st-autosave").checked = autosaveToFile();
     const timing = autosaveTiming();
     for (const [id, value] of [

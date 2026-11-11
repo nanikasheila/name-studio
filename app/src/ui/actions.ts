@@ -36,6 +36,8 @@ export interface CommandHost {
   setRows(rows: number): void;
   setTool(tool: Tool): void;
   setEraseMode(mode: EditorEraseMode): void;
+  /** 選択: a drag around things picks what it surrounds, or anything it touches. */
+  togglePickMode(): void;
   /** 塗り: take up a sub tool ("next": the one after the one in hand), the fill tool with it. */
   setFillWay(way: FillWay | "next"): void;
   /** コマ割り: how a drag makes panels (the tool comes too). */
@@ -362,6 +364,15 @@ export function buildCommands(host: CommandHost): Command[] {
       words: "保留 置き場所 あとで",
       available: () => editor.selection?.kind === "panel",
       run: () => host.holdSelected(),
+    },
+    {
+      id: "select.pickMode",
+      label: "囲んで選ぶもの（囲んだものだけ／少しでもかかったもの）を切り替える",
+      group: "道具",
+      keys: [],
+      words: "範囲選択 囲む 選択 かかる 接触 触れる 一部 少しでも 投げなわ",
+      available: named,
+      run: always(() => host.togglePickMode()),
     },
     {
       id: "eraser.next",
