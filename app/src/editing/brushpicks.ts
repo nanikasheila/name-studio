@@ -17,6 +17,9 @@ export interface BrushPick {
 /** The plain pen's width in hand when nothing else is known. */
 export const PLAIN_PEN_MM = 0.4;
 
+/** The plain pen's and the plain eraser's size in hand when nothing else is known. */
+export const PLAIN_SIZE_MM: Record<BrushKind, number> = { pen: PLAIN_PEN_MM, eraser: 5 };
+
 /** What the brush is called in the keys and the sizes kept on this computer: the same in every name. */
 export function brushRef(kind: BrushKind, brush: Pick<Brush, "name" | "source"> | null): string {
   return brush ? `${kind}:${brush.source ?? ""}/${brush.name}` : `${kind}:plain`;
@@ -120,7 +123,7 @@ export function handSizesFrom(stored: unknown): HandSizes {
 
 /** The size to take a brush up at: the one it was last used at, unless its own size changed since. */
 export function sizeInHand(sizes: HandSizes, kind: BrushKind, brush: Brush | null): number {
-  const own = brush ? brush.sizeMm : PLAIN_PEN_MM;
+  const own = brush ? brush.sizeMm : PLAIN_SIZE_MM[kind];
   const kept = sizes[brushRef(kind, brush)];
   return kept && kept.base === own ? kept.mm : own;
 }
@@ -128,7 +131,7 @@ export function sizeInHand(sizes: HandSizes, kind: BrushKind, brush: Brush | nul
 /** The sizes with the brush now used at `mm` (its own size again: forgotten). */
 export function withHandSize(sizes: HandSizes, kind: BrushKind, brush: Brush | null, mm: number): HandSizes {
   const ref = brushRef(kind, brush);
-  const base = brush ? brush.sizeMm : PLAIN_PEN_MM;
+  const base = brush ? brush.sizeMm : PLAIN_SIZE_MM[kind];
   const next = { ...sizes };
   if (mm === base) delete next[ref];
   else next[ref] = { mm, base };

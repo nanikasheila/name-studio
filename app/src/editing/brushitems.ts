@@ -82,7 +82,10 @@ export const COLUMNS: ReadonlyMap<string, CspColumn> = new Map(CSP_COLUMNS.map((
 export function partnerOf(column: string): string | null {
   if (column === "BrushOpacityEffector") return "Opacity";
   for (const suffix of ["Unit", "Effector"]) {
-    if (column.endsWith(suffix) && COLUMNS.has(column.slice(0, -suffix.length))) return column.slice(0, -suffix.length);
+    if (!column.endsWith(suffix) || !COLUMNS.has(column.slice(0, -suffix.length))) continue;
+    // 向きの影響元 (BrushRotationEffector) is a number of its own, not a graph shown on its value's row.
+    if (suffix === "Effector" && COLUMNS.get(column)?.edit.kind !== "effector") continue;
+    return column.slice(0, -suffix.length);
   }
   return null;
 }
@@ -158,7 +161,7 @@ export function brushPropItems(kind: BrushKind, brush: Brush | null): PropItem[]
   const sizeItem: PropItem = size ? columnItem(size) : { id: "BrushSize", label: "ブラシサイズ", group: "ブラシサイズ" };
   const flicker = COLUMNS.get("FlickerReduction");
   const flickerItem: PropItem = flicker ? columnItem(flicker) : { id: "FlickerReduction", label: "手ブレ補正", group: "補正" };
-  if (!brush) return kind === "pen" ? [sizeItem, OWN[SIZE_BUTTONS], flickerItem] : [sizeItem, OWN[ERASE_MODE]];
+  if (!brush) return kind === "pen" ? [sizeItem, OWN[SIZE_BUTTONS], flickerItem] : [sizeItem, OWN[SIZE_BUTTONS], OWN[ERASE_MODE]];
   const items: PropItem[] = [];
   for (const item of CSP_ITEMS) {
     items.push(item);
@@ -175,7 +178,7 @@ export function brushPropItems(kind: BrushKind, brush: Brush | null): PropItem[]
 
 /** What ツールプロパティ shows for the brush out of the box: what CSP showed, else the usual few. */
 export function defaultBrushItems(kind: BrushKind, brush: Brush | null): string[] {
-  if (!brush) return kind === "pen" ? ["BrushSize", SIZE_BUTTONS, "FlickerReduction"] : ["BrushSize", ERASE_MODE];
+  if (!brush) return kind === "pen" ? ["BrushSize", SIZE_BUTTONS, "FlickerReduction"] : ["BrushSize", SIZE_BUTTONS, ERASE_MODE];
   const blob = brush.csp?.settings.VariantShowParam;
   const fromCsp = blob && typeof blob === "object" ? parseShowItems(bytesOf(blob.blob)) : null;
   const known = fromCsp ? columnsOfShowItems(fromCsp) : [];

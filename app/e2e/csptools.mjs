@@ -55,7 +55,8 @@ try {
       tip: null,
       vectorErase: kind === "eraser" ? "touched" : null,
       csp: {
-        settings: { BrushSize: size, BrushSizeUnit: 0, Opacity: 100 },
+        // CSP keeps 向きの影響元 as a number in every brush of its own (not a blob, though it ends in Effector).
+        settings: { BrushSize: size, BrushSizeUnit: 0, Opacity: 100, BrushRotationEffector: 3 },
         node: { NodeName: name, NodeInputOp: kind === "eraser" ? 12 : 10, NodeOutputOp: kind === "eraser" ? 12 : 10 },
         manager: {},
         dpi: 0,
@@ -118,6 +119,7 @@ try {
   check(taken.length === 3 && taken.every((b) => b.link), `taken pens are linked to CSP's sub tools (${JSON.stringify(taken)})`);
   const marks = await page.$$eval("#bd-list .bd-state", (nodes) => nodes.map((n) => n.textContent));
   check(marks.filter((m) => m === "取り込み済み").length === 3, `rows say what was taken (${marks})`);
+  check((await page.textContent("#bd-message")).includes("3 本を取り込みました"), "and says so");
   await page.click("#bd-pick-new");
   check((await page.textContent("#bd-import")).includes("2 本"), "まだのもの picks the two not taken");
   if (shots) await page.locator("#brush-dialog").screenshot({ path: `${shots}/csptools-dialog.png` });
