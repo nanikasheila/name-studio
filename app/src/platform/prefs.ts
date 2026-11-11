@@ -126,6 +126,32 @@ export function saveToLibrary(brushes: Brush[]): void {
   writeJson(BRUSHES_KEY, withBrushes(loadLibrary(), brushes));
 }
 
+// --- following CSP's own tool list -----------------------------------------------------
+
+/** When a sub tool taken from CSP is changed there: follow it, say so, or leave it. */
+export type CspSyncMode = "auto" | "notify" | "off";
+export const CSP_SYNC_KEY = "namestudio.cspSync";
+const CSP_FOLLOW_KEY = "namestudio.cspFollow";
+
+export function cspSyncMode(): CspSyncMode {
+  const mode = readText(CSP_SYNC_KEY);
+  return mode === "notify" || mode === "off" ? mode : "auto";
+}
+
+export function setCspSyncMode(mode: CspSyncMode): void {
+  writeText(CSP_SYNC_KEY, mode);
+}
+
+/** Groups of CSP's tool list followed (追う): sub tools added to them in CSP are taken in too. */
+export function cspFollowed(): Set<string> {
+  const groups = readJson(CSP_FOLLOW_KEY, []);
+  return new Set(Array.isArray(groups) ? groups.filter((g): g is string => typeof g === "string") : []);
+}
+
+export function setCspFollowed(groups: ReadonlySet<string>): void {
+  writeJson(CSP_FOLLOW_KEY, [...groups].sort());
+}
+
 // --- ブラシサイズ: the round buttons, and the size each pen was last used at ---------
 
 const SIZE_PRESETS_KEY = "namestudio.sizePresets";

@@ -89,6 +89,7 @@ interface Pairs {
   PressureCurve: [Rust.PressureCurve, App.PressureCurve];
   BrushTip: [Rust.BrushTip, App.BrushTip];
   Brush: [Rust.Brush, App.Brush];
+  CspLink: [Rust.CspLink, App.CspLink];
   CspValue: [Rust.CspValue, App.CspValue];
   CspMaterial: [Rust.CspMaterial, App.CspMaterial];
   CspToolData: [Rust.CspToolData, App.CspToolData];
@@ -149,6 +150,7 @@ const agreed: { [K in keyof Pairs]: Agrees<Pairs[K][0], Pairs[K][1]> } = {
   PressureCurve: true,
   BrushTip: true,
   Brush: true,
+  CspLink: true,
   CspValue: true,
   CspMaterial: true,
   CspToolData: true,

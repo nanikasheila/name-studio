@@ -432,9 +432,9 @@
     <dialog id="brush-dialog" class="export brushes">
       <form method="dialog">
         <h2>CSP のペン・消しゴムを取り込む</h2>
-        <p class="hint">書き出したサブツール（.sut）か、CSP が使っているツールの一覧から選びます。どちらもコピーを読むだけで、CSP の設定は変えません。</p>
+        <p class="hint">この PC の CSP が使っているサブツールの一覧を、CSP のサブツールパレットと同じ並びで出します。書き出したサブツール（.sut）も選べます。どちらもコピーを読むだけで、CSP の設定は変えません。CSP の一覧から取り込んだものは、CSP で設定を変えるとこちらも合わせます（設定 › ペン・キー）。</p>
         <div class="actions start">
-          <button type="button" id="bd-read-csp">この PC の CSP のツールを読む</button>
+          <button type="button" id="bd-read-csp">CSP の一覧を読み直す</button>
           <button type="button" id="bd-pick-file">ファイルを選ぶ（.sut）…</button>
         </div>
         <div class="field">
@@ -443,6 +443,12 @@
           <small>px で決めた太さを、この dpi の原稿として mm に直します</small>
           <span>探す</span>
           <input id="bd-filter" type="search" placeholder="名前やグループ" />
+        </div>
+        <div id="bd-picks" class="actions start bd-picks" hidden>
+          <span>まとめて選ぶ</span>
+          <button type="button" id="bd-pick-new" title="まだ取り込んでいないものを選ぶ">まだのもの</button>
+          <button type="button" id="bd-pick-changed" title="取り込んだあと CSP で設定が変わったものを選ぶ">CSP で変わったもの</button>
+          <button type="button" id="bd-pick-none">選択を外す</button>
         </div>
         <div id="bd-list" class="brush-list"></div>
         <p id="bd-message" class="message" role="status"></p>
@@ -873,6 +879,18 @@
               <div class="setting-item" data-keys="ペン タブレット 筆圧 傾き 消しゴム サイドボタン タッチ カーソル">
                 <div class="setting-row"><span>ペンタブレット</span><button type="button" id="st-open-pen">ペン設定を開く…</button></div>
                 <p class="hint">筆圧カーブ（下限・上限）、傾き、消しゴム側、サイドボタン、タッチ操作、カーソル。</p>
+              </div>
+              <div class="setting-item" data-keys="CSP クリスタ ペン 消しゴム サブツール 取り込み 同期 合わせる 自動">
+                <div class="setting-row">
+                  <span>CSP で変えたペン・消しゴム</span>
+                  <select id="st-csp-sync">
+                    <option value="auto">自動で合わせる</option>
+                    <option value="notify">知らせるだけ</option>
+                    <option value="off">合わせない</option>
+                  </select>
+                  <button type="button" id="st-csp-list">CSP から取り込む…</button>
+                </div>
+                <p class="hint">CSP のサブツールの一覧から取り込んだペン・消しゴムは、CSP で設定を変えると、ネームを開いたときや Name Studio の窓に戻ったときに合わせます（その線の見た目も変わります。元に戻すで戻せます）。Name Studio でも直したものはそのままにして知らせます。一覧でグループを「追う」と、CSP でそこに足したものも取り込みます。</p>
               </div>
               <div class="setting-item" data-keys="ショートカット キー 割り当て 左手デバイス">
                 <div class="setting-row"><span>ショートカット</span><button type="button" id="st-open-keys">キー設定を開く…</button></div>

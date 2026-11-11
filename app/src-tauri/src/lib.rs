@@ -231,6 +231,7 @@ pub fn run() {
             files::record_dialogue_update,
             files::csp_tool_locations,
             files::read_csp_sub_tools,
+            files::csp_tool_stamp,
             files::write_csp_sub_tool,
             files::show_in_folder,
             fonts::list_fonts,

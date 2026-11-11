@@ -16,6 +16,7 @@ import { noteUse } from "../platform/usagestore";
 import { useLabels } from "./usagepane";
 import { NameSaver } from "./namesaver";
 import { BrushDialog } from "./brushdialog";
+import { CspTools } from "./csptools";
 import { BrushEditor } from "./brusheditor";
 import { AltDialog } from "./altdialog";
 import { ScriptDialog } from "./scriptdialog";
@@ -221,6 +222,7 @@ export class Workbench {
   );
   private readonly brushDialog: BrushDialog;
   private readonly brushEditor: BrushEditor;
+  private readonly cspTools: CspTools;
   private readonly settingsDialog: SettingsDialog;
   private readonly versionDialog: VersionDialog;
   /** 一時切り替え: a tool's key held lends the tool. */
@@ -344,6 +346,7 @@ export class Workbench {
       busy: () => this.session.project !== null,
       openPenSettings: () => this.penDialog.open(),
       openShortcuts: () => this.shortcutDialog.open(),
+      openCspTools: () => void this.brushDialog.open(),
       prepareRestart: () => this.confirmDiscard(),
       useLabel: useLabels(() => this.commands),
     });
@@ -467,7 +470,15 @@ export class Workbench {
       fitSpills: () => this.edits.fitSpills(),
       clearFaces: () => this.edits.clearFaces(),
     });
+    this.cspTools = new CspTools({
+      project: () => this.session.project,
+      edit: (change) => this.edit(change),
+      undo: () => this.undo(),
+      brushesChanged: () => this.brushEditor.refresh(),
+      openList: () => void this.brushDialog.open(),
+    });
     this.brushDialog = new BrushDialog({
+      csp: this.cspTools,
       project: () => this.session.project,
       edit: (change) => this.edit(change),
       imported: (brushes) => {
@@ -621,6 +632,7 @@ export class Workbench {
     this.renderAll();
     this.setStatus(message);
     if (this.session.project) writeAhead(this.session.project);
+    void this.cspTools.check();
   }
 
   async load(path: string): Promise<void> {
@@ -964,6 +976,7 @@ export class Workbench {
     window.addEventListener("pointerup", () => giveBack(this.spring.pointerUp()), true);
     window.addEventListener("keyup", (event) => giveBack(this.spring.release(event.code, performance.now())));
     window.addEventListener("blur", () => this.spring.reset());
+    window.addEventListener("focus", () => void this.cspTools.check());
     $("versions").addEventListener("click", () => this.openVersions());
     $("shortcuts").addEventListener("click", () => this.shortcutDialog.open());
     $("pen-settings").addEventListener("click", () => this.penDialog.open());

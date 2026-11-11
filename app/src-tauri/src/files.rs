@@ -21,17 +21,44 @@ pub(crate) struct CspToolLocations {
 
 #[tauri::command]
 pub(crate) async fn csp_tool_locations() -> CspToolLocations {
-    let Some(appdata) = std::env::var_os("APPDATA") else {
+    // Windows: %APPDATA%\CELSYSUserData; macOS: ~/Library/CELSYSUserData.
+    let base = std::env::var_os("APPDATA")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| Path::new(&home).join("Library")));
+    let Some(base) = base else {
         return CspToolLocations {
             tools: None,
             materials: None,
         };
     };
-    let (tools, materials) = clip_core::subtool::default_locations(Path::new(&appdata));
+    let (tools, materials) = clip_core::subtool::default_locations(&base);
     CspToolLocations {
         tools: tools.is_file().then(|| tools.display().to_string()),
         materials: materials.is_dir().then(|| materials.display().to_string()),
     }
+}
+
+/// When CSP's tool database was last written, and its size: to tell whether
+/// it changed since it was read. None when it is not there.
+#[derive(Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CspToolStamp {
+    modified_ms: f64,
+    size: f64,
+}
+
+#[tauri::command]
+pub(crate) async fn csp_tool_stamp(path: String) -> Option<CspToolStamp> {
+    let meta = std::fs::metadata(&path).ok()?;
+    let modified_ms = meta
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0.0, |since| since.as_millis() as f64);
+    Some(CspToolStamp {
+        modified_ms,
+        size: meta.len() as f64,
+    })
 }
 
 /// Pens and erasers of a .sut or of CSP's tool database (read from a copy).

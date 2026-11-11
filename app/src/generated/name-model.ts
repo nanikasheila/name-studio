@@ -493,7 +493,27 @@ source?: string,
  * brush settings edit and what goes back to CSP as a .sut. The values
  * above are worked out from it.
  */
-csp?: CspToolData, };
+csp?: CspToolData, 
+/**
+ * The sub tool in CSP's own tool list it was taken from, to follow
+ * changes made to it in CSP.
+ */
+cspLink?: CspLink, };
+
+export type CspLink = { 
+/**
+ * `NodeUuid` in hex.
+ */
+uuid: string, 
+/**
+ * A digest of the settings (`CspToolData::settings`) as taken: CSP
+ * changed them when its own differ, Name Studio when the brush's do.
+ */
+stamp: string, 
+/**
+ * CSP's name of it then (a name changed in Name Studio is kept).
+ */
+name: string, };
 
 export type CspValue = number | string | { 
 /**

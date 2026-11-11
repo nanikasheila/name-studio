@@ -205,6 +205,8 @@ export class BrushEditor {
       const copy = structuredClone(source);
       copy.id = newId(project, "brush");
       copy.name = uniqueName(project, copy.kind, `${source.name} のコピー`);
+      // A copy is this name's own: it does not follow the CSP sub tool.
+      delete copy.cspLink;
       ensureCspSettings(copy);
       project.brushes.push(copy);
       made = copy;

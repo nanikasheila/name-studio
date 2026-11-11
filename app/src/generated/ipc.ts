@@ -161,6 +161,15 @@ export interface CspToolLocations {
   materials: string | null;
 }
 
+/**
+ * When CSP's tool database was last written, and its size: to tell whether
+ * it changed since it was read. None when it is not there.
+ */
+export interface CspToolStamp {
+  modifiedMs: number;
+  size: number;
+}
+
 export interface DialogueUpdateReport {
   path: string;
   /** The page as it was, when it was changed. */
@@ -570,6 +579,11 @@ export interface StoryLayout {
 export type StoryPosition = "left" | "center" | "right";
 
 export interface SubTool {
+  /**
+   * `NodeUuid` in hex: the same sub tool in CSP's tool database from one
+   * read to the next (renamed or moved, too).
+   */
+  uuid: string;
   name: string;
   /** Tool and group names above it (empty in a .sut). */
   group: string[];
@@ -795,6 +809,7 @@ export interface Commands {
   csp_tool_locations: [void, CspToolLocations];
   /** Pens and erasers of a .sut or of CSP's tool database (read from a copy). */
   read_csp_sub_tools: [{ path: string; materials?: string | null }, SubTool[]];
+  csp_tool_stamp: [{ path: string }, CspToolStamp | null];
   /**
    * A brush's CSP settings as a .sut for CSP's ツールの読み込み (CSP names
    * the tool after the file). `materials` is CSP's material folder, where

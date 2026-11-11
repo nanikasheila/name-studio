@@ -68,10 +68,16 @@ export function brushFromSubTool(tool: CspSubTool, dpi: number, id: string): Bru
 }
 
 /** Add brushes to the project; one with the same source and name is replaced in place. */
+/** Whether two brushes are the same one: from the same CSP sub tool, or else of the same name and source. */
+export function sameBrush(a: Brush, b: Brush): boolean {
+  if (a.cspLink && b.cspLink) return a.cspLink.uuid === b.cspLink.uuid;
+  return a.source === b.source && a.name === b.name && a.kind === b.kind;
+}
+
 export function addBrushes(project: Project, brushes: Brush[]): Brush[] {
   const added: Brush[] = [];
   for (const brush of brushes) {
-    const existing = project.brushes.find((b) => b.source === brush.source && b.name === brush.name && b.kind === brush.kind);
+    const existing = project.brushes.find((b) => sameBrush(b, brush));
     if (existing) {
       Object.assign(existing, { ...brush, id: existing.id });
       added.push(existing);
@@ -274,7 +280,7 @@ export function postCorrect<T extends number[]>(points: T[], strength: number): 
 export function withBrushes(library: readonly Brush[], brushes: readonly Brush[]): Brush[] {
   const merged = [...library];
   for (const brush of brushes) {
-    const index = merged.findIndex((b) => b.source === brush.source && b.name === brush.name && b.kind === brush.kind);
+    const index = merged.findIndex((b) => sameBrush(b, brush));
     if (index >= 0) merged[index] = brush;
     else merged.push(brush);
   }

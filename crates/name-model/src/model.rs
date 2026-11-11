@@ -1038,6 +1038,26 @@ pub struct Brush {
     /// above are worked out from it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub csp: Option<CspToolData>,
+    /// The sub tool in CSP's own tool list it was taken from, to follow
+    /// changes made to it in CSP.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub csp_link: Option<CspLink>,
+}
+
+/// Which sub tool of CSP's tool list a brush was taken from, and what its
+/// settings were then.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
+#[serde(rename_all = "camelCase")]
+pub struct CspLink {
+    /// `NodeUuid` in hex.
+    pub uuid: String,
+    /// A digest of the settings (`CspToolData::settings`) as taken: CSP
+    /// changed them when its own differ, Name Studio when the brush's do.
+    pub stamp: String,
+    /// CSP's name of it then (a name changed in Name Studio is kept).
+    #[serde(default)]
+    pub name: String,
 }
 
 /// One value of a CSP sub tool setting: a number, text, or bytes in base64.
