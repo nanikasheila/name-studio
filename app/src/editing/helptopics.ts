@@ -92,6 +92,10 @@ export const TOOL_TOPICS: Record<ToolId, HelpTopic> & Record<string, HelpTopic> 
     steps: [
       { input: "クリック", does: "選ぶ" },
       { input: "ドラッグ（何もない所）", does: "囲んで選ぶ（見開きの両ページにまたがってもよい）" },
+      {
+        input: "上の段「囲んだもの／かかったもの」",
+        does: "囲んで選ぶとき、中に入ったものだけか、少しでもかかったものも選ぶか（設定 › 操作 でも）",
+      },
       { input: "ドラッグ（選んだ枠の中）", does: "選んだものをまとめて動かす（ものの間を押しても）" },
       { input: "Shift+クリック", does: "選択に足す・外す（向かいのページのものも）" },
       { command: "selectAll", does: "ページを全部選ぶ" },

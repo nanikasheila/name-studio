@@ -10,7 +10,18 @@ import { ERASE_MODE_LABELS, PANEL_MODE_LABELS, type EditorEraseMode, type PageEd
 import { FillBar } from "./fillbar";
 import { FillSource } from "./fillsource";
 import type { Brush, BrushKind, Project } from "../model/model";
-import { CONTINUOUS_KEY, loadHandSizes, loadLibrary, ROWS_KEY, saveHandSizes, SHOW_NOTES_KEY, SINGLE_PAGE_KEY } from "../platform/prefs";
+import {
+  CONTINUOUS_KEY,
+  loadHandSizes,
+  loadLibrary,
+  pickMode,
+  ROWS_KEY,
+  saveHandSizes,
+  setPickMode,
+  SHOW_NOTES_KEY,
+  SINGLE_PAGE_KEY,
+} from "../platform/prefs";
+import type { PickMode } from "../domain/strokes";
 import { SubToolPanel, type SubToolPart } from "./subtools";
 import { writeCount, writeFlag } from "../platform/settings";
 import { MarkBar } from "./markbar";
@@ -24,6 +35,14 @@ const PANEL_HINTS: Record<PanelMode, string> = {
   sketch: "紙のように描く: 囲むと仮のコマ、横切ると割る、コマの間をぐしゃぐしゃでつなげる。決まったら「整える」で清書",
   rect: "ドラッグで四角いコマを描く。コマの中に描くと、はめ込み（Alt で吸着しない）",
   polygon: "クリックで角を置く。最初の角・ダブルクリック・Enter で閉じてコマに。Backspace で 1 つ戻す、Esc でやめる",
+};
+
+const PICK_MODES: readonly PickMode[] = ["inside", "touch"];
+
+/** Said when the way a 範囲選択 picks is changed. */
+const PICK_NOTES: Record<PickMode, string> = {
+  inside: "囲んで選ぶとき、囲んだ中に入ったものだけ選びます",
+  touch: "囲んで選ぶとき、囲んだ線に少しでもかかったものも選びます",
 };
 
 const CONTINUOUS_TITLE = "全ページを一枚のキャンバスに並べ、どのページにもそのまま描く（F7）";
@@ -134,6 +153,7 @@ export class ControlBar {
     $("panel-modes").hidden = tool !== "cut";
     $("grid-snap-label").hidden = tool !== "cut";
     $("panel-tidy").hidden = tool !== "cut";
+    $("pick-modes").hidden = tool !== "select";
     $("reference-bar").classList.toggle("off", tool !== "reference");
     this.host.toolChanged(tool);
     // The options row names the tool and shows only what it has; nothing else moves.
@@ -143,8 +163,29 @@ export class ControlBar {
     name.style.setProperty("--tool", getComputedStyle(button).getPropertyValue("--tool"));
     $("tool-hint").textContent = TOOLS[tool].hint;
     this.showPanelModes();
+    this.showPickModes();
     this.renderBrushBar();
     this.fills.render();
+  }
+
+  /** 選択: what a drag around things picks (設定 › 操作). */
+  showPickModes(): void {
+    const mode = pickMode();
+    for (const name of PICK_MODES) {
+      const button = $(`pick-${name}`);
+      button.classList.toggle("active", name === mode);
+      button.setAttribute("aria-pressed", String(name === mode));
+    }
+  }
+
+  setPickMode(mode: PickMode): void {
+    setPickMode(mode);
+    this.showPickModes();
+    this.host.status(PICK_NOTES[mode]);
+  }
+
+  togglePickMode(): void {
+    this.setPickMode(pickMode() === "touch" ? "inside" : "touch");
   }
 
   /** コマ割り: how a drag makes panels, and whether they snap to the grid. */
@@ -338,6 +379,7 @@ export class ControlBar {
     }
     $<HTMLInputElement>("grid-snap").addEventListener("change", (event) => this.host.snapGrid((event.target as HTMLInputElement).checked));
     for (const name of TOOL_IDS) $(`tool-${name}`).addEventListener("click", () => this.setTool(name));
+    for (const mode of PICK_MODES) $(`pick-${mode}`).addEventListener("click", () => this.setPickMode(mode));
     for (const mode of Object.keys(ERASE_MODE_LABELS) as EditorEraseMode[]) {
       $(`erase-${mode}`).addEventListener("click", () => this.setEraseMode(mode));
     }

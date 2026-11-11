@@ -88,6 +88,10 @@
             <button id="panel-rect" class="with-icon" title="ドラッグで四角いコマを描く（コマの中に描くと、はめ込み）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="3.5" y="5" width="13" height="10" rx="0.5"/></svg>四角</button>
             <button id="panel-polygon" class="with-icon" title="クリックで角を置いて、台形など好きな形のコマを描く。最初の角・ダブルクリック・Enter で閉じる"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4.5h8l3 11H3z"/></svg>多角形</button>
           </div>
+          <div class="segmented" id="pick-modes" role="group" aria-label="囲んで選ぶもの" hidden>
+            <button id="pick-inside" title="囲んだ中に入ったものを選ぶ（ラフ線は半分以上・セリフは真ん中・コマや塗りは全体が入ったら）。設定 › 操作 と同じ">囲んだもの</button>
+            <button id="pick-touch" title="囲んだ線に少しでもかかったものを選ぶ（コマ・セリフ・線・塗り・はみ出しどれも）。設定 › 操作 と同じ">かかったもの</button>
+          </div>
           <button id="panel-tidy" class="with-icon" data-command="panel.tidy" title="仮のコマを清書する: ほぼ水平・垂直の線をまっすぐに、辺をそろえ、コマ間を設定の幅に、基本枠・裁ち切りへ。選んだコマがあればそのコマだけ" hidden><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="2.5" width="6.5" height="6.5"/><rect x="11" y="2.5" width="6.5" height="6.5"/><rect x="2.5" y="11" width="15" height="6.5"/></svg>整える</button>
           <label class="check" id="grid-snap-label" title="コマの角や辺をグリッドに吸着させる（間隔は 設定 で）" hidden><input type="checkbox" id="grid-snap" /> グリッド</label>
           <div class="fill-bar off" id="fill-bar"></div>
@@ -791,6 +795,16 @@
                   </select>
                 </div>
                 <p class="hint">保留のコマをコマの上に入れるときも同じです。「縦横比を保つ」は、ラフ線・塗り・セリフの位置をそろって拡大縮小し、コマに収まる大きさでコマの真ん中に置きます（はみ出さないので、細長いコマでは小さめになります）。セリフの文字の大きさはどちらでも変わりません。</p>
+              </div>
+              <div class="setting-item" data-keys="範囲選択 囲む 選択 投げなわ なげなわ 矩形 かかる 接触 触れる 一部 少しでも 交差">
+                <div class="setting-row wide">
+                  <span>選択ツールで囲んで選ぶとき</span>
+                  <select id="st-pick-mode">
+                    <option value="inside">囲んだ中に入ったものだけ選ぶ</option>
+                    <option value="touch">少しでもかかったものも選ぶ</option>
+                  </select>
+                </div>
+                <p class="hint">「囲んだ中に入ったもの」は、ラフ線は半分以上、セリフは文字の真ん中、コマ・塗り・はみ出しは全体が囲みに入ったときに選びます。「少しでもかかったもの」は、囲んだ線が触れた・横切ったものをどれも選びます（フキダシのしっぽだけでもセリフを選びます）。選択ツールの上の段でも切り替えられます。</p>
               </div>
               <div class="setting-item" data-keys="フキダシ 変形 文字の大きさ 追従 フォントサイズ">
                 <label class="check"><input type="checkbox" id="st-balloon-text" /> フキダシを変形すると文字の大きさも変える</label>

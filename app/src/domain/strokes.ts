@@ -1,8 +1,9 @@
 // Rough lines and fills: drawing, simplifying, hitting and erasing lines
 // (CSP's erase modes), cutting them at a page edge, and selecting by a shape.
 
-import { bounds, insidePolygon, segmentDistance } from "../model/geometry";
-import type { EraseMode, Fill, FillTone, Page, Point, Project, Stroke, StrokePoint } from "../model/model";
+import { tailGeometry } from "./balloon";
+import { bounds, insidePolygon, lineTouchesShape, rectShape, segmentDistance, shapesOverlap } from "../model/geometry";
+import type { EraseMode, Fill, FillTone, Line, Page, Point, Project, Stroke, StrokePoint } from "../model/model";
 import { newId } from "./project";
 
 export const TONE_LABELS: Record<FillTone, string> = { black: "黒（ベタ）", gray: "グレー", white: "白" };
@@ -315,22 +316,48 @@ function cutInside(points: StrokePoint[], shape: readonly Point[]): Piece[] {
   return pieces;
 }
 
-/** 範囲選択: rough lines mostly inside `shape`, dialogue whose box centre is, and panels, fills and はみ出し wholly inside (not halves of 見開き panels). */
+/**
+ * How a 範囲選択 picks: "inside" (囲んだもの) takes rough lines mostly inside,
+ * dialogue whose box centre is, and panels, fills and はみ出し wholly inside;
+ * "touch" (少しでもかかったもの) takes anything the shape touches at all.
+ */
+export type PickMode = "inside" | "touch";
+
+/** A line's balloon (or its text box when it has none) and its tails, for a 範囲選択 that takes what it touches. */
+function lineTouched(line: Line, shape: readonly Point[]): boolean {
+  const [x0, y0, x1, y1] = line.box;
+  if (shapesOverlap(shape, rectShape([x0, y0, x1, y1]))) return true;
+  if (line.balloon && shapesOverlap(shape, line.balloon)) return true;
+  return (line.tails ?? []).some((tail) => {
+    const geometry = tailGeometry(line, tail);
+    return !!geometry && lineTouchesShape(shape, [geometry.root, geometry.middle, tail.tip]);
+  });
+}
+
+/** 範囲選択: what `shape` picks on the page, the way `how` says (not halves of 見開き panels). */
 export function pickInside(
   page: Page,
   shape: readonly Point[],
+  how: PickMode = "inside",
 ): { strokes: string[]; lines: string[]; panels: string[]; fills: string[]; breakouts: string[] } {
   if (shape.length < 3) return { strokes: [], lines: [], panels: [], fills: [], breakouts: [] };
-  // Panels, fills and はみ出し only when all of them is inside.
-  const whole = (points: readonly Point[]) => points.length > 0 && points.every((point) => insidePolygon(shape, point));
+  const touch = how === "touch";
+  // Panels, fills and はみ出し only when all of them is inside (or, touching, any of it).
+  const whole = (points: readonly Point[]) =>
+    touch ? shapesOverlap(shape, points) : points.length > 0 && points.every((point) => insidePolygon(shape, point));
   const strokes = page.strokes
     .filter((stroke) => {
+      if (touch) return lineTouchesShape(shape, stroke.points);
       const inside = stroke.points.filter(([x, y]) => insidePolygon(shape, [x, y])).length;
       return inside > 0 && inside >= stroke.points.length / 2;
     })
     .map((stroke) => stroke.id);
   const lines = page.lines
-    .filter(({ box: [x0, y0, x1, y1] }) => insidePolygon(shape, [(x0 + x1) / 2, (y0 + y1) / 2]))
+    .filter((line) => {
+      if (touch) return lineTouched(line, shape);
+      const [x0, y0, x1, y1] = line.box;
+      return insidePolygon(shape, [(x0 + x1) / 2, (y0 + y1) / 2]);
+    })
     .map((line) => line.id);
   return {
     strokes,

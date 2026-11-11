@@ -9,7 +9,7 @@ import { namedItems, pickedOf, slotOffset } from "../editing/pickpages";
 import { bounds } from "../model/geometry";
 import type { Page, Point, Project } from "../model/model";
 import { type CarriedContents, carryContents, followPanel, swapPanelContents } from "../domain/panels";
-import { swapFit } from "../platform/prefs";
+import { pickMode, swapFit } from "../platform/prefs";
 import { assignPanels, orderPanels, sortLines } from "../domain/readingorder";
 import { pickInside } from "../domain/strokes";
 import { strokeEditable } from "../domain/roughlayers";
@@ -490,10 +490,12 @@ const pick: DragHandler<DragOf<"pick">> = {
       // Around things on this page and the pages beside it (a 見開き's two pages, 連続's rows).
       const found: ItemRef[] = [];
       const project = editor.host.project();
+      // 設定 › 操作: what it surrounds, or anything it touches.
+      const how = pickMode();
       for (const slot of editor.slots) {
         const [ox, oy] = slotOffset(drag.slot, slot);
         const points = slot === drag.slot ? drag.points : drag.points.map(([x, y]) => [x + ox, y + oy] as Point);
-        const picked = pickInside(slot.page, points);
+        const picked = pickInside(slot.page, points, how);
         // Lines on a hidden or locked layer stay where they are.
         if (project)
           picked.strokes = picked.strokes.filter((id) =>
