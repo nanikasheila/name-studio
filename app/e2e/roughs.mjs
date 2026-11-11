@@ -83,7 +83,7 @@ try {
   s = await state();
   check(s.strokes.length === 1 && s.strokes[0].layer === added, "the line is on the new layer");
 
-  await row("rough").click();
+  await row("rough").locator(".layer-name").click();
   await dragMm([
     [40, 120],
     [120, 140],
@@ -98,7 +98,7 @@ try {
   await row(added).locator(".rough-lock").click();
   s = await state();
   check(s.layers[1].locked === true, "the layer is locked");
-  await row(added).click();
+  await row(added).locator(".layer-name").click();
   await dragMm([
     [40, 200],
     [120, 220],
@@ -172,14 +172,14 @@ try {
 
   // A line picked on the page goes onto the layer picked in the list.
   await tool("pen");
-  await row("rough").click();
+  await row("rough").locator(".layer-name").click();
   await dragMm([
     [40, 250],
     [120, 260],
   ]);
   await tool("select");
   await dragMm([[80, 255]]);
-  await row(added).click();
+  await row(added).locator(".layer-name").click();
   await page.click("#rough-take");
   s = await state();
   check(

@@ -161,6 +161,9 @@ export class Docks {
     return this.defs.get(id)?.body.closest<HTMLElement>(".palette") ?? null;
   }
 
+  /** Buttons of the screen's own kept at the foot of a side's icons (名前をつけた配置). */
+  readonly railExtra: Partial<Record<Side, HTMLElement>> = {};
+
   render(): void {
     this.placed.clear();
     this.renderFloats();
@@ -199,6 +202,11 @@ export class Docks {
     fold.title = this.layout.collapsed[side] ? "この欄を広げる" : "この欄をたたむ（アイコンだけに）";
     fold.innerHTML = COLLAPSE_ICON;
     fold.addEventListener("click", () => this.collapse(side, !narrow));
+    const extra = this.railExtra[side];
+    if (extra) {
+      extra.classList.add("rail-extra");
+      rail.append(extra);
+    }
     if (cols.length || this.layout.collapsed[side]) rail.append(fold);
 
     const columns = document.createElement("div");

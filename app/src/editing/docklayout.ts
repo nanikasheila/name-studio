@@ -24,7 +24,10 @@ export type Side = "left" | "right";
 export const MAX_COLUMNS = 3;
 export const MIN_WIDTH = 160;
 export const MAX_WIDTH = 640;
-export const DEFAULT_WIDTH: Record<Side, number> = { left: 280, right: 300 };
+/** A column's width as it comes: with the icons beside it, a side as wide as it was when they stood above it. */
+export const DEFAULT_WIDTH: Record<Side, number> = { left: 240, right: 260 };
+/** The icons by the window's edge and the side's border (px), once part of the one width kept for a side. */
+export const RAIL_WIDTH = 40;
 /** A floating palette, in the window's pixels. */
 export interface FloatRect {
   x: number;
@@ -176,7 +179,9 @@ export function readLayout(text: string | null, leftCollapsed = false): DockLayo
     const widths = (side: Side): number[] => {
       const kept = saved.widths?.[side];
       if (Array.isArray(kept) && kept.length) return kept.slice(0, MAX_COLUMNS).map((w) => clampWidth(Number(w) || DEFAULT_WIDTH[side]));
-      return [clampWidth(saved.width?.[side] ?? DEFAULT_WIDTH[side])];
+      // Kept before the columns: the side's whole width, the icons in it.
+      const old = saved.width?.[side];
+      return [clampWidth(typeof old === "number" ? old - RAIL_WIDTH : DEFAULT_WIDTH[side])];
     };
     const front: DockLayout["front"] = {};
     for (const [key, value] of Object.entries(saved.front ?? {})) if (isId(key) && isId(value)) front[key] = value;

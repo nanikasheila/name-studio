@@ -5,7 +5,7 @@
 // Each one keeps what is changed in it: switching away and back brings it as
 // it was left, and 既定に戻す brings it as it comes. Beside them, arrangements
 // of one's own (as CSP's ワークスペースの登録): the screen as it is, kept under
-// a name, gone back to from the ▾ by the three; they too keep what is changed
+// a name, gone back to from the icon at the foot of the left icons; they too keep what is changed
 // in them.
 import { defaultLayout, readLayout, type DockLayout, type PaletteId } from "./dock";
 import { localStore } from "../platform/settings";
@@ -272,7 +272,7 @@ export class Workspaces {
       return false;
     }
     this.keep();
-    this.host.status(`今の配置を「${clean}」${replaced ? "に上書きしました" : "として残しました"}（▾ から戻れます）`);
+    this.host.status(`今の配置を「${clean}」${replaced ? "に上書きしました" : "として残しました"}（左の端の配置のアイコンから戻れます）`);
     return true;
   }
 

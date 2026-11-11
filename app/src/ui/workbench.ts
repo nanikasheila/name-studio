@@ -543,7 +543,7 @@ export class Workbench {
     this.showWorkspace();
   }
 
-  /** The ▾ by the workspaces: the ones of one's own, and naming the one on screen. */
+  /** The 名前をつけた配置 icon's menu: the ones of one's own, and naming the one on screen. */
   workspaceMenu(): void {
     this.workspaceDialog.menu($("ws-mine"));
   }
@@ -564,8 +564,8 @@ export class Workbench {
     button.classList.toggle("active", mine !== null);
     $("ws-mine-name").textContent = mine ?? "";
     button.title = mine
-      ? `名前をつけた配置「${mine}」を使っています。▾ でほかの配置へ・上書き・整理`
-      : "名前をつけた配置: 今の配置を名前をつけて残す・残した配置に切り替える";
+      ? `名前をつけた配置「${mine}」を使っています。押すとほかの配置へ・上書き・整理`
+      : "名前をつけた配置: 今の配置を名前をつけて残す・残した配置に切り替える（CSP のワークスペースのように）";
   }
 
   /** The palettes, the way the pages are shown and the band as a workspace has them. */
@@ -983,7 +983,17 @@ export class Workbench {
     });
     for (const def of WORKSPACES) $(def.buttonId).addEventListener("click", () => this.useWorkspace(def.id));
     this.workspaceDialog = new WorkspaceDialog(this.workspaces, () => this.showWorkspace());
-    $("ws-mine").addEventListener("click", () => this.workspaceMenu());
+    // At the foot of the left icons, as CSP keeps its workspaces under ウィンドウ.
+    const mine = document.createElement("button");
+    mine.id = "ws-mine";
+    mine.setAttribute("aria-haspopup", "menu");
+    mine.setAttribute("aria-label", "名前をつけた配置");
+    mine.dataset.command = "workspace.mine";
+    mine.innerHTML =
+      '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="1.5"/><path d="M7.5 3.5v13M7.5 9h10"/></svg><span id="ws-mine-name"></span>';
+    mine.addEventListener("click", () => this.workspaceMenu());
+    this.docks.railExtra.left = mine;
+    this.docks.render();
     this.showWorkspace();
     $("held-badge").addEventListener("click", () => this.docks.open("held"));
     $("panel-tidy").addEventListener("click", () => this.edits.tidyPanels());

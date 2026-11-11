@@ -86,6 +86,8 @@ describe("欄（パレット）", () => {
     expect(layout.widths).toEqual({ left: [640], right: [160] });
     expect(layout.collapsed).toEqual({ left: true, right: false });
     expect(readLayout("{not json").order).toHaveLength(12);
+    // A side's width kept with the icons above it: the column alone is that much narrower now they stand beside it.
+    expect(readLayout(JSON.stringify({ width: { left: 280, right: 300 } })).widths).toEqual({ left: [240], right: [260] });
   });
 
   it("makes a new column at a side's edge, up to three, and drops a column left empty", () => {

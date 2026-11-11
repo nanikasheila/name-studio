@@ -890,9 +890,7 @@ button.small { padding: 1px 6px; font-size: calc(12 * var(--px)); }
 .icon.fill, .icon path.fill { fill: currentColor; }
 button.icon-button { display: inline-flex; align-items: center; justify-content: center; padding: 4px 7px; }
 button.with-icon, .page-nav .segmented button, .workspace-modes button { display: inline-flex; align-items: center; gap: 5px; }
-.workspace-modes #ws-mine { padding-left: 6px; padding-right: 6px; gap: 2px; }
-#ws-mine-name { max-width: 9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#ws-mine-name:empty { display: none; }
+
 .app-bar { flex-wrap: nowrap; gap: 8px; }
 .tool-rail {
   /* Wider with larger words (設定 › 画面の見た目), so a tool's name stays on one line. */
@@ -1110,7 +1108,8 @@ body.focus-mode .story-controls { display: none; }
 .dock[data-columns="2"] { max-width: 48vw; }
 .dock[data-columns="3"] { max-width: 70vw; }
 .dock-rail {
-  flex: none; display: flex; flex-direction: column; gap: 2px; padding: 4px 3px; width: 40px; box-sizing: border-box;
+  /* 39px and the side's own border: the 40px the columns gave up for it (RAIL_WIDTH). */
+  flex: none; display: flex; flex-direction: column; gap: 2px; padding: 4px 3px; width: 39px; box-sizing: border-box;
   overflow-y: auto; scrollbar-width: none;
 }
 .dock.left .dock-rail { border-right: 1px solid var(--line); }
@@ -1125,6 +1124,8 @@ body.focus-mode .story-controls { display: none; }
 .dock-rail button.active { background: color-mix(in srgb, var(--accent) 14%, var(--panel)); border-color: var(--accent); color: var(--text); }
 .dock-rail button.floating { border-style: dashed; }
 .dock-rail .dock-collapse { margin-top: auto; padding: 4px 0; }
+.dock-rail .rail-extra { margin-top: auto; }
+.dock-rail .rail-extra + .dock-collapse { margin-top: 0; }
 .dock.right .dock-collapse .icon { transform: rotate(180deg); }
 .dock.narrow .dock-collapse .icon { transform: rotate(180deg); }
 .dock.right.narrow .dock-collapse .icon { transform: none; }

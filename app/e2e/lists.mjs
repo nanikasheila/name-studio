@@ -198,10 +198,10 @@ try {
   await wb(() => window.nameStudio.workbench.editor.showPage(1));
   await open("layers");
   const layerNames = () => project((p) => (p.roughLayers ?? []).map((l) => l.name).join(","));
-  await page.locator("#rough-layers .rough-row").last().click();
+  await page.locator("#rough-layers .rough-row").last().locator(".layer-name").click();
   await page.keyboard.press("Control+d");
   check((await layerNames()) === "ラフ線,ラフ線のコピー", `Ctrl+D copies a ラフ線のレイヤー (${await layerNames()})`);
-  await page.locator("#rough-layers .rough-row").first().click({ button: "right" });
+  await page.locator("#rough-layers .rough-row").first().locator(".layer-name").click({ button: "right" });
   check(await menuItem("下のレイヤーと結合").isVisible(), "its menu merges down");
   await page.keyboard.press("Escape");
   await page.locator("#rough-layers").focus();

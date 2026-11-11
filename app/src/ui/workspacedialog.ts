@@ -1,5 +1,5 @@
-// 名前をつけた配置 (as CSP's ワークスペースの登録・管理): the ▾ by 描く・全体・CSP
-// lists the arrangements of one's own to go to, and keeps the one on screen
+// 名前をつけた配置 (as CSP's ワークスペースの登録・管理): the icon at the foot of
+// the left icons lists the arrangements of one's own to go to, and keeps the one on screen
 // under a name; the dialog names, renames, orders, overwrites and takes them
 // away.
 import { $, element } from "../platform/dom";
@@ -20,7 +20,7 @@ export class WorkspaceDialog {
     });
   }
 
-  /** The ▾: the ones of one's own, then naming the one on screen. */
+  /** The icon's menu: the ones of one's own, then naming the one on screen. */
   menu(anchor: HTMLElement): void {
     const box = anchor.getBoundingClientRect();
     const current = this.workspaces.currentMine;
@@ -45,7 +45,7 @@ export class WorkspaceDialog {
         run: () => this.open(false),
       },
     );
-    openMenu(items, box.left, box.bottom + 2, "名前をつけた配置");
+    openMenu(items, box.right + 2, box.top, "名前をつけた配置");
   }
 
   /** The dialog (naming: the name box ready to type in). */
@@ -92,7 +92,10 @@ export class WorkspaceDialog {
     $<HTMLButtonElement>("ws-save").disabled = names.length >= MAX_MINE;
     if (!names.length) {
       list.replaceChildren(
-        element("p", { className: "hint", textContent: "まだありません。上で名前を入れて残すと、ここと ▾ に並びます。" }),
+        element("p", {
+          className: "hint",
+          textContent: "まだありません。上で名前を入れて残すと、ここと配置のアイコンのメニューに並びます。",
+        }),
       );
       return;
     }

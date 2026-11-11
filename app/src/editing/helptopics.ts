@@ -395,7 +395,7 @@ export const AREA_TOPICS: Record<string, HelpTopic> = {
     steps: [
       { input: "名前を入れて「今の配置を残す」", does: "今の画面を残す（同じ名前なら上書き）" },
       { input: "名前の欄を書き換える", does: "名前を変える" },
-      { input: "↑↓", does: "▾ の一覧での並び" },
+      { input: "↑↓", does: "配置のアイコンの一覧での並び" },
       { input: "上書き", does: "今の画面のとおりに残し直す" },
     ],
   },
@@ -693,7 +693,7 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
   {
     target: "#workspace-modes",
     name: "作業の配置",
-    text: "描く・全体・CSP に渡すで欄と見せ方をまとめて切り替え。▾ で名前をつけた配置",
+    text: "描く・全体・CSP に渡すで欄と見せ方をまとめて切り替え",
     command: "workspace.draw",
     side: "below",
   },
@@ -739,6 +739,7 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
     command: "view.board",
     side: "inside",
   },
+  { target: "#ws-mine", name: "名前をつけた配置", text: "今の配置に名前をつけて残す・戻る", command: "workspace.save", side: "right" },
   {
     target: "#dock-left",
     name: "左の欄",
@@ -807,7 +808,7 @@ export const TOUR_STOPS: TourStop[] = [
     title: "作業の配置",
     text: [
       "描く・全体・CSP（{workspace.draw}・{workspace.overview}・{workspace.handoff}）で、欄と見せ方と物語の帯をまとめて切り替えます。",
-      "動かした欄はその配置に覚えます。▾ で今の配置に名前をつけて残せます。",
+      "動かした欄はその配置に覚えます。左の端のいちばん下のアイコンで、今の配置に名前をつけて残せます。",
     ],
   },
   {
