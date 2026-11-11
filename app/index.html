@@ -538,6 +538,21 @@
         </div>
       </form>
     </dialog>
+    <dialog id="workspace-dialog" class="export workspace-dialog">
+      <form method="dialog">
+        <h2>名前をつけた配置</h2>
+        <p class="hint">今の欄の並び・ページの見せ方・物語の帯に名前をつけて残し、左の端のアイコンのいちばん下（配置のアイコン）からいつでも戻れます。名前をつけた配置でも、欄を動かすとその配置に覚えます。</p>
+        <div class="ws-save">
+          <input id="ws-name" type="text" maxlength="30" placeholder="名前（例: ペン入れ前の確認）" aria-label="配置の名前" />
+          <button type="button" id="ws-save" class="primary">今の配置を残す</button>
+        </div>
+        <div id="ws-list" class="ws-list" aria-label="名前をつけた配置"></div>
+        <div class="actions">
+          <span class="spacer"></span>
+          <button value="cancel" formnovalidate>閉じる</button>
+        </div>
+      </form>
+    </dialog>
     <dialog id="toolprops-dialog" class="export toolprops-dialog">
       <form method="dialog">
         <h2>ツールプロパティに出す項目</h2>

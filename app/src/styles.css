@@ -547,6 +547,14 @@ dialog.toolprops-dialog form { display: flex; flex-direction: column; height: 10
 .tp-item { display: flex; align-items: center; gap: 6px; padding: 2px 0; cursor: pointer; }
 .tp-shown h3 { margin: 0; font-size: calc(13 * var(--px)); }
 .tp-shown h3 small { color: var(--muted); font-weight: normal; }
+dialog.workspace-dialog { width: min(560px, calc(100vw - 32px)); }
+.ws-save { display: flex; gap: 8px; margin: 8px 0 12px; }
+.ws-save input { flex: 1; min-width: 0; }
+.ws-list { display: flex; flex-direction: column; gap: 4px; max-height: 50vh; overflow-y: auto; }
+.ws-row { display: flex; align-items: center; gap: 4px; padding: 3px 4px; border-radius: 6px; }
+.ws-row.current { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.ws-row input { flex: 1; min-width: 0; }
+.ws-row button { padding: 2px 8px; }
 .tp-row { display: flex; align-items: center; gap: 6px; padding: 3px 4px; border-bottom: 1px solid var(--line); cursor: grab; touch-action: none; user-select: none; }
 .tp-row > span:nth-child(2) { flex: 1; min-width: 0; }
 .tp-row.dragging { opacity: 0.5; }
@@ -882,6 +890,7 @@ button.small { padding: 1px 6px; font-size: calc(12 * var(--px)); }
 .icon.fill, .icon path.fill { fill: currentColor; }
 button.icon-button { display: inline-flex; align-items: center; justify-content: center; padding: 4px 7px; }
 button.with-icon, .page-nav .segmented button, .workspace-modes button { display: inline-flex; align-items: center; gap: 5px; }
+
 .app-bar { flex-wrap: nowrap; gap: 8px; }
 .tool-rail {
   /* Wider with larger words (設定 › 画面の見た目), so a tool's name stays on one line. */
@@ -1085,44 +1094,72 @@ body.focus-mode .story-controls { display: none; }
 .emotion-fold summary { cursor: pointer; }
 .emotion-fold .insp-row { margin-top: 4px; }
 
-/* 欄（パレット）: two columns of palettes, as CSP's; folded, a column keeps only its icons. */
+/* 欄（パレット）: as CSP's — each side has its icons by the window's edge and up to three
+   columns of palettes; folded, a side keeps only its icons. A palette can share a frame
+   as tabs, be as tall as it holds (.fit), or float over the pages. */
 .dock {
-  position: relative; flex: none; display: flex; flex-direction: column; min-height: 0; min-width: 0;
+  position: relative; flex: none; display: flex; flex-direction: row; min-height: 0; min-width: 0;
   background: var(--panel);
 }
 .dock.left { border-right: 1px solid var(--line); }
-.dock.right { border-left: 1px solid var(--line); }
-.dock.narrow { width: 52px; }
-/* A narrow window: the open palettes give the pages most of the width. */
+.dock.right { border-left: 1px solid var(--line); flex-direction: row-reverse; }
+/* A narrow window: the open palettes give the pages most of the width (more with each column). */
 .dock:not(.narrow) { max-width: 26vw; }
-.dock-rail { display: flex; flex-wrap: wrap; gap: 2px; padding: 6px 4px; border-bottom: 1px solid var(--line); }
-.dock-rail button {
-  flex: 1 1 38px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 4px 0 3px; font-size: calc(10.5 * var(--px));
-  line-height: 1.2; border-color: transparent; background: transparent; color: var(--muted); min-width: 0;
+.dock[data-columns="2"] { max-width: 48vw; }
+.dock[data-columns="3"] { max-width: 70vw; }
+.dock-rail {
+  /* 39px and the side's own border: the 40px the columns gave up for it (RAIL_WIDTH). */
+  flex: none; display: flex; flex-direction: column; gap: 2px; padding: 4px 3px; width: 39px; box-sizing: border-box;
+  overflow-y: auto; scrollbar-width: none;
 }
+.dock.left .dock-rail { border-right: 1px solid var(--line); }
+.dock.right .dock-rail { border-left: 1px solid var(--line); }
+.dock.narrow .dock-rail { border: none; }
+.dock-rail button {
+  flex: none; display: flex; align-items: center; justify-content: center; padding: 6px 0; min-height: 0;
+  border-color: transparent; background: transparent; color: var(--muted);
+}
+.dock-rail button span { display: none; }
 .dock-rail button .icon { width: 19px; height: 19px; }
 .dock-rail button.active { background: color-mix(in srgb, var(--accent) 14%, var(--panel)); border-color: var(--accent); color: var(--text); }
-.dock-rail .dock-collapse { flex: 0 0 auto; padding: 4px 3px; align-self: center; }
+.dock-rail button.floating { border-style: dashed; }
+.dock-rail .dock-collapse { margin-top: auto; padding: 4px 0; }
+.dock-rail .rail-extra { margin-top: auto; }
+.dock-rail .rail-extra + .dock-collapse { margin-top: 0; }
 .dock.right .dock-collapse .icon { transform: rotate(180deg); }
-.dock.narrow .dock-rail { flex-direction: column; flex-wrap: nowrap; border-bottom: none; }
-.dock.narrow .dock-rail button { flex: none; }
-.dock.narrow .dock-rail button span { display: none; }
 .dock.narrow .dock-collapse .icon { transform: rotate(180deg); }
 .dock.right.narrow .dock-collapse .icon { transform: none; }
+.dock-cols { flex: 1 1 auto; display: flex; min-width: 0; min-height: 0; }
+.dock.right .dock-cols { flex-direction: row-reverse; }
+.dock.narrow .dock-cols { display: none; }
+.dock-col { position: relative; flex: 0 1 auto; min-width: 150px; display: flex; flex-direction: column; min-height: 0; }
+.dock.left .dock-col + .dock-col { border-left: 1px solid var(--line); }
+.dock.right .dock-col + .dock-col { border-right: 1px solid var(--line); }
 .dock-stack { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
-.dock.narrow .dock-stack { flex: 1; }
 .palette { display: flex; flex-direction: column; min-height: 0; border-bottom: 1px solid var(--line); }
+/* Sharing the height: never down to nothing when the ones as tall as they hold are long. */
+.dock-stack > .palette:not(.fit):not(.folded) { min-height: 96px; }
 .palette.folded { flex: 0 0 auto; }
+.palette.fit > .palette-body > .panel { flex: 0 1 auto; }
 .palette > header {
-  display: flex; align-items: center; gap: 6px; padding: 2px 4px 2px 8px; min-height: 26px; flex: none; cursor: grab; user-select: none;
+  display: flex; align-items: center; gap: 4px; padding: 2px 4px 2px 6px; min-height: 26px; flex: none; cursor: grab; user-select: none;
   font-size: calc(12 * var(--px)); color: var(--muted); background: color-mix(in srgb, var(--text) 5%, var(--panel)); border-bottom: 1px solid var(--line);
 }
-.palette > header .icon { width: 15px; height: 15px; }
-.palette > header .palette-title { flex: 1; color: var(--text); font-weight: 600; }
-.palette > header button.icon-button { padding: 1px 4px; border-color: transparent; background: transparent; color: var(--muted); min-height: 0; }
+.palette-tabs { flex: 1; min-width: 0; display: flex; align-items: stretch; gap: 2px; overflow: hidden; }
+.palette-tab { display: inline-flex; align-items: center; gap: 5px; min-width: 0; white-space: nowrap; }
+button.palette-tab {
+  padding: 1px 6px; min-height: 0; border: 1px solid transparent; border-radius: 4px 4px 0 0; background: transparent;
+  color: var(--muted); font-size: inherit; flex: 0 1 auto; overflow: hidden;
+}
+button.palette-tab.front { background: var(--panel); border-color: var(--line); border-bottom-color: var(--panel); color: var(--text); }
+button.palette-tab:not(.front) .palette-title { font-weight: normal; color: var(--muted); }
+.palette > header .icon { width: 15px; height: 15px; flex: none; }
+.palette > header .palette-title { color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.palette > header button.icon-button { padding: 1px 4px; border-color: transparent; background: transparent; color: var(--muted); min-height: 0; flex: none; }
 .palette > header button.icon-button:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .palette.folded .palette-fold .icon { transform: rotate(-90deg); }
 .palette-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.palette.fit > .palette-body { flex: 0 1 auto; }
 .palette-body > .panel, .palette-body > .inspector { flex: 1; min-height: 0; overflow: auto; }
 .palette-body > .inspector { width: auto; border-left: none; }
 .dock-splitter { flex: none; height: 5px; margin: -2px 0; position: relative; z-index: 3; cursor: row-resize; }
@@ -1131,11 +1168,24 @@ body.focus-mode .story-controls { display: none; }
 .dock.left .dock-resize { right: -4px; }
 .dock.right .dock-resize { left: -4px; }
 .dock-resize:hover { background: color-mix(in srgb, var(--accent) 35%, transparent); }
-.dock.palette-dragging { outline: 2px dashed color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: -3px; }
-.dock.palette-dragging.narrow { width: 120px; }
+body.palette-dragging .dock { outline: 2px dashed color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: -3px; }
+body.palette-dragging .dock.narrow { width: 120px; }
 .dock.drop-target { outline-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--panel)); }
 .palette.drop-before { box-shadow: inset 0 3px 0 var(--accent); }
 .dock-stack.drop-end::after { content: ""; display: block; height: 3px; flex: none; background: var(--accent); }
+.palette.drop-tab > header { box-shadow: inset 0 0 0 2px var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--panel)); }
+.dock.left .dock-col.drop-col-outer, .dock.right .dock-col.drop-col-inner { box-shadow: inset 4px 0 0 var(--accent); }
+.dock.left .dock-col.drop-col-inner, .dock.right .dock-col.drop-col-outer { box-shadow: inset -4px 0 0 var(--accent); }
+.palette-float-target { outline: 2px dashed var(--accent); outline-offset: -4px; }
+/* Floating over the pages: moved by the header, resized by the corner. */
+.dock-floats { position: fixed; inset: 0; pointer-events: none; z-index: 40; }
+.palette.floating {
+  position: fixed; pointer-events: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; overflow: hidden;
+  box-shadow: 0 6px 22px rgb(0 0 0 / 0.22); resize: both; min-width: 160px; min-height: 60px;
+}
+.palette.floating.folded { resize: horizontal; min-height: 0; }
+.palette.floating > header { cursor: move; touch-action: none; }
+body.focus-mode .dock-floats { display: none; }
 /* The pages stay in sight at the bottom of a short strip; the lanes scroll behind them. */
 .board-pages { position: sticky; bottom: 0; z-index: 1; border-top: 1px solid var(--line); }
 .board-label.pages-label { position: sticky; bottom: 0; z-index: 1; background: var(--panel); border-top: 1px solid var(--line); }

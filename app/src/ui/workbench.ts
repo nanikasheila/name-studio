@@ -56,6 +56,7 @@ import { saveState } from "../editing/savestate";
 import { NameEdits, pickedStrokes } from "./nameedits";
 import { editorDocks } from "./palettes";
 import { WORKSPACES, Workspaces, type Workspace, type WorkspaceId } from "./workspaces";
+import { WorkspaceDialog } from "./workspacedialog";
 import { ReferenceBar } from "./referencebar";
 import { RoughCache } from "../service/roughcache";
 import { Reader } from "./reader";
@@ -128,6 +129,7 @@ export class Workbench {
   private docks!: Docks;
   /** 作業の配置: 描く・全体・CSP に渡す. */
   private workspaces!: Workspaces;
+  private workspaceDialog!: WorkspaceDialog;
   private readonly layerView = new LayerView({
     selected: (ref) => this.layerSelected(ref),
     select: (ref) => this.selectLayer(ref),
@@ -377,6 +379,8 @@ export class Workbench {
       makeOption: (first, last) => this.edits.makeOption(first, last),
       toggleFocus: () => this.toggleFocus(),
       useWorkspace: (id) => this.useWorkspace(id),
+      workspaceMenu: () => this.workspaceMenu(),
+      nameWorkspace: () => this.nameWorkspace(),
       arrange: (pageId) => this.edits.arrange(pageId),
       addTails: (pageId) => this.edits.addTails(pageId),
       pages: this.lists.pageList,
@@ -539,12 +543,29 @@ export class Workbench {
     this.showWorkspace();
   }
 
+  /** The 名前をつけた配置 icon's menu: the ones of one's own, and naming the one on screen. */
+  workspaceMenu(): void {
+    this.workspaceDialog.menu($("ws-mine"));
+  }
+
+  /** 今の配置に名前をつけて残す (the dialog, the name box ready). */
+  nameWorkspace(): void {
+    this.workspaceDialog.open(true);
+  }
+
   private showWorkspace(): void {
     for (const def of WORKSPACES) {
       const button = $(def.buttonId);
       button.classList.toggle("active", def.id === this.workspaces.current);
       button.setAttribute("aria-pressed", String(def.id === this.workspaces.current));
     }
+    const mine = this.workspaces.currentMine;
+    const button = $("ws-mine");
+    button.classList.toggle("active", mine !== null);
+    $("ws-mine-name").textContent = mine ?? "";
+    button.title = mine
+      ? `名前をつけた配置「${mine}」を使っています。押すとほかの配置へ・上書き・整理`
+      : "名前をつけた配置: 今の配置を名前をつけて残す・残した配置に切り替える（CSP のワークスペースのように）";
   }
 
   /** The palettes, the way the pages are shown and the band as a workspace has them. */
@@ -961,6 +982,18 @@ export class Workbench {
       status: (message) => this.setStatus(message),
     });
     for (const def of WORKSPACES) $(def.buttonId).addEventListener("click", () => this.useWorkspace(def.id));
+    this.workspaceDialog = new WorkspaceDialog(this.workspaces, () => this.showWorkspace());
+    // At the foot of the left icons, as CSP keeps its workspaces under ウィンドウ.
+    const mine = document.createElement("button");
+    mine.id = "ws-mine";
+    mine.setAttribute("aria-haspopup", "menu");
+    mine.setAttribute("aria-label", "名前をつけた配置");
+    mine.dataset.command = "workspace.mine";
+    mine.innerHTML =
+      '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="1.5"/><path d="M7.5 3.5v13M7.5 9h10"/></svg><span id="ws-mine-name"></span>';
+    mine.addEventListener("click", () => this.workspaceMenu());
+    this.docks.railExtra.left = mine;
+    this.docks.render();
     this.showWorkspace();
     $("held-badge").addEventListener("click", () => this.docks.open("held"));
     $("panel-tidy").addEventListener("click", () => this.edits.tidyPanels());

@@ -360,23 +360,43 @@ export const HOVER_TOPICS: Record<string, HelpTopic> = {
 /** What every managing list does alike (listops.ts), as its help reads. */
 const LIST_STEPS: HelpStep[] = [{ input: "Ctrl+クリック・Shift+クリック", does: "複数選ぶ（Shift+↑↓・Ctrl+A でも）" }];
 
+/** How the palettes of either side are arranged (dock.ts). */
+const DOCK_STEPS: HelpStep[] = [
+  { input: "端のアイコン", does: "欄を出す・隠す" },
+  { input: "見出しをドラッグ", does: "並べ替え・列の端で新しい列・ほかの見出しの上でタブに・ページの上で浮かせる" },
+  { input: "≡・見出しを右クリック", does: "同じことをメニューで（高さを中身に合わせる も）" },
+  { input: "見出しをダブルクリック", does: "たたむ" },
+  { input: "列の内側の端をドラッグ", does: "その列の幅（間の線は高さ）" },
+];
+
 /** Parts of the screen with no words of their own (by element id), and the larger areas around them. */
 export const AREA_TOPICS: Record<string, HelpTopic> = {
   "dock-left": {
     name: "左の欄",
-    what: "サブツール・ページ・台本・人物・付箋・保留・レイヤー・シリーズ",
-    steps: [
-      { input: "上のアイコン", does: "欄を出す・隠す" },
-      { input: "見出しをドラッグ", does: "別の場所・右の欄へ" },
-      { input: "見出しをダブルクリック", does: "たたむ" },
-    ],
+    what: "サブツール・ページ・台本・人物・付箋・レイヤーなど。片側 3 列まで分けられる",
+    steps: DOCK_STEPS,
   },
   "dock-right": {
     name: "右の欄",
-    what: "詳細: 選んだもの（ページ・コマ・セリフ・付箋・シーン）の設定",
+    what: "詳細（選んだものの設定）と相談。片側 3 列まで分けられる",
+    steps: DOCK_STEPS,
+  },
+  "ws-mine": {
+    name: "名前をつけた配置",
+    what: "今の欄の並び・見せ方・物語の帯に名前をつけて残し、切り替える（CSP のワークスペースのように）",
     steps: [
-      { input: "上のアイコン", does: "欄を出す・隠す" },
-      { input: "見出しをドラッグ", does: "別の場所・左の欄へ" },
+      { input: "クリック", does: "残した配置の一覧・今の配置を残す・上書き・整理" },
+      { command: "workspace.save", does: "今の配置に名前をつけて残す" },
+    ],
+  },
+  "workspace-dialog": {
+    name: "名前をつけた配置",
+    what: "残した配置の名前・並び・上書き・削除",
+    steps: [
+      { input: "名前を入れて「今の配置を残す」", does: "今の画面を残す（同じ名前なら上書き）" },
+      { input: "名前の欄を書き換える", does: "名前を変える" },
+      { input: "↑↓", does: "配置のアイコンの一覧での並び" },
+      { input: "上書き", does: "今の画面のとおりに残し直す" },
     ],
   },
   "editor-tools": {
@@ -719,10 +739,11 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
     command: "view.board",
     side: "inside",
   },
+  { target: "#ws-mine", name: "名前をつけた配置", text: "今の配置に名前をつけて残す・戻る", command: "workspace.save", side: "right" },
   {
     target: "#dock-left",
     name: "左の欄",
-    text: "サブツール・ページ・台本・人物・付箋・保留・レイヤー・シリーズ。アイコンで出し入れ、見出しのドラッグで反対側へ",
+    text: "サブツール・ページ・台本など。端のアイコンで出し入れ、見出しのドラッグで列・タブ・浮かせる（≡ でも）",
     side: "inside",
   },
   {
@@ -787,7 +808,7 @@ export const TOUR_STOPS: TourStop[] = [
     title: "作業の配置",
     text: [
       "描く・全体・CSP（{workspace.draw}・{workspace.overview}・{workspace.handoff}）で、欄と見せ方と物語の帯をまとめて切り替えます。",
-      "動かした欄はその配置に覚えます。",
+      "動かした欄はその配置に覚えます。左の端のいちばん下のアイコンで、今の配置に名前をつけて残せます。",
     ],
   },
   {
@@ -811,13 +832,14 @@ export const TOUR_STOPS: TourStop[] = [
     target: "#dock-left",
     title: "左の欄",
     text: [
-      "サブツール（ペン・消しゴムの種類と太さ。行の ⌨ でキーを割り当て）・ページの一覧・台本・人物・付箋・保留・レイヤー。上のアイコンで出し入れし、見出しをドラッグすると右の欄へ移せます。",
+      "サブツール・ページの一覧・台本・付箋・レイヤーなど。端のアイコンで出し入れします。",
+      "見出しのドラッグか ≡ で、新しい列（片側 3 列まで）・ほかの欄とタブ・ページの上に浮かせる、ができます。",
     ],
   },
   {
     target: "#dock-right",
     title: "右の欄（詳細）",
-    text: ["選んだもの（ページ・コマ・セリフ・付箋・シーン）の設定です。"],
+    text: ["選んだもの（ページ・コマ・セリフ・付箋・シーン）の設定です。左の欄と同じように、列に分ける・タブ・浮かせるができます。"],
   },
   {
     target: "#name-export",

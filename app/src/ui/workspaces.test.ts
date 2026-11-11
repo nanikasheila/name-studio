@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { column, movePalette } from "./dock";
-import { defaultWorkspace, readWorkspaces, switchWorkspace, Workspaces, WORKSPACES_KEY, type Workspace } from "./workspaces";
+import {
+  defaultWorkspace,
+  MAX_MINE,
+  readWorkspaces,
+  removeMine,
+  renameMine,
+  saveAs,
+  switchWorkspace,
+  Workspaces,
+  WORKSPACES_KEY,
+  type Workspace,
+} from "./workspaces";
 
 const shownIn = (w: Workspace, side: "left" | "right") => column(w.docks, side).filter((id) => w.docks.palettes[id].shown);
 
@@ -23,13 +34,13 @@ describe("作業の配置", () => {
     // The arrangement in use before any was chosen counts as 描く.
     const mine = defaultWorkspace("overview");
     movePalette(mine.docks, "cast", "right", null);
-    const overview = switchWorkspace(store, mine, "overview");
+    const overview = switchWorkspace(store, mine, "overview")!;
     expect(store.current).toBe("overview");
     expect(overview).toEqual(defaultWorkspace("overview"));
     overview.docks.palettes.script.shown = false;
-    const back = switchWorkspace(store, overview, "draw");
+    const back = switchWorkspace(store, overview, "draw")!;
     expect(back.docks.palettes.cast.side).toBe("right");
-    expect(switchWorkspace(store, back, "overview").docks.palettes.script.shown).toBe(false);
+    expect(switchWorkspace(store, back, "overview")!.docks.palettes.script.shown).toBe(false);
   });
 
   it("reads back what was kept, anything spoilt as it comes", () => {
@@ -65,5 +76,42 @@ describe("作業の配置", () => {
     expect(applied).toHaveLength(2);
     expect(new Workspaces(host, storage).current).toBe("handoff");
     expect(JSON.parse(items.get(WORKSPACES_KEY)!).saved.handoff).toBeUndefined();
+  });
+
+  it("keeps arrangements of one's own by name, each keeping what is changed in it", () => {
+    const store = readWorkspaces(null);
+    const now = switchWorkspace(store, defaultWorkspace("draw"), "overview")!;
+    movePalette(now.docks, "cast", "right", null);
+    expect(saveAs(store, now, "  ペン入れ  前 ")).toBe(true);
+    expect(store.current).toBe("my:ペン入れ 前");
+    // Going to another and back brings it as it was left.
+    now.docks.palettes.pages.shown = false;
+    const draw = switchWorkspace(store, now, "draw")!;
+    expect(draw).toEqual(defaultWorkspace("draw"));
+    const back = switchWorkspace(store, draw, "my:ペン入れ 前")!;
+    expect([back.docks.palettes.cast.side, back.docks.palettes.pages.shown]).toEqual(["right", false]);
+    // Saved again under the same name: replaced, not added.
+    saveAs(store, back, "ペン入れ 前");
+    expect(store.mine).toHaveLength(1);
+    // Renamed, the one in use follows; a name taken cannot be had.
+    saveAs(store, back, "下描き");
+    expect(renameMine(store, "下描き", "ペン入れ 前")).toBe(false);
+    expect(renameMine(store, "下描き", "ラフ")).toBe(true);
+    expect(store.current).toBe("my:ラフ");
+    // Taken away while in use: none is in use, and leaving it keeps nothing anywhere.
+    removeMine(store, "ラフ");
+    expect(store.current).toBeNull();
+    const saved = structuredClone(store.saved);
+    switchWorkspace(store, back, "overview");
+    expect(store.saved).toEqual(saved);
+    expect(store.mine.map((m) => m.name)).toEqual(["ペン入れ 前"]);
+    // Read back, as kept.
+    const read = readWorkspaces(JSON.stringify(store));
+    expect(read.mine[0].workspace.docks.palettes.cast.side).toBe("right");
+    expect(switchWorkspace(read, now, "my:ない")).toBeNull();
+    // No more than so many.
+    for (let i = 0; i < MAX_MINE + 2; i++) saveAs(store, now, `配置${i}`);
+    expect(store.mine).toHaveLength(MAX_MINE);
+    expect(saveAs(store, now, "")).toBe(false);
   });
 });

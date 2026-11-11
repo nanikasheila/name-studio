@@ -197,9 +197,9 @@ try {
   check(s.layers.find((layer) => layer.id === marks.id)?.color === "#1e6fd9", "pressing the colour turns 指示 blue");
   await page.keyboard.press("Control+z");
   // Picking a rough layer row takes up the pen; a 指示 row the 指示 tool.
-  await page.locator(`.rough-row[data-rough="rough"]`).click();
+  await page.locator(`.rough-row[data-rough="rough"] .layer-name`).click();
   check((await state()).tool === "pen", "a rough layer's row takes up the pen");
-  await page.locator(`.rough-row[data-rough="${blue.id}"]`).click();
+  await page.locator(`.rough-row[data-rough="${blue.id}"] .layer-name`).click();
   check((await state()).tool === "mark", "a 指示 row takes up the 指示 tool");
 
   // The 指示 can be picked and moved with the select tool.
