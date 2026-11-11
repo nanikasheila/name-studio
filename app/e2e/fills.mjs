@@ -268,13 +268,13 @@ try {
     (await state()).way === "enclose" && (await page.locator("#fill-enclose").getAttribute("class")).includes("active"),
     "a click on a row takes that way up, and the bar follows",
   );
-  await panel.locator(".subtool-field", { hasText: "隙間閉じ" }).locator("select").selectOption("2");
+  await page.locator("#side-toolprops .subtool-field", { hasText: "隙間閉じ" }).locator("select").selectOption("2");
   await settle();
   check((await page.locator("#fill-gap").inputValue()) === "2", "a setting changed in the palette shows on the bar");
   await page.selectOption("#fill-gap", "0.5");
   await settle();
   check(
-    (await panel.locator(".subtool-field", { hasText: "隙間閉じ" }).locator("select").inputValue()) === "0.5",
+    (await page.locator("#side-toolprops .subtool-field", { hasText: "隙間閉じ" }).locator("select").inputValue()) === "0.5",
     "and the other way round",
   );
   const drawn = await panel

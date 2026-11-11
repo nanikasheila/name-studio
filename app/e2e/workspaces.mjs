@@ -112,8 +112,8 @@ try {
   await page.keyboard.press("Enter");
   const drawn = await state();
   check(
-    drawn.left.join() === "subtools,layers" && drawn.rightNarrow && drawn.band === "folded",
-    `描く as it comes: サブツール・レイヤー, the right column folded, the band folded (${drawn.left})`,
+    drawn.left.join() === "subtools,toolprops,layers" && drawn.rightNarrow && drawn.band === "folded",
+    `描く as it comes: サブツール・ツールプロパティ・レイヤー, the right column folded, the band folded (${drawn.left})`,
   );
   if (shots) await page.screenshot({ path: `${shots}/ws-draw.png` });
 

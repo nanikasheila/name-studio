@@ -28,9 +28,13 @@ import {
   type Graph,
 } from "../domain/cspsettings";
 import { $, element } from "../platform/dom";
-import { CSP_COLUMNS, type CspColumn } from "../generated/csp-columns";
+import type { CspColumn } from "../generated/csp-columns";
+import { brushPropItems, COLUMNS, defaultBrushItems, HIDDEN, OPEN_GROUPS, PEN_GROUPS, partnerOf, rank } from "../editing/brushitems";
+import { kindKey, shownItems } from "../editing/toolprops";
+import { brushRef } from "../editing/brushpicks";
+import { parseShowItems, showItemsBytes, showItemsFor } from "../domain/cspshow";
 import type { Brush, BrushKind, CspToolData, CspValue, Project } from "../model/model";
-import { saveToLibrary } from "../platform/prefs";
+import { loadToolProps, saveToLibrary } from "../platform/prefs";
 import { newId } from "../domain/project";
 import { failureText } from "../platform/errortext";
 
@@ -46,82 +50,23 @@ export interface BrushEditorHost {
   importFromCsp(): void;
 }
 
-/** The palette's groups for pens and erasers, in CSP's order; the others show when asked for (or set). */
-const PEN_GROUPS = [
-  "ブラシサイズ",
-  "不透明度",
-  "インク",
-  "アンチエイリアス",
-  "ブラシ先端",
-  "ストローク",
-  "紙質",
-  "散布効果",
-  "入り抜き",
-  "水彩",
-  "水彩境界",
-  "補正",
-  "消去",
-  "色の変化",
-  "線",
-  "ベクター線",
-  "2-ブラシ形状",
-  "ブラシサイズ（デュアルブラシ）",
-  "インク（デュアルブラシ）",
-  "アンチエイリアス（デュアルブラシ）",
-  "ブラシ先端（デュアルブラシ）",
-  "ストローク（デュアルブラシ）",
-  "紙質（デュアルブラシ）",
-  "散布効果（デュアルブラシ）",
-];
-/** Groups open at first. */
-const OPEN_GROUPS = new Set(["ブラシサイズ", "不透明度", "インク", "入り抜き", "補正", "消去"]);
-/** Items that come first in their group (the rest follow by name). */
-const FIRST = [
-  "BrushSize",
-  "BrushSizeUnit",
-  "Opacity",
-  "AntiAlias",
-  "BrushFlow",
-  "CompositeMode",
-  "BrushUsePatternImage",
-  "BrushHardness",
-  "BrushInterval",
-  "BrushAutoIntervalType",
-  "BrushThickness",
-  "BrushRotation",
-  "BrushInOutType",
-  "BrushUseIn",
-  "BrushInLength",
-  "BrushInRatio",
-  "BrushUseOut",
-  "BrushOutLength",
-  "BrushOutRatio",
-  "FlickerReduction",
-  "FlickerReductionBySpeed",
-  "BrushUseRevision",
-  "BrushRevision",
-  "BrushUseVectorMagnet",
-  "BrushVectorMagnetPower",
-  "BrushUseVectorEraser",
-  "BrushVectorEraserType",
-];
-/** Columns kept as they are and not shown (the palette's own layout). */
-const HIDDEN = new Set(["VariantShowParam", "VariantShowSeparator"]);
-
-const COLUMNS = new Map(CSP_COLUMNS.map((column) => [column.column, column]));
-
-/** The value column an `…Unit` or `…Effector` column goes with, shown on its row. */
-function partnerOf(column: string): string | null {
-  if (column === "BrushOpacityEffector") return "Opacity";
-  for (const suffix of ["Unit", "Effector"]) {
-    if (column.endsWith(suffix) && COLUMNS.has(column.slice(0, -suffix.length))) return column.slice(0, -suffix.length);
-  }
-  return null;
-}
-
-function rank(column: string): number {
-  const index = FIRST.indexOf(column);
-  return index < 0 ? FIRST.length : index;
+/**
+ * The tool written out with the items its ツールプロパティ shows here, when
+ * they were chosen (CSP shows the same ones); else as it is.
+ */
+function withShownItems(brush: Brush, tool: CspToolData): CspToolData {
+  const choices = loadToolProps();
+  const ref = brushRef(brush.kind, brush);
+  if (!choices[ref] && !choices[kindKey(brush.kind)]) return tool;
+  const shown = shownItems(choices, ref, brush.kind, brushPropItems(brush.kind, brush), defaultBrushItems(brush.kind, brush));
+  const kept = tool.settings.VariantShowParam;
+  const original = kept && typeof kept === "object" ? parseShowItems(bytesOf(kept.blob)) : null;
+  const ids = showItemsFor(shown, original);
+  // CSP skips a tool that shows nothing it knows of: then it stays as it was.
+  if (!ids.length) return tool;
+  const copy = structuredClone(tool);
+  setSetting(copy, "VariantShowParam", showItemsBytes(ids));
+  return copy;
 }
 
 /** A plain button that does not send the dialog's form. */
@@ -170,11 +115,13 @@ export class BrushEditor {
     });
   }
 
-  /** Open on the brush in hand (or the first of its kind). */
-  openFor(kind: BrushKind): void {
+  /** Open on the brush in hand (or the first of its kind); `filter`: only the settings with these words. */
+  openFor(kind: BrushKind, filter = ""): void {
     const project = this.host.project();
     if (!project) return;
     this.kind = kind;
+    this.filter = filter;
+    $<HTMLInputElement>("be-filter").value = filter;
     this.selected = this.host.inHand(kind)?.id ?? project.brushes.find((b) => b.kind === kind)?.id ?? null;
     this.message("");
     $<HTMLDialogElement>("brush-editor").showModal();
@@ -303,7 +250,7 @@ export class BrushEditor {
   private async exportSut(): Promise<void> {
     const brush = this.brush();
     if (!brush) return;
-    const tool = brush.csp ?? cspSettingsFor(brush);
+    const tool = withShownItems(brush, brush.csp ?? cspSettingsFor(brush));
     const name = brush.name.replace(/[\\/:*?"<>|]/g, "_");
     const path = await save({ defaultPath: `${name}.sut`, filters: [{ name: "CSP のサブツール", extensions: ["sut"] }] });
     if (!path) return;

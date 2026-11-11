@@ -20,7 +20,10 @@ import {
   withPreset,
   type BrushPick,
 } from "../editing/brushpicks";
-import { applyCspSettings, ensureCspSettings, setSetting } from "../domain/cspsettings";
+import { applyCspSettings, bytesOf, cspSettingsFor, ensureCspSettings, parseEffector, setSetting } from "../domain/cspsettings";
+import { brushPropItems, COLUMNS, defaultBrushItems, effectorOfColumn, ERASE_MODE, SIZE_BUTTONS, TIP_SHAPE } from "../editing/brushitems";
+import type { CspColumn } from "../generated/csp-columns";
+import type { PropItem } from "../editing/toolprops";
 import { element } from "../platform/dom";
 import { ERASE_MODE_LABELS, type EditorEraseMode, type PageEditor } from "./editor";
 import type { Brush, BrushKind, Project, Stroke, StrokePoint } from "../model/model";
@@ -38,8 +41,8 @@ export interface BrushSourceHost {
   /** The size of the pen or eraser in hand. */
   setSize(kind: BrushKind, mm: number): void;
   setEraseMode(mode: EditorEraseMode): void;
-  /** ペン・消しゴムの設定 (every setting), on the one in hand. */
-  openEditor(kind: BrushKind): void;
+  /** ペン・消しゴムの設定 (every setting), on the one in hand; on the settings with `words` when given. */
+  openEditor(kind: BrushKind, words?: string): void;
   /** Take pens and erasers over from CSP. */
   importBrushes(): void;
   status(message: string): void;
@@ -290,51 +293,214 @@ export class BrushSource implements SubToolSource {
 
   // --- ツールプロパティ --------------------------------------------------------------
 
-  properties(box: HTMLElement): void {
+  currentName(): string {
+    return this.inHand()?.name ?? PLAIN[this.kind];
+  }
+
+  details(words = ""): void {
+    this.host.openEditor(this.kind, words);
+  }
+
+  items(): PropItem[] {
+    return brushPropItems(this.kind, this.inHand());
+  }
+
+  defaultItems(): string[] {
+    return defaultBrushItems(this.kind, this.inHand());
+  }
+
+  item(id: string): HTMLElement | null {
     const brush = this.inHand();
     const kind = this.kind;
-    box.append(element("div", { className: "subtool-props-title", textContent: brush?.name ?? PLAIN[kind] }));
     const plainEraser = kind === "eraser" && !brush;
-    box.append(this.sizeRow(plainEraser));
-    if (!plainEraser) box.append(this.presetRow());
-    if (brush) {
-      box.append(
-        this.percentRow("不透明度", Math.round(brush.opacity * 100), 1, 100, (value) =>
-          this.setCsp(brush, "Opacity", value, `不透明度 ${value}%`),
-        ),
-        this.percentRow("手ブレ補正", Math.round(brush.stabilization), 0, 100, (value) =>
-          this.setCsp(brush, "FlickerReduction", value, `手ブレ補正 ${value}`),
-        ),
-      );
-    } else if (kind === "pen") {
-      // The 標準のペン keeps its 手ブレ補正 in the pen settings (all names alike).
-      box.append(
-        this.percentRow("手ブレ補正", penPreferences.settings.stabilization, 0, 100, (value) => {
+    const words = (node: HTMLElement, label: string) => {
+      node.dataset.setting = label;
+      return node;
+    };
+    switch (id) {
+      case "BrushSize":
+        return words(this.withEffector(this.sizeRow(plainEraser), brush, "BrushSize"), "ブラシサイズ");
+      case SIZE_BUTTONS:
+        return plainEraser ? null : this.presetRow();
+      case ERASE_MODE:
+        return kind === "eraser" ? this.eraseRow() : null;
+      case TIP_SHAPE:
+        return brush?.tip ? this.tipRow(brush) : null;
+      case "Opacity":
+        if (!brush) return null;
+        return words(
+          this.withEffector(
+            this.percentRow("不透明度", Math.round(brush.opacity * 100), 1, 100, (value) =>
+              this.setCsp(brush, "Opacity", value, `不透明度 ${value}%`),
+            ),
+            brush,
+            "Opacity",
+          ),
+          "不透明度",
+        );
+      case "FlickerReduction":
+        if (brush)
+          return words(
+            this.percentRow("手ブレ補正", Math.round(brush.stabilization), 0, 100, (value) =>
+              this.setCsp(brush, "FlickerReduction", value, `手ブレ補正 ${value}`),
+            ),
+            "手ブレ補正",
+          );
+        if (kind !== "pen") return null;
+        // The 標準のペン keeps its 手ブレ補正 in the pen settings (all names alike).
+        return this.percentRow("手ブレ補正", penPreferences.settings.stabilization, 0, 100, (value) => {
           penPreferences.update({ stabilization: value });
           this.host.status(`${PLAIN.pen}: 手ブレ補正 ${value}`);
-        }),
-        element("p", {
-          className: "subtool-note",
-          textContent: "標準のペンは太さと手ブレ補正だけ変えられます。ほかの項目は「設定…」で作ったペンか、取り込んだペンで。",
-        }),
-      );
-    } else {
-      box.append(element("p", { className: "subtool-note", textContent: "標準の消しゴムは画面の上で決まった大きさです。" }));
-    }
-    if (kind === "eraser") box.append(this.eraseRow());
-    if (brush?.tip) {
-      const check = element("input", { type: "checkbox", checked: brush.tip.enabled });
-      check.addEventListener("change", () => {
-        const id = brush.id;
-        this.host.edit((project) => {
-          const tip = project.brushes.find((b) => b.id === id)?.tip;
-          if (tip) tip.enabled = check.checked;
         });
-      });
-      box.append(
-        element("label", { className: "subtool-check", title: "CSP の素材のサムネイルから作った先端の形で描く" }, check, " 先端の形で描く"),
-      );
+      default: {
+        const column = COLUMNS.get(id);
+        if (!brush || !column) return null;
+        const node = this.cspRow(brush, column);
+        return node && words(this.withEffector(node, brush, id), column.label);
+      }
     }
+  }
+
+  note(): HTMLElement | null {
+    if (this.inHand()) return null;
+    return element("p", {
+      className: "subtool-note",
+      textContent:
+        this.kind === "pen"
+          ? "標準のペンは太さと手ブレ補正だけ変えられます。ほかの項目は「設定…」で作ったペンか、取り込んだペンで。"
+          : "標準の消しゴムは画面の上で決まった大きさです。",
+    });
+  }
+
+  /** ブラシサイズ palette: the round buttons, large. */
+  sizes(box: HTMLElement): void {
+    if (this.kind === "eraser" && !this.inHand()) {
+      box.append(element("p", { className: "subtool-note", textContent: "標準の消しゴムは画面の上で決まった大きさです。" }));
+      return;
+    }
+    const row = this.presetRow();
+    row.classList.add("large");
+    box.append(
+      element("div", { className: "subtool-props-title", textContent: `${this.currentName()} ${sizeLabel(this.sizeInHand())} mm` }),
+      row,
+    );
+  }
+
+  /** A row with the 影響元 button of its 影響元設定 (筆圧・傾き・速度), which opens it in the settings. */
+  private withEffector(row: HTMLElement, brush: Brush | null, column: string): HTMLElement {
+    const effector = brush && effectorOfColumn(column);
+    if (!brush || !effector) return row;
+    const tool = brush.csp;
+    const value = tool?.settings[effector];
+    const parsed = value && typeof value === "object" ? parseEffector(bytesOf(value.blob)) : null;
+    const on = !!parsed && (parsed.inputs & 0xf0) !== 0;
+    const label = COLUMNS.get(column)?.label ?? column;
+    const button = element("button", {
+      type: "button",
+      className: `icon-button effector-button${on ? " on" : ""}`,
+      title: `${label}の影響元設定（筆圧・傾き・速度）${on ? ": 使っている" : ""}。クリックで詳細設定に`,
+      innerHTML: EFFECTOR_ICON,
+    });
+    button.setAttribute("aria-label", `${label}の影響元設定`);
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      this.host.openEditor(this.kind, label);
+    });
+    row.append(button);
+    return row;
+  }
+
+  /** Any other CSP setting of the brush: a check box, a choice, or a number (a slider when it has a range). */
+  private cspRow(brush: Brush, column: CspColumn): HTMLElement | null {
+    const tool = brush.csp ?? cspSettingsFor(brush);
+    const value = tool.settings[column.column];
+    const edit = column.edit;
+    const title = [column.label, column.values].filter(Boolean).join("\n");
+    if (edit.kind === "check") {
+      const check = element("input", { type: "checkbox", checked: typeof value === "number" && value !== 0 });
+      check.addEventListener("change", () =>
+        this.setCsp(brush, column.column, check.checked ? 1 : 0, `${column.label} ${check.checked ? "オン" : "オフ"}`),
+      );
+      return element("label", { className: "subtool-check", title }, check, ` ${column.label}`);
+    }
+    if (edit.kind === "choice") {
+      const select = element("select");
+      select.setAttribute("aria-label", column.label);
+      if (typeof value !== "number") select.append(element("option", { value: "", textContent: "（CSP の初期値）" }));
+      for (const [option, label] of edit.options) select.append(element("option", { value: String(option), textContent: label }));
+      if (typeof value === "number" && !edit.options.some(([option]) => option === value))
+        select.append(element("option", { value: String(value), textContent: String(value) }));
+      select.value = typeof value === "number" ? String(value) : "";
+      select.addEventListener("change", () => {
+        if (select.value === "") return;
+        const label = edit.options.find(([option]) => String(option) === select.value)?.[1] ?? select.value;
+        this.setCsp(brush, column.column, Number(select.value), `${column.label} ${label}`);
+      });
+      return element("label", { className: "subtool-field", title }, element("span", { textContent: column.label }), select);
+    }
+    if (edit.kind !== "number") return null;
+    const current = typeof value === "number" ? value : null;
+    const unitColumn = COLUMNS.get(`${column.column}Unit`);
+    const unitValue = unitColumn ? tool.settings[unitColumn.column] : undefined;
+    const unit = unitColumn ? (unitValue === 2 ? "×10px" : "px") : (edit.unit ?? "");
+    const clamp = (n: number) => {
+      let next = edit.integer ? Math.round(n) : Math.round(n * 1000) / 1000;
+      if (edit.min !== undefined) next = Math.max(edit.min, next);
+      if (edit.max !== undefined) next = Math.min(edit.max, next);
+      return next;
+    };
+    const number = element("input", {
+      type: "number",
+      value: current === null ? "" : String(Math.round(current * 1000) / 1000),
+      placeholder: "初期値",
+    });
+    number.setAttribute("aria-label", column.label);
+    if (edit.min !== undefined) number.min = String(edit.min);
+    if (edit.max !== undefined) number.max = String(edit.max);
+    number.step = edit.integer ? "1" : "any";
+    const said = (n: number) => `${column.label} ${n}${unit}`;
+    number.addEventListener("change", () => {
+      if (number.value === "" || !Number.isFinite(Number(number.value))) return;
+      const next = clamp(Number(number.value));
+      this.setCsp(brush, column.column, next, said(next));
+    });
+    const parts: HTMLElement[] = [element("span", { textContent: column.label })];
+    if (edit.min !== undefined && edit.max !== undefined) {
+      const range = element("input", {
+        type: "range",
+        min: String(edit.min),
+        max: String(edit.max),
+        step: edit.integer ? "1" : String((edit.max - edit.min) / 100),
+        value: String(current ?? edit.min),
+      });
+      range.setAttribute("aria-label", column.label);
+      range.addEventListener("input", () => (number.value = range.value));
+      range.addEventListener("change", () => {
+        const next = clamp(Number(range.value));
+        this.setCsp(brush, column.column, next, said(next));
+      });
+      parts.push(range);
+    }
+    parts.push(number);
+    if (unit) parts.push(element("span", { className: "unit", textContent: unit }));
+    return element("div", { className: "subtool-field", title }, ...parts);
+  }
+
+  private tipRow(brush: Brush): HTMLElement {
+    const check = element("input", { type: "checkbox", checked: !!brush.tip?.enabled });
+    check.addEventListener("change", () => {
+      const id = brush.id;
+      this.host.edit((project) => {
+        const tip = project.brushes.find((b) => b.id === id)?.tip;
+        if (tip) tip.enabled = check.checked;
+      });
+    });
+    return element(
+      "label",
+      { className: "subtool-check", title: "CSP の素材のサムネイルから作った先端の形で描く" },
+      check,
+      " 先端の形で描く",
+    );
   }
 
   private sizeRow(disabled: boolean): HTMLElement {
@@ -478,8 +644,17 @@ export class BrushSource implements SubToolSource {
       this.sizeInHand(),
       this.host.editor.eraseMode,
       brush?.id,
+      // The settings ツールプロパティ may show (not the pictures and graphs).
+      brush?.csp && Object.entries(brush.csp.settings).filter(([, value]) => typeof value !== "object"),
+      brush?.csp &&
+        Object.keys(brush.csp.settings)
+          .filter((key) => key.endsWith("Effector"))
+          .map((key) => (brush.csp?.settings[key] as { blob: string } | undefined)?.blob.length),
       loadSizePresets()[this.kind],
       penPreferences.settings.stabilization,
     ]);
   }
 }
+
+const EFFECTOR_ICON =
+  '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 16c4 0 5-12 14-12"/><path d="M3 16h14" stroke-dasharray="1.5 2"/></svg>';

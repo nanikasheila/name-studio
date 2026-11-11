@@ -10,7 +10,8 @@ describe("欄（パレット）", () => {
     movePalette(layout, "notes", "right", null);
     expect(column(layout, "right")).toEqual(["assist", "script", "inspector", "notes"]);
     movePalette(layout, "inspector", "left", "pages");
-    expect(column(layout, "left").slice(0, 3)).toEqual(["subtools", "inspector", "pages"]);
+    const left = column(layout, "left");
+    expect(left.indexOf("inspector")).toBe(left.indexOf("pages") - 1);
     expect(column(layout, "right")).toEqual(["assist", "script", "notes"]);
   });
 
@@ -24,11 +25,26 @@ describe("欄（パレット）", () => {
 
   it("puts サブツール above the pages for those who kept an arrangement before it came", () => {
     const before = defaultLayout();
-    before.order = before.order.filter((id) => id !== "subtools");
-    const { subtools: _, ...palettes } = before.palettes;
+    const gone = ["subtools", "toolprops", "brushsize"];
+    before.order = before.order.filter((id) => !gone.includes(id));
+    const { subtools: _, toolprops: _t, brushsize: _b, ...palettes } = before.palettes;
     const layout = readLayout(JSON.stringify({ ...before, palettes }));
-    expect(column(layout, "left").slice(0, 2)).toEqual(["subtools", "pages"]);
+    expect(column(layout, "left").slice(0, 4)).toEqual(["subtools", "toolprops", "brushsize", "pages"]);
     expect(isOpen(layout, "subtools")).toBe(true);
+    expect(isOpen(layout, "toolprops")).toBe(true);
+    expect(isOpen(layout, "brushsize")).toBe(false);
+  });
+
+  it("puts ツールプロパティ (split off サブツール) right under it, wherever サブツール was kept", () => {
+    const before = defaultLayout();
+    before.order = before.order.filter((id) => id !== "toolprops" && id !== "brushsize");
+    const { toolprops: _t, brushsize: _b, ...palettes } = before.palettes;
+    palettes.subtools = { side: "right", shown: true, folded: false, weight: 1 };
+    before.order = [...before.order.filter((id) => id !== "subtools"), "subtools"];
+    const layout = readLayout(JSON.stringify({ ...before, palettes }));
+    expect(column(layout, "right").slice(-3)).toEqual(["subtools", "toolprops", "brushsize"]);
+    expect(layout.palettes.toolprops).toMatchObject({ side: "right", shown: true });
+    expect(layout.palettes.brushsize).toMatchObject({ side: "right", shown: false });
   });
 
   it("reads a kept arrangement, adding palettes it did not know and keeping widths in range", () => {
@@ -40,14 +56,18 @@ describe("欄（パレット）", () => {
     });
     const layout = readLayout(kept);
     // Palettes that came after the arrangement was kept go before the one they come before by default.
-    expect(layout.order.indexOf("subtools")).toBe(layout.order.indexOf("pages") - 1);
+    expect(layout.order.slice(layout.order.indexOf("subtools"), layout.order.indexOf("pages"))).toEqual([
+      "subtools",
+      "toolprops",
+      "brushsize",
+    ]);
     expect(layout.order.indexOf("script")).toBeLessThan(layout.order.indexOf("inspector"));
-    expect(layout.order).toHaveLength(10);
+    expect(layout.order).toHaveLength(12);
     expect(layout.palettes.subtools).toMatchObject({ side: "left", shown: true });
     expect(layout.palettes.pages).toEqual({ side: "right", shown: true, folded: true, weight: 2 });
     expect(layout.palettes.script.side).toBe("left");
     expect(layout.width).toEqual({ left: 640, right: 200 });
     expect(layout.collapsed).toEqual({ left: true, right: false });
-    expect(readLayout("{not json").order).toHaveLength(10);
+    expect(readLayout("{not json").order).toHaveLength(12);
   });
 });

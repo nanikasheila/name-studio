@@ -7,7 +7,7 @@ const shownIn = (w: Workspace, side: "left" | "right") => column(w.docks, side).
 describe("作業の配置", () => {
   it("comes with the palettes, the view and the band each use asks for", () => {
     const draw = defaultWorkspace("draw");
-    expect(shownIn(draw, "left")).toEqual(["subtools", "layers"]);
+    expect(shownIn(draw, "left")).toEqual(["subtools", "toolprops", "layers"]);
     expect(draw.docks.collapsed.right).toBe(true);
     expect([draw.view, draw.band]).toEqual(["spread", "folded"]);
     const overview = defaultWorkspace("overview");
@@ -42,7 +42,7 @@ describe("作業の配置", () => {
     const overview = store.saved.overview!;
     expect([overview.view, overview.rows, overview.band]).toEqual(["continuous", 2, "wide"]);
     // Palettes left out of what was kept are where they go by default.
-    expect(overview.docks.order).toHaveLength(10);
+    expect(overview.docks.order).toHaveLength(12);
     expect(readWorkspaces("{not json").current).toBe("draw");
   });
 

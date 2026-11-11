@@ -6,7 +6,19 @@
 // inner edge its width. The arrangement is kept for the next start.
 import { localStore } from "../platform/settings";
 
-export type PaletteId = "subtools" | "pages" | "script" | "cast" | "notes" | "held" | "layers" | "series" | "assist" | "inspector";
+export type PaletteId =
+  | "subtools"
+  | "toolprops"
+  | "brushsize"
+  | "pages"
+  | "script"
+  | "cast"
+  | "notes"
+  | "held"
+  | "layers"
+  | "series"
+  | "assist"
+  | "inspector";
 export type Side = "left" | "right";
 
 export interface PaletteState {
@@ -44,7 +56,26 @@ export const DOCK_KEY = "namestudio.docks";
 export const MIN_WIDTH = 200;
 export const MAX_WIDTH = 640;
 
-const PALETTE_IDS: PaletteId[] = ["subtools", "pages", "script", "cast", "notes", "held", "layers", "series", "assist", "inspector"];
+const PALETTE_IDS: PaletteId[] = [
+  "subtools",
+  "toolprops",
+  "brushsize",
+  "pages",
+  "script",
+  "cast",
+  "notes",
+  "held",
+  "layers",
+  "series",
+  "assist",
+  "inspector",
+];
+
+/** Palettes split off another one since: where that one is, after it, shown as it was (ブラシサイズ hidden). */
+const SPLIT_FROM: Partial<Record<PaletteId, { from: PaletteId; shown: boolean }>> = {
+  toolprops: { from: "subtools", shown: true },
+  brushsize: { from: "subtools", shown: false },
+};
 
 export function defaultLayout(leftCollapsed = false): DockLayout {
   const left = (shown: boolean): PaletteState => ({ side: "left", shown, folded: false, weight: 1 });
@@ -52,6 +83,8 @@ export function defaultLayout(leftCollapsed = false): DockLayout {
     order: [...PALETTE_IDS],
     palettes: {
       subtools: left(true),
+      toolprops: left(true),
+      brushsize: left(false),
       pages: left(true),
       script: left(false),
       cast: left(false),
@@ -75,12 +108,6 @@ export function readLayout(text: string | null, leftCollapsed = false): DockLayo
   try {
     const saved = JSON.parse(text) as Partial<DockLayout>;
     const order = (saved.order ?? []).filter((id): id is PaletteId => PALETTE_IDS.includes(id as PaletteId));
-    // One added since: before the one it comes before by default (サブツール above ページ).
-    PALETTE_IDS.forEach((id, index) => {
-      if (order.includes(id)) return;
-      const next = PALETTE_IDS.slice(index + 1).find((other) => order.includes(other));
-      order.splice(next ? order.indexOf(next) : order.length, 0, id);
-    });
     const palettes = { ...base.palettes };
     for (const id of PALETTE_IDS) {
       const p = saved.palettes?.[id];
@@ -92,6 +119,22 @@ export function readLayout(text: string | null, leftCollapsed = false): DockLayo
         weight: Number.isFinite(p.weight) && p.weight > 0 ? p.weight : 1,
       };
     }
+    // One added since: before the one it comes before by default (サブツール above ページ),
+    // or (split off one kept) right after that one, in its column.
+    PALETTE_IDS.forEach((id, index) => {
+      if (order.includes(id)) return;
+      const split = SPLIT_FROM[id];
+      if (split && order.includes(split.from) && saved.palettes?.[split.from]) {
+        const from = palettes[split.from];
+        palettes[id] = { ...palettes[id], side: from.side, shown: split.shown && from.shown };
+        let at = order.indexOf(split.from) + 1;
+        while (at < order.length && SPLIT_FROM[order[at]]?.from === split.from) at++;
+        order.splice(at, 0, id);
+        return;
+      }
+      const next = PALETTE_IDS.slice(index + 1).find((other) => order.includes(other));
+      order.splice(next ? order.indexOf(next) : order.length, 0, id);
+    });
     const width = (side: Side) => clampWidth(saved.width?.[side] ?? base.width[side]);
     return {
       order,

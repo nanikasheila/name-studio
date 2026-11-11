@@ -8,6 +8,7 @@ import { FILL_WAY_HINTS, FILL_WAY_LABELS, FILL_WAYS, GAP_STEPS, type AreaWay, ty
 import { element } from "../platform/dom";
 import { INK } from "../render/pagedraw";
 import type { SubTool, SubToolSource } from "./subtools";
+import type { PropItem } from "../editing/toolprops";
 
 const PREFIX = "fill:";
 
@@ -45,14 +46,38 @@ export class FillSource implements SubToolSource {
     if (FILL_WAYS.includes(way)) this.bar.setWay(way);
   }
 
-  properties(box: HTMLElement): void {
+  currentName(): string {
+    return FILL_WAY_LABELS[this.editor.fill.way];
+  }
+
+  /** ツールプロパティ: what the way does, its tone and its own settings. */
+  items(): PropItem[] {
     const way = this.editor.fill.way;
-    box.append(
-      element("div", { className: "subtool-props-title", textContent: FILL_WAY_LABELS[way] }),
-      element("p", { className: "subtool-note", textContent: FILL_WAY_HINTS[way] }),
-      this.bar.tones(true),
-      ...this.bar.properties(true),
+    const group = FILL_WAY_LABELS[way];
+    const all: PropItem[] = [
+      { id: "hint", label: "使い方の説明", group },
+      { id: "tone", label: "色", group },
+      { id: "under", label: "ラフ線の下に塗る", group },
+    ];
+    if (way === "lasso") return all;
+    if (way === "remaining") all.push({ id: "brush", label: "ブラシ（なぞる大きさ）", group });
+    all.push(
+      { id: "gap", label: "隙間閉じ", group },
+      { id: "center", label: "ベクターの中心で塗り止まり", group },
+      { id: "grow", label: "領域拡縮", group },
+      { id: "refer", label: "参照", group },
     );
+    return all;
+  }
+
+  defaultItems(): string[] {
+    return this.items().map((item) => item.id);
+  }
+
+  item(id: string): HTMLElement | null {
+    if (id === "hint") return element("p", { className: "subtool-note", textContent: FILL_WAY_HINTS[this.editor.fill.way] });
+    if (id === "tone") return this.bar.tones(true);
+    return this.bar.properties(true).find((part) => part.dataset.item === id) ?? null;
   }
 
   signature(): string {

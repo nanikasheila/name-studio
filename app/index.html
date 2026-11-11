@@ -153,6 +153,8 @@
       <aside class="dock right" id="dock-right" aria-label="右の欄"></aside>
       <div id="palette-bodies" hidden>
         <div id="side-subtools" class="panel subtools"></div>
+        <div id="side-toolprops" class="panel toolprops"></div>
+        <div id="side-brushsize" class="panel brushsizes"></div>
         <div id="side-pages" class="panel"></div>
         <div id="side-script" class="panel"></div>
         <div id="side-cast" class="panel"></div>
@@ -533,6 +535,28 @@
         <p class="hint">「あとで」にすると控えはそのまま残り、次に起動したときにまた出ます。</p>
         <div class="actions">
           <button value="later" class="primary" autofocus>あとで</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="toolprops-dialog" class="export toolprops-dialog">
+      <form method="dialog">
+        <h2>ツールプロパティに出す項目</h2>
+        <p id="tp-where" class="hint"></p>
+        <div class="tp-panes">
+          <section class="tp-all" aria-label="出せる項目">
+            <input id="tp-filter" type="search" placeholder="項目を探す（例: 入り抜き、濃度）" aria-label="項目を探す" />
+            <div id="tp-items" class="tp-items"></div>
+          </section>
+          <section class="tp-shown" aria-label="表示する順">
+            <h3>表示する順 <small>ドラッグで並べ替え</small></h3>
+            <div id="tp-order" class="tp-order"></div>
+          </section>
+        </div>
+        <div class="actions">
+          <button type="button" id="tp-reset" title="このサブツールを初めの項目に戻す">初めに戻す</button>
+          <button type="button" id="tp-all-kind" title="同じ道具のほかのサブツールにも、この項目と順を使う"></button>
+          <span class="spacer"></span>
+          <button value="cancel" formnovalidate>閉じる</button>
         </div>
       </form>
     </dialog>

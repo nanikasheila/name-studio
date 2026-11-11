@@ -69,7 +69,7 @@ export function defaultWorkspace(id: WorkspaceId): Workspace {
   const put = (id: PaletteId, side: "left" | "right") => (docks.palettes[id].side = side);
   switch (id) {
     case "draw":
-      show("left", "subtools", "layers");
+      show("left", "subtools", "toolprops", "layers");
       // The right column down to its icons: the details are a click away.
       docks.collapsed.right = true;
       return { docks, view: "spread", rows: 1, band: "folded" };

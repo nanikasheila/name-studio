@@ -61,12 +61,16 @@ import { RoughCache } from "../service/roughcache";
 import { Reader } from "./reader";
 import { SpringTool } from "../editing/springtool";
 import { ControlBar } from "./controlbar";
+import type { SubToolPart } from "./subtools";
 import { fail } from "../platform/status";
 import { folderStep } from "../platform/reveal";
 import { explain } from "../platform/errortext";
 
 /** After a line drawn with the pen, what lies around the pages is drawn again once the pen has rested this long (ms). */
 const PEN_REST_MS = 500;
+
+/** The palettes the sub tools draw in. */
+const SUBTOOL_PALETTES = { list: "subtools", props: "toolprops", sizes: "brushsize" } as const satisfies Record<SubToolPart, PaletteId>;
 
 export class Workbench {
   readonly editor: PageEditor;
@@ -268,14 +272,14 @@ export class Workbench {
       toolChanged: (tool) => this.references.toolChanged(tool),
       snapGrid: (on) => this.settingsDialog.changeSnap({ grid: on }),
       rough: (change) => this.edits.changeRough(change),
-      subtoolsShown: () => this.docks?.isOpen("subtools") ?? false,
+      subtoolsShown: (part) => this.docks?.isOpen(SUBTOOL_PALETTES[part]) ?? false,
       keysOf: (command) => this.shortcuts.keys(command),
       bindKey: (command, combo) => {
         const taken = this.shortcuts.bind(command, combo);
         return taken && (this.commands.find((c) => c.id === taken)?.label ?? taken);
       },
       unbindKey: (command, combo) => this.shortcuts.unbind(command, combo),
-      openBrushEditor: (kind) => this.brushEditor.openFor(kind),
+      openBrushEditor: (kind, words) => this.brushEditor.openFor(kind, words),
       importBrushes: () => void this.brushDialog.open(),
     });
     this.references = new ReferenceBar({
@@ -835,7 +839,7 @@ export class Workbench {
     const project = this.session.project;
     if (!project || !this.docks) return;
     const open = (id: PaletteId) => this.docks.isOpen(id);
-    if (open("subtools")) this.bars.subtools.render();
+    if (open("subtools") || open("toolprops") || open("brushsize")) this.bars.subtools.render();
     if (open("pages")) this.lists.pages(project);
     if (open("script")) this.lists.script(project);
     if (open("cast")) this.lists.cast(project);
