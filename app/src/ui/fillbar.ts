@@ -137,6 +137,7 @@ export class FillBar {
         changed(on ? "ラフ線の下に塗る" : "ラフ線の上に塗る");
       }),
     ];
+    parts[0].dataset.item = "under";
     if (way === "lasso") return parts;
     const options = this.fill.options[way as AreaWay];
     if (way === "remaining") {
@@ -188,6 +189,9 @@ export class FillBar {
       changed(`参照 ${REFER_LABELS[options.refer]}`);
     });
     parts.push(this.field("参照", refer, palette));
+    // Each part says which setting it is (ツールプロパティ shows the ones chosen).
+    const ids = ["under", ...(way === "remaining" ? ["brush"] : []), "gap", "center", "grow", "refer"];
+    parts.forEach((part, i) => (part.dataset.item = ids[i]));
     return parts;
   }
 

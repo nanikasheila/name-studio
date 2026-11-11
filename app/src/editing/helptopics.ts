@@ -389,7 +389,7 @@ export const AREA_TOPICS: Record<string, HelpTopic> = {
   },
   "side-subtools": {
     name: "サブツール",
-    what: "ペン・消しゴムの種類と太さ・不透明度・手ブレ補正（CSP のように）",
+    what: "ペン・消しゴム・塗りの種類を選ぶ（CSP のサブツールのように）。設定は下のツールプロパティで",
     steps: [
       { input: "行をクリック", does: "そのペン・消しゴムを持つ" },
       { input: "行の ⌨", does: "キーを割り当てる（押すとそのペンを持つ）" },
@@ -397,10 +397,36 @@ export const AREA_TOPICS: Record<string, HelpTopic> = {
       { input: "行をドラッグ・Alt+↑↓", does: "並べ替え" },
       { input: "↑↓", does: "前後のペンに持ち替え（一覧を押したあと）" },
       { input: "Ctrl+D / Delete", does: "複製・削除" },
+    ],
+  },
+  "side-toolprops": {
+    name: "ツールプロパティ",
+    what: "持っているサブツールの設定。出す項目はサブツールごとに選べる（CSP のように）",
+    steps: [
+      { input: "下のスパナ", does: "出す項目を選ぶ・並べ替える・ほかのペンにも使う・初めに戻す" },
+      { input: "右クリック", does: "その項目を出さない・詳細設定で開く" },
+      { input: "下の ≡ のアイコン", does: "サブツール詳細（すべての設定）" },
+      { input: "項目の右の曲線", does: "影響元設定（筆圧・傾き・速度）を開く" },
+    ],
+  },
+  "side-brushsize": {
+    name: "ブラシサイズ",
+    what: "ペン・消しゴムの太さを丸いボタンで（CSP のブラシサイズパレットのように）",
+    steps: [
       { input: "丸いボタン", does: "その太さに（右クリックで候補から外す）" },
-      { input: "＋", does: "今の太さを候補に足す" },
+      { input: "＋", does: "今の太さを候補に足す（右クリックで初めの並びに）" },
       { command: "brush.bigger", does: "太く" },
       { command: "brush.smaller", does: "細く" },
+    ],
+  },
+  "toolprops-dialog": {
+    name: "ツールプロパティに出す項目",
+    what: "持っているサブツールのツールプロパティに出す項目",
+    steps: [
+      { input: "チェック", does: "出す・出さない（すぐに反映）" },
+      { input: "右の一覧をドラッグ", does: "出す順を変える" },
+      { input: "ほかの…にも使う", does: "同じ道具のサブツールすべてに同じ項目を" },
+      { input: "初めに戻す", does: "このサブツールを初めの項目に（CSP から取り込んだペンは CSP の表示項目）" },
     ],
   },
   "side-pages": {

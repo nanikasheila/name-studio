@@ -11,7 +11,7 @@ import { FillBar } from "./fillbar";
 import { FillSource } from "./fillsource";
 import type { Brush, BrushKind, Project } from "../model/model";
 import { CONTINUOUS_KEY, loadHandSizes, loadLibrary, ROWS_KEY, saveHandSizes, SHOW_NOTES_KEY, SINGLE_PAGE_KEY } from "../platform/prefs";
-import { SubToolPanel } from "./subtools";
+import { SubToolPanel, type SubToolPart } from "./subtools";
 import { writeCount, writeFlag } from "../platform/settings";
 import { MarkBar } from "./markbar";
 import { fitRow } from "./rowfit";
@@ -43,14 +43,14 @@ export interface ControlBarHost {
   snapGrid(on: boolean): void;
   /** A change to the layers (指示のレイヤー), as one undoable step. */
   rough(change: RoughChange): void;
-  /** The サブツール palette is on screen. */
-  subtoolsShown(): boolean;
+  /** The サブツール palette (or ツールプロパティ, ブラシサイズ) is on screen. */
+  subtoolsShown(part: SubToolPart): boolean;
   /** The keys of a command, and giving or taking one (the label of the command it was taken from). */
   keysOf(command: string): string[];
   bindKey(command: string, combo: string): string | null;
   unbindKey(command: string, combo: string): void;
   /** ペン・消しゴムの設定, and taking them over from CSP. */
-  openBrushEditor(kind: BrushKind): void;
+  openBrushEditor(kind: BrushKind, words?: string): void;
   importBrushes(): void;
 }
 
@@ -68,14 +68,17 @@ export class ControlBar {
   constructor(private readonly host: ControlBarHost) {
     $("editor-tools").replaceChildren(...TOOL_IDS.map(toolButton));
     this.marks = new MarkBar({ ...host, setTool: (tool) => this.setTool(tool) });
-    this.subtools = new SubToolPanel($("side-subtools"), {
-      tool: () => this.editor.tool,
-      shown: () => host.subtoolsShown(),
-      keysOf: (command) => host.keysOf(command),
-      bindKey: (command, combo) => host.bindKey(command, combo),
-      unbindKey: (command, combo) => host.unbindKey(command, combo),
-      status: (message) => host.status(message),
-    });
+    this.subtools = new SubToolPanel(
+      { list: $("side-subtools"), props: $("side-toolprops"), sizes: $("side-brushsize") },
+      {
+        tool: () => this.editor.tool,
+        shown: (part) => host.subtoolsShown(part),
+        keysOf: (command) => host.keysOf(command),
+        bindKey: (command, combo) => host.bindKey(command, combo),
+        unbindKey: (command, combo) => host.unbindKey(command, combo),
+        status: (message) => host.status(message),
+      },
+    );
     const brushes = {
       editor: host.editor,
       project: () => host.project(),
@@ -83,7 +86,7 @@ export class ControlBar {
       useBrush: (brush: Brush | null, kind: BrushKind) => this.useBrush(brush, kind),
       setSize: (kind: BrushKind, mm: number) => this.setSize(kind, mm),
       setEraseMode: (mode: EditorEraseMode) => this.setEraseMode(mode),
-      openEditor: (kind: BrushKind) => host.openBrushEditor(kind),
+      openEditor: (kind: BrushKind, words?: string) => host.openBrushEditor(kind, words),
       importBrushes: () => host.importBrushes(),
       status: (message: string) => host.status(message),
       refresh: () => this.subtools.render(true),

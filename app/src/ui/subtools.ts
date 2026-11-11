@@ -3,7 +3,15 @@
 // a sample of what it draws and the key that takes it up, and under them the
 // settings of the one in hand. Each tool with kinds of its own gives a
 // SubToolSource; the palette shows the one of the tool in hand.
+//
+// ツールプロパティ and ブラシサイズ are palettes of their own (as in CSP), so
+// they can sit in another column or tab. ツールプロパティ shows the items
+// chosen for the sub tool in hand (the wrench under it, toolpropsdialog.ts).
 import { subtoolCommandId } from "../editing/commands";
+import { loadToolProps, saveToolProps } from "../platform/prefs";
+import { hasOwnChoice, shownItems, withChoice, withChoiceForTool, type PropItem } from "../editing/toolprops";
+import { openMenu } from "./popupmenu";
+import { ToolPropsDialog, type ToolPropsTarget } from "./toolpropsdialog";
 import { dragSort } from "./dragsort";
 import { element } from "../platform/dom";
 import { keyLabel } from "../editing/helptopics";
@@ -44,8 +52,22 @@ export interface SubToolSource {
   pick(ref: string): void;
   /** The movable ones `first`..`last` before the one at `target` of them. */
   reorder?(first: number, last: number, target: number): void;
-  /** ツールプロパティ: the settings of the kind in hand, into `box`. */
-  properties(box: HTMLElement): void;
+  /** ツールプロパティ: the settings of the kind in hand, into `box` (when it has no `items`). */
+  properties?(box: HTMLElement): void;
+  /** ツールプロパティ: every setting it can show for the kind in hand, in their order. */
+  items?(): PropItem[];
+  /** The ones shown out of the box. */
+  defaultItems?(): string[];
+  /** One of them as a row (null: nothing to show for it now). */
+  item?(id: string): HTMLElement | null;
+  /** Under the items, whichever are shown (a note on what the plain pen can change, …). */
+  note?(): HTMLElement | null;
+  /** The name of the kind in hand (ツールプロパティ's title). */
+  currentName?(): string;
+  /** サブツール詳細: every setting of the kind in hand, on those with `words` when given. */
+  details?(words?: string): void;
+  /** ブラシサイズ: the round buttons of the sizes, large, into `box`. */
+  sizes?(box: HTMLElement): void;
   /** More for a row's menu (right click). */
   menu?(ref: string): SubToolMenuItem[];
   /** Under the list (取り込み…, 新規…). */
@@ -61,11 +83,20 @@ export interface SubToolSource {
   rename?(ref: string): void;
 }
 
+/** The palettes drawn here: the kinds, ツールプロパティ and ブラシサイズ. */
+export type SubToolPart = "list" | "props" | "sizes";
+
+export interface SubToolRoots {
+  list: HTMLElement;
+  props: HTMLElement;
+  sizes: HTMLElement;
+}
+
 export interface SubToolHost {
   /** The tool in hand. */
   tool(): ToolId;
-  /** Whether the palette is on screen (else it is drawn when it opens). */
-  shown(): boolean;
+  /** Whether a part is on screen (else it is drawn when it opens). */
+  shown(part: SubToolPart): boolean;
   keysOf(command: string): string[];
   /** Give the key to the command; the label of the one it was taken from. */
   bindKey(command: string, combo: string): string | null;
@@ -82,13 +113,16 @@ export class SubToolPanel {
   private listening: string | null = null;
   /** The rows' keys and menu, as the other lists'. */
   private readonly picker: ListPicker;
-  /** What was drawn last (see SubToolSource.signature). */
-  private drawn = "";
+  /** What was drawn last in each part (see SubToolSource.signature). */
+  private readonly drawn: Record<SubToolPart, string> = { list: "", props: "", sizes: "" };
+  private readonly root: HTMLElement;
+  private readonly dialog = new ToolPropsDialog();
 
   constructor(
-    private readonly root: HTMLElement,
+    private readonly roots: SubToolRoots,
     private readonly host: SubToolHost,
   ) {
+    this.root = roots.list;
     // While waiting, the next key press is its key (Esc gives up); it does nothing else.
     window.addEventListener(
       "keydown",
@@ -208,26 +242,38 @@ export class SubToolPanel {
     this.render(true);
   }
 
-  /** Draw it as it is now; `force`: even when it looks the same (keys changed, …). */
+  /** Draw what is on screen as it is now; `force`: even when it looks the same (keys changed, …). */
   render(force = false): void {
-    if (!this.host.shown()) {
-      this.drawn = "";
-      return;
-    }
     const source = this.source();
-    if (!source) {
-      this.root.replaceChildren();
-      return;
+    for (const part of ["list", "props", "sizes"] as const) {
+      if (!this.host.shown(part)) {
+        this.drawn[part] = "";
+        continue;
+      }
+      const root = this.roots[part];
+      if (!source) {
+        root.replaceChildren();
+        this.drawn[part] = "";
+        continue;
+      }
+      const extra = part === "props" ? JSON.stringify(this.shownNow(source)) : "";
+      const drawn = source.signature ? `${source.tool}\n${this.listening}\n${extra}\n${source.signature()}` : "";
+      if (!force && drawn && drawn === this.drawn[part]) continue;
+      // A slider or box being used is not taken from under the pen; it is drawn again when let go.
+      const active = document.activeElement;
+      if (!force && (active instanceof HTMLInputElement || active instanceof HTMLSelectElement) && root.contains(active)) {
+        this.drawn[part] = "";
+        continue;
+      }
+      this.drawn[part] = drawn;
+      if (part === "list") this.renderList(source);
+      else if (part === "props") this.renderProps(source);
+      else this.renderSizes(source);
     }
-    const drawn = source.signature ? `${source.tool}\n${this.listening}\n${source.signature()}` : "";
-    if (!force && drawn && drawn === this.drawn) return;
-    // A slider or box being used is not taken from under the pen; it is drawn again when let go.
-    const active = document.activeElement;
-    if (!force && active instanceof HTMLInputElement && this.root.contains(active)) {
-      this.drawn = "";
-      return;
-    }
-    this.drawn = drawn;
+    this.dialog.follow(source?.items ? this.target(source) : null);
+  }
+
+  private renderList(source: SubToolSource): void {
     const tabs = element("div", { className: "segmented subtool-tabs" });
     tabs.setAttribute("role", "tablist");
     for (const other of this.sources.values()) {
@@ -258,13 +304,127 @@ export class SubToolPanel {
     }
     if (source.reorder && movable.length > 1)
       dragSort(movable, { axis: "y", drop: (first, last, target) => source.reorder?.(first, last, target) });
-    const props = element("div", { className: "subtool-props" });
-    props.setAttribute("aria-label", "ツールプロパティ");
-    source.properties(props);
     const footer = element("div", { className: "subtool-footer" });
     source.footer?.(footer);
-    this.root.replaceChildren(tabs, list, footer, props);
+    this.root.replaceChildren(tabs, list, footer);
     list.querySelector(".current")?.scrollIntoView({ block: "nearest" });
+  }
+
+  // --- ツールプロパティ ----------------------------------------------------------------
+
+  /** The ref the items are kept by: the kind in hand (or the tool, when it has none). */
+  private refOf(source: SubToolSource): string {
+    return source.current() ?? `${source.tool}:none`;
+  }
+
+  /** The items shown for the kind in hand now. */
+  private shownNow(source: SubToolSource): string[] {
+    if (!source.items) return [];
+    return shownItems(loadToolProps(), this.refOf(source), source.tool, source.items(), source.defaultItems?.() ?? []);
+  }
+
+  private setShown(source: SubToolSource, items: string[] | null, forTool = false): void {
+    const ref = this.refOf(source);
+    const choices = loadToolProps();
+    saveToolProps(forTool && items ? withChoiceForTool(choices, source.tool, items) : withChoice(choices, ref, items));
+    this.render(true);
+  }
+
+  /** The wrench's dialog on the kind in hand. */
+  private target(source: SubToolSource): ToolPropsTarget {
+    return {
+      name: source.currentName?.() ?? source.label,
+      toolLabel: source.label,
+      available: () => source.items?.() ?? [],
+      shown: () => this.shownNow(source),
+      own: () => hasOwnChoice(loadToolProps(), this.refOf(source)),
+      set: (items) => this.setShown(source, items),
+      setForTool: (items) => this.setShown(source, items, true),
+    };
+  }
+
+  /** 表示する項目…: the wrench. */
+  chooseItems(): void {
+    const source = this.source();
+    if (!source?.items) {
+      this.host.status("この道具のツールプロパティは項目を選べません");
+      return;
+    }
+    this.dialog.open(this.target(source));
+  }
+
+  private renderProps(source: SubToolSource): void {
+    const box = element("div", { className: "subtool-props" });
+    box.setAttribute("aria-label", "ツールプロパティ");
+    if (source.items && source.item) {
+      const name = source.currentName?.();
+      if (name) box.append(element("div", { className: "subtool-props-title", textContent: name }));
+      const shown = this.shownNow(source);
+      for (const id of shown) {
+        const node = source.item(id);
+        if (!node) continue;
+        const wrap = element("div", { className: "toolprop-item" }, node);
+        wrap.dataset.item = id;
+        wrap.addEventListener("contextmenu", (event) => {
+          if ((event.target as HTMLElement).closest("button.size-presets, .size-presets button")) return;
+          event.preventDefault();
+          openMenu(
+            [
+              {
+                label: "この項目を出さない",
+                run: () =>
+                  this.setShown(
+                    source,
+                    this.shownNow(source).filter((x) => x !== id),
+                  ),
+              },
+              { label: "表示する項目…", run: () => this.chooseItems() },
+              ...(source.details ? [{ label: "詳細設定で開く…", run: () => source.details?.(node.dataset.setting ?? "") }] : []),
+            ],
+            event.clientX,
+            event.clientY,
+            "ツールプロパティの項目",
+          );
+        });
+        box.append(wrap);
+      }
+      if (!shown.length)
+        box.append(element("p", { className: "subtool-note", textContent: "出す項目がありません。下のスパナで選べます。" }));
+      const note = source.note?.();
+      if (note) box.append(note);
+    } else source.properties?.(box);
+    const bar = element("div", { className: "toolprops-bar" });
+    if (source.details) {
+      const details = element("button", {
+        type: "button",
+        className: "icon-button",
+        title: "サブツール詳細: すべての設定を開く（CSP のサブツール詳細のように）",
+        innerHTML: DETAILS_ICON,
+      });
+      details.setAttribute("aria-label", "サブツール詳細");
+      details.addEventListener("click", () => source.details?.());
+      bar.append(details);
+    }
+    if (source.items) {
+      const wrench = element("button", {
+        type: "button",
+        id: "toolprops-wrench",
+        className: "icon-button",
+        title: "ツールプロパティに出す項目を選ぶ（CSP のスパナのように）",
+        innerHTML: WRENCH_ICON,
+      });
+      wrench.setAttribute("aria-label", "表示する項目");
+      wrench.addEventListener("click", () => this.chooseItems());
+      bar.append(wrench);
+    }
+    this.roots.props.replaceChildren(box, bar);
+  }
+
+  private renderSizes(source: SubToolSource): void {
+    const box = this.roots.sizes;
+    box.replaceChildren();
+    if (source.sizes) source.sizes(box);
+    else box.append(element("p", { className: "subtool-note", textContent: "ペンか消しゴムを持つと、太さの丸ボタンが出ます。" }));
   }
 
   private row(tool: SubTool, current: boolean): HTMLElement {
@@ -309,3 +469,11 @@ export class SubToolPanel {
     return row;
   }
 }
+
+const svgIcon = (inner: string) => `<svg class="icon" viewBox="0 0 20 20" aria-hidden="true">${inner}</svg>`;
+const WRENCH_ICON = svgIcon(
+  '<path d="M12.8 3.2a4 4 0 0 0-4.6 5.3L3.5 13.2a1.6 1.6 0 0 0 2.3 2.3l4.7-4.7a4 4 0 0 0 5.3-4.6l-2.4 2.4-2.1-.5-.5-2.1z"/>',
+);
+const DETAILS_ICON = svgIcon(
+  '<path d="M4 5h12M4 10h12M4 15h12"/><circle cx="8" cy="5" r="1.6"/><circle cx="13" cy="10" r="1.6"/><circle cx="7" cy="15" r="1.6"/>',
+);

@@ -6,6 +6,7 @@ import { withBrushes } from "../domain/brush";
 import { handSizesFrom, presetsFrom, type HandSizes, type SizePresets } from "../editing/brushpicks";
 import { EXPORT_MEMORIES, memoryFrom, memoryKey, withMemory, type ExportMemory } from "../domain/exportmemory";
 import { fillSettingsFrom, type FillSettings } from "../editing/fillsettings";
+import { choicesFrom, type ToolPropChoices } from "../editing/toolprops";
 import { defaultsFrom, defaultsOf, type NewNameDefaults } from "../domain/namedefaults";
 import { normalizeCurve, defaultPenSettings, parsePenSettings, type PenSettings } from "../editing/pen";
 import { forgotten, recentFrom, remembered, type RecentName } from "../editing/recent";
@@ -146,6 +147,18 @@ export function loadHandSizes(): HandSizes {
 
 export function saveHandSizes(sizes: HandSizes): void {
   writeJson(HAND_SIZES_KEY, sizes);
+}
+
+// --- ツールプロパティに出す項目 -------------------------------------------------------------
+
+const TOOL_PROPS_KEY = "namestudio.toolProps";
+
+export function loadToolProps(): ToolPropChoices {
+  return choicesFrom(readJson(TOOL_PROPS_KEY, null));
+}
+
+export function saveToolProps(choices: ToolPropChoices): void {
+  writeJson(TOOL_PROPS_KEY, choices);
 }
 
 // --- 新しいネームの既定 -------------------------------------------------------------

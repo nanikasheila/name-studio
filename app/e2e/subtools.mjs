@@ -65,7 +65,9 @@ try {
     window.nameStudio.show(project);
   });
   const panel = page.locator("#side-subtools");
+  const props = page.locator("#side-toolprops");
   check(await panel.isVisible(), "サブツール shows beside the pages out of the box");
+  check(await props.isVisible(), "ツールプロパティ too, in a palette of its own");
   check(
     (await panel.locator(".subtool-tabs button").allTextContents()).join("/") === "ペン/消しゴム/塗り",
     "it has ペン, 消しゴム and 塗り",
@@ -90,7 +92,7 @@ try {
   let hand = await inHand();
   check(hand.tool === "pen" && hand.brush === "brush-1" && hand.width === 0.6, "a click takes the pen up with its size");
   check((await panel.locator(".subtool-row.current", { hasText: "Gペン" }).count()) === 1, "the pen in hand is marked");
-  check((await panel.locator(".subtool-props-title").textContent()) === "Gペン", "ツールプロパティ shows the pen in hand");
+  check((await props.locator(".subtool-props-title").textContent()) === "Gペン", "ツールプロパティ shows the pen in hand");
   const sample = await panel
     .locator(".subtool-row", { hasText: "丸ペン" })
     .locator("canvas")
@@ -103,10 +105,10 @@ try {
   check(sample > 30, "each row draws a sample line");
 
   // Size: the round buttons, and the pen keeps the size it was last used at.
-  await panel.locator(".size-presets button", { hasText: /^1\.5$/ }).click();
+  await props.locator(".size-presets button", { hasText: /^1\.5$/ }).click();
   hand = await inHand();
   check(hand.width === 1.5, "a round size button sets the size");
-  check((await panel.locator(".size-presets button.active").textContent()) === "1.5", "the size in hand is marked");
+  check((await props.locator(".size-presets button.active").textContent()) === "1.5", "the size in hand is marked");
   await panel.locator(".subtool-row", { hasText: "丸ペン" }).click();
   check((await inHand()).width === 0.3, "another pen comes at its own size");
   await page.keyboard.press("]");
@@ -118,7 +120,7 @@ try {
   check((await inHand()).width === bigger, "and 丸ペン its own last size");
 
   // The slider follows the pen in hand.
-  const slider = panel.locator('.subtool-props input[type="range"]').first();
+  const slider = props.locator('.subtool-props input[type="range"]').first();
   await slider.evaluate((input) => {
     input.value = "900";
     input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -126,14 +128,14 @@ try {
   });
   check((await inHand()).width > 5, "the size slider sets a size along its ratio scale");
   await page.locator(".size-presets button", { hasText: /^0\.5$/ }).click();
-  await panel.locator(".size-presets button.add").click();
+  await props.locator(".size-presets button.add").click();
   check(
     await page.evaluate(() => JSON.parse(localStorage.getItem("namestudio.sizePresets")).pen.includes(0.5)),
     "＋ keeps the size among the round buttons",
   );
 
   // Opacity and 手ブレ補正 change the pen (one undoable step), and its CSP rows with it.
-  const opacity = panel.locator(".subtool-field", { hasText: "不透明度" }).locator("input");
+  const opacity = props.locator(".subtool-field", { hasText: "不透明度" }).locator("input");
   await opacity.evaluate((input) => {
     input.value = "40";
     input.dispatchEvent(new Event("input", { bubbles: true }));
