@@ -15,6 +15,8 @@ import { gutters, movePage, newId, pageIndex } from "./project";
 import { assignPanels, sortLines } from "./readingorder";
 import { applyScript, panelBoxes, parseScript, placeAfter, retext } from "./scriptimport";
 import { addSticky, linkSticky } from "./stickies";
+import { arrangePage, arrangePanel } from "./arrange";
+import { addAutoTails } from "./autotail";
 import { planAdvice } from "./story";
 import { STRUCTURES } from "./structures";
 import { validate } from "./validate";
@@ -237,6 +239,9 @@ export type AssistOp =
     }
   | { op: "setLine"; line: string; text?: string; speaker?: string | null; kind?: LineKind; shape?: BalloonShape }
   | { op: "removeLine"; line: string }
+  | { op: "moveLine"; line: string; page?: PageRef; panel?: PanelRef; after?: string }
+  | { op: "arrangeLines"; page: PageRef; panel?: PanelRef }
+  | { op: "addTails"; page?: PageRef }
   | { op: "addSticky"; page: PageRef; text: string; panel?: PanelRef; line?: string; color?: StickyColor }
   | { op: "addCharacter"; name: string; tone?: string }
   | { op: "setCharacter"; character: string; name?: string; tone?: string }
@@ -269,6 +274,11 @@ export const OPS_GUIDE: Record<AssistOpName, string> = {
   setLine:
     'セリフを直す。{"op":"setLine","line":"line12","text":"…","speaker":"花子","kind":"thought","shape":"spike"}（line は要約の [line12]。speaker:null で話者なし）',
   removeLine: 'セリフを消す。{"op":"removeLine","line":"line12"}',
+  moveLine:
+    'セリフを別のコマ（別のページでも）へ動かす。{"op":"moveLine","line":"line12","page":4,"panel":1,"after":"line15"}（page を省くと同じページ。after でそのセリフの次に。しっぽは外れるので要れば addTails）',
+  arrangeLines:
+    'コマの中のセリフを読む順にきれいに並べ直す（顔をよけ、はみ出しを直す）。{"op":"arrangeLines","page":3,"panel":2}（panel を省くとページ全体）',
+  addTails: 'しっぽのないセリフに、話者（コマのラフ）へ向けたしっぽを付ける。{"op":"addTails","page":3}（page を省くと全ページ）',
   addSticky: `付箋を貼る（提案やコメントを紙面に残す）。{"op":"addSticky","page":3,"panel":2,"text":"…","color":"pink"}（panel か line で紐づけ。color: ${STICKY_COLOR_NAMES.join("/")}）`,
   addCharacter: '人物を足す。{"op":"addCharacter","name":"…","tone":"口調のメモ"}',
   setCharacter: '人物を直す。{"op":"setCharacter","character":"太郎","name":"…","tone":"…"}',
@@ -314,6 +324,9 @@ const REQUIRED: Record<AssistOpName, Record<string, "string" | "number" | "array
   addLine: { page: "number", text: "string" },
   setLine: { line: "string" },
   removeLine: { line: "string" },
+  moveLine: { line: "string" },
+  arrangeLines: { page: "number" },
+  addTails: {},
   addSticky: { page: "number", text: "string" },
   addCharacter: { name: "string" },
   setCharacter: { character: "string" },
@@ -549,6 +562,42 @@ function applyOne(project: Project, op: AssistOp, done: string[]): string {
       for (const sticky of page.stickies ?? []) if (sticky.link?.kind === "line" && sticky.link.id === line.id) delete sticky.link;
       return `${number} ページの「${short(line.text)}」を消しました`;
     }
+    case "moveLine": {
+      const { page: from, line, number } = lineAt(project, op.line);
+      const page = op.page === undefined ? from : pageAt(project, op.page);
+      const at = op.page ?? number;
+      const panel = op.panel === undefined ? undefined : panelAt(page, op.panel, at);
+      if (!panel && page === from) throw new OpError("動かす先のコマ（panel）か page を");
+      const previous = op.after ? lineAt(project, op.after).line : undefined;
+      if (previous === line) throw new OpError("セリフをそのセリフ自身の次には置けません");
+      if (page !== from) {
+        // Off its page: the links to and from the other page's lines and stickies go.
+        from.lines = from.lines.filter((l) => l !== line);
+        for (const other of from.lines) if (other.linkTo === line.id) delete other.linkTo;
+        for (const sticky of from.stickies ?? []) if (sticky.link?.kind === "line" && sticky.link.id === line.id) delete sticky.link;
+        delete line.linkTo;
+        page.lines.push(line);
+      }
+      // Its tails pointed at the speaker where it was: addTails gives new ones.
+      delete line.tails;
+      delete line.panel;
+      const last = panel ? page.lines.filter((l) => l !== line && l.panel === panel.id).at(-1) : undefined;
+      placeAfter(project, page, panel, line, previous && page.lines.includes(previous) ? previous : last);
+      assignPanels(page);
+      sortLines(page, project.binding);
+      return `「${short(line.text)}」を ${at} ページ${panel ? ` コマ${typeof op.panel === "number" ? op.panel : ""}` : ""}へ`;
+    }
+    case "arrangeLines": {
+      const page = pageAt(project, op.page);
+      const panel = op.panel === undefined ? undefined : panelAt(page, op.panel, op.page);
+      const moved = panel ? arrangePanel(project, page, panel) : arrangePage(project, page);
+      return `${op.page} ページ${panel ? ` コマ${typeof op.panel === "number" ? op.panel : ""}` : ""}のセリフ ${moved} 個を読む順に並べ直しました`;
+    }
+    case "addTails": {
+      const pages = op.page === undefined ? project.pages : [pageAt(project, op.page)];
+      const added = pages.reduce((sum, page) => sum + addAutoTails(page, project.binding), 0);
+      return `${op.page === undefined ? "全ページ" : `${op.page} ページ`}のセリフにしっぽ ${added} 本`;
+    }
     case "addSticky": {
       const page = pageAt(project, op.page);
       if (op.color !== undefined && !STICKY_COLOR_NAMES.includes(op.color)) throw new OpError(`付箋の色 ${op.color} はありません`);
@@ -637,4 +686,50 @@ export function applyOps(project: Project, ops: readonly AssistOp[]): OpsResult 
 /** What operations would do to a name, without changing it. */
 export function previewOps(project: Project, ops: readonly AssistOp[]): OpsResult & { broken: boolean } {
   return applyOps(structuredClone(project), ops);
+}
+
+/** What a change did to a name, to show it: the pages it changed and what else. */
+export interface NameChanges {
+  /** The changed or new pages (ids, in their order after the change). */
+  pages: string[];
+  /** Pages there before and gone after. */
+  removed: number;
+  /** What else changed, in words (題名・人物…). */
+  other: string[];
+}
+
+const OTHER_PARTS: [keyof Project, string][] = [
+  ["title", "題名"],
+  ["characters", "人物"],
+  ["scenes", "シーン"],
+  ["emotions", "感情"],
+  ["plan", "構成"],
+  ["held", "保留コマ"],
+  ["heldPages", "保留のページ"],
+];
+
+/** The pages (and what else) that differ between `before` and `after`. */
+export function nameChanges(before: Project, after: Project): NameChanges {
+  const kept = new Set(after.pages.map((page) => page.id));
+  const both = (page: Page) => kept.has(page.id) && was.has(page.id);
+  const was = new Map(before.pages.map((page) => [page.id, JSON.stringify(page)]));
+  // A page moved counts as changed, as do its new neighbours; pages that only shift (one added before them) do not.
+  const previous = (pages: Page[]) => {
+    const found = new Map<string, string>();
+    let last = "";
+    for (const page of pages.filter(both)) {
+      found.set(page.id, last);
+      last = page.id;
+    }
+    return found;
+  };
+  const [wasBefore, nowBefore] = [previous(before.pages), previous(after.pages)];
+  const pages = after.pages
+    .filter((page) => was.get(page.id) !== JSON.stringify(page) || wasBefore.get(page.id) !== nowBefore.get(page.id))
+    .map((page) => page.id);
+  const removed = before.pages.filter((page) => !kept.has(page.id)).length;
+  const other = OTHER_PARTS.filter(([key]) => JSON.stringify(before[key] ?? null) !== JSON.stringify(after[key] ?? null)).map(
+    ([, label]) => label,
+  );
+  return { pages, removed, other };
 }

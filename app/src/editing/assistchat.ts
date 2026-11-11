@@ -4,6 +4,7 @@
 // events of each turn into the entries the palette shows.
 import { nameBrief, OPS_FENCE, opsGuide } from "../domain/assist";
 import type { Project } from "../model/model";
+import { HELP_FILE } from "./apphelp";
 import type { AiEvent, AiKind, AiModel } from "../generated/ipc";
 
 export type { AiEvent, AiKind, AiModel } from "../generated/ipc";
@@ -99,12 +100,17 @@ const ROLE = `あなたは漫画のネーム（絵コンテ）の相談相手で
 - 直すより先に、選べる案を 2〜3 出す（狙い・読者の感じ方・ページ数への影響を添えて）。
 - 作者のセリフや演出を勝手に書き換えない。作品の主は作者。
 - コマ割りは読む順・ページめくり（めくった最初のコマ・見開き）・間（コマの大きさと数）を見る。
-- 構成は目標ページ数・話の型・シーンの配分・感情の推移を見る。`;
+- 構成は目標ページ数・話の型・シーンの配分・感情の推移を見る。
+
+アプリの使い方の質問（「〜はどうやるの」「〜のキーは」）:
+- 使い方（${HELP_FILE}）に書いてあることだけで答える。どの道具・欄・ボタンで、どのキーか（作者のキー設定のとおり）を、手順の順に短く。
+- 書いていないことは作れるふりをせず「その機能は見当たりません」と言い、近いやり方があれば挙げる。
+- 頼まれたことが変更の案（下）でできるなら、手順の説明に加えて案も出してよい。`;
 
 /** How to hand back changes, for every kind of AI. */
 function proposing(): string {
   return `変更の案:
-作者が頼んだとき、または案を具体的に見せたいときは、返事の中に次の形で書いてください。作者が確かめてから「当てる」を押すとアプリで当たります（元に戻せます）。案は小さくまとまりごとに分け、何を変えるかを先に文で説明してください。
+作者が頼んだとき、または案を具体的に見せたいときは、返事の中に次の形で書いてください。作者は「画面で見る」で変更後のネームを画面で確かめ、「採用」か「却下」を選びます（却下すると元のまま）。案は小さくまとまりごとに分け（一つの案は一緒に採用・却下されます）、何を変えるかを先に文で説明してください。
 
 \`\`\`${OPS_FENCE}
 [{"op":"setLine","line":"line12","text":"…"}]
@@ -119,6 +125,7 @@ export function agentInstructions(pictures: boolean): string {
 
 作業フォルダーにあるもの:
 - ${BRIEF_FILE}: ネームの要約（構成・人物・シーン・ページごとのコマとセリフ。[line12] はセリフの id）。まずこれを読む。
+- ${HELP_FILE}: アプリの使い方（道具・欄・命令と、この PC でのキー、ユーザーガイド）。使い方の質問ではこれを読む。
 - ${COPY_FILE}: ネームの写し。\`${CLI} brief ${COPY_FILE} --pages 3-5\` などで読める（name-studio スキル）。
 ${pictures ? `- ${pictureFile(1).replace("001", "NNN")}: ページの絵（ラフ・コマ・フキダシ）。コマ割りや絵の相談では見る。\n` : ""}写しやフォルダーのファイルを書き換えても、作者のネームには届きません。ファイルは書き換えないでください。
 作者はアプリの画面で話しています。コマンドやファイルの使い方は作者に案内しないでください（案を自分で \`apply --dry-run\` で確かめるのはかまいません）。
@@ -127,13 +134,20 @@ ${proposing()}`;
 }
 
 /** What a local LLM is told: everything in the message, as it cannot read files. */
-export function localInstructions(project: Project, current: number[]): string {
+export function localInstructions(project: Project, current: number[], help: string): string {
   return `${ROLE}
 
 ${proposing()}
-
+${help.trim() ? `\n<${HELP_FILE}>\n${help.trim()}\n</${HELP_FILE}>\n` : ""}
 いまのネーム:
 ${nameBrief(project, { current })}`;
+}
+
+/** A question on using the app (a local LLM is sent the help only then: it is long for a small model). */
+export function asksHow(question: string): boolean {
+  return /使い方|どうや[っるれ]|どうすれば|には？|どうしたら|やり方|方法|キー|ショートカット|ボタン|どこ|操作|設定|機能|できますか|できる？|ヘルプ/.test(
+    question,
+  );
 }
 
 /** The name's brief, in the message itself: the AI has it even when it cannot read files (a sandbox that turns every command away). */
@@ -159,6 +173,8 @@ export function changedPrompt(question: string, current: number[], brief: string
 
 /** Ready-made questions for when the user does not know what to ask. */
 export const STARTERS: { label: string; text: string }[] = [
+  { label: "使い方を聞く", text: "Name Studio の使い方の質問です。" },
+  { label: "直してみて", text: "いま開いているページを良くする変更の案を出してください。画面で確かめてから採用します。" },
   { label: "行き詰まった", text: "このあたりで行き詰まっています。何が引っかかっているのか、一緒に整理してください。" },
   {
     label: "このページのコマ割り",
@@ -191,8 +207,10 @@ export interface SavedTalk {
   /** Its folder (Claude Code goes on with a session only in the folder it began in). */
   dir: string | null;
   entries: ChatEntry[];
-  /** 変更の案 applied, by where they are in it. */
+  /** 変更の案 kept (採用), by where they are in it. */
   applied: string[];
+  /** 変更の案 taken back (却下). */
+  rejected: string[];
 }
 
 /** A kept conversation as the list shows it. */
@@ -248,6 +266,7 @@ export function readSavedTalk(value: unknown): SavedTalk | null {
     dir: text(from.dir) || null,
     entries,
     applied: Array.isArray(from.applied) ? from.applied.filter((key): key is string => typeof key === "string") : [],
+    rejected: Array.isArray(from.rejected) ? from.rejected.filter((key): key is string => typeof key === "string") : [],
   };
 }
 
@@ -370,6 +389,7 @@ export function toolStep(text: string): ToolStep | null {
   else if (lower.includes("skill.md")) label = "スキルの説明を読みました";
   else if (pictures.length) label = `${pictures.join("・")} の絵を見ました`;
   else if (detail.includes(BRIEF_FILE)) label = "ネームの要約を読みました";
+  else if (detail.includes(HELP_FILE)) label = "使い方を読みました";
   else if (detail.includes(COPY_FILE)) label = "ネームの写しを読みました";
   else if (/(agents|claude|system)\.md/.test(lower)) label = "相談の決まりを読みました";
   else if (

@@ -91,6 +91,13 @@ function autoShape(kind) {
 		case "aside": return "none";
 	}
 }
+/** The tail style a new tail gets: bubbles for thoughts, zigzag for electric voices. */
+function defaultTailStyle(line) {
+	const shape = resolvedShape(line);
+	if (shape === "cloud") return "bubbles";
+	if (shape === "electric") return "zigzag";
+	return "wedge";
+}
 /** Small deterministic noise so a burst keeps its shape between redraws. */
 function seeded(text) {
 	let h = 2166136261;
@@ -632,8 +639,14 @@ function followPanel(page, panel, carried, fit = "stretch") {
 	}
 }
 // src/domain/autotail.ts
+/** How far past the balloon a tail reaches (mm), at most. */
+var REACH = 12;
 /** Strokes this close (mm) belong to the same figure. */
 var TOUCH = 4;
+/** Speech that wants a tail: a balloon, no tail, not joined to another balloon. */
+function wantsTail(page, line) {
+	return line.kind === "speech" && resolvedShape(line) !== "none" && !line.tails?.length && !line.linkTo && !page.lines.some((other) => other.linkTo === line.id);
+}
 /** The figures drawn in a panel: boxes of strokes grouped where they touch, right to left. */
 function figures(page, panel) {
 	const ids = new Set(panelContents(page, panel).strokes);
@@ -673,6 +686,67 @@ function union(a, b) {
 }
 function contains(outer, inner) {
 	return outer[0] <= inner[0] && outer[1] <= inner[1] && inner[2] <= outer[2] && inner[3] <= outer[3];
+}
+/** Where a figure's head is: the middle of its top part. */
+function head([x0, y0, x1, y1]) {
+	return [(x0 + x1) / 2, y0 + Math.min(12, (y1 - y0) * .15)];
+}
+/** The tip of a tail from `line` towards `target`: out of the balloon, at most REACH past it, short of the target. */
+function tipTowards(line, target) {
+	const box = balloonExtent(line);
+	const [cx, cy] = boxCenter(box);
+	let [dx, dy] = [target[0] - cx, target[1] - cy];
+	const distance = Math.hypot(dx, dy);
+	if (distance < 1e-6) [dx, dy] = [0, 1];
+	else [dx, dy] = [dx / distance, dy / distance];
+	const halfW = (box[2] - box[0]) / 2;
+	const halfH = (box[3] - box[1]) / 2;
+	const exit = Math.min(Math.abs(dx) > 1e-6 ? halfW / Math.abs(dx) : Infinity, Math.abs(dy) > 1e-6 ? halfH / Math.abs(dy) : Infinity);
+	const reach = Math.max(4, Math.min(REACH, distance - exit - 3));
+	return [cx + dx * (exit + reach), cy + dy * (exit + reach)];
+}
+/** Down into the panel from the balloon, leaning towards the panel's middle. */
+function fallbackTarget(line, panel) {
+	const [cx, cy] = boxCenter(balloonExtent(line));
+	if (!panel) return [cx - 4, cy + 40];
+	const [mx] = centroid(panel.shape);
+	const [, , , py1] = bounds(panel.shape);
+	const target = [cx + (mx - cx) * .4, Math.max(cy + 20, py1 - 4)];
+	return insidePolygon(panel.shape, target) ? target : [cx + (mx - cx) * .4, cy + 20];
+}
+/**
+* Give every speech line on the page that has no tail one (see the top of
+* the file). Returns how many tails were added.
+*/
+function addAutoTails(page, binding = "right") {
+	let added = 0;
+	const panels = new Map(page.panels.map((panel) => [panel.id, panel]));
+	const byPanel = /* @__PURE__ */ new Map();
+	for (const line of page.lines) {
+		const key = line.panel ?? "";
+		byPanel.set(key, [...byPanel.get(key) ?? [], line]);
+	}
+	for (const [panelId, lines] of byPanel) {
+		const panel = panels.get(panelId);
+		const found = panel ? figures(page, panel) : [];
+		if (binding === "left") found.reverse();
+		const order = [];
+		for (const line of lines) if (line.kind === "speech" && !order.includes(line.speaker)) order.push(line.speaker);
+		for (const line of lines) {
+			if (!wantsTail(page, line)) continue;
+			const earlier = lines.find((other) => other !== line && other.speaker && other.speaker === line.speaker && other.tails?.length);
+			let target;
+			if (earlier?.tails?.length) target = earlier.tails[0].tip;
+			else if (found.length) target = head(found[order.indexOf(line.speaker) % found.length]);
+			else target = fallbackTarget(line, panel);
+			line.tails = [{
+				tip: tipTowards(line, target),
+				style: defaultTailStyle(line)
+			}];
+			added++;
+		}
+	}
+	return added;
 }
 // src/domain/wrap.ts
 /** Characters a line must not start with. */
@@ -1176,6 +1250,11 @@ function arrangePanel(project, page, panel) {
 	assignPanels(page);
 	sortLines(page, project.binding);
 	return lines.length;
+}
+/** このページのセリフを並べ直す: every panel's. Returns how many lines moved. */
+function arrangePage(project, page) {
+	assignPanels(page);
+	return [...page.panels].sort((a, b) => a.order - b.order).reduce((sum, panel) => sum + arrangePanel(project, page, panel), 0);
 }
 // src/domain/koma.ts
 var BORDER_LABELS = {
@@ -3042,6 +3121,9 @@ var OPS_GUIDE = {
 	addLine: `セリフを足す（コマの中の読む順の位置に置く）。{"op":"addLine","page":3,"panel":2,"speaker":"太郎","text":"…","kind":"speech","after":"line12"}。kind: ${LINE_KINDS.map((k) => `${k}=${KIND_LABELS[k]}`).join("、")}。shape（フキダシの形）: ${SHAPES.map((s) => `${s}=${SHAPE_LABELS[s]}`).join("、")}。いない話者は人物に足す`,
 	setLine: "セリフを直す。{\"op\":\"setLine\",\"line\":\"line12\",\"text\":\"…\",\"speaker\":\"花子\",\"kind\":\"thought\",\"shape\":\"spike\"}（line は要約の [line12]。speaker:null で話者なし）",
 	removeLine: "セリフを消す。{\"op\":\"removeLine\",\"line\":\"line12\"}",
+	moveLine: "セリフを別のコマ（別のページでも）へ動かす。{\"op\":\"moveLine\",\"line\":\"line12\",\"page\":4,\"panel\":1,\"after\":\"line15\"}（page を省くと同じページ。after でそのセリフの次に。しっぽは外れるので要れば addTails）",
+	arrangeLines: "コマの中のセリフを読む順にきれいに並べ直す（顔をよけ、はみ出しを直す）。{\"op\":\"arrangeLines\",\"page\":3,\"panel\":2}（panel を省くとページ全体）",
+	addTails: "しっぽのないセリフに、話者（コマのラフ）へ向けたしっぽを付ける。{\"op\":\"addTails\",\"page\":3}（page を省くと全ページ）",
 	addSticky: `付箋を貼る（提案やコメントを紙面に残す）。{"op":"addSticky","page":3,"panel":2,"text":"…","color":"pink"}（panel か line で紐づけ。color: ${STICKY_COLOR_NAMES.join("/")}）`,
 	addCharacter: "人物を足す。{\"op\":\"addCharacter\",\"name\":\"…\",\"tone\":\"口調のメモ\"}",
 	setCharacter: "人物を直す。{\"op\":\"setCharacter\",\"character\":\"太郎\",\"name\":\"…\",\"tone\":\"…\"}",
@@ -3080,6 +3162,9 @@ var REQUIRED = {
 	},
 	setLine: { line: "string" },
 	removeLine: { line: "string" },
+	moveLine: { line: "string" },
+	arrangeLines: { page: "number" },
+	addTails: {},
 	addSticky: {
 		page: "number",
 		text: "string"
@@ -3309,6 +3394,39 @@ function applyOne(project, op, done) {
 			for (const other of page.lines) if (other.linkTo === line.id) delete other.linkTo;
 			for (const sticky of page.stickies ?? []) if (sticky.link?.kind === "line" && sticky.link.id === line.id) delete sticky.link;
 			return `${number} ページの「${short(line.text)}」を消しました`;
+		}
+		case "moveLine": {
+			const { page: from, line, number } = lineAt(project, op.line);
+			const page = op.page === void 0 ? from : pageAt(project, op.page);
+			const at = op.page ?? number;
+			const panel = op.panel === void 0 ? void 0 : panelAt(page, op.panel, at);
+			if (!panel && page === from) throw new OpError("動かす先のコマ（panel）か page を");
+			const previous = op.after ? lineAt(project, op.after).line : void 0;
+			if (previous === line) throw new OpError("セリフをそのセリフ自身の次には置けません");
+			if (page !== from) {
+				from.lines = from.lines.filter((l) => l !== line);
+				for (const other of from.lines) if (other.linkTo === line.id) delete other.linkTo;
+				for (const sticky of from.stickies ?? []) if (sticky.link?.kind === "line" && sticky.link.id === line.id) delete sticky.link;
+				delete line.linkTo;
+				page.lines.push(line);
+			}
+			delete line.tails;
+			delete line.panel;
+			const last = panel ? page.lines.filter((l) => l !== line && l.panel === panel.id).at(-1) : void 0;
+			placeAfter(project, page, panel, line, previous && page.lines.includes(previous) ? previous : last);
+			assignPanels(page);
+			sortLines(page, project.binding);
+			return `「${short(line.text)}」を ${at} ページ${panel ? ` コマ${typeof op.panel === "number" ? op.panel : ""}` : ""}へ`;
+		}
+		case "arrangeLines": {
+			const page = pageAt(project, op.page);
+			const panel = op.panel === void 0 ? void 0 : panelAt(page, op.panel, op.page);
+			const moved = panel ? arrangePanel(project, page, panel) : arrangePage(project, page);
+			return `${op.page} ページ${panel ? ` コマ${typeof op.panel === "number" ? op.panel : ""}` : ""}のセリフ ${moved} 個を読む順に並べ直しました`;
+		}
+		case "addTails": {
+			const added = (op.page === void 0 ? project.pages : [pageAt(project, op.page)]).reduce((sum, page) => sum + addAutoTails(page, project.binding), 0);
+			return `${op.page === void 0 ? "全ページ" : `${op.page} ページ`}のセリフにしっぽ ${added} 本`;
 		}
 		case "addSticky": {
 			const page = pageAt(project, op.page);

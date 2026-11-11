@@ -1,14 +1,19 @@
 // The 相談 palette (AI に相談): talk the open name over with Claude Code,
 // Codex or a local LLM. The AI is shown the name in words and as pictures
 // (assistchat.ts says what it is told); what it proposes comes back as
-// 変更の案, shown with what each would do, and applied with 当てる as one
-// undoable change. The palette's ⚙ holds where the programs are, the models,
+// 変更の案, shown with what each would do, put on the name with 画面で見る
+// (assisttrial.ts) and kept with 採用 or taken back with 却下. Questions on
+// using the app are answered from 使い方.md (apphelp.ts). The palette's ⚙ holds where the programs are, the models,
 // the local LLM's address and key, and puts the Skill where the AI tools find it.
 import { open } from "../platform/dialogs";
-import { applyOps, nameBrief, parseOps, previewOps, type AssistOp } from "../domain/assist";
+import { nameBrief, parseOps, previewOps } from "../domain/assist";
+import { appHelp, HELP_FILE, type HelpCommand } from "../editing/apphelp";
+import { AssistTrial, fingerprint, type TrialEnd } from "./assisttrial";
+import GUIDE from "../../../docs/guide.md?raw";
 import {
   agentInstructions,
   AI_LABELS,
+  asksHow,
   BRIEF_FILE,
   changedPrompt,
   chatTurns,
@@ -56,6 +61,14 @@ export interface AssistHost {
   currentPages(): number[];
   rough(rough: RoughImage): Promise<CanvasImageSource | null>;
   status(message: string): void;
+  /** A command's keys as set now, and every command (for 使い方.md). */
+  keysOf(command: string): string[];
+  commands(): readonly HelpCommand[];
+  openPage(number: number): void;
+  undo(): void;
+  redo(): void;
+  version(): string;
+  restore(project: Project): void;
 }
 
 export const ASSIST_KEY = "namestudio.assist";
@@ -70,13 +83,6 @@ function element<K extends keyof HTMLElementTagNameMap>(
   for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, value);
   node.append(...children);
   return node;
-}
-
-/** A cheap fingerprint of a name, to tell whether it changed since the AI last saw it. */
-function fingerprint(text: string): string {
-  let hash = 2166136261;
-  for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
-  return `${text.length}:${hash >>> 0}`;
 }
 
 /** The models a tool listed (or why it could not), for the program or address asked. */
@@ -107,8 +113,11 @@ export class AssistPanel {
   private built: HTMLElement | null = null;
   /** Events for a turn whose number is not known yet (the turn's first events can come before it is). */
   private early: AiEvent[] = [];
-  /** 変更の案 applied, by where they are in the conversation. */
+  /** 変更の案 kept (採用) and taken back (却下), by where they are in the conversation. */
   private readonly applied = new Set<string>();
+  private readonly rejected = new Set<string>();
+  /** The 変更の案 on the name to look at, and the bar over the pages. */
+  private readonly trial: AssistTrial;
   private preparing = false;
   /** The list of kept conversations shows other names' too. */
   private allTalks = false;
@@ -125,6 +134,11 @@ export class AssistPanel {
   private follow = true;
 
   constructor(private readonly host: AssistHost) {
+    this.trial = new AssistTrial(
+      host,
+      (owner, key, how) => this.trialEnded(owner, key, how),
+      () => this.built && this.renderLog(),
+    );
     void onAiEvent((event) => this.hear(event)).catch(() => {});
   }
 
@@ -669,50 +683,71 @@ export class AssistPanel {
       card.append(element("strong", {}, "変更の案（読めません）"), ...unread.map((problem) => element("p", { class: "problem" }, problem)));
       return card;
     }
-    const preview = settled ? previewOps(project, ops) : null;
-    const done = this.applied.has(key);
+    const owner = this.talk?.id ?? "";
+    const showing = this.trial.showingCard(owner, key);
+    // The name as the 案 changed it is not what to preview it against: the list says what it did.
+    const preview = settled && !showing ? previewOps(project, ops) : null;
+    const state = showing
+      ? showing === "after"
+        ? "画面に表示中"
+        : "変更前を表示中"
+      : this.applied.has(key)
+        ? "✓ 採用しました"
+        : this.rejected.has(key)
+          ? "却下しました"
+          : "";
+    card.classList.toggle("trying", showing !== null);
     card.append(
       element(
         "div",
         { class: "assist-ops-head" },
         element("strong", {}, "変更の案"),
         element("span", { class: "assist-steps-count" }, `${ops.length} 件`),
-        ...(done ? [element("span", { class: "assist-ops-done" }, "✓ 当てました")] : []),
+        ...(state ? [element("span", { class: "assist-ops-done" }, state)] : []),
       ),
     );
     if (preview) {
       card.append(element("ul", {}, ...preview.done.map((line) => element("li", {}, line))));
       for (const problem of preview.problems) card.append(element("p", { class: "problem" }, problem));
     }
-    const apply = plainButton(done ? "もう一度当てる" : "当てる", () => this.apply(ops, key));
-    apply.classList.add("primary");
-    apply.disabled = !preview || preview.broken || !preview.done.length;
-    apply.title = "このネームに当てる（1 回の操作として。Ctrl+Z で戻せます）";
     const copy = plainButton(
       "JSON をコピー",
       () => void navigator.clipboard?.writeText(json).then(() => this.host.status("変更の案の JSON をコピーしました")),
     );
-    card.append(element("div", { class: "assist-row" }, apply, copy));
+    if (showing) {
+      const adopt = plainButton("採用", () => this.trial.adopt());
+      adopt.classList.add("primary");
+      adopt.title = "この案をネームに残す（Ctrl+Z で戻せます）";
+      const reject = plainButton("却下", () => this.trial.reject());
+      reject.title = "この案を取りやめて、元のネームに戻す";
+      card.append(element("div", { class: "assist-row" }, adopt, reject, copy));
+      return card;
+    }
+    const look = plainButton(this.applied.has(key) || this.rejected.has(key) ? "もう一度見る" : "画面で見る", () =>
+      this.trial.try(owner, key, ops),
+    );
+    look.classList.add("primary");
+    look.disabled = !preview || preview.broken || !preview.done.length || this.trial.active;
+    look.title = this.trial.active
+      ? "先に、画面に出している案を採用か却下してください"
+      : "この案をネームに当てて画面で確かめる。採用か却下を選べます";
+    card.append(element("div", { class: "assist-row" }, look, copy));
     return card;
   }
 
-  private apply(ops: AssistOp[], key: string): void {
-    let result: ReturnType<typeof applyOps> | null = null;
-    const project = this.host.project();
-    if (!project) return;
-    // Checked on a copy first: a change that would leave the name unopenable is not made at all.
-    if (previewOps(project, ops).broken) {
-      this.host.status("この案を当てるとネームが開けなくなるので、当てませんでした");
-      return;
-    }
-    this.host.edit((name) => {
-      result = applyOps(name, ops);
-    });
-    const done = (result as ReturnType<typeof applyOps> | null)?.done.length ?? 0;
-    this.applied.add(key);
-    if (this.talk) void this.keep(this.talk);
-    this.host.status(`変更の案を当てました（${done} 件）。Ctrl+Z で元に戻せます`);
-    this.renderLog();
+  /** A look at a 変更の案 ended: the card says so, and the conversation keeps it. */
+  private trialEnded(owner: string, key: string, how: TrialEnd): void {
+    if (!this.talk || this.talk.id !== owner) return;
+    this.applied.delete(key);
+    this.rejected.delete(key);
+    if (how === "adopted") this.applied.add(key);
+    if (how === "rejected") this.rejected.add(key);
+    void this.keep(this.talk);
+  }
+
+  /** After any change to the name: a 変更の案 being looked at follows it. */
+  sync(): void {
+    this.trial.sync();
   }
 
   /** Keep the conversation (with what was applied) to go on with later. */
@@ -730,6 +765,7 @@ export class AssistPanel {
       dir: talk.dir,
       entries,
       applied: talk === this.talk ? [...this.applied] : [],
+      rejected: talk === this.talk ? [...this.rejected] : [],
     };
     try {
       await call("ai_history_save", { talk: saved });
@@ -828,7 +864,9 @@ export class AssistPanel {
       seen: "",
     };
     this.applied.clear();
+    this.rejected.clear();
     for (const key of talk.applied) this.applied.add(key);
+    for (const key of talk.rejected) this.rejected.add(key);
     this.part("history").hidden = true;
     this.openSteps.clear();
     this.follow = true;
@@ -842,6 +880,7 @@ export class AssistPanel {
     void this.stop();
     this.talk = null;
     this.applied.clear();
+    this.rejected.clear();
     this.openSteps.clear();
     this.renderLog();
     this.renderState();
@@ -867,11 +906,17 @@ export class AssistPanel {
     this.renderState();
   }
 
+  /** 使い方.md: the help with this computer's keys (`full`: with the user guide). */
+  private help(full: boolean): string {
+    return appHelp((command) => this.host.keysOf(command), this.host.commands(), GUIDE, full);
+  }
+
   /** The files of the conversation's folder for the name as it is now. */
   private async files(project: Project, brief: string, pictures: number[]): Promise<SessionFile[]> {
     const files: SessionFile[] = [
       { path: BRIEF_FILE, text: brief },
       { path: COPY_FILE, text: JSON.stringify(project) },
+      { path: HELP_FILE, text: this.help(true) },
     ];
     const instructions = agentInstructions(pictures.length > 0);
     files.push(
@@ -905,6 +950,7 @@ export class AssistPanel {
     if (!this.talk || this.talk.conversation.kind !== kind || this.talk.name !== name) {
       this.talk = { id: newTalkId(Date.now()), created: Date.now(), conversation: new Conversation(kind), dir: null, name, seen: "" };
       this.applied.clear();
+      this.rejected.clear();
       this.openSteps.clear();
     }
     const talk = this.talk;
@@ -931,7 +977,7 @@ export class AssistPanel {
       const messages: ChatMessage[] =
         kind === "local"
           ? [
-              { role: "system", content: localInstructions(project, current) },
+              { role: "system", content: localInstructions(project, current, asksHow(question) ? this.help(false) : "") },
               ...talk.conversation.history(),
               { role: "user", content: question, images: turnPictures },
             ]

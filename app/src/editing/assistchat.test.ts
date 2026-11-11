@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { newProject } from "../domain/project";
 import {
+  agentInstructions,
   type AiModel,
+  asksHow,
   Conversation,
+  localInstructions,
   changedPrompt,
   chatTurns,
   choiceProblem,
@@ -169,5 +173,27 @@ describe("what the AI did, as the conversation shows it", () => {
     expect(turns[0].reply[2]).toEqual({ kind: "text", text: "こう思います。", index: 5 });
     expect(turns[1]).toEqual({ question: { text: "次は？", index: 8 }, reply: [] });
     expect(chatTurns([{ role: "assistant", text: "前の続き" }])[0].question).toBeNull();
+  });
+});
+
+describe("questions on using the app", () => {
+  it("tells Claude Code and Codex to answer from 使い方.md", () => {
+    const text = agentInstructions(false);
+    expect(text).toContain("使い方.md: アプリの使い方");
+    expect(text).toContain("書いていないことは作れるふりをせず");
+    expect(text).toContain("「採用」か「却下」");
+  });
+
+  it("gives a local LLM the help only for a question on how to do something", () => {
+    expect(asksHow("コマを割るにはどうやるの？")).toBe(true);
+    expect(asksHow("保存のキーは")).toBe(true);
+    expect(asksHow("このページの間をどう取る？")).toBe(false);
+    const project = newProject("屋上", 2);
+    expect(localInstructions(project, [1], "# 使い方\n- 保存: Ctrl+S")).toContain("<使い方.md>\n# 使い方\n- 保存: Ctrl+S\n</使い方.md>");
+    expect(localInstructions(project, [1], "")).not.toContain("<使い方.md>");
+  });
+
+  it("names the help when the AI reads it", () => {
+    expect(toolStep("Read: C:/x/使い方.md")?.label).toBe("使い方を読みました");
   });
 });
