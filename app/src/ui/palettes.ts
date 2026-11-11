@@ -84,5 +84,7 @@ export function editorDocks(changed: () => void): Docks {
     undefined,
     // On a narrow screen the strip under the page lists the pages: the left column starts folded.
     readFlag(SIDE_FOLDED_KEY, window.innerWidth < 1500),
+    // Dropped on the pages: floating there.
+    document.querySelector<HTMLElement>("#editor .stage-column"),
   );
 }

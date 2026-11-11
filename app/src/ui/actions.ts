@@ -60,6 +60,10 @@ export interface CommandHost {
   toggleFocus(): void;
   /** 作業の配置: 描く・全体・CSP に渡す, or "reset" (the one in use as it comes). */
   useWorkspace(id: WorkspaceId | "reset"): void;
+  /** The ▾ by the workspaces: the ones of one's own. */
+  workspaceMenu(): void;
+  /** 今の配置に名前をつけて残す. */
+  nameWorkspace(): void;
   arrange(pageId: string): void;
   addTails(pageId?: string): number;
   /** ページ管理: the page list's commands, on the pages picked there (else the page worked on). */
@@ -575,6 +579,24 @@ export function buildCommands(host: CommandHost): Command[] {
       words: "作業の配置 ワークスペース リセット",
       available: named,
       run: always(() => host.useWorkspace("reset")),
+    },
+    {
+      id: "workspace.mine",
+      label: "名前をつけた配置に切り替える（▾ の一覧）",
+      group: "画面",
+      keys: [],
+      words: "作業の配置 ワークスペース 自分の配置 切り替え",
+      available: named,
+      run: always(() => host.workspaceMenu()),
+    },
+    {
+      id: "workspace.save",
+      label: "今の配置に名前をつけて残す…（名前をつけた配置の整理も）",
+      group: "画面",
+      keys: [],
+      words: "作業の配置 ワークスペース 登録 保存 自分の配置",
+      available: named,
+      run: always(() => host.nameWorkspace()),
     },
     {
       id: "view.focus",
