@@ -571,6 +571,8 @@ export const AREA_TOPICS: Record<string, HelpTopic> = {
     steps: [
       { input: "Ctrl+Enter", does: "送る" },
       { input: "当てる", does: "変更の案をネームに当てる（Ctrl+Z で戻せる）" },
+      { input: "▸ 読みました…", does: "AI が読んだもの・動かしたコマンドを開いて見る（ふだんは 1 行に畳む）" },
+      { input: "コピー", does: "答えの文を Markdown のままコピーする" },
       { input: "履歴", does: "前の相談の一覧。開くと続きを話せる（相談は自動で残る）" },
       { input: "新しい相談", does: "今の話を終えて始め直す（今の話は履歴に残る）" },
       { input: "接続…", does: "モデルと effort を相手が返す一覧から選ぶ（↻ で聞き直す）。場所・API キー・スキルは「詳しく」の中" },

@@ -3,13 +3,16 @@ import {
   type AiModel,
   Conversation,
   changedPrompt,
+  chatTurns,
   choiceProblem,
   firstPrompt,
   modelFor,
   orderTalks,
   readAssistSettings,
   readSavedTalk,
+  stepsSummary,
   talkTitle,
+  toolStep,
 } from "./assistchat";
 
 const model = (value: string, efforts: string[], isDefault = false): AiModel => ({
@@ -115,5 +118,56 @@ describe("kept conversations", () => {
       "b",
       "a",
     ]);
+  });
+});
+
+describe("what the AI did, as the conversation shows it", () => {
+  it("says a step in words, with the command as it ran", () => {
+    expect(toolStep("Read: ネーム.md")).toEqual({ label: "ネームの要約を読みました", detail: "ネーム.md" });
+    const pwsh = toolStep(
+      `command: "C:\\\\Users\\\\me\\\\AppData\\\\Local\\\\Microsoft\\\\WindowsApps\\\\pwsh.exe" -Command "Get-Content -LiteralPath 'C:/Users/me/AppData/Local/com.x/ai-sessions/session-17/.agents/skills/name-studio/SKILL.md' -Raw"`,
+    );
+    expect(pwsh).toEqual({
+      label: "スキルの説明を読みました",
+      detail: "Get-Content -LiteralPath '.agents/skills/name-studio/SKILL.md' -Raw",
+    });
+    expect(toolStep("command: node .claude/skills/name-studio/scripts/namestudio.mjs brief ネーム.namestudio --pages 3-5")?.label).toBe(
+      "ネームの写しを読みました（p3-5）",
+    );
+    expect(toolStep("Bash: node .claude/skills/name-studio/scripts/namestudio.mjs apply ネーム.namestudio ops.json --dry-run")?.label).toBe(
+      "変更の案を試しました",
+    );
+    expect(toolStep("Read: C:\\data\\ai-sessions\\s\\pages\\p003.png")?.label).toBe("p3 の絵を見ました");
+    expect(toolStep("Glob: pages/*.png")?.label).toBe("フォルダーの中を調べました");
+    expect(toolStep("command: bash -lc ls")).toEqual({ label: "フォルダーの中を調べました", detail: "ls" });
+    expect(toolStep("Read: memo.txt")?.label).toBe("memo.txt を読みました");
+    expect(toolStep("TodoWrite")?.label).toBe("TodoWrite を使いました");
+  });
+
+  it("leaves what is not a step (a note to the user) to be shown as it is", () => {
+    expect(toolStep("Codex のサンドボックスがコマンドを動かせません（setup refresh had errors など）。")).toBeNull();
+  });
+
+  it("cuts the conversation into questions and replies, the steps in a row as one group", () => {
+    const turns = chatTurns([
+      { role: "user", text: "4〜5ページは？" },
+      { role: "assistant", text: "読みますね。" },
+      { role: "tool", text: "Read: ネーム.md" },
+      { role: "tool", text: "Read: SKILL.md" },
+      { role: "tool", text: "Read: ネーム.md" },
+      { role: "assistant", text: "こう思います。" },
+      { role: "tool", text: "サンドボックスが動きません。" },
+      { role: "error", text: "止まりました" },
+      { role: "user", text: "次は？" },
+    ]);
+    expect(turns).toHaveLength(2);
+    expect(turns[0].question).toEqual({ text: "4〜5ページは？", index: 0 });
+    expect(turns[0].reply.map((piece) => piece.kind)).toEqual(["text", "steps", "text", "notice", "error"]);
+    const steps = turns[0].reply[1];
+    expect(steps.kind === "steps" && steps.steps.length).toBe(3);
+    expect(steps.kind === "steps" && stepsSummary(steps.steps)).toBe("ネームの要約を読みました・スキルの説明を読みました");
+    expect(turns[0].reply[2]).toEqual({ kind: "text", text: "こう思います。", index: 5 });
+    expect(turns[1]).toEqual({ question: { text: "次は？", index: 8 }, reply: [] });
+    expect(chatTurns([{ role: "assistant", text: "前の続き" }])[0].question).toBeNull();
   });
 });

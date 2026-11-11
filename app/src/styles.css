@@ -1400,7 +1400,7 @@ dialog.perf-dialog { width: min(720px, 92vw); }
 /* A short palette (a column shared with others) gives up the conversation and the
    settings first (they scroll); the box to write in and 送る always stay. */
 .panel.assist-panel { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
-.assist { flex: 1 1 auto; display: flex; flex-direction: column; gap: 6px; min-height: 0; padding: 6px; box-sizing: border-box; }
+.assist { flex: 1 1 auto; display: flex; flex-direction: column; gap: 8px; min-height: 0; padding: 8px; box-sizing: border-box; line-height: 1.6; }
 .assist > * { flex: none; }
 .assist > .assist-top { flex: 1 1 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
 .assist-top > * { flex: none; }
@@ -1408,11 +1408,17 @@ dialog.perf-dialog { width: min(720px, 92vw); }
 /* The name of who is asked stays readable: the buttons beside it go to the next row first. */
 .assist-head select { flex: 1; min-width: 9em; }
 .assist-actions .check { margin-right: auto; }
-.assist-state { margin: 0; }
-.assist-state[data-tone="warn"] { color: var(--caution); }
-.assist-top > .assist-settings { flex: 0 1 auto; min-height: calc(40 * var(--px)); overflow-y: auto; }
+/* Who answers, on one quiet line (whole in its tooltip); a problem wraps and says itself in full. */
+.assist-state { margin: 0; display: flex; align-items: center; gap: 6px; font-size: calc(12 * var(--px)); line-height: 1.5; color: var(--muted); }
+.assist-state::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--c-pen); }
+.assist-state[data-tone=""] { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.assist-state[data-tone=""]::before { display: inline-block; margin-right: 6px; vertical-align: 0.1em; }
+.assist-state[data-tone="warn"] { color: var(--caution); align-items: flex-start; }
+.assist-state[data-tone="warn"]::before, .assist-state[data-tone="note"]::before { background: var(--caution); margin-top: 0.5em; }
+.assist-state[data-tone="note"] { align-items: flex-start; }
+.assist-top > .assist-settings { flex: 0 1 auto; min-height: calc(40 * var(--px)); max-height: 60%; overflow-y: auto; }
 .assist-settings[hidden] { display: none; }
-.assist-settings { display: flex; flex-direction: column; gap: 6px; padding: 6px; border: 1px solid var(--line); border-radius: 4px; }
+.assist-settings { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--band); }
 .assist-field { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .assist-field > span { min-width: 4.5em; color: var(--muted); }
 .assist-field input, .assist-field select { flex: 1; min-width: 8em; }
@@ -1429,27 +1435,66 @@ dialog.perf-dialog { width: min(720px, 92vw); }
 .assist-more[open] > summary { margin-bottom: 6px; }
 .assist-more > * + * { margin-top: 6px; }
 .assist-skill { display: flex; flex-direction: column; gap: 4px; padding-top: 4px; border-top: 1px solid var(--line); color: var(--muted); font-size: calc(12 * var(--px)); }
-.assist-top > .assist-log { flex: 1 1 0; }
-.assist-log { min-height: calc(32 * var(--px)); overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
-.assist-entry { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; padding: 6px 8px; border-radius: 6px; }
-.assist-entry.user { align-self: flex-end; max-width: 90%; background: var(--hover); border: 1px solid var(--line); }
-.assist-entry.assistant { display: flex; flex-direction: column; gap: 6px; padding-left: 0; }
-.assist-history { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; }
+.assist-history { display: flex; flex-direction: column; gap: 4px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--band); }
 .assist-history[hidden] { display: none; }
-.assist-top > .assist-history { flex: 0 1 auto; min-height: calc(96 * var(--px)); overflow-y: auto; }
+.assist-top > .assist-history { flex: 0 1 auto; min-height: calc(96 * var(--px)); max-height: 60%; overflow-y: auto; }
 .assist-talks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .assist-talks li { display: flex; gap: 4px; align-items: stretch; }
 .assist-talks li.now .assist-talk { border-color: var(--accent); }
-.assist-talk { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: none; color: inherit; cursor: pointer; }
+.assist-talk { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: inherit; cursor: pointer; }
 .assist-talk:hover { background: var(--hover); }
 .assist-talk-title { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .assist-talk-meta { color: var(--muted); font-size: calc(11 * var(--px)); }
-/* What the AI says, as Markdown. The entry's pre-wrap would double its line breaks. */
-.assist-entry .md { white-space: normal; }
+
+/* The conversation: it gets the room (the settings and the list give way first) and scrolls by itself. */
+.assist-top > .assist-log { flex: 1 1 auto; min-height: calc(80 * var(--px)); }
+.assist-log { overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding: 6px 4px 10px 2px; border-top: 1px solid var(--line); }
+.assist-empty { margin: auto 0; padding: 16px 8px; text-align: center; color: var(--muted); font-size: calc(13 * var(--px)); line-height: 1.7; }
+.assist-empty strong { display: block; margin-bottom: 4px; color: var(--text); font-size: calc(15 * var(--px)); }
+.assist-empty p { margin: 0; }
+.assist-entry { overflow-wrap: anywhere; }
+/* The user's question: a bubble on the right, tinted with the accent. */
+.assist-entry.user {
+  align-self: flex-end; max-width: 88%; white-space: pre-wrap; line-height: 1.7; padding: 8px 12px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel)); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--panel));
+  border-radius: 14px 14px 4px 14px;
+}
+/* The reply: who says it, then the words in full width, quiet steps, cards. */
+.assist-entry.assistant { display: flex; flex-direction: column; gap: 10px; }
+.assist-who { display: flex; align-items: center; gap: 6px; font-size: calc(11 * var(--px)); font-weight: 600; color: var(--muted); letter-spacing: 0.04em; }
+.assist-who::before { content: ""; width: 8px; height: 8px; border-radius: 2px; transform: rotate(45deg); background: var(--accent); }
+.assist-words { display: flex; flex-direction: column; gap: 10px; }
+.assist-text { line-height: 1.85; letter-spacing: 0.02em; }
+.assist-text strong { font-weight: 700; background: linear-gradient(transparent 60%, color-mix(in srgb, var(--accent) 22%, transparent) 60%); }
+.assist-text li + li { margin-top: 0.25em; }
+/* What the AI read or ran: one folded line; opened, each step in words with its command below. */
+.assist-steps { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--muted); font-size: calc(12 * var(--px)); line-height: 1.5; }
+.assist-steps > summary { display: flex; align-items: center; gap: 6px; padding: 4px 8px; cursor: pointer; list-style: none; }
+.assist-steps > summary::-webkit-details-marker { display: none; }
+.assist-steps > summary::before { content: "▸"; flex: none; transition: transform 0.15s; }
+.assist-steps[open] > summary::before { transform: rotate(90deg); }
+.assist-steps-what { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.assist-steps-count { flex: none; padding: 0 6px; border-radius: 8px; border: 1px solid var(--line); font-size: calc(11 * var(--px)); color: var(--muted); }
+.assist-steps ol { margin: 0; padding: 2px 10px 8px 2.2em; display: flex; flex-direction: column; gap: 4px; }
+.assist-steps li > span { color: var(--text); }
+.assist-steps code { display: block; margin-top: 1px; font: calc(11 * var(--px)) / 1.45 ui-monospace, Consolas, monospace; word-break: break-all; white-space: pre-wrap; }
+.assist-notice { margin: 0; padding: 6px 10px; border-radius: 6px; background: var(--warn-bg); color: var(--warn-text); border: 1px solid var(--warn-line); font-size: calc(12 * var(--px)); line-height: 1.6; }
+.assist-entry.error { padding: 6px 10px; border-radius: 6px; white-space: pre-wrap; background: var(--error-bg); color: var(--error-text); border: 1px solid var(--error-line); font-size: calc(12 * var(--px)); line-height: 1.6; }
+.assist-working { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: calc(12 * var(--px)); }
+.assist-dots { display: inline-flex; gap: 3px; }
+.assist-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); animation: assist-dot 1.2s infinite ease-in-out; }
+.assist-dots i:nth-child(2) { animation-delay: 0.15s; }
+.assist-dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes assist-dot { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .assist-dots i { animation: none; opacity: 0.7; } }
+.assist-reply-actions { display: flex; justify-content: flex-end; }
+.assist-reply-actions button { padding: 0 8px; font-size: calc(11 * var(--px)); color: var(--muted); border-color: transparent; background: none; }
+.assist-reply-actions button:hover { border-color: var(--line); color: var(--text); }
+/* What the AI says, as Markdown. */
 .md > :first-child { margin-top: 0; }
 .md > :last-child { margin-bottom: 0; }
-.md p, .md ul, .md ol, .md blockquote, .md pre, .md .md-table { margin: 0 0 0.6em; }
-.md h3, .md h4, .md h5, .md h6 { margin: 0.8em 0 0.4em; line-height: 1.35; }
+.md p, .md ul, .md ol, .md blockquote, .md pre, .md .md-table { margin: 0 0 0.75em; }
+.md h3, .md h4, .md h5, .md h6 { margin: 1em 0 0.4em; line-height: 1.4; }
 .md h3 { font-size: 1.2em; }
 .md h4 { font-size: 1.1em; }
 .md h5, .md h6 { font-size: 1em; }
@@ -1458,18 +1503,24 @@ dialog.perf-dialog { width: min(720px, 92vw); }
 .md li > ul, .md li > ol { margin: 0.2em 0 0.3em; }
 .md blockquote { padding: 0.1em 0.8em; border-left: 3px solid var(--line); color: var(--muted); }
 .md code { font-family: ui-monospace, Consolas, monospace; font-size: 0.92em; padding: 0.05em 0.3em; border-radius: 4px; background: var(--hover); }
-.md pre { padding: 6px 8px; border-radius: 6px; background: var(--hover); overflow-x: auto; white-space: pre; }
+.md pre { padding: 6px 8px; border-radius: 6px; background: var(--hover); overflow-x: auto; white-space: pre; line-height: 1.5; letter-spacing: 0; }
 .md pre code { padding: 0; background: none; }
 .md hr { border: none; border-top: 1px solid var(--line); margin: 0.8em 0; }
 .md .md-table { overflow-x: auto; }
-.md table { border-collapse: collapse; }
+.md table { border-collapse: collapse; line-height: 1.5; }
 .md th, .md td { border: 1px solid var(--line); padding: 2px 6px; vertical-align: top; }
 .md th { background: var(--hover); }
 .md .md-link { color: var(--accent); text-decoration: underline; cursor: pointer; }
-.assist-entry.tool { padding: 0 8px; color: var(--muted); font-size: calc(11 * var(--px)); }
-.assist-entry.error { background: var(--error-bg); color: var(--error-text); border: 1px solid var(--error-line); }
-.assist-ops { padding: 6px 8px; border: 1px solid var(--accent); border-radius: 6px; white-space: normal; }
-.assist-ops ul { margin: 4px 0; padding-left: 1.2em; }
+/* A 変更の案: a card with the accent at its edge. */
+.assist-ops { padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-left: 3px solid var(--accent); border-radius: 8px; background: color-mix(in srgb, var(--accent) 5%, var(--panel)); line-height: 1.6; }
+.assist-ops-head { display: flex; align-items: center; gap: 6px; }
+.assist-ops-done { font-size: calc(11 * var(--px)); color: var(--muted); }
+.assist-ops ul { margin: 6px 0; padding-left: 1.2em; }
 .assist-ops .problem { margin: 2px 0; color: var(--danger); }
-.assist textarea { width: 100%; min-height: calc(3 * 1.4em + 8px); box-sizing: border-box; resize: vertical; font: inherit; line-height: 1.4; }
-.assist-starters button { font-size: calc(12 * var(--px)); }
+.assist-ops .assist-row { margin-top: 6px; }
+.assist textarea { width: 100%; min-height: calc(3 * 1.5em + 10px); box-sizing: border-box; resize: vertical; font: inherit; line-height: 1.5; padding: 6px 8px; border-radius: 8px; }
+/* Ready-made questions: chips; once talking, one line that scrolls sideways. */
+.assist-starters button { font-size: calc(12 * var(--px)); padding: 2px 10px; border-radius: 999px; color: var(--muted); }
+.assist-starters button:hover { color: var(--text); border-color: var(--accent); }
+.assist.talking .assist-starters { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; padding-bottom: 2px; }
+.assist.talking .assist-starters button { flex: none; }

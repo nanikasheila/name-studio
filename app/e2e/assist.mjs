@@ -127,10 +127,7 @@ try {
   await page.click("#tab-assist");
   await page.waitForSelector(".assist");
   await settle();
-  check(
-    (await page.textContent(".assist-state")).includes("Claude Code（2.1.0 (Claude Code)）に聞きます"),
-    "says which AI will answer, as found",
-  );
+  check((await page.textContent(".assist-state")).includes("Claude Code 2.1.0 に聞きます"), "says which AI will answer, as found");
   check(!(await page.isVisible(".assist-settings")), "the connection settings are closed until 接続… is pressed");
 
   await page.click(".assist-starters button:first-child");
@@ -177,11 +174,26 @@ try {
   });
   await settle();
   if (process.env.ASSIST_SHOT) await page.screenshot({ path: process.env.ASSIST_SHOT });
-  check((await page.locator(".assist-entry.tool").first().textContent()) === "Read: ネーム.md", "what the AI did shows as it does it");
+  check(
+    (await page.locator(".assist-steps summary").first().textContent()).startsWith("ネームの要約を読みました") &&
+      !(await page.isVisible(".assist-steps code")),
+    "what the AI did shows as it does it, in words, its commands folded away",
+  );
+  await page.click(".assist-steps summary");
+  check((await page.textContent(".assist-steps code")) === "ネーム.md", "and opened, what it read or ran as is");
+  check(
+    (await page.locator(".assist-entry.user + .assist-entry.assistant .assist-who").textContent()) === "Claude Code",
+    "the reply says who answers, under the question",
+  );
+  check((await page.locator(".assist-working").count()) === 1, "while it answers, it says it is still at it");
   check((await page.locator(".assist-ops").count()) === 1, "its 変更の案 shows as a card");
   check(await page.locator(".assist-ops button.primary").isDisabled(), "not to be applied while the reply is still coming");
   await page.evaluate(() => window.__say(1, "done", ""));
   await settle();
+  check(
+    (await page.locator(".assist-working").count()) === 0 && (await page.isVisible(".assist-steps code")),
+    "and stops saying so when done (the steps stay as opened)",
+  );
   const card = await page.textContent(".assist-ops");
   if (process.env.ASSIST_SHOT) await page.screenshot({ path: process.env.ASSIST_SHOT.replace(".png", "-card.png") });
   check(card.includes("2 ページを足しました") && card.includes("1 ページに付箋「ここで一拍」"), `the card says what it would do (${card})`);
@@ -388,6 +400,25 @@ try {
     await page.locator("#dock-right").screenshot({ path: process.env.ASSIST_SHOT.replace(".png", "-history.png") });
   await page.click(".assist-head button:has-text('履歴')");
 
+  // Reading further up while a long reply comes in: the conversation does not jump to its end.
+  await page.fill(".assist textarea", "長い答えをください");
+  await page.click(".assist-actions button.primary");
+  await page.waitForFunction(() => window.__turns.length === 6);
+  await page.evaluate(() => window.__say(6, "delta", Array.from({ length: 40 }, (_, i) => `段落 ${i}`).join("\n\n")));
+  await settle();
+  const atEnd = await page.evaluate(() => {
+    const log = document.querySelector(".assist-log");
+    return log.scrollHeight - log.scrollTop - log.clientHeight < 48;
+  });
+  await page.evaluate(() => {
+    document.querySelector(".assist-log").scrollTop = 0;
+  });
+  await page.evaluate(() => window.__say(6, "delta", "\n\nまだ続きます"));
+  await settle();
+  const stayed = await page.evaluate(() => document.querySelector(".assist-log").scrollTop);
+  check(atEnd && stayed === 0, `a reply coming in follows the end, but not while the user reads above (${stayed})`);
+  await page.evaluate(() => window.__say(6, "done", ""));
+  await settle();
   // A short palette (its column shared with 詳細 and サブツール): the box to write in and 送る stay whole.
   for (const height of [260, 160]) {
     const room = await page.evaluate((height) => {

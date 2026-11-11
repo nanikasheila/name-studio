@@ -334,3 +334,94 @@ export function replyParts(text: string): ({ kind: "text"; text: string } | { ki
   if (rest) parts.push({ kind: "text", text: rest });
   return parts;
 }
+
+/** One thing the AI did (read a file, ran a command), in words, with what it ran as is. */
+export interface ToolStep {
+  /** What it did, said plainly ("ネームの要約を読みました"). */
+  label: string;
+  /** The command or file as the AI gave it (shortened: the conversation's folder left out). */
+  detail: string;
+}
+
+/** A command as shown: a shell's wrapper (pwsh -Command "…") taken off, doubled \ made single, the folder of the conversation left out. */
+function shortCommand(command: string): string {
+  let text = command.replace(/\\\\/g, "\\").trim();
+  const wrapped = text.match(
+    /^"?[^"]*?(?:pwsh|powershell|cmd|bash|sh)(?:\.exe)?"?\s+(?:-NoProfile\s+)?(?:-Command|-c|\/c|-lc)\s+(["']?)([\s\S]*)\1$/i,
+  );
+  if (wrapped) text = wrapped[2];
+  return text.replace(/[A-Za-z]:[\\/][^'"\s]*?ai-sessions[\\/][^\\/'"\s]+[\\/]/g, "").replace(/\/[^'"\s]*?ai-sessions\/[^/'"\s]+\//g, "");
+}
+
+/** What a step of the AI's work means for the user (null: not a step but something to tell them, as it is). */
+export function toolStep(text: string): ToolStep | null {
+  const named = text.match(/^([A-Za-z][\w-]*)(?::\s*([\s\S]*))?$/);
+  if (!named) return null;
+  const [, tool, rest = ""] = named;
+  const detail = tool === "command" || tool === "Bash" ? shortCommand(rest) : rest.trim();
+  const lower = detail.toLowerCase();
+  const pictures = [...detail.matchAll(/pages[\\/]p0*(\d+)\.png/gi)].map((match) => `p${match[1]}`);
+  const pages = detail.match(/--pages[ =](\S+)/)?.[1];
+  let label: string;
+  if (tool === "Skill") label = "スキルを使いました";
+  else if (lower.includes("namestudio.mjs") && /\bapply\b/.test(lower)) label = "変更の案を試しました";
+  else if (lower.includes("namestudio.mjs") && /\bbrief\b/.test(lower)) label = `ネームの写しを読みました${pages ? `（p${pages}）` : ""}`;
+  else if (lower.includes("namestudio.mjs")) label = "スキルでネームを調べました";
+  else if (lower.includes("skill.md")) label = "スキルの説明を読みました";
+  else if (pictures.length) label = `${pictures.join("・")} の絵を見ました`;
+  else if (detail.includes(BRIEF_FILE)) label = "ネームの要約を読みました";
+  else if (detail.includes(COPY_FILE)) label = "ネームの写しを読みました";
+  else if (/(agents|claude|system)\.md/.test(lower)) label = "相談の決まりを読みました";
+  else if (
+    tool === "Glob" ||
+    tool === "Grep" ||
+    tool === "LS" ||
+    /^(rg|grep|ls|dir|find|findstr|get-childitem|select-string)\b/i.test(detail)
+  )
+    label = "フォルダーの中を調べました";
+  else if (tool === "Read") label = `${detail.split(/[\\/]/).pop() || "ファイル"} を読みました`;
+  else if (tool === "command" || tool === "Bash") label = "コマンドを動かしました";
+  else label = `${tool} を使いました`;
+  return { label, detail };
+}
+
+/** What follows a question: the AI's words, the steps it took (one after another, as one group), what it told and what went wrong. */
+export type ReplyPiece =
+  | { kind: "text"; text: string; index: number }
+  | { kind: "steps"; steps: ToolStep[]; index: number }
+  | { kind: "notice"; text: string; index: number }
+  | { kind: "error"; text: string; index: number };
+
+/** A question and what came back (a kept conversation may begin with a reply and no question). */
+export interface ChatTurn {
+  question: { text: string; index: number } | null;
+  reply: ReplyPiece[];
+}
+
+/** A conversation cut into its questions, each with its reply. `index` is where an entry is in `entries`. */
+export function chatTurns(entries: ChatEntry[]): ChatTurn[] {
+  const turns: ChatTurn[] = [];
+  entries.forEach((entry, index) => {
+    if (entry.role === "user") {
+      turns.push({ question: { text: entry.text, index }, reply: [] });
+      return;
+    }
+    if (!turns.length) turns.push({ question: null, reply: [] });
+    const reply = turns[turns.length - 1].reply;
+    const last = reply[reply.length - 1];
+    if (entry.role === "assistant") reply.push({ kind: "text", text: entry.text, index });
+    else if (entry.role === "error") reply.push({ kind: "error", text: entry.text, index });
+    else {
+      const step = toolStep(entry.text);
+      if (!step) reply.push({ kind: "notice", text: entry.text, index });
+      else if (last?.kind === "steps") last.steps.push(step);
+      else reply.push({ kind: "steps", steps: [step], index });
+    }
+  });
+  return turns;
+}
+
+/** A group of steps in one line: what was done, each once, in order. */
+export function stepsSummary(steps: ToolStep[]): string {
+  return [...new Set(steps.map((step) => step.label))].join("・");
+}

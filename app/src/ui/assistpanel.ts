@@ -11,6 +11,7 @@ import {
   AI_LABELS,
   BRIEF_FILE,
   changedPrompt,
+  chatTurns,
   choiceProblem,
   Conversation,
   COPY_FILE,
@@ -25,9 +26,11 @@ import {
   readSavedTalk,
   replyParts,
   STARTERS,
+  stepsSummary,
   talkTitle,
   type AiModel,
   type AssistSettings,
+  type ReplyPiece,
   type SavedTalk,
   type TalkSummary,
 } from "../editing/assistchat";
@@ -113,6 +116,13 @@ export class AssistPanel {
   private moreOpen = false;
   /** Each tool's own list of models, fetched when the settings are opened. */
   private readonly models: Partial<Record<AiKind, ModelList>> = {};
+  /** The groups of the AI's steps opened to see the commands, by where they are in the conversation. */
+  private readonly openSteps = new Set<string>();
+  /** When the turn running now was asked (for how long it has been thinking). */
+  private startedAt = 0;
+  private ticking: ReturnType<typeof setInterval> | null = null;
+  /** Show the end of the conversation at the next drawing even if the user had scrolled up (a new question, another conversation). */
+  private follow = true;
 
   constructor(private readonly host: AssistHost) {
     void onAiEvent((event) => this.hear(event)).catch(() => {});
@@ -184,7 +194,7 @@ export class AssistPanel {
     send.classList.add("primary");
     const stop = plainButton("止める", () => void this.stop());
     stop.dataset.part = "stop";
-    const starters = element("div", { class: "assist-starters" });
+    const starters = element("div", { class: "assist-starters", "aria-label": "相談のきっかけ" });
     for (const starter of STARTERS) {
       const button = plainButton(starter.label, () => {
         input.value = starter.text;
@@ -288,6 +298,7 @@ export class AssistPanel {
     const running = this.talk?.conversation.running != null || this.preparing;
     this.part<HTMLButtonElement>("send").disabled = running;
     this.part<HTMLButtonElement>("stop").hidden = !running;
+    this.tick(this.talk?.conversation.running != null);
     const listed = this.listed(kind)?.list;
     const problem = listed ? choiceProblem(listed, this.chosenModel(kind), this.chosenEffort(kind)) : null;
     if (kind === "local") {
@@ -295,10 +306,12 @@ export class AssistPanel {
         problem ??
         `${this.settings.endpoint || "（URL がありません）"}${this.settings.localModel ? ` の ${this.settings.localModel}` : ""} に聞きます。`;
       state.dataset.tone = problem ? "warn" : "";
+      state.title = state.textContent;
       return;
     }
     if (!this.tools) {
       state.textContent = "相手を探しています…";
+      state.dataset.tone = "";
       return;
     }
     const found = this.tools[kind];
@@ -308,8 +321,32 @@ export class AssistPanel {
     state.textContent = !found
       ? `${AI_LABELS[kind]} が見つかりません。入れてログインしてから、「接続…」で場所を指定してください。`
       : (problem ??
-        `${AI_LABELS[kind]}（${found.version}）${which ? `の ${which} ` : ""}に聞きます。${this.tools.node ? "" : "Node.js がないので、ネームの写しはスキルのコマンドで読めません（要約と絵は見られます）。"}`);
-    state.dataset.tone = found && !problem ? "" : "warn";
+        `${AI_LABELS[kind]} ${found.version.match(/\d+(?:\.\d+)+/)?.[0] ?? found.version}${which ? `・${which}` : ""} に聞きます。${this.tools.node ? "" : "Node.js がないので、ネームの写しはスキルのコマンドで読めません（要約と絵は見られます）。"}`);
+    state.dataset.tone = !found || problem ? "warn" : this.tools.node ? "" : "note";
+    state.title = state.textContent ?? "";
+  }
+
+  /** While a turn runs, the line saying how long it has been at it, once a second. */
+  private tick(running: boolean): void {
+    if (running && !this.ticking) this.ticking = setInterval(() => this.renderWorking(), 1000);
+    if (!running && this.ticking) {
+      clearInterval(this.ticking);
+      this.ticking = null;
+    }
+  }
+
+  /** What the AI is doing now, and for how long. */
+  private workingText(): string {
+    const entries = this.talk?.conversation.entries ?? [];
+    const last = entries[entries.length - 1]?.role;
+    const doing = last === "tool" ? "調べています" : last === "assistant" ? "書いています" : "考えています";
+    const seconds = Math.max(0, Math.floor((Date.now() - this.startedAt) / 1000));
+    return `${doing}… ${seconds} 秒`;
+  }
+
+  private renderWorking(): void {
+    const line = this.built?.querySelector<HTMLElement>('[data-part="working-text"]');
+    if (line) line.textContent = this.workingText();
   }
 
   /** The model and its effort, chosen from what the tool itself lists. */
@@ -503,36 +540,115 @@ export class AssistPanel {
     form.replaceChildren(...rows, details);
   }
 
-  /** The conversation, with each 変更の案 as a card. */
+  /** The conversation: each question as a bubble, each reply with who said it, the steps it took folded into one line, each 変更の案 as a card. */
   private renderLog(): void {
     if (!this.built) return;
     const log = this.part("log");
+    // Keep where the user is reading; follow the end only when they were at it.
+    const atEnd = log.scrollHeight - log.scrollTop - log.clientHeight < 48;
     const entries = this.talk?.conversation.entries ?? [];
+    this.root.classList.toggle("talking", entries.length > 0);
     if (!entries.length) {
       log.replaceChildren(
         element(
-          "p",
-          { class: "hint" },
-          "ネームで行き詰まったら、ここで AI に相談できます。今のネーム（要約とページの絵）を見せて話します。下のボタンから始めても。",
+          "div",
+          { class: "assist-empty" },
+          element("strong", {}, "AI に相談"),
+          element(
+            "p",
+            {},
+            "ネームで行き詰まったら、ここで AI に相談できます。今のネーム（要約とページの絵）を見せて話します。下のきっかけから始めても。",
+          ),
         ),
       );
+      this.follow = true;
       return;
     }
-    const running = this.talk?.conversation.running != null;
+    const conversation = this.talk!.conversation;
+    const running = conversation.running != null;
+    const turns = chatTurns(entries);
     log.replaceChildren(
-      ...entries.map((entry, index) => {
-        if (entry.role !== "assistant") return element("div", { class: `assist-entry ${entry.role}` }, entry.text);
-        const settled = !running || index < entries.length - 1;
-        return element(
+      ...turns.flatMap((turn, t) => {
+        const nodes: HTMLElement[] = [];
+        if (turn.question) nodes.push(element("div", { class: "assist-entry user" }, turn.question.text));
+        const last = t === turns.length - 1;
+        const working = last && running;
+        if (!turn.reply.length && !working) return nodes;
+        const reply = element(
           "div",
           { class: "assist-entry assistant" },
-          ...replyParts(entry.text).map((part, k) =>
-            part.kind === "text" ? this.markdown(part.text) : this.opsCard(part.json, `${index}:${k}`, settled),
-          ),
+          element("div", { class: "assist-who" }, AI_LABELS[conversation.kind]),
+          ...turn.reply.map((piece) => this.replyPiece(piece, !running || piece.index < entries.length - 1)),
         );
+        if (working)
+          reply.append(
+            element(
+              "div",
+              { class: "assist-working", role: "status" },
+              element("span", { class: "assist-dots", "aria-hidden": "true" }, element("i"), element("i"), element("i")),
+              element("span", { "data-part": "working-text" }, this.workingText()),
+            ),
+          );
+        const words = turn.reply.flatMap((piece) => (piece.kind === "text" ? [piece.text] : []));
+        if (!working && words.length) {
+          const copy = plainButton(
+            "コピー",
+            () => void navigator.clipboard?.writeText(words.join("\n\n")).then(() => this.host.status("答えをコピーしました")),
+          );
+          copy.title = "この答えの文を Markdown のままコピーする";
+          reply.append(element("div", { class: "assist-reply-actions" }, copy));
+        }
+        nodes.push(reply);
+        return nodes;
       }),
     );
-    log.scrollTop = log.scrollHeight;
+    if (atEnd || this.follow) log.scrollTop = log.scrollHeight;
+    this.follow = false;
+  }
+
+  /** One piece of a reply (`settled`: no more is coming to it). */
+  private replyPiece(piece: ReplyPiece, settled: boolean): HTMLElement {
+    switch (piece.kind) {
+      case "text":
+        return element(
+          "div",
+          { class: "assist-words" },
+          ...replyParts(piece.text).map((part, k) =>
+            part.kind === "text" ? this.markdown(part.text) : this.opsCard(part.json, `${piece.index}:${k}`, settled),
+          ),
+        );
+      case "steps": {
+        const key = String(piece.index);
+        const what = stepsSummary(piece.steps);
+        const box = element(
+          "details",
+          { class: "assist-steps" },
+          element(
+            "summary",
+            { title: "AI が読んだもの・動かしたコマンド（押すと開く）" },
+            element("span", { class: "assist-steps-what" }, what),
+            element("span", { class: "assist-steps-count" }, `${piece.steps.length} 件`),
+          ),
+          element(
+            "ol",
+            {},
+            ...piece.steps.map((step) =>
+              element("li", {}, element("span", {}, step.label), ...(step.detail ? [element("code", {}, step.detail)] : [])),
+            ),
+          ),
+        );
+        box.open = this.openSteps.has(key);
+        box.addEventListener("toggle", () => {
+          if (box.open) this.openSteps.add(key);
+          else this.openSteps.delete(key);
+        });
+        return box;
+      }
+      case "notice":
+        return element("p", { class: "assist-notice" }, piece.text);
+      case "error":
+        return element("div", { class: "assist-entry error" }, piece.text);
+    }
   }
 
   /** What the AI says, as the Markdown it writes it in. */
@@ -555,7 +671,15 @@ export class AssistPanel {
     }
     const preview = settled ? previewOps(project, ops) : null;
     const done = this.applied.has(key);
-    card.append(element("strong", {}, `変更の案（${ops.length} 件）${done ? " — 当てました" : ""}`));
+    card.append(
+      element(
+        "div",
+        { class: "assist-ops-head" },
+        element("strong", {}, "変更の案"),
+        element("span", { class: "assist-steps-count" }, `${ops.length} 件`),
+        ...(done ? [element("span", { class: "assist-ops-done" }, "✓ 当てました")] : []),
+      ),
+    );
     if (preview) {
       card.append(element("ul", {}, ...preview.done.map((line) => element("li", {}, line))));
       for (const problem of preview.problems) card.append(element("p", { class: "problem" }, problem));
@@ -706,6 +830,8 @@ export class AssistPanel {
     this.applied.clear();
     for (const key of talk.applied) this.applied.add(key);
     this.part("history").hidden = true;
+    this.openSteps.clear();
+    this.follow = true;
     this.renderSettings();
     this.renderLog();
     this.renderState();
@@ -716,6 +842,7 @@ export class AssistPanel {
     void this.stop();
     this.talk = null;
     this.applied.clear();
+    this.openSteps.clear();
     this.renderLog();
     this.renderState();
   }
@@ -778,6 +905,7 @@ export class AssistPanel {
     if (!this.talk || this.talk.conversation.kind !== kind || this.talk.name !== name) {
       this.talk = { id: newTalkId(Date.now()), created: Date.now(), conversation: new Conversation(kind), dir: null, name, seen: "" };
       this.applied.clear();
+      this.openSteps.clear();
     }
     const talk = this.talk;
     const current = this.host.currentPages().sort((a, b) => a - b);
@@ -825,6 +953,8 @@ export class AssistPanel {
         },
       });
       talk.conversation.ask(question, run);
+      this.startedAt = Date.now();
+      this.follow = true;
       void this.keep(talk);
       this.part<HTMLTextAreaElement>("input").value = "";
       this.host.status(`${AI_LABELS[kind]} に聞いています…`);
