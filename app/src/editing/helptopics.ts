@@ -79,6 +79,7 @@ export function shownSteps(topic: HelpTopic, keysOf: (command: string) => string
 /** Moving about the pages, whatever the tool. */
 const VIEW_STEPS: HelpStep[] = [
   { input: "Space+ドラッグ", does: "画面を動かす" },
+  { input: "Ctrl+ドラッグ", does: "画面を動かす（中ボタンのドラッグでも）" },
   { input: "ホイール", does: "拡大・縮小" },
   { input: "Shift+Space+ドラッグ", does: "画面を回す" },
   { command: "view.fit", does: "全体を表示" },
@@ -738,7 +739,7 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
   {
     target: "#editor-canvas",
     name: "紙面",
-    text: "ここに描く。Space+ドラッグで動かす・ホイールで拡大縮小・Shift+Space+ドラッグで回す",
+    text: "ここに描く。Space・Ctrl・中ボタンでドラッグして動かす・ホイールで拡大縮小・Shift+Space+ドラッグで回す",
     command: "view.fit",
     side: "inside",
   },
@@ -816,7 +817,7 @@ export const TOUR_STOPS: TourStop[] = [
     title: "紙面",
     text: [
       "まずコマ割り {tool.cut} でページを横切るように引くとコマが割れます。セリフ {tool.text} はクリックした所に書けます。",
-      "Space+ドラッグで動かす、ホイールで拡大縮小、{view.fit} で全体を表示。",
+      "Space+ドラッグ・Ctrl+ドラッグ・中ボタンのドラッグで動かす、ホイールで拡大縮小、{view.fit} で全体を表示。",
     ],
   },
   {

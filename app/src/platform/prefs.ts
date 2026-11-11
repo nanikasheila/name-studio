@@ -33,6 +33,9 @@ export const TOUR_SEEN_KEY = "namestudio.tourSeen";
 /** 「大きめ」 was offered on this computer ("1"): it is offered once. */
 export const LARGE_OFFERED_KEY = "namestudio.largeOffered";
 
+/** Ctrl + ドラッグで画面を動かす ("1", out of the box) or not ("0"). */
+export const CTRL_PAN_KEY = "namestudio.ctrlPan";
+
 /** コマの入れ替え・保留コマを入れるとき: "stretch" (入れ替え先のコマに合わせる) or "keep" (縦横比を保つ). */
 export const SWAP_FIT_KEY = "namestudio.swapFit";
 

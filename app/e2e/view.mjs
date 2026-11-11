@@ -1,5 +1,5 @@
-// The page editor's view: the wheel zooms about the pointer, Space + drag moves
-// the pages with the hand, - and ^ turn the view, and a point of a page stays
+// The page editor's view: the wheel zooms about the pointer, Space + drag, Ctrl +
+// drag and the middle button move the pages with the hand, - and ^ turn the view, and a point of a page stays
 // where it is on screen through all of it. Run: npm run e2e:view
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
@@ -66,6 +66,56 @@ try {
   await page.keyboard.up(" ");
   await page.waitForTimeout(100);
   check(near(await under([handFrom[0] + 40, handFrom[1] + 25]), held, 1), "Space + drag moves the pages with the hand, turned or not");
+
+  // Ctrl + drag moves the pages too, whatever the tool (here the pen: nothing is drawn).
+  const strokes = () => page.evaluate(() => window.nameStudio.workbench.project.pages.reduce((n, p) => n + (p.strokes?.length ?? 0), 0));
+  const strokesBefore = await strokes();
+  await page.keyboard.press("p");
+  const ctrlFrom = [middle[0] - 40, middle[1] + 20];
+  const ctrlHeld = await under(ctrlFrom);
+  await page.mouse.move(...ctrlFrom);
+  await page.keyboard.down("Control");
+  await page.waitForTimeout(50);
+  const grabbing = await page.locator("#editor-canvas").evaluate((c) => c.style.cursor);
+  check(grabbing === "grab", `holding Ctrl over the pages shows the hand (${grabbing})`);
+  await page.mouse.down();
+  await page.mouse.move(ctrlFrom[0] - 50, ctrlFrom[1] + 30, { steps: 5 });
+  await page.mouse.up();
+  await page.keyboard.up("Control");
+  await page.waitForTimeout(100);
+  check(near(await under([ctrlFrom[0] - 50, ctrlFrom[1] + 30]), ctrlHeld, 1), "Ctrl + drag moves the pages with the hand");
+  check((await strokes()) === strokesBefore, "and the pen draws nothing meanwhile");
+  const released = await page.locator("#editor-canvas").evaluate((c) => c.style.cursor);
+  check(released !== "grab", `letting Ctrl go puts the tool's cursor back (${released})`);
+
+  // The middle button moves them as before.
+  const midFrom = [middle[0] + 30, middle[1] - 10];
+  const midHeld = await under(midFrom);
+  await page.mouse.move(...midFrom);
+  await page.mouse.down({ button: "middle" });
+  await page.mouse.move(midFrom[0] + 35, midFrom[1] - 20, { steps: 5 });
+  await page.mouse.up({ button: "middle" });
+  await page.waitForTimeout(100);
+  check(near(await under([midFrom[0] + 35, midFrom[1] - 20]), midHeld, 1), "the middle button moves the pages too");
+
+  // Turned off in 設定 › 操作: Ctrl + drag draws with the pen again.
+  await page.evaluate(() => {
+    window.nameStudio.workbench.editor.ctrlPans = false;
+  });
+  const offHeld = await under(ctrlFrom);
+  await page.mouse.move(...ctrlFrom);
+  await page.keyboard.down("Control");
+  await page.mouse.down();
+  await page.mouse.move(ctrlFrom[0] - 50, ctrlFrom[1] + 30, { steps: 5 });
+  await page.mouse.up();
+  await page.keyboard.up("Control");
+  await page.waitForTimeout(100);
+  check(near(await under(ctrlFrom), offHeld, 1), "with Ctrl + drag turned off, the pages stay");
+  check((await strokes()) === strokesBefore + 1, "and the pen draws");
+  await page.evaluate(() => {
+    window.nameStudio.workbench.editor.ctrlPans = true;
+  });
+  await page.keyboard.press("v");
 
   await page.keyboard.press("Control+0");
   await page.waitForTimeout(100);

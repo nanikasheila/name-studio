@@ -21,6 +21,7 @@ import { helpBarShown, showHelpBar } from "./helpbar";
 import { LookPane } from "./lookpane";
 import {
   BALLOON_TEXT_KEY,
+  CTRL_PAN_KEY,
   cspSyncMode,
   type CspSyncMode,
   PAGE_GAP_KEY,
@@ -210,6 +211,10 @@ export class SettingsDialog {
       this.host.editor.panelCarries = (event.target as HTMLInputElement).checked;
       writeFlag(PANEL_CARRIES_KEY, this.host.editor.panelCarries);
     });
+    $<HTMLInputElement>("st-ctrl-pan").addEventListener("change", (event) => {
+      this.host.editor.ctrlPans = (event.target as HTMLInputElement).checked;
+      writeFlag(CTRL_PAN_KEY, this.host.editor.ctrlPans);
+    });
     $<HTMLSelectElement>("st-swap-fit").addEventListener("change", (event) => {
       const fit = (event.target as HTMLSelectElement).value === "keep" ? "keep" : "stretch";
       setSwapFit(fit);
@@ -329,6 +334,8 @@ export class SettingsDialog {
       writeFlag(PANEL_CARRIES_KEY, true);
       this.host.editor.balloonTextFollows = true;
       writeFlag(BALLOON_TEXT_KEY, true);
+      this.host.editor.ctrlPans = true;
+      writeFlag(CTRL_PAN_KEY, true);
       setSwapFit("stretch");
       setAutosaveTiming({ delay: AUTOSAVE_DELAY_MS / 1000, maxWait: AUTOSAVE_MAX_WAIT_MS / 1000 });
       showHelpBar(true);
@@ -552,6 +559,7 @@ export class SettingsDialog {
     $<HTMLInputElement>("st-panel-carries").checked = this.host.editor.panelCarries;
     $<HTMLInputElement>("st-balloon-text").checked = this.host.editor.balloonTextFollows;
     $<HTMLSelectElement>("st-swap-fit").value = swapFit();
+    $<HTMLInputElement>("st-ctrl-pan").checked = this.host.editor.ctrlPans;
     $<HTMLInputElement>("st-autosave").checked = autosaveToFile();
     const timing = autosaveTiming();
     for (const [id, value] of [

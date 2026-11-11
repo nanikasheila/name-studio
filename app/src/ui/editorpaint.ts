@@ -58,7 +58,8 @@ export interface PaintScene {
   readonly drag: Drag | null;
   readonly hover: Hover | null;
   readonly pointer: Point | null;
-  readonly spaceHeld: boolean;
+  /** Space (or Ctrl, as set) held: a drag moves the view, so no brush is shown. */
+  readonly panReady: boolean;
   /** 多角形: the corners placed so far, the page they are on and where the next one would go. */
   readonly polygon: { pageId: string; points: Point[] } | null;
   polygonSlot(): Slot | null;
@@ -508,7 +509,7 @@ export class EditorPainter {
     if (
       this.scene.tool === "pen" &&
       !this.scene.erasing() &&
-      !this.scene.spaceHeld &&
+      !this.scene.panReady &&
       this.scene.pointer &&
       penPreferences.settings.cursor === "brush"
     ) {
