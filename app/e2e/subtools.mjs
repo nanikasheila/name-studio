@@ -193,7 +193,10 @@ try {
   // 標準の消しゴム has a size of its own too.
   await panel.locator(".subtool-row", { hasText: "標準の消しゴム" }).click();
   hand = await inHand();
-  check(hand.eraser === null && hand.eraserSize === 5 && !(await page.isDisabled("#brush-size")), "標準の消しゴム comes at 5 mm, its size open to change");
+  check(
+    hand.eraser === null && hand.eraserSize === 5 && !(await page.isDisabled("#brush-size")),
+    "標準の消しゴム comes at 5 mm, its size open to change",
+  );
   await props.locator(".size-presets button", { hasText: /^2$/ }).click();
   check((await inHand()).eraserSize === 2, "and a round button sizes it");
   await panel.locator(".subtool-row", { hasText: "硬め" }).click();
