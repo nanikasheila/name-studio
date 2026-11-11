@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import FULL_PROJECT from "../../../crates/name-model/tests/fixtures/full-project.json?raw";
 import { describe, expect, it } from "vitest";
-import { applyOps, nameBrief, OPS_GUIDE, opsBlocks, opsGuide, parseOps, previewOps, type AssistOp } from "./assist";
+import { applyOps, nameBrief, nameChanges, OPS_GUIDE, opsBlocks, opsGuide, parseOps, previewOps, type AssistOp } from "./assist";
 import { balloonExtent } from "./balloon";
 import { boxCenter, insidePolygon } from "../model/geometry";
 import type { Project } from "../model/model";
@@ -211,6 +211,51 @@ describe("applyOps", () => {
     expect(result.problems[0]).toBe("1 番目（setPageMemo）: 9 ページはありません（4 ページまで）");
     expect(result.done).toEqual(["題名を「残る」に"]);
     expect(project.pages).toHaveLength(4);
+  });
+
+  it("moves a line to another page's panel, lays out lines and adds tails", () => {
+    const project = drafted();
+    const [a] = project.pages[0].lines;
+    a.tails = [{ tip: [10, 10] }];
+    const sticky = applyOps(project, [{ op: "addSticky", page: 1, line: a.id, text: "ここ" }]);
+    expect(sticky.problems).toEqual([]);
+    const target = [...project.pages[1].panels].sort((x, y) => x.order - y.order)[0];
+    const result = applyOps(project, [
+      { op: "moveLine", line: a.id, page: 2, panel: 1 },
+      { op: "arrangeLines", page: 2 },
+      { op: "addTails", page: 2 },
+    ]);
+    expect(result.problems).toEqual([]);
+    expect(project.pages[0].lines.some((l) => l.id === a.id)).toBe(false);
+    const moved = project.pages[1].lines.find((l) => l.id === a.id)!;
+    expect(moved.panel).toBe(target.id);
+    expect(insidePolygon(target.shape, boxCenter(balloonExtent(moved)))).toBe(true);
+    // The sticky on the old page lets go of it.
+    expect(project.pages[0].stickies?.[0].link).toBeUndefined();
+    expect(result.done[0]).toContain("2 ページ コマ1へ");
+    expect(validate(project)).toEqual([]);
+    expect(applyOps(project, [{ op: "moveLine", line: a.id }]).problems[0]).toContain("動かす先");
+  });
+
+  it("tells which pages a change touched, and what else", () => {
+    const project = drafted();
+    const before = structuredClone(project);
+    applyOps(project, [
+      { op: "setPageMemo", page: 2, memo: "夜" },
+      { op: "addPages", after: 4, count: 1 },
+      { op: "deletePages", pages: [3] },
+      { op: "setTitle", title: "別" },
+      { op: "addCharacter", name: "先生" },
+    ]);
+    const changes = nameChanges(before, project);
+    expect(changes.pages.map((id) => project.pages.findIndex((p) => p.id === id) + 1)).toEqual([2, 4]);
+    expect(changes.removed).toBe(1);
+    expect(changes.other).toEqual(["題名", "人物"]);
+    expect(nameChanges(project, structuredClone(project))).toEqual({ pages: [], removed: 0, other: [] });
+    // A page moved (the last to the front): it and the one now after it.
+    const moved = structuredClone(project);
+    applyOps(moved, [{ op: "movePage", page: 4, to: 1 }]);
+    expect(nameChanges(project, moved).pages.map((id) => moved.pages.findIndex((p) => p.id === id) + 1)).toEqual([1, 2]);
   });
 
   it("previews without changing the name", () => {

@@ -5,6 +5,7 @@
 import { CastList } from "./castlist";
 import type { Selection } from "./editor";
 import { AssistPanel } from "./assistpanel";
+import type { HelpCommand } from "../editing/apphelp";
 import { $ } from "../platform/dom";
 import { HeldList } from "./heldlist";
 import type { Page, Panel, Point, Project, RoughImage } from "../model/model";
@@ -33,6 +34,14 @@ export interface SideListsHost extends PageListHost {
   /** The open name's file (null: not saved yet). */
   path(): string | null;
   rough(rough: RoughImage): Promise<CanvasImageSource | null>;
+  /** Every command (the AI's help lists them with their keys). */
+  commands(): readonly HelpCommand[];
+  undo(): void;
+  redo(): void;
+  /** Which name and how far along its changes: another value after any change, undo or opening. */
+  version(): string;
+  /** Put `project` in place of the open name, as one step that can be undone. */
+  restore(project: Project): void;
 }
 
 export class SideLists {
@@ -63,9 +72,10 @@ export class SideLists {
     this.assistPanel = new AssistPanel(host);
   }
 
-  /** 相談: talk the name over with an AI (assistpanel.ts). */
-  assist(): void {
-    this.assistPanel.render($("side-assist"));
+  /** 相談: talk the name over with an AI (assistpanel.ts); a 変更の案 being tried follows every change, open or not. */
+  assist(open: boolean): void {
+    this.assistPanel.sync();
+    if (open) this.assistPanel.render($("side-assist"));
   }
 
   /** ページ: the work's name and number, and each page (pagelist.ts). */

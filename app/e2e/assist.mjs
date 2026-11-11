@@ -1,8 +1,10 @@
 // 相談 (AI に相談) in its palette, with the Rust side stood in for: the AI
 // found, the conversation's folder made with the name in words, its copy, the
 // instructions and pictures of the pages; what the AI says comes in as
-// events (its 変更の案 as a card saying what it would do), 当てる changes the
-// name as one undoable step, a 変更の案 that cannot be done cannot be applied,
+// events (its 変更の案 as a card saying what it would do), 画面で見る puts it
+// on the name with a bar over the pages (変更前を見る, 採用, 却下, the user's
+// own undo followed), a 変更の案 that cannot be done cannot be shown, the
+// app's help (使い方.md, with the keys as set) goes to the AI,
 // a later question goes on with the same conversation (and the name changed
 // meanwhile is shown again), and the connection settings are kept.
 // Run: node e2e/assist.mjs
@@ -130,7 +132,7 @@ try {
   check((await page.textContent(".assist-state")).includes("Claude Code 2.1.0 に聞きます"), "says which AI will answer, as found");
   check(!(await page.isVisible(".assist-settings")), "the connection settings are closed until 接続… is pressed");
 
-  await page.click(".assist-starters button:first-child");
+  await page.click(".assist-starters button:has-text('行き詰まった')");
   check((await page.inputValue(".assist textarea")).includes("行き詰まって"), "a ready-made question goes into the box");
   await page.fill(".assist textarea", "1ページの間をどう取るか相談したい");
   await page.click(".assist-actions button.primary");
@@ -146,6 +148,14 @@ try {
   check(
     files["SYSTEM.md"]?.text.includes("namestudio-ops") && files["AGENTS.md"] && files["CLAUDE.md"],
     "with the instructions for Claude Code and Codex",
+  );
+  const help = files["使い方.md"]?.text ?? "";
+  check(
+    help.includes("### 選択") &&
+      help.includes("- 保存: Ctrl+S") &&
+      help.includes("# くわしい説明") &&
+      files["SYSTEM.md"].text.includes("使い方.md"),
+    `with the app's help, the keys as set and the guide (${help.length} chars)`,
   );
   check(
     ["pages/p001.png", "pages/p004.png"].every((path) => files[path]?.base64?.length > 100),
@@ -204,17 +214,84 @@ try {
     "and show as the Markdown they are written in (bold, a list)",
   );
   check(!(await page.textContent(".assist-entry.assistant")).includes("**"), "with no marks left over");
-  check((await project()).pages.length === 4, "nothing changes before 当てる");
+  check((await project()).pages.length === 4, "nothing changes before 画面で見る");
+  check(!(await page.isVisible("#assist-trial")), "and no bar over the pages");
   await page.click(".assist-ops button.primary");
   await settle();
   const after = await project();
   check(
     after.pages.length === 5 && after.pages[1].memo === "間" && after.pages[0].stickies?.[0]?.text === "ここで一拍",
-    "当てる changes the name",
+    "画面で見る puts the 案 on the name",
+  );
+  const bar = await page.textContent("#assist-trial");
+  if (process.env.ASSIST_SHOT) await page.screenshot({ path: process.env.ASSIST_SHOT.replace(".png", "-trial.png") });
+  check(
+    (await page.isVisible("#assist-trial")) && bar.includes("変更の案を表示中") && bar.includes("変わったページ p1・p2"),
+    `a bar over the pages says so, with the pages it changed (${bar})`,
+  );
+  check((await page.textContent(".assist-ops")).includes("画面に表示中"), "and the card says it is on screen, with 採用 and 却下");
+  await page.click("#assist-trial button:has-text('▶')");
+  await settle();
+  check((await page.textContent("#editor-page-label")).includes("2"), "▶ goes to the next changed page");
+  await page.click("#assist-trial button:has-text('変更前を見る')");
+  await settle();
+  check(
+    (await project()).pages.length === 4 && (await page.textContent("#assist-trial")).includes("変更前を表示中"),
+    "変更前を見る shows the name as it was",
+  );
+  await page.click("#assist-trial button:has-text('変更後を見る')");
+  await settle();
+  check((await project()).pages.length === 5, "and 変更後を見る the 案 again");
+  await page.click("#assist-trial button:has-text('却下')");
+  await settle();
+  check(
+    (await project()).pages.length === 4 &&
+      !(await project()).pages[0].stickies?.length &&
+      !(await page.isVisible("#assist-trial")) &&
+      (await page.textContent(".assist-ops")).includes("却下しました"),
+    "却下 takes it back, the bar goes and the card says so",
+  );
+  await page.click(".assist-ops button.primary");
+  await settle();
+  await page.click(".assist-ops button:has-text('採用')");
+  await settle();
+  check(
+    (await project()).pages.length === 5 &&
+      !(await page.isVisible("#assist-trial")) &&
+      (await page.textContent(".assist-ops")).includes("✓ 採用しました"),
+    "もう一度見る and 採用 keeps it",
   );
   await page.click("#undo");
   await settle();
   check((await project()).pages.length === 4 && !(await project()).pages[0].stickies?.length, "and one 元に戻す takes it all back");
+  // The user's own undo while it is shown: the bar follows; a change made over it is taken back only on a second 却下.
+  await page.click(".assist-ops button.primary");
+  await settle();
+  await page.click("#undo");
+  await settle();
+  check((await page.textContent("#assist-trial")).includes("変更前を表示中"), "an undo of one's own shows the name as it was");
+  await page.click("#redo");
+  await settle();
+  await page.evaluate(() => window.nameStudio.workbench.edit((p) => (p.pages[0].memo = "自分で")));
+  await settle();
+  check((await page.textContent("#assist-trial")).includes("そのあと手を入れています"), "a change of one's own over it is noticed");
+  await page.click("#assist-trial button:has-text('却下')");
+  await settle();
+  check((await project()).pages.length === 5 && (await page.isVisible("#assist-trial")), "却下 then asks once more");
+  await page.click("#assist-trial button:has-text('却下')");
+  await settle();
+  check(
+    (await project()).pages.length === 4 && !(await project()).pages[0].memo && !(await page.isVisible("#assist-trial")),
+    "and the second takes it back with the change over it",
+  );
+  await page.click("#undo");
+  await settle();
+  check((await project()).pages[0].memo === "自分で", "which an undo brings back");
+  await page.click("#undo");
+  await settle();
+  await page.click("#undo");
+  await settle();
+  check((await project()).pages.length === 4, "back to the name as it was");
 
   // A second question goes on with the conversation; the name changed since is shown again.
   await page.evaluate(() => window.nameStudio.workbench.edit((p) => (p.title = "屋上の約束")));

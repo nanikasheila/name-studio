@@ -1518,6 +1518,19 @@ dialog.perf-dialog { width: min(720px, 92vw); }
 .assist-ops ul { margin: 6px 0; padding-left: 1.2em; }
 .assist-ops .problem { margin: 2px 0; color: var(--danger); }
 .assist-ops .assist-row { margin-top: 6px; }
+.assist-ops.trying { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
+/* 変更の案を画面で見る: the bar over the pages while a 案 is on the name to look at. */
+.assist-trial {
+  position: absolute; top: 10px; left: 12px; right: 12px; margin-inline: auto; width: max-content; z-index: 5; max-width: calc(100% - 24px); box-sizing: border-box;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 10px; border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--accent); box-shadow: 0 4px 16px rgb(0 0 0 / 25%); line-height: 1.4;
+}
+.assist-trial[hidden] { display: none; }
+.assist-trial button { white-space: nowrap; }
+.assist-trial-text { display: flex; flex-direction: column; min-width: 0; }
+.assist-trial-text span { font-size: calc(12 * var(--px)); color: var(--muted); }
+.assist-trial-nav { display: inline-flex; align-items: center; gap: 4px; }
+.assist-trial-at { font-size: calc(12 * var(--px)); color: var(--muted); min-width: 3em; text-align: center; }
 .assist textarea { width: 100%; min-height: calc(3 * 1.5em + 10px); box-sizing: border-box; resize: vertical; font: inherit; line-height: 1.5; padding: 6px 8px; border-radius: 8px; }
 /* Ready-made questions: chips; once talking, one line that scrolls sideways. */
 .assist-starters button { font-size: calc(12 * var(--px)); padding: 2px 10px; border-radius: 999px; color: var(--muted); }
