@@ -66,6 +66,8 @@ export class ControlBar {
   private handSizes = loadHandSizes();
 
   constructor(private readonly host: ControlBarHost) {
+    // The plain eraser at the size it was last used at.
+    host.editor.eraserSizeMm = sizeInHand(this.handSizes, "eraser", null);
     $("editor-tools").replaceChildren(...TOOL_IDS.map(toolButton));
     this.marks = new MarkBar({ ...host, setTool: (tool) => this.setTool(tool) });
     this.subtools = new SubToolPanel(
@@ -236,7 +238,7 @@ export class ControlBar {
     const size = sizeInHand(this.handSizes, kind, brush);
     if (kind === "eraser") {
       this.editor.eraserBrush = brush?.id ?? null;
-      if (brush) this.editor.eraserSizeMm = size;
+      this.editor.eraserSizeMm = size;
       // A CSP vector eraser brings its way of erasing; it can be switched after.
       if (brush?.erase) this.editor.eraseMode = brush.erase;
     } else {
@@ -262,7 +264,15 @@ export class ControlBar {
   /** The pen / eraser chooser: the project's brushes, then ones taken in other projects. */
   renderBrushBar(): void {
     this.marks.render();
-    this.subtools.render();
+    // The bar first: it follows the tool in hand even when a palette fails to draw.
+    try {
+      this.renderPenBar();
+    } finally {
+      this.subtools.render();
+    }
+  }
+
+  private renderPenBar(): void {
     const tool = this.editor.tool;
     const bar = $("brush-bar");
     bar.classList.toggle("off", tool !== "pen" && tool !== "eraser");
@@ -287,10 +297,8 @@ export class ControlBar {
     select.value = current?.id ?? "";
     select.title = current?.source ?? "ペン・消しゴムの種類";
     const size = $<HTMLInputElement>("brush-size");
-    const plainEraser = kind === "eraser" && !current;
-    size.disabled = plainEraser;
     const sizeMm = kind === "pen" ? this.editor.penWidthMm : this.editor.eraserSizeMm;
-    if (document.activeElement !== size) size.value = plainEraser ? "" : String(Math.round(sizeMm * 100) / 100);
+    if (document.activeElement !== size) size.value = String(Math.round(sizeMm * 100) / 100);
     $("brush-tip-label").hidden = !current?.tip;
     $("erase-modes").hidden = kind !== "eraser";
     for (const mode of Object.keys(ERASE_MODE_LABELS) as EditorEraseMode[]) {

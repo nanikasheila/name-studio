@@ -45,6 +45,16 @@ export function blobOf(tool: CspToolData, column: string): Uint8Array | null {
   return value && typeof value === "object" ? bytesOf(value.blob) : null;
 }
 
+/**
+ * What of a brush's CSP settings the palette shows: the numbers and words as
+ * they are, the blobs (graphs, pictures) by their length. Not every
+ * `…Effector` is a blob: CSP keeps `BrushRotationEffector` (向きの影響元) as a
+ * number in every brush of its own.
+ */
+export function settingsSignature(settings: Readonly<Record<string, CspValue>>): [string, number | string][] {
+  return Object.entries(settings).map(([key, value]) => [key, typeof value === "object" ? value.blob.length : value]);
+}
+
 export function setSetting(tool: CspToolData, column: string, value: CspValue | Uint8Array | undefined): void {
   if (value === undefined) delete tool.settings[column];
   else tool.settings[column] = value instanceof Uint8Array ? { blob: base64Of(value) } : value;

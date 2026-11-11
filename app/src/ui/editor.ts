@@ -11,6 +11,7 @@
 // mm → screen mapping.
 import { isTyping } from "../platform/dom";
 import { BALLOON_TEXT_KEY, loadFillSettings, loadSnap, PANEL_CARRIES_KEY, penPreferences, SHOW_STICKIES_KEY } from "../platform/prefs";
+import { PLAIN_SIZE_MM } from "../editing/brushpicks";
 import { toPage, type Slot } from "../editing/layout";
 import { addDrawnPanel, spanGutter } from "../domain/koma";
 import { joinPanels, seamAt } from "../domain/komaedit";
@@ -73,7 +74,7 @@ export class PageEditor {
 
   eraserBrush: string | null = null;
 
-  eraserSizeMm = 2;
+  eraserSizeMm = PLAIN_SIZE_MM.eraser;
 
   /** 塗り: the way in hand (CSP's sub tools), the tone and each way's settings. */
   fill: FillSettings = loadFillSettings();
@@ -720,9 +721,9 @@ export class PageEditor {
     return id ? this.host.project()?.brushes.find((brush) => brush.id === id) : undefined;
   }
 
-  /** The plain eraser is a fixed 8 px on screen; a brush eraser has its size on the page. */
+  /** The eraser (the plain one too) has its size on the page; never under 3 px on screen. */
   private eraserRadiusPx(scale = this.slots[0]?.scale ?? 1): number {
-    return this.brush("eraser") ? Math.max((this.eraserSizeMm / 2) * scale, 3) : 8;
+    return Math.max((this.eraserSizeMm / 2) * scale, 3);
   }
 
   /** Follow the pen's eraser end (button 5, buttons bit 32) as it comes and goes. */

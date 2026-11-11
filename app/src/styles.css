@@ -528,7 +528,8 @@ dialog.brushes { width: min(720px, calc(100vw - 32px)); }
 .subtool-field input[type="number"] { width: 4.2em; font: inherit; padding: 1px 3px; }
 .subtool-field output { width: 2.2em; text-align: right; font-variant-numeric: tabular-nums; }
 .subtool-field .unit { color: var(--muted); }
-.subtool-erase button { padding: 1px 6px; font-size: calc(12 * var(--px)); }
+.subtool-erase { flex: 1; min-width: 0; flex-wrap: wrap; }
+.subtool-erase button { padding: 1px 6px; font-size: calc(12 * var(--px)); white-space: nowrap; }
 .subtool-check { display: flex; align-items: center; gap: 4px; }
 .subtool-note { margin: 0; color: var(--muted); font-size: calc(11 * var(--px)); }
 .size-presets { display: flex; flex-wrap: wrap; gap: 3px; }

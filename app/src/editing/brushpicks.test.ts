@@ -6,6 +6,7 @@ import {
   handSizesFrom,
   presetsFrom,
   reorderBrushes,
+  PLAIN_SIZE_MM,
   sizeInHand,
   sizeOfSlider,
   sliderOf,
@@ -77,6 +78,12 @@ describe("ブラシサイズ", () => {
     expect(sizes).toEqual({});
     expect(sizeInHand(withHandSize({}, "pen", null, 1), "pen", null)).toBe(1);
     expect(sizeInHand({}, "pen", null)).toBe(0.4);
+    // The plain eraser has a size of its own, kept apart from the plain pen's.
+    expect(sizeInHand({}, "eraser", null)).toBe(PLAIN_SIZE_MM.eraser);
+    const erased = withHandSize({}, "eraser", null, 12);
+    expect(sizeInHand(erased, "eraser", null)).toBe(12);
+    expect(sizeInHand(erased, "pen", null)).toBe(0.4);
+    expect(withHandSize(erased, "eraser", null, PLAIN_SIZE_MM.eraser)).toEqual({});
     expect(handSizesFrom({ a: { mm: 1, base: 0.5 }, b: { mm: "x" }, c: null })).toEqual({ a: { mm: 1, base: 0.5 } });
     expect(handSizesFrom("broken")).toEqual({});
   });
