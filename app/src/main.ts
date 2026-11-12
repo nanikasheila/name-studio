@@ -40,6 +40,10 @@ import { applyLook, readLook } from "./platform/look";
 import { fail, showStatus, installStatus } from "./platform/status";
 import { folderStep } from "./platform/reveal";
 import { noteStarted } from "./platform/usagestore";
+import { TimerClock } from "./ui/timerclock";
+import { TimerPanel, timerCommands } from "./ui/timerpanel";
+import { TimerPane } from "./ui/timerpane";
+import { openSettingsAt } from "./ui/settingsdialog";
 
 // 画面の見た目 before anything is shown (設定 › 画面の見た目). The user's CSS waits for the
 // Rust side to say the app was not started with Shift held (lookpane.ts).
@@ -78,6 +82,20 @@ const helpOverlay = new HelpOverlay({
   tour: () => tour.start(workspace === "editor" ? "editor" : "start"),
   openShortcuts: () => $("shortcuts").click(),
 });
+// --- タイマー (the bar at the top: ポモドーロ・タイマー・計る・アラーム) ------------------------------
+
+const timers = new TimerClock({
+  // 区切る keeps where the work is: the pages open in the editor ("p.5–6").
+  where: () => {
+    const shown = workspace === "editor" ? ($("editor-page-label").textContent ?? "").split(" / ")[0] : "";
+    return shown && shown !== "-" ? `p.${shown}` : null;
+  },
+  status: setStatus,
+});
+const timerPanel = new TimerPanel(timers, () => openSettingsAt("timer"));
+new TimerPane(timers);
+workbench.addCommands(timerCommands(timerPanel, timers));
+
 const helpBar = new HelpBar({ editor: () => (workspace === "editor" ? workbench.editor : null), keysOf });
 
 /** 大きめを勧める: once on this computer, when a pen is used or the screen is wide and fine. */

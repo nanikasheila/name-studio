@@ -1085,4 +1085,9 @@ export class Workbench {
     if (done) noteUse("command", action);
     return done;
   }
+
+  /** Commands of the app's own (タイマー), for the keys and the palette too. */
+  addCommands(more: readonly Command[]): void {
+    this.commands.push(...more);
+  }
 }

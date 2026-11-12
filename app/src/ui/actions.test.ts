@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildCommands, type CommandHost } from "./actions";
+import type { TimerClock } from "./timerclock";
+import { timerCommands, type TimerPanel } from "./timerpanel";
 import { TOOL_IDS, TOOLS } from "../editing/tooldefs";
 import { AREA_TOPICS, HOVER_TOPICS, OVERLAY_SPOTS, TOOL_TOPICS, TOUR_STOPS } from "../editing/helptopics";
 
@@ -51,7 +53,8 @@ const KEPT_IDS = [
 const host = new Proxy({}, { get: () => () => false }) as unknown as CommandHost;
 
 describe("命令の一覧", () => {
-  const commands = buildCommands(host);
+  // The timer's commands join the rest when the app starts (main.ts); making them runs nothing.
+  const commands = [...buildCommands(host), ...timerCommands({} as TimerPanel, {} as TimerClock)];
 
   it("names each command once", () => {
     const ids = commands.map((c) => c.id);
