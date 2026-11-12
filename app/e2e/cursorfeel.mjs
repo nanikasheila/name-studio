@@ -4,13 +4,13 @@
 // hovers away, many times (as a tablet sends it, 240 reports a second), and
 // after each line looks where the pen came down and where it left the page:
 // the cursor's cross (a thin pen) must not be there any more.
-// It looks three ways: the screen canvas read back (getImageData), the
-// window as the browser composes it (CDP screenshot) and, on Windows, the
-// screen itself (PowerShell, saved as PNGs to look at).
+// It reads the screen canvas back (getImageData; a spot darker than before
+// the line counts) and, with --shots, keeps the browser's own picture of the
+// window where one was found and at the end.
 //
 //   npx tauri build --no-bundle --config '{"identifier":"com.nanikasheila.namestudio.feel"}'
 //   node e2e/cursorfeel.mjs [--lines <n>, 30] [--shots <folder>] [--cursor brush|circle|…] [--app <exe>]
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -35,13 +35,6 @@ const { projectJson } = await server.ssrLoadModule("/src/domain/projectjson.ts")
 await server.close();
 const name = join(work, "カーソル確認.namestudio");
 writeFileSync(name, projectJson(newProject("カーソル確認", 8)));
-
-/** The whole screen as a PNG (Windows), to see what is shown rather than what the canvas holds. */
-function screenShot(file) {
-  if (process.platform !== "win32" || !shots) return;
-  const script = `Add-Type -AssemblyName System.Windows.Forms,System.Drawing; $b=[System.Windows.Forms.SystemInformation]::VirtualScreen; $bmp=New-Object System.Drawing.Bitmap $b.Width,$b.Height; $g=[System.Drawing.Graphics]::FromImage($bmp); $g.CopyFromScreen($b.Left,$b.Top,0,0,$bmp.Size); $bmp.Save('${join(shots, file).replace(/'/g, "''")}'); $g.Dispose(); $bmp.Dispose()`;
-  spawnSync("powershell", ["-NoProfile", "-Command", script], { stdio: "ignore" });
-}
 
 const child = spawn(app, [], {
   env: {
@@ -130,6 +123,12 @@ try {
     const y0 = box.y + box.height * (0.25 + 0.5 * (((l * 53) % 100) / 100));
     const stroke = Array.from({ length: 50 }, (_, i) => [x0 + i * 2, y0 + Math.sin(i / 8) * 4]);
     const end = stroke[stroke.length - 1];
+    // What is there before (the edge of a page can be): only a darker spot after counts.
+    const marks = [
+      [stroke[0][0], stroke[0][1], -1],
+      [end[0], end[1], 1],
+    ];
+    const [downBefore, upBefore] = await crossAt(marks);
     // Hover in from the left, draw, hover away up and to the right.
     let start = performance.now();
     for (let i = 0; i < 12; i++) {
@@ -150,21 +149,15 @@ try {
     }
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     // Where the pen came down (the line goes right: look left) and left the page (look right).
-    const [down, up] = await crossAt([
-      [stroke[0][0], stroke[0][1], -1],
-      [end[0], end[1], 1],
-    ]);
+    const [down, up] = await crossAt(marks);
     out.checks += 2;
-    if (l % 10 === 9) screenShot(`line-${l}-screen.png`);
-    if (down < 600 || up < 600) {
-      out.stale.push({ line: l, down, up });
+    if ((down < 600 && down < downBefore - 100) || (up < 600 && up < upBefore - 100)) {
+      out.stale.push({ line: l, down, up, downBefore, upBefore });
       if (out.stale.length <= 3) {
-        screenShot(`stale-${l}-screen.png`);
         await page.screenshot({ path: shots ? join(shots, `stale-${l}-page.png`) : join(work, "x.png") });
       }
     }
   }
-  screenShot("end-screen.png");
   if (shots) await page.screenshot({ path: join(shots, "end-page.png") });
 } finally {
   await browser?.close().catch(() => {});
