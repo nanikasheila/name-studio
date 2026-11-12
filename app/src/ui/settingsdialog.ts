@@ -638,10 +638,10 @@ export class SettingsDialog {
   }
 }
 
-/** A pen's cursor at the end of a line it drew (the setting's sample). */
+/** A pen's cursor at the end of a line it drew (the setting's sample): a thin pen and a thick one. */
 export function drawCursorLook(canvas: HTMLCanvasElement, look: PenCursor): void {
   const ratio = window.devicePixelRatio || 1;
-  const [width, height] = [72, 40];
+  const [width, height] = [120, 44];
   if (canvas.width !== width * ratio) {
     canvas.width = width * ratio;
     canvas.height = height * ratio;
@@ -650,33 +650,38 @@ export function drawCursorLook(canvas: HTMLCanvasElement, look: PenCursor): void
   if (!ctx) return;
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
   ctx.clearRect(0, 0, width, height);
-  const at: [number, number] = [46, 20];
-  ctx.strokeStyle = "#3a3834";
-  ctx.lineWidth = 2;
-  ctx.lineCap = "round";
-  ctx.beginPath();
-  ctx.moveTo(8, 30);
-  ctx.quadraticCurveTo(24, 8, at[0], at[1]);
-  ctx.stroke();
-  if (drawsSize(look)) {
-    drawPenCursor(ctx, at, 4, look);
-    return;
-  }
-  ctx.lineWidth = 1;
-  ctx.strokeStyle = "#111111";
-  if (look === "cross") {
+  for (const [x0, radius] of [
+    [6, 2.5],
+    [62, 9],
+  ]) {
+    const at: [number, number] = [x0 + 36, 22];
+    ctx.strokeStyle = "#3a3834";
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.moveTo(at[0] - 9, at[1] + 0.5);
-    ctx.lineTo(at[0] + 10, at[1] + 0.5);
-    ctx.moveTo(at[0] + 0.5, at[1] - 9);
-    ctx.lineTo(at[0] + 0.5, at[1] + 10);
+    ctx.moveTo(x0 + 4, 36);
+    ctx.quadraticCurveTo(x0 + 16, 12, at[0], at[1]);
     ctx.stroke();
-  } else if (look === "dot") {
-    ctx.fillStyle = "#222222";
-    ctx.strokeStyle = "#ffffff";
-    ctx.beginPath();
-    ctx.arc(at[0], at[1], 2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
+    if (drawsSize(look)) {
+      drawPenCursor(ctx, at, radius, look);
+      continue;
+    }
+    ctx.lineWidth = 1;
+    if (look === "cross") {
+      ctx.strokeStyle = "#111111";
+      ctx.beginPath();
+      ctx.moveTo(at[0] - 8, at[1] + 0.5);
+      ctx.lineTo(at[0] + 9, at[1] + 0.5);
+      ctx.moveTo(at[0] + 0.5, at[1] - 8);
+      ctx.lineTo(at[0] + 0.5, at[1] + 9);
+      ctx.stroke();
+    } else if (look === "dot") {
+      ctx.fillStyle = "#222222";
+      ctx.strokeStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(at[0], at[1], 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
   }
 }

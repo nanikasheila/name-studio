@@ -1233,7 +1233,7 @@ dialog.settings { width: min(820px, calc(100vw - 32px)); height: min(640px, calc
 .settings .setting-row > span { min-width: 7em; }
 .settings .setting-row.wide > span { min-width: 10em; }
 .settings .setting-row label { display: inline-flex; align-items: center; gap: 4px; }
-.settings .pen-cursor-look { width: 72px; height: 40px; background: #ffffff; border: 1px solid var(--line); border-radius: 6px; }
+.settings .pen-cursor-look { width: 120px; height: 44px; background: #ffffff; border: 1px solid var(--line); border-radius: 6px; }
 .settings input[type="number"] { width: 5.5em; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
 .settings select { font: inherit; }
 .settings .check { margin: 2px 0; color: var(--text); }
