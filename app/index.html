@@ -895,6 +895,14 @@
                 <div class="setting-row"><span>ペンタブレット</span><button type="button" id="st-open-pen">ペン設定を開く…</button></div>
                 <p class="hint">筆圧カーブ（下限・上限）、傾き、消しゴム側、サイドボタン、タッチ操作、カーソル。</p>
               </div>
+              <div class="setting-item" data-keys="カーソル ポインター ペン先 丸 円 ◯ 十字 クロス 点 ブラシサイズ 大きさ 出さない 見えない 液タブ">
+                <div class="setting-row wide">
+                  <span>ペンのカーソル</span>
+                  <select id="st-pen-cursor"></select>
+                  <canvas id="st-pen-cursor-look" class="pen-cursor-look" width="72" height="40" aria-hidden="true"></canvas>
+                </div>
+                <p class="hint">ペンで描くときの紙面のカーソルです。「ブラシの大きさ」は今のペンの太さの ◯（細いときは十字つき）、「◯ だけ」は十字なし、「◯ ＋ 十字」はいつも十字つき。「十字」「点」は太さを出しません。液タブでペン先が見えていれば「出さない」も。ペン設定・命令パレット（Ctrl+K「カーソル」）でも変えられます。</p>
+              </div>
               <div class="setting-item" data-keys="CSP クリスタ ペン 消しゴム サブツール 取り込み 同期 合わせる 自動">
                 <div class="setting-row">
                   <span>CSP で変えたペン・消しゴム</span>

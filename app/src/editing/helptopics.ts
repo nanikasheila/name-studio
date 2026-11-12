@@ -167,6 +167,8 @@ export const TOOL_TOPICS: Record<ToolId, HelpTopic> & Record<string, HelpTopic> 
       { command: "brush.smaller", does: "細く" },
       { input: "サブツールの欄", does: "ペンの種類・太さを選ぶ（キーも割り当てられる）" },
       { input: "ペンの消しゴム側", does: "消す" },
+      { command: "pen.cursorNext", does: "カーソルの形を切り替える" },
+      { input: "設定 › ペン・キー", does: "カーソルの形（太さの◯・◯だけ・十字・点・出さない）" },
       ...VIEW_STEPS,
     ],
   },
@@ -710,7 +712,7 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
   { target: "#versions", name: "履歴", text: "前の版に戻す", side: "below" },
   { target: "#settings", name: "設定", text: "コマ間・フォント・吸着・画面の配色など", side: "below" },
   { target: "#shortcuts", name: "キー設定", text: "キーの割り当てを変える", side: "below" },
-  { target: "#pen-settings", name: "ペン設定", text: "筆圧・タブレット", side: "below" },
+  { target: "#pen-settings", name: "ペン設定", text: "筆圧・タブレット・カーソルの形", side: "below" },
   { target: "#save-state", name: "保存の状態", text: "保存済み・未保存・自動保存の写し", side: "below" },
   {
     target: "#workspace-modes",
