@@ -17,6 +17,7 @@
       <button id="pen-settings" class="editor-only with-icon labelled" title="ペンタブレットの設定: 筆圧、傾き、消しゴム側、サイドボタン、タッチ操作、カーソル" hidden><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="4" width="15" height="12" rx="1.5"/><path d="M7 13l1-3 5-5 2 2-5 5z"/></svg><span>ペン設定</span></button>
       <span id="file-name" class="file-name">ファイルが開かれていません</span>
       <span id="save-state" class="save-state editor-only" role="status" aria-live="polite" hidden></span>
+      <button id="timer-chip" class="timer-chip" data-command="timer.open" title="タイマー（ポモドーロ・タイマー・計る・アラーム）" aria-label="タイマー"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="11" r="6.5"/><path d="M10 7.5V11l2.5 1.5M8 2.5h4M15.5 4.5l1.5 1.5"/></svg><span id="timer-chip-text" class="timer-chip-text"></span></button>
       <button id="update" class="primary" hidden>更新</button>
       <span id="app-version" class="app-version"></span>
       <div class="spacer"></div>
@@ -847,6 +848,65 @@
                   <label><input type="number" id="st-autosave-max-wait" min="5" max="3600" step="1" /> 秒ごとに自動保存</label>
                 </div>
                 <p class="hint">初期は 3 秒と 30 秒。変更がないときは自動保存しません（ファイルも履歴もそのまま。変えて元に戻しただけのときも書きません）。</p>
+              </div>
+            </section>
+            <section class="settings-pane" data-pane="timer" data-scope="pc" data-title="タイマー">
+              <h3>タイマー <small>この PC</small></h3>
+              <div class="setting-item" data-keys="ポモドーロ 作業 休憩 長い休憩 長さ 分 集中">
+                <div class="setting-row wide">
+                  <span>ポモドーロ</span>
+                  <label>作業 <input type="number" id="st-tm-work" min="1" max="180" step="1" /> 分</label>
+                  <label>休憩 <input type="number" id="st-tm-short" min="1" max="60" step="1" /> 分</label>
+                </div>
+                <div class="setting-row wide">
+                  <span></span>
+                  <label>長い休憩 <input type="number" id="st-tm-long" min="1" max="120" step="1" /> 分</label>
+                  <label><input type="number" id="st-tm-every" min="1" max="12" step="1" /> 回ごと</label>
+                </div>
+                <p class="hint">初期は作業 25 分・休憩 5 分、4 回ごとに長い休憩 15 分。上の帯のタイマーを押して「ポモドーロ」で始めます。</p>
+              </div>
+              <div class="setting-item" data-keys="ポモドーロ 自動 続けて 休憩 作業 始める">
+                <label class="check"><input type="checkbox" id="st-tm-auto-break" /> 作業が終わったら、休憩を自動で始める</label>
+                <label class="check"><input type="checkbox" id="st-tm-auto-work" /> 休憩が終わったら、作業を自動で始める</label>
+                <p class="hint">自動で始めないときは、知らせの「休憩を始める」「作業を始める」で始めます。</p>
+              </div>
+              <div class="setting-item" data-keys="音 アラーム 鳴らす 音量 チャイム ベル 回数 サウンド">
+                <div class="setting-row wide">
+                  <span>鳴らす音</span>
+                  <select id="st-tm-sound" aria-label="鳴らす音"></select>
+                  <label>音量 <input type="range" id="st-tm-volume" aria-label="音量" min="0" max="100" step="5" /></label>
+                  <label><input type="number" id="st-tm-rings" min="1" max="10" step="1" /> 回</label>
+                  <button type="button" id="st-tm-try">試しに鳴らす</button>
+                </div>
+                <p class="hint">タイマー・ポモドーロ・アラームの時間が来たときの音です。</p>
+              </div>
+              <div class="setting-item" data-keys="通知 Windows タスクバー 点滅 前に出す 知らせ CSP ほかのアプリ">
+                <label class="check"><input type="checkbox" id="st-tm-toast" /> ほかのアプリ（CSP など）を使っているときは、Windows の通知も出す</label>
+                <label class="check"><input type="checkbox" id="st-tm-flash" /> タスクバーの Name Studio を点滅させる</label>
+                <label class="check"><input type="checkbox" id="st-tm-front" /> Name Studio の窓を前に出す</label>
+                <p class="hint">時間が来たとき、Name Studio が後ろに隠れていても気づけるように。窓の中には、いつも上に知らせが出ます。</p>
+              </div>
+              <div class="setting-item" data-keys="休憩 おおう 画面 隠す 手を止める ポモドーロ">
+                <label class="check"><input type="checkbox" id="st-tm-cover" /> ポモドーロの休憩のあいだ、画面をおおう（手を止める）</label>
+                <p class="hint">残りの時間と「休憩を飛ばして作業に戻る」「おおいを外す」を出します。描いている途中なら、ペンを離してからおおいます。</p>
+              </div>
+              <div class="setting-item" data-keys="上の帯 表示 タイマー 隠す 時計">
+                <div class="setting-row">
+                  <span>上の帯のタイマー</span>
+                  <select id="st-tm-chip" aria-label="上の帯のタイマー">
+                    <option value="always">いつも出す</option>
+                    <option value="running">動いているとき・アラームがあるときだけ</option>
+                  </select>
+                </div>
+                <p class="hint">隠していても、命令パレット（Ctrl+K）の「タイマーを開く」で開けます。</p>
+              </div>
+              <div class="setting-item" data-keys="記録 集中 回数 今日 ポモドーロ 消す">
+                <div class="setting-row">
+                  <span>集中の記録</span>
+                  <output id="st-tm-log"></output>
+                  <button type="button" id="st-tm-clear">記録を消す…</button>
+                </div>
+                <p class="hint">終えたポモドーロの作業を日ごとに数えます（この PC の中だけ）。</p>
               </div>
             </section>
             <section class="settings-pane" data-pane="update" data-scope="pc" data-title="更新">

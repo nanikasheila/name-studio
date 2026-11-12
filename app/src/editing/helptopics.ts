@@ -387,6 +387,33 @@ export const AREA_TOPICS: Record<string, HelpTopic> = {
     what: "詳細（選んだものの設定）と相談。片側 3 列まで分けられる",
     steps: DOCK_STEPS,
   },
+  "timer-chip": {
+    name: "タイマー",
+    what: "動いている間は残りの時間（作業は赤、休憩は緑）、止まっていれば次のアラーム",
+    steps: [
+      { input: "クリック", does: "タイマーを開く・閉じる" },
+      { command: "timer.pomodoro", does: "ポモドーロを始める・一時停止" },
+      { input: "設定 › タイマー", does: "長さ・音・Windows の通知・休憩のおおい" },
+    ],
+  },
+  "timer-pop": {
+    name: "タイマー",
+    what: "ポモドーロ・タイマー・計る（ページごとに区切る）・アラーム（時刻で鳴る）",
+    steps: [
+      { input: "← →（見出しで）", does: "ポモドーロ・タイマー・計る・アラームを切り替える" },
+      { input: "長さに 25・1:30:00・90s・1時間30分", does: "タイマーの長さ（Enter で始める）" },
+      { command: "timer.lap", does: "計る: 区切る" },
+      { input: "Esc", does: "閉じる（動いたまま）" },
+    ],
+  },
+  "timer-cover": {
+    name: "休憩中",
+    what: "ポモドーロの休憩のあいだ画面をおおう（設定 › タイマー）",
+    steps: [
+      { input: "休憩を飛ばして作業に戻る", does: "次の作業を始める" },
+      { input: "おおいを外す", does: "休憩はそのまま、画面を使う" },
+    ],
+  },
   "ws-mine": {
     name: "名前をつけた配置",
     what: "今の欄の並び・見せ方・物語の帯に名前をつけて残し、切り替える（CSP のワークスペースのように）",
@@ -714,6 +741,7 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
   { target: "#shortcuts", name: "キー設定", text: "キーの割り当てを変える", side: "below" },
   { target: "#pen-settings", name: "ペン設定", text: "筆圧・タブレット・カーソルの形", side: "below" },
   { target: "#save-state", name: "保存の状態", text: "保存済み・未保存・自動保存の写し", side: "below" },
+  { target: "#timer-chip", name: "タイマー", text: "ポモドーロ・タイマー・計る・アラーム", command: "timer.open", side: "below" },
   {
     target: "#workspace-modes",
     name: "作業の配置",

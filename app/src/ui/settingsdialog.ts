@@ -139,6 +139,18 @@ export function matchesQuery(text: string, query: string): boolean {
     .every((word) => haystack.includes(word));
 }
 
+/** The kind to open on next (設定 › タイマー from the timer). */
+let nextPane: string | null = null;
+
+/** 設定 opened on `pane`, as its button does; false when the button is not there (no name open). */
+export function openSettingsAt(pane: string): boolean {
+  const button = document.getElementById("settings");
+  if (!button || button.hidden) return false;
+  nextPane = pane;
+  button.click();
+  return true;
+}
+
 export class SettingsDialog {
   private pane = readText(PANE_KEY) ?? "koma";
   /** 画面の見た目 (theme, the screen's font and size, the user's CSS). */
@@ -371,6 +383,8 @@ export class SettingsDialog {
   }
 
   open(): void {
+    if (nextPane) this.pane = nextPane;
+    nextPane = null;
     $<HTMLInputElement>("st-search").value = "";
     this.render();
     $<HTMLDialogElement>("settings-dialog").showModal();
