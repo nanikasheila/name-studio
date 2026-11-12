@@ -19,6 +19,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
+# タイマー: Windows' own notification when a timer comes due behind another app.
+tauri-plugin-notification = "2"
 tauri-plugin-process = "2"
 tauri-plugin-updater = "2"
 # AI に相談: a local LLM's OpenAI-compatible API (the same reqwest the updater uses).

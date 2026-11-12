@@ -48,10 +48,12 @@ SQLite（rusqlite に同梱）はパブリックドメインです。SQLite (bun
 | cc | 1.9.0 | MIT OR Apache-2.0 | https://github.com/rust-lang/cc-rs |
 | cfb | 0.14.0 | MIT | https://github.com/mdsteele/rust-cfb |
 | cfg-if | 1.0.5 | MIT OR Apache-2.0 | https://github.com/rust-lang/cfg-if |
+| chacha20 | 0.10.2 | MIT OR Apache-2.0 | https://github.com/RustCrypto/stream-ciphers |
 | chrono | 0.4.45 | MIT OR Apache-2.0 | https://github.com/chronotope/chrono |
 | cookie | 0.18.2 | MIT OR Apache-2.0 | https://github.com/SergioBenitez/cookie-rs |
 | core_detect | 1.0.0 | MIT/Apache-2.0 | https://github.com/thomcc/core_detect |
 | cpufeatures | 0.2.17 | MIT OR Apache-2.0 | https://github.com/RustCrypto/utils |
+| cpufeatures | 0.3.1 | MIT OR Apache-2.0 | https://github.com/RustCrypto/utils |
 | crc32fast | 1.5.3 | MIT OR Apache-2.0 | https://github.com/srijs/rust-crc32fast |
 | crossbeam-channel | 0.5.17 | MIT OR Apache-2.0 | https://github.com/crossbeam-rs/crossbeam |
 | crossbeam-deque | 0.8.8 | MIT OR Apache-2.0 | https://github.com/crossbeam-rs/crossbeam |
@@ -161,6 +163,7 @@ SQLite（rusqlite に同梱）はパブリックドメインです。SQLite (bun
 | muda | 0.20.0 | Apache-2.0 OR MIT | https://github.com/tauri-apps/muda |
 | multiversion_no_op | 1.0.0 | Apache-2.0 OR MIT | https://github.com/hsivonen/multiversion_no_op |
 | new_debug_unreachable | 1.0.6 | MIT | https://github.com/mbrubeck/rust-debug-unreachable |
+| notify-rust | 4.19.0 | MIT OR Apache-2.0 | https://github.com/hoodie/notify-rust |
 | num-conv | 0.2.2 | MIT OR Apache-2.0 | https://github.com/jhpratt/num-conv |
 | num-traits | 0.2.19 | MIT OR Apache-2.0 | https://github.com/rust-num/num-traits |
 | once_cell | 1.21.4 | MIT OR Apache-2.0 | https://github.com/matklad/once_cell |
@@ -184,6 +187,8 @@ SQLite（rusqlite に同梱）はパブリックドメインです。SQLite (bun
 | quick-xml | 0.41.0 | MIT | https://github.com/tafia/quick-xml |
 | quick-xml | 0.42.0 | MIT | https://github.com/tafia/quick-xml |
 | quote | 1.0.47 | MIT OR Apache-2.0 | https://github.com/dtolnay/quote |
+| rand | 0.10.3 | MIT OR Apache-2.0 | https://github.com/rust-random/rand |
+| rand_core | 0.10.1 | MIT OR Apache-2.0 | https://github.com/rust-random/rand_core |
 | raw-window-handle | 0.6.2 | MIT OR Apache-2.0 OR Zlib | https://github.com/rust-windowing/raw-window-handle |
 | rayon | 1.12.0 | MIT OR Apache-2.0 | https://github.com/rayon-rs/rayon |
 | rayon-core | 1.13.0 | MIT OR Apache-2.0 | https://github.com/rayon-rs/rayon |
@@ -252,12 +257,14 @@ SQLite（rusqlite に同梱）はパブリックドメインです。SQLite (bun
 | tauri-plugin | 2.7.2 | Apache-2.0 OR MIT | https://github.com/tauri-apps/tauri |
 | tauri-plugin-dialog | 2.8.4 | Apache-2.0 OR MIT | https://github.com/tauri-apps/plugins-workspace |
 | tauri-plugin-fs | 2.7.1 | Apache-2.0 OR MIT | https://github.com/tauri-apps/plugins-workspace |
+| tauri-plugin-notification | 2.8.1 | Apache-2.0 OR MIT | https://github.com/tauri-apps/plugins-workspace |
 | tauri-plugin-process | 2.4.0 | Apache-2.0 OR MIT | https://github.com/tauri-apps/plugins-workspace |
 | tauri-plugin-updater | 2.14.1 | Apache-2.0 OR MIT | https://github.com/tauri-apps/plugins-workspace |
 | tauri-runtime | 2.12.2 | Apache-2.0 OR MIT | https://github.com/tauri-apps/tauri |
 | tauri-runtime-wry | 2.12.3 | Apache-2.0 OR MIT | https://github.com/tauri-apps/tauri |
 | tauri-utils | 2.10.2 | Apache-2.0 OR MIT | https://github.com/tauri-apps/tauri |
 | tauri-winres | 0.3.7 | MIT | https://github.com/tauri-apps/winres |
+| tauri-winrt-notification | 0.8.1 | MIT OR Apache-2.0 | https://github.com/tauri-apps/winrt-notification |
 | tempfile | 3.27.0 | MIT OR Apache-2.0 | https://github.com/Stebalien/tempfile |
 | tendril | 0.5.1 | MIT OR Apache-2.0 | https://github.com/servo/html5ever |
 | thiserror | 2.0.21 | MIT OR Apache-2.0 | https://github.com/dtolnay/thiserror |
@@ -279,6 +286,7 @@ SQLite（rusqlite に同梱）はパブリックドメインです。SQLite (bun
 | tower-layer | 0.3.3 | MIT | https://github.com/tower-rs/tower |
 | tower-service | 0.3.3 | MIT | https://github.com/tower-rs/tower |
 | tracing | 0.1.44 | MIT | https://github.com/tokio-rs/tracing |
+| tracing-attributes | 0.1.31 | MIT | https://github.com/tokio-rs/tracing |
 | tracing-core | 0.1.36 | MIT | https://github.com/tokio-rs/tracing |
 | tray-icon | 0.25.1 | MIT OR Apache-2.0 | https://github.com/tauri-apps/tray-icon |
 | try-lock | 0.2.5 | MIT | https://github.com/seanmonstar/try-lock |
