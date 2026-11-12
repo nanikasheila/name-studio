@@ -5,7 +5,7 @@ import { curveAt } from "../domain/brush";
 
 export type SideButton = "none" | "pan" | "eraser" | "undo";
 export type TouchAction = "pan" | "draw" | "none";
-export type PenCursor = "brush" | "cross" | "dot";
+export type PenCursor = "brush" | "circle" | "circleCross" | "cross" | "dot" | "none";
 
 export interface PenSettings {
   /** 筆圧カーブ: control points (pen pressure → pressure used), both 0..1. */
@@ -26,7 +26,7 @@ export interface PenSettings {
   touchTaps: boolean;
   /** 手のひら: fingers are ignored while the pen is near the screen. */
   palmRejection: boolean;
-  /** Cursor while drawing: the brush's size, a cross, or a dot. */
+  /** The pen's cursor: the brush's size (a circle, with a cross or not), a cross, a dot, or none (the pen tip on a tablet screen is enough). */
   cursor: PenCursor;
   /** 先読み: show the line a little ahead, where the pen is about to be (the browser's prediction), so it keeps up with the pen. */
   predict: boolean;
@@ -53,10 +53,18 @@ export const TOUCH_LABELS: Record<TouchAction, string> = {
 };
 
 export const CURSOR_LABELS: Record<PenCursor, string> = {
-  brush: "ブラシの大きさ",
+  brush: "ブラシの大きさ（細いときは十字つき）",
+  circle: "ブラシの大きさの ◯ だけ",
+  circleCross: "ブラシの大きさの ◯ ＋ 十字",
   cross: "十字",
   dot: "点",
+  none: "出さない",
 };
+
+/** Whether the cursor shows the pen's size (drawn on the pages; the others are the system's own cursors). */
+export function drawsSize(cursor: PenCursor): cursor is "brush" | "circle" | "circleCross" {
+  return cursor === "brush" || cursor === "circle" || cursor === "circleCross";
+}
 
 export const LINEAR: [number, number][] = [
   [0, 0],

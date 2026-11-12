@@ -10,6 +10,8 @@ import type { HelpKind } from "../editing/helptopics";
 import { movePane } from "./panefocus";
 import { TOOL_IDS, TOOLS } from "../editing/tooldefs";
 import { WORKSPACES, type WorkspaceId } from "./workspaces";
+import { CURSOR_LABELS, type PenCursor } from "../editing/pen";
+import { penPreferences } from "../platform/prefs";
 
 /** What the page commands do (pagelist.ts). */
 export interface PageCommands {
@@ -373,6 +375,20 @@ export function buildCommands(host: CommandHost): Command[] {
       words: "範囲選択 囲む 選択 かかる 接触 触れる 一部 少しでも 投げなわ",
       available: named,
       run: always(() => host.togglePickMode()),
+    },
+    {
+      id: "pen.cursorNext",
+      label: "ペンのカーソルの形を切り替える（ブラシの大きさ・◯だけ・十字・点・出さない）",
+      group: "道具",
+      keys: [],
+      words: "カーソル ポインター 丸 円 ◯ 十字 クロス 点 ブラシサイズ ペン先 見えない 出さない",
+      available: () => true,
+      run: always(() => {
+        const looks = Object.keys(CURSOR_LABELS) as PenCursor[];
+        const next = looks[(looks.indexOf(penPreferences.settings.cursor) + 1) % looks.length];
+        penPreferences.update({ cursor: next });
+        host.status(`ペンのカーソル: ${CURSOR_LABELS[next]}（設定 › ペン・キー でも選べます）`);
+      }),
     },
     {
       id: "eraser.next",
