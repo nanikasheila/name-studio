@@ -686,7 +686,7 @@ dialog.versions { width: min(640px, calc(100vw - 32px)); }
 .version .what { color: var(--muted); font-size: calc(12 * var(--px)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-version { color: var(--muted); font-size: calc(12 * var(--px)); }
 /* タイマー: the time left in the bar at the top, red while working and green on a break. */
-.timer-chip { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; padding: 2px 8px; border-radius: 12px; font-variant-numeric: tabular-nums; }
+.timer-chip { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; padding: 2px 6px; border-radius: 12px; font-variant-numeric: tabular-nums; }
 .timer-chip[hidden] { display: none; }
 .timer-chip-text:empty { display: none; }
 .timer-chip[data-phase="work"] { background: var(--error-bg); color: var(--error-text); border-color: var(--error-line); }
@@ -1062,6 +1062,8 @@ button.with-icon, .page-nav .segmented button, .workspace-modes button { display
   .toolbar #versions span, .toolbar #settings span, .toolbar #shortcuts span, .toolbar #pen-settings span {
     position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
   }
+  /* The version makes way for the timer in the editor (the start screen and 設定 › 更新 say it). */
+  .toolbar:has(.app-bar:not([hidden])) .app-version { display: none; }
 }
 /* The undo and export buttons never give way: they stay on screen at the smallest window. */
 .toolbar .app-bar { flex-shrink: 0; }
