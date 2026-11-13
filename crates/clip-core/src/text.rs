@@ -479,7 +479,8 @@ fn retarget(blob: &[u8], text: &NewText, counted_runs: bool) -> Result<Vec<u8>> 
                         value = color_bytes(color);
                     }
                 }
-                ATTR_EDGE if counted_runs && value.len() == 24 => {
+                // Both lists carry it, and CSP draws the one in the add-attributes list.
+                ATTR_EDGE if value.len() == 24 => {
                     value = TextEdge::to_attribute(text.edge.as_ref());
                     edged = true;
                 }
@@ -500,7 +501,7 @@ fn retarget(blob: &[u8], text: &NewText, counted_runs: bool) -> Result<Vec<u8>> 
         items.push(Record { id, data: value });
     }
     // A donor from a CSP without フチ has no record for it: one is added only when there is an edge.
-    if counted_runs && !edged && text.edge.is_some() {
+    if !edged && text.edge.is_some() {
         items.push(Record {
             id: ATTR_EDGE,
             data: TextEdge::to_attribute(text.edge.as_ref()),

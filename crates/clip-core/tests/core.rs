@@ -436,6 +436,11 @@ fn new_text_writes_its_edge_as_csp_does() {
     ]
     .concat();
     assert_eq!(edge_of(&edged), Some(expected.clone()));
+    // The add-attributes list carries it too, and it is that one CSP draws.
+    let mut listed = (blob.len() as u32).to_le_bytes().to_vec();
+    listed.extend(&blob);
+    let added = retarget_add_attributes(&listed, &text).unwrap();
+    assert_eq!(edge_of(&added[4..]), Some(expected.clone()));
     // A donor without the record gets one only for an edge.
     let bare = build_tlv(&[(0x20, 400i32.to_le_bytes().to_vec())]);
     assert_eq!(
