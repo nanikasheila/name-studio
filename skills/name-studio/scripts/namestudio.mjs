@@ -890,17 +890,6 @@ function addLine(project, page, center, text = "セリフ", kind = "speech") {
 	sortLines(page, project.binding);
 	return line;
 }
-/** Change a line's kind; a balloon that had the old kind's usual shape takes the new kind's. */
-function setLineKind(project, line, kind) {
-	const usual = (k) => project.lineShapes?.[k] ?? "auto";
-	if ((line.balloonShape ?? "auto") === usual(line.kind)) {
-		const shape = usual(kind);
-		if (shape === "auto") delete line.balloonShape;
-		else line.balloonShape = shape;
-	}
-	line.kind = kind;
-	fitLine(line);
-}
 /** Move a line with its balloon; tails keep pointing at their speakers. */
 function moveLine(line, dx, dy) {
 	const [x0, y0, x1, y1] = line.box;
@@ -1816,6 +1805,119 @@ function putScene(project, first, last, title, summary = "") {
 function sortScenes(project) {
 	project.scenes.sort((a, b) => pageIndex(project, a.firstPage) - pageIndex(project, b.firstPage));
 }
+// src/domain/linelook.ts
+/** The built-in kinds whose lines look the same whoever says them (a type says so itself with `ownLook`). */
+var OWN_LOOK_KINDS = [
+	"narration",
+	"sfx",
+	"aside"
+];
+var LOOK_KEYS = [
+	"shape",
+	"font",
+	"fontSizePt",
+	"inverted",
+	"edge"
+];
+function lineTypeOf(project, line) {
+	return line.type ? project.lineTypes?.find((type) => type.id === line.type) : void 0;
+}
+/** Whether the speaker's フキダシ設定 is used for this line. */
+function followsSpeaker(project, line) {
+	const type = lineTypeOf(project, line);
+	return type ? !type.ownLook : !OWN_LOOK_KINDS.includes(line.kind);
+}
+function speakerOf(project, line) {
+	return line.speaker ? project.characters.find((character) => character.id === line.speaker) : void 0;
+}
+function over(look, layer) {
+	if (!layer) return look;
+	const next = { ...look };
+	if (layer.shape !== void 0) next.shape = layer.shape;
+	if (layer.font) next.font = layer.font;
+	if (layer.fontSizePt !== void 0) next.fontSizePt = layer.fontSizePt;
+	if (layer.inverted !== void 0) next.inverted = layer.inverted;
+	if (layer.edge !== void 0) next.edge = layer.edge;
+	return next;
+}
+/** The look a line gets from 作品の既定, its type and (when it follows them) its speaker. */
+function usualLook(project, line) {
+	const typed = over({
+		shape: project.lineShapes?.[line.kind] ?? "auto",
+		fontSizePt: defaultFontPt(line.kind, project.style),
+		inverted: false,
+		edge: false
+	}, lineTypeOf(project, line));
+	return followsSpeaker(project, line) ? over(typed, speakerOf(project, line)?.look) : typed;
+}
+/** The line's look as it is now. */
+function lookOf(line) {
+	return {
+		shape: line.balloonShape ?? "auto",
+		...line.font ? { font: line.font } : {},
+		fontSizePt: line.fontSizePt,
+		inverted: !!line.inverted,
+		edge: !!line.edge
+	};
+}
+function setField(line, key, look) {
+	switch (key) {
+		case "shape":
+			if (look.shape === "auto") delete line.balloonShape;
+			else line.balloonShape = look.shape;
+			return;
+		case "font":
+			if (look.font) line.font = look.font;
+			else delete line.font;
+			return;
+		case "fontSizePt":
+			line.fontSizePt = look.fontSizePt;
+			return;
+		case "inverted":
+			if (look.inverted) line.inverted = true;
+			else delete line.inverted;
+			return;
+		case "edge": if (look.edge) line.edge = true;
+		else delete line.edge;
+	}
+}
+/**
+* The layers under a line went from `before` to `after`: each field the line
+* still had as `before` gave it takes `after`'s (one set by hand stays).
+* Returns whether the line changed.
+*/
+function followLook(line, before, after) {
+	const now = lookOf(line);
+	let changed = false;
+	for (const key of LOOK_KEYS) {
+		if (now[key] !== before[key] || before[key] === after[key]) continue;
+		setField(line, key, after);
+		changed = true;
+	}
+	if (changed) fitLine(line);
+	return changed;
+}
+/** Change a line's 種類 (a kind or a type made for the name): what it had from the old one goes, the new one's comes. */
+function setLineType(project, line, choice) {
+	const before = usualLook(project, line);
+	if ("type" in choice) {
+		const type = project.lineTypes?.find((t) => t.id === choice.type);
+		if (!type) return;
+		line.type = type.id;
+		line.kind = type.base;
+	} else {
+		delete line.type;
+		line.kind = choice.kind;
+	}
+	if (!followLook(line, before, usualLook(project, line))) fitLine(line);
+}
+/** Change who says a line: the look it had from the old speaker goes, the new one's comes. */
+function setLineSpeaker(project, line, speaker) {
+	const before = usualLook(project, line);
+	if (speaker) line.speaker = speaker;
+	else delete line.speaker;
+	followLook(line, before, usualLook(project, line));
+}
 // src/domain/alternatives.ts
 /** The 別案 set that holds a page in use, if any. */
 function alternativesOf(project, pageId) {
@@ -2208,7 +2310,7 @@ function panelBoxes(box, count, gaps = DEFAULT_GUTTERS, binding = "right") {
 function placeLines(project, page, panel, lines, speakers) {
 	const placed = lines.map((said) => {
 		const line = addLine(project, page, [0, 0], said.text || "…", said.kind);
-		if (said.speaker) line.speaker = speakers.get(said.speaker);
+		if (said.speaker) setLineSpeaker(project, line, speakers.get(said.speaker));
 		if (said.shape) line.balloonShape = said.shape;
 		return line;
 	});
@@ -2371,12 +2473,11 @@ function updatePage(project, page, used, speakers, report) {
 			}
 			const speaker = speakerOf(s);
 			if ((line.speaker ?? void 0) !== speaker) {
-				if (speaker) line.speaker = speaker;
-				else delete line.speaker;
+				setLineSpeaker(project, line, speaker);
 				changed = true;
 			}
 			if (line.kind !== s.kind) {
-				setLineKind(project, line, s.kind);
+				setLineType(project, line, { kind: s.kind });
 				changed = true;
 			}
 			if (s.shape && line.balloonShape !== s.shape) {
@@ -2396,7 +2497,7 @@ function updatePage(project, page, used, speakers, report) {
 			}
 			const line = addLine(project, page, [0, 0], s.text || "…", s.kind);
 			const speaker = speakerOf(s);
-			if (speaker) line.speaker = speaker;
+			if (speaker) setLineSpeaker(project, line, speaker);
 			if (s.shape) line.balloonShape = s.shape;
 			placeAfter(project, page, panel, line, previous, gone);
 			previous = line;
@@ -3352,7 +3453,7 @@ function applyOne(project, op, done) {
 			const previous = op.after ? lineAt(project, op.after).line : panel ? page.lines.filter((l) => l.panel === panel.id).at(-1) : void 0;
 			const speaker = op.speaker ? speakerFor(project, op.speaker, done) : void 0;
 			const line = addLine(project, page, [0, 0], op.text || "…", kind);
-			if (speaker) line.speaker = speaker;
+			if (speaker) setLineSpeaker(project, line, speaker);
 			if (shape && shape !== "auto") line.balloonShape = shape;
 			placeAfter(project, page, panel, line, previous && page.lines.includes(previous) ? previous : void 0);
 			assignPanels(page);
@@ -3365,14 +3466,14 @@ function applyOne(project, op, done) {
 			const shape = checkShape(op.shape);
 			const changes = [];
 			if (op.speaker === null) {
-				delete line.speaker;
+				setLineSpeaker(project, line, void 0);
 				changes.push("話者なし");
 			} else if (op.speaker !== void 0) {
-				line.speaker = speakerFor(project, op.speaker, done);
+				setLineSpeaker(project, line, speakerFor(project, op.speaker, done));
 				changes.push(`話者 ${op.speaker}`);
 			}
 			if (kind && kind !== line.kind) {
-				setLineKind(project, line, kind);
+				setLineType(project, line, { kind });
 				changes.push(KIND_LABELS[kind]);
 			}
 			if (shape) {
