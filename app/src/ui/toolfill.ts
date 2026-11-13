@@ -6,27 +6,41 @@ import { fillAt, fillInside, fillUnder, type FillResult } from "../domain/fillre
 import { FILL_WAY_LABELS } from "../editing/fillsettings";
 import { addBreakout } from "../domain/koma";
 import { bounds } from "../model/geometry";
-import type { Page, Point, Project } from "../model/model";
+import type { FillTone, Page, Point, Project } from "../model/model";
+import { ownColor } from "../domain/color";
+import { drawColors } from "../platform/drawcolor";
 import { TONE_LABELS, addFill, insideFill, simplify } from "../domain/strokes";
 
+/** What a new fill gets from the tool: its tone, or (塗り in 描画色) its colour; and how to say it. */
+function inkInHand(editor: EditorCore): { tone: FillTone; color?: string; label: string } {
+  const tone = editor.fill.tone;
+  if (tone !== "color") return { tone, label: TONE_LABELS[tone] };
+  const color = ownColor(drawColors.main);
+  return color ? { tone: "black", color, label: `描画色（${color}）` } : { tone: "black", label: TONE_LABELS.black };
+}
+
 export function pressFill(editor: EditorCore, { project, slot, point }: Press): void {
-  const { way, tone } = editor.fill;
+  const way = editor.fill.way;
   if (way !== "click") {
     editor.startDrag({ kind: "fill", slot, points: [point], way });
     return;
   }
-  // On a fill: it takes the tone in hand, as CSP fills an area of one colour with another.
+  // On a fill: it takes the tone (or colour) in hand, as CSP fills an area of one colour with another.
   const under = [...(slot.page.fills ?? [])].reverse().find((fill) => insideFill(fill, point));
   if (under) {
-    if ((under.tone ?? "black") === tone) {
-      editor.host.status(`ここはもう${TONE_LABELS[tone]}で塗ってあります`);
+    const ink = inkInHand(editor);
+    if ((under.tone ?? "black") === ink.tone && under.color === ink.color) {
+      editor.host.status(`ここはもう${ink.label}で塗ってあります`);
       return;
     }
     editor.host.begin();
-    if (tone === "black") delete under.tone;
-    else under.tone = tone;
+    if (ink.tone === "black") delete under.tone;
+    else under.tone = ink.tone;
+    if (ink.color) under.color = ink.color;
+    else delete under.color;
     editor.host.commit();
-    editor.host.status(`塗りを${TONE_LABELS[tone]}に変えました`);
+    if (ink.color) drawColors.used(ink.color);
+    editor.host.status(`塗りを${ink.label}に変えました`);
     return;
   }
   const result = fillAt(project, slot.page, point, editor.fill.options.click);
@@ -59,14 +73,16 @@ function addRegions(editor: EditorCore, project: Project, page: Page, result: Fi
     );
     return;
   }
+  const ink = inkInHand(editor);
   editor.host.begin();
-  for (const region of result.regions) addFill(project, page, region.shape, editor.fill.tone, region.holes, editor.fill.under[way]);
+  for (const region of result.regions) addFill(project, page, region.shape, ink.tone, region.holes, editor.fill.under[way], ink.color);
   editor.host.commit();
+  if (ink.color) drawColors.used(ink.color);
   const count = result.regions.length;
   editor.host.status(
     result.wholePage
       ? "線で閉じていない所だったので、ページ全体を塗りました（Ctrl+Z で戻す。隙間閉じを大きくすると閉じることがあります）"
-      : `${FILL_WAY_LABELS[way]}: ${count > 1 ? `${count} か所を` : ""}${TONE_LABELS[editor.fill.tone]}で塗りました`,
+      : `${FILL_WAY_LABELS[way]}: ${count > 1 ? `${count} か所を` : ""}${ink.label}で塗りました`,
   );
 }
 
@@ -97,9 +113,11 @@ const fill: DragHandler<DragOf<"fill">> = {
       addRegions(editor, project, page, fillInside(project, page, shape, editor.fill.options.enclose), "enclose");
       return;
     }
+    const ink = inkInHand(editor);
     editor.host.begin();
-    addFill(project, page, shape, editor.fill.tone, undefined, editor.fill.under.lasso);
+    addFill(project, page, shape, ink.tone, undefined, editor.fill.under.lasso, ink.color);
     editor.host.commit();
+    if (ink.color) drawColors.used(ink.color);
   },
 };
 

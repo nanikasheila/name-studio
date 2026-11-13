@@ -282,7 +282,7 @@ pub fn update_dialogue(
         .map(|record| record.vectors.clone())
         .unwrap_or_default();
     for layer in &update.balloons {
-        if let PageLayer::Vector { name, lines } = layer {
+        if let PageLayer::Vector { name, lines, .. } = layer {
             let points: Vec<Vec<(f64, f64)>> = lines.iter().map(NewVectorLine::xy).collect();
             let new = shape_signature(points.iter().map(Vec::as_slice));
             let on_page = named_layer(&document, name)
@@ -421,7 +421,7 @@ pub fn update_dialogue(
         };
         let parent = parent_of.get(&old).copied().unwrap_or(root);
         let id = match layer {
-            PageLayer::Vector { name, lines } => {
+            PageLayer::Vector { name, lines, colors } => {
                 let donor = match brush {
                     Some(brush) => {
                         own.vector = Some((old, brush));
@@ -437,7 +437,7 @@ pub fn update_dialogue(
                         donor
                     }
                 };
-                add_vector_layer(&mut file, donor, name, lines, parent)?
+                add_vector_layer(&mut file, donor, name, lines, colors, parent)?
             }
             PageLayer::Raster(raster) => {
                 // Looks like the old one (shown, not a 下描き, not locked), with the new pixels.

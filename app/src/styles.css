@@ -1642,3 +1642,31 @@ dialog.perf-dialog { width: min(720px, 92vw); }
 .assist-starters button:hover { color: var(--text); border-color: var(--accent); }
 .assist.talking .assist-starters { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; padding-bottom: 2px; }
 .assist.talking .assist-starters button { flex: none; }
+
+/* カラー: the 描画色 palette (CSP's カラーサークル, スライダー, 履歴, カラーセット). */
+.color-panel { padding: 6px 8px 8px; display: flex; flex-direction: column; gap: 6px; font-size: calc(12 * var(--px)); }
+.color-top { display: flex; align-items: center; gap: 6px; }
+.color-chips { position: relative; width: 44px; height: 34px; flex: none; }
+.color-chip { position: absolute; width: 26px; height: 26px; border: 2px solid var(--panel); outline: 1px solid var(--line); border-radius: 3px; padding: 0; min-height: 0; cursor: pointer; }
+.color-chip.main { left: 0; top: 0; z-index: 1; }
+.color-chip.sub { left: 14px; top: 8px; }
+.color-swap { position: absolute; right: -6px; top: -4px; border: none; background: none; padding: 0; min-height: 0; font-size: calc(11 * var(--px)); cursor: pointer; color: var(--muted); }
+.color-hex { width: 6.5em; font-family: ui-monospace, monospace; font-size: calc(12 * var(--px)); min-height: 0; padding: 2px 4px; }
+.color-dropper, .color-black { min-height: 0; padding: 2px 6px; font-size: calc(12 * var(--px)); }
+.color-dropper.active { background: var(--accent); color: #fff; }
+.color-wheel { width: 168px; height: 168px; align-self: center; touch-action: none; cursor: crosshair; }
+.color-modes { align-self: flex-start; }
+.color-modes button { padding: 1px 8px; min-height: 0; font-size: calc(11 * var(--px)); }
+.color-modes button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.color-sliders { display: flex; flex-direction: column; gap: 2px; }
+.color-slider { display: grid; grid-template-columns: 1.2em 1fr 3.6em; align-items: center; gap: 4px; }
+.color-slider input[type="range"] { min-height: 0; padding: 0; width: 100%; }
+.color-slider input[type="number"] { min-height: 0; padding: 1px 2px; font-size: calc(12 * var(--px)); width: 100%; }
+.color-heading { color: var(--muted); display: flex; align-items: center; justify-content: space-between; margin-top: 2px; }
+.color-swatches { display: flex; flex-wrap: wrap; gap: 3px; }
+.color-swatch { width: 18px; height: 18px; padding: 0; min-height: 0; border: 1px solid var(--line); border-radius: 3px; cursor: pointer; }
+.color-swatch.current { outline: 2px solid var(--accent); outline-offset: 1px; }
+.color-swatch.named { width: 22px; border-radius: 50%; }
+.color-add { border: none; background: none; padding: 0 4px; min-height: 0; cursor: pointer; color: inherit; }
+.color-empty { color: var(--muted); font-size: calc(11 * var(--px)); }
+.tone.color { border: 1px solid var(--line); }

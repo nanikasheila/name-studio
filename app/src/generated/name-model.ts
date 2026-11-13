@@ -182,6 +182,10 @@ holes: Array<Array<[number, number]>>,
  */
 tone?: string, 
 /**
+ * 色 (`#rrggbb`), in place of the tone; none: the tone's.
+ */
+color?: string, 
+/**
  * Under the rough lines (as a fill layer under the drawing in CSP); none: over them.
  */
 under?: boolean, };
@@ -409,7 +413,11 @@ cut?: [boolean, boolean],
 /**
  * The [`RoughLayer`] it is on; none (or one gone) is the first layer.
  */
-layer?: string, };
+layer?: string, 
+/**
+ * 色 (`#rrggbb`) it was drawn in; none: black (the rough's ink).
+ */
+color?: string, };
 
 export type RoughLayer = { id: string, name: string, 
 /**

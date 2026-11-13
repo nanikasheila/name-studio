@@ -38,9 +38,14 @@ export const GAP_STEPS: readonly { mm: number; label: string }[] = [
 
 export { REFER_LABELS };
 
+/** What the fill tool fills with: a tone, or the 描画色 (the colour palette's). */
+export type FillInk = FillTone | "color";
+
+export const FILL_INKS: readonly FillInk[] = ["black", "gray", "white", "color"];
+
 export interface FillSettings {
   way: FillWay;
-  tone: FillTone;
+  tone: FillInk;
   /** Each way's own 隙間閉じ, ベクターの中心で塗り止まり, 領域拡縮 and 参照. */
   options: Record<AreaWay, FillOptions>;
   /** 塗り残し部分に塗る: the brush's size (mm across). */
@@ -81,7 +86,7 @@ export function fillSettingsFrom(raw: unknown): FillSettings {
   if (!raw || typeof raw !== "object") return settings;
   const value = raw as Partial<Record<keyof FillSettings, unknown>>;
   if (FILL_WAYS.includes(value.way as FillWay)) settings.way = value.way as FillWay;
-  if (value.tone === "black" || value.tone === "gray" || value.tone === "white") settings.tone = value.tone;
+  if (FILL_INKS.includes(value.tone as FillInk)) settings.tone = value.tone as FillInk;
   if (typeof value.brushMm === "number" && Number.isFinite(value.brushMm)) settings.brushMm = clamp(value.brushMm, ...BRUSH_MM);
   const options = value.options && typeof value.options === "object" ? (value.options as Record<string, unknown>) : {};
   for (const way of AREA_WAYS) settings.options[way] = optionsFrom(options[way], settings.options[way]);

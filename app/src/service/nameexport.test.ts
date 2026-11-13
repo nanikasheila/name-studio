@@ -104,6 +104,9 @@ describe("editable layers", () => {
     expect(stroke.closed).toBe(false);
     expect(stroke.points.map((point) => point[2])).toEqual([0.35, 1]);
     expect(stroke.widthPx).toBeCloseTo(5);
+    expect(stroke.color).toBeUndefined();
+    page.strokes[0].color = "#3a7bd5";
+    expect(vectorLines(page, "strokes", m)[0].color).toEqual([0x3a, 0x7b, 0xd5]);
   });
 
   it("leaves open edges out and splits strokes over the borders into their own layer", () => {

@@ -14,6 +14,8 @@ const TOOLPROPS_ICON =
   '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h14M3 14h14"/><circle cx="7" cy="6" r="2"/><circle cx="13" cy="14" r="2"/></svg>';
 const BRUSHSIZE_ICON =
   '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="4.5" cy="10" r="1.2"/><circle cx="9" cy="10" r="2.2"/><circle cx="15" cy="10" r="3.3"/></svg>';
+const COLOR_ICON =
+  '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5a7.5 7.5 0 1 0 0 15c1.2 0 1.6-.9 1.2-1.8-.5-1 .1-2.2 1.3-2.2h1.8a3.2 3.2 0 0 0 3.2-3.2C17.5 6 14.2 2.5 10 2.5z"/><circle cx="6.5" cy="9" r="1"/><circle cx="9" cy="6" r="1"/><circle cx="12.8" cy="6.6" r="1"/></svg>';
 const PAGES_ICON =
   '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="2.5" width="12" height="15" rx="1"/><path d="M4 9h12M10 9v8.5"/></svg>';
 const SCRIPT_ICON =
@@ -59,6 +61,12 @@ export function editorDocks(changed: () => void): Docks {
         TOOLPROPS_ICON,
       ),
       palette("brushsize", "ブラシサイズ", "ペン・消しゴムの太さを丸いボタンで選ぶ（CSP のブラシサイズパレットのように）", BRUSHSIZE_ICON),
+      palette(
+        "color",
+        "カラー",
+        "描画色（ペン・塗りの色）。カラーサークル・スライダー・履歴・カラーセット（人物の色も）・スポイト",
+        COLOR_ICON,
+      ),
       palette("pages", "ページ", "ページの一覧（ドラッグで並べ替え）", PAGES_ICON),
       palette("script", "台本", "全ページのセリフを台本の形で。台本・プロットの取り込みも", SCRIPT_ICON),
       palette("cast", "人物", "登場人物（名前・色・口調）", CAST_ICON),

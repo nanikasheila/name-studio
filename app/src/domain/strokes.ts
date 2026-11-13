@@ -8,10 +8,19 @@ import { newId } from "./project";
 
 export const TONE_LABELS: Record<FillTone, string> = { black: "黒（ベタ）", gray: "グレー", white: "白" };
 
-export function addFill(project: Project, page: Page, shape: Point[], tone: FillTone, holes?: Point[][], under = false): Fill {
+export function addFill(
+  project: Project,
+  page: Page,
+  shape: Point[],
+  tone: FillTone,
+  holes?: Point[][],
+  under = false,
+  color?: string,
+): Fill {
   const fill: Fill = { id: newId(project, "fill"), shape };
   if (holes?.length) fill.holes = holes;
-  if (tone !== "black") fill.tone = tone;
+  if (color) fill.color = color;
+  else if (tone !== "black") fill.tone = tone;
   if (under) fill.under = true;
   page.fills = [...(page.fills ?? []), fill];
   return fill;

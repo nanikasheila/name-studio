@@ -27,6 +27,7 @@ import { PerfDialog } from "./perfdialog";
 import { perfMeter } from "../platform/perfmeter";
 import { LayerView, type LayerRef } from "./layers";
 import { RoughPanel } from "./roughpanel";
+import { ColorPanel } from "./colorpanel";
 import { SeriesPanel } from "./seriespanel";
 import { isMark, ROUGH_BASE } from "../domain/roughlayers";
 import { buildCommands } from "./actions";
@@ -142,10 +143,7 @@ export class Workbench {
     select: (ref) => this.selectLayer(ref),
     hidden: () => this.editor.hidden,
     setHidden: (keys, hide) => {
-      for (const key of keys) {
-        if (hide) this.editor.hidden.add(key);
-        else this.editor.hidden.delete(key);
-      }
+      for (const key of keys) this.editor.hidden[hide ? "add" : "delete"](key);
       // Hidden things cannot stay picked.
       const s = this.editor.selection;
       if (s && s.kind !== "group" && this.editor.hidden.has(`${s.kind}:${s.id}`)) this.editor.select(null);
@@ -179,6 +177,11 @@ export class Workbench {
     change: (change) => this.edits.changeRough(change),
     selectedStrokes: () => pickedStrokes(this.editor.selection).length,
     liveRange: (field, apply) => this.live.range(field, apply, () => this.renderAll()),
+  });
+  private readonly colorPanel = new ColorPanel({
+    project: () => this.session.project,
+    status: (message) => this.setStatus(message),
+    pickFromPage: (done) => this.editor.pickColorOnce(done),
   });
   private readonly seriesPanel = new SeriesPanel({
     project: () => this.session.project,
@@ -872,6 +875,7 @@ export class Workbench {
     if (open("notes")) this.lists.notes(project);
     if (open("held")) this.lists.held(project);
     if (open("layers")) this.renderLayers();
+    if (open("color")) this.colorPanel.render($("side-color"));
     if (open("series")) this.seriesPanel.render($("side-series"));
     this.lists.assist(open("assist"));
   }
@@ -894,9 +898,7 @@ export class Workbench {
     const s = this.editor.selection;
     if (!s) return false;
     if (ref.kind === "strokes") {
-      const picked = pickedStrokes(s)
-        .filter((stroke) => stroke.pageId === ref.pageId)
-        .map((stroke) => stroke.id);
+      const picked = pickedStrokes(s).flatMap((stroke) => (stroke.pageId === ref.pageId ? [stroke.id] : []));
       return picked.length === ref.ids.length && ref.ids.every((id) => picked.includes(id));
     }
     const page = this.project?.pages.find((p) => p.id === ref.pageId);

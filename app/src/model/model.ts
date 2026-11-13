@@ -134,6 +134,8 @@ export interface Stroke {
   cut?: [boolean, boolean];
   /** The ラフ線のレイヤー it is on (`RoughLayer.id`); none (or one gone) is the first layer. */
   layer?: string;
+  /** 色 (`#rrggbb`) it was drawn in; none: black (the rough's ink). */
+  color?: string;
 }
 
 /** ラフ線のレイヤー: rough lines kept apart (人物・背景・効果…), shown, faded and locked together. */
@@ -312,6 +314,8 @@ export interface Fill {
   /** Holes in it (塗りつぶし round a closed line inside the area). */
   holes?: Point[][];
   tone?: FillTone;
+  /** 色 (`#rrggbb`), in place of the tone; none: the tone's. */
+  color?: string;
   /** Under the rough lines (as a fill layer under the drawing in CSP); none: over them. */
   under?: boolean;
 }

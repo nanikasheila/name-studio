@@ -290,6 +290,9 @@ pub struct Fill {
     /// "gray" or "white"; none is black (ベタ).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tone: Option<String>,
+    /// 色 (`#rrggbb`), in place of the tone; none: the tone's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
     /// Under the rough lines (as a fill layer under the drawing in CSP); none: over them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub under: Option<bool>,
@@ -825,6 +828,9 @@ pub struct Stroke {
     /// The [`RoughLayer`] it is on; none (or one gone) is the first layer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layer: Option<String>,
+    /// 色 (`#rrggbb`) it was drawn in; none: black (the rough's ink).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
 }
 
 /// ラフ線のレイヤー: rough lines kept apart (人物・背景・効果…), shown,

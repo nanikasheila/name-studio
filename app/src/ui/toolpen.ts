@@ -1,6 +1,8 @@
 // The pen: a rough line with the pen's brush (手ブレ補正 as it is drawn,
 // 後補正 when it is done), straight with Shift, cut where it crosses onto the
 // facing page (or, 連続, onto other pages).
+import { ownColor } from "../domain/color";
+import { drawColors } from "../platform/drawcolor";
 import { FULL_SPEED_MM, followFactor, postCorrect, tiltOf as penTilt, usesMotion } from "../domain/brush";
 import type { DragHandler, DragOf, EditorCore, EditorLook, Press } from "./editorcore";
 
@@ -128,9 +130,13 @@ const pen: DragHandler<DragOf<"pen">> = {
       added++;
       if (over && target.index === drag.slot.index) stroke.over = true;
       if (layer !== ROUGH_BASE) stroke.layer = layer;
+      // 描画色: a ラフ線 in a colour keeps it (a 指示 is its layer's colour).
+      const color = drag.mark ? undefined : ownColor(drawColors.main);
+      if (color) stroke.color = color;
       const cut: [boolean, boolean] = [index > 0, index < runs.length - 1];
       if (cut[0] || cut[1]) stroke.cut = cut;
     }
+    if (added && !drag.mark) drawColors.used();
     if (added) editor.host.commit(onlyLine);
     else editor.host.cancel();
   },

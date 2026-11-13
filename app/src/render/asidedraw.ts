@@ -18,6 +18,7 @@ import {
   INK,
   tracePath,
   type MmToPx,
+  roughInk,
 } from "./pagedraw";
 import { pictureOf } from "./pictures";
 import type { StrokeCache } from "./strokecache";
@@ -145,12 +146,12 @@ function drawHeld(ctx: CanvasRenderingContext2D, project: Project, slot: Slot, h
   ctx.clip();
   const rough = { ...page, strokes: withoutMarks(project, page.strokes) };
   drawPageFills(ctx, page, m, undefined, true);
-  drawStrokes(ctx, rough, m, false, () => "#3a3834", 0.7, brushes);
+  drawStrokes(ctx, rough, m, false, roughInk, 0.7, brushes);
   drawPanelFills(ctx, page, m);
   drawPageFills(ctx, page, m);
   ctx.restore();
   drawPanelBorders(ctx, page, m, () => INK);
-  drawStrokes(ctx, rough, m, true, () => "#3a3834", 0.7, brushes);
+  drawStrokes(ctx, rough, m, true, roughInk, 0.7, brushes);
   drawBalloons(ctx, page, m);
   for (const line of page.lines) drawLineText(ctx, line, m);
   drawMarks(ctx, project, page, m, 0.7);

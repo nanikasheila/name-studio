@@ -3,7 +3,7 @@
 // panel as it reads, for the 保留 list.
 
 import type { HeldPanel, Page, Project } from "../model/model";
-import { drawBalloons, drawPageFills, drawPageTexts, drawPanelBorders, drawPanelFills, drawStrokes } from "./pagedraw";
+import { drawBalloons, drawPageFills, drawPageTexts, drawPanelBorders, drawPanelFills, drawStrokes, roughInk } from "./pagedraw";
 import { bounds } from "../model/geometry";
 import { trimBox } from "../domain/pagebox";
 import { svg } from "../platform/dom";
@@ -76,11 +76,11 @@ export function heldThumbnail(project: Project, held: HeldPanel, width = 116): H
   };
   const m = { scale, x: pad - x0 * scale, y: pad - y0 * scale };
   drawPageFills(ctx, page, m, undefined, true);
-  drawStrokes(ctx, page, m, false, () => "#3a3834", 0.4, project.brushes);
+  drawStrokes(ctx, page, m, false, roughInk, 0.4, project.brushes);
   drawPanelFills(ctx, page, m, 0.4);
   drawPageFills(ctx, page, m);
   drawPanelBorders(ctx, page, m, undefined, 0.8);
-  drawStrokes(ctx, page, m, true, () => "#3a3834", 0.4, project.brushes);
+  drawStrokes(ctx, page, m, true, roughInk, 0.4, project.brushes);
   drawBalloons(ctx, page, m, 0.5);
   drawPageTexts(ctx, page, m);
   return canvas;

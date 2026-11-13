@@ -45,7 +45,7 @@ describe("欄（パレット）", () => {
     before.order = before.order.filter((id) => !gone.includes(id));
     const { subtools: _, toolprops: _t, brushsize: _b, ...palettes } = before.palettes;
     const layout = readLayout(JSON.stringify({ ...before, palettes }));
-    expect(column(layout, "left").slice(0, 4)).toEqual(["subtools", "toolprops", "brushsize", "pages"]);
+    expect(column(layout, "left").slice(0, 5)).toEqual(["subtools", "toolprops", "brushsize", "color", "pages"]);
     expect(isOpen(layout, "subtools")).toBe(true);
     expect(isOpen(layout, "toolprops")).toBe(true);
     expect(isOpen(layout, "brushsize")).toBe(false);
@@ -76,16 +76,17 @@ describe("欄（パレット）", () => {
       "subtools",
       "toolprops",
       "brushsize",
+      "color",
     ]);
     expect(layout.order.indexOf("script")).toBeLessThan(layout.order.indexOf("inspector"));
-    expect(layout.order).toHaveLength(12);
+    expect(layout.order).toHaveLength(13);
     expect(layout.palettes.subtools).toMatchObject({ side: "left", shown: true });
     expect(layout.palettes.pages).toMatchObject({ side: "right", col: 0, shown: true, folded: true, weight: 2, tab: null, float: null });
     expect(layout.palettes.script.side).toBe("left");
     // One column a side, its width as it was (in range).
     expect(layout.widths).toEqual({ left: [640], right: [160] });
     expect(layout.collapsed).toEqual({ left: true, right: false });
-    expect(readLayout("{not json").order).toHaveLength(12);
+    expect(readLayout("{not json").order).toHaveLength(13);
     // A side's width kept with the icons above it: the column alone is that much narrower now they stand beside it.
     expect(readLayout(JSON.stringify({ width: { left: 280, right: 300 } })).widths).toEqual({ left: [240], right: [260] });
   });
