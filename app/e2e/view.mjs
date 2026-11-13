@@ -125,6 +125,37 @@ try {
     return hit && window.nameStudio.workbench.editor.clientOf(hit.page.id, hit.point);
   }, target);
   check(near(upright, target), "upright, points map back too");
+
+  // 左右反転 (Shift+H or the button): the view is mirrored, points still map both ways, the pen draws where it is.
+  await page.keyboard.press("Shift+H");
+  await page.waitForTimeout(100);
+  check((await page.locator("#status").textContent()).includes("左右反転しています"), "Shift+H mirrors the view");
+  check((await page.locator("#view-flip").getAttribute("aria-pressed")) === "true", "and the button shows it");
+  const mirrored = await under(target);
+  check(mirrored !== null && !near(mirrored, before, 5), "another point of the page is under the pointer now");
+  check(near(await onScreen(pageId, mirrored), target), "mirrored, the page point maps back to the same place on screen");
+  await page.keyboard.press("p");
+  const drawAt = [middle[0] - 100, middle[1] + 60];
+  const drawnPoint = await under(drawAt);
+  await page.mouse.move(...drawAt);
+  await page.mouse.down();
+  await page.mouse.move(drawAt[0] + 30, drawAt[1] + 5, { steps: 5 });
+  await page.mouse.up();
+  await page.waitForTimeout(100);
+  const first = await page.evaluate(() => {
+    const pages = window.nameStudio.workbench.project.pages;
+    const all = pages.flatMap((p) => p.strokes ?? []);
+    return all[all.length - 1]?.points[0] ?? null;
+  });
+  check(first && near(first, drawnPoint, 1), "mirrored, the pen draws under the pointer");
+  await page.keyboard.press("v");
+  await page.locator("#view-flip").click();
+  await page.waitForTimeout(100);
+  check((await page.locator("#view-flip").getAttribute("aria-pressed")) === "false", "the button mirrors it back");
+  await page.keyboard.press("Shift+H");
+  await page.keyboard.press("Control+0");
+  await page.waitForTimeout(100);
+  check((await page.locator("#view-flip").getAttribute("aria-pressed")) === "false", "Ctrl+0 undoes the mirroring too");
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(" / ")}` : ""}`);
 } finally {
   await browser.close();

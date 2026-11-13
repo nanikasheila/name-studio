@@ -82,6 +82,7 @@ const VIEW_STEPS: HelpStep[] = [
   { input: "Ctrl+ドラッグ", does: "画面を動かす（中ボタンのドラッグでも）" },
   { input: "ホイール", does: "拡大・縮小" },
   { input: "Shift+Space+ドラッグ", does: "画面を回す" },
+  { command: "view.flip", does: "画面を左右反転する・戻す" },
   { command: "view.fit", does: "全体を表示" },
 ];
 

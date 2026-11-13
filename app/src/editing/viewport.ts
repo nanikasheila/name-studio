@@ -1,6 +1,7 @@
 // The page editor's view: how far it is zoomed, moved and turned. The pages
 // are laid out in an upright view (zoom and pan, see layout.ts); the turn is
-// applied about the middle of the stage on top of it, as CSP's 画面の回転.
+// applied about the middle of the stage on top of it, as CSP's 画面の回転, and
+// so is 左右反転 (the view mirrored across, before it is turned).
 // Points are CSS px on the stage. Pure: the editor gives the stage's size and
 // sets the canvas transform from `matrix`.
 import type { Point } from "../model/model";
@@ -23,6 +24,8 @@ export class Viewport {
   pan: Point = [0, 0];
   /** 画面の回転 (radians, clockwise): the whole view turns about the middle of the stage. */
   rotation = 0;
+  /** 左右反転: the view mirrored left to right about the middle of the stage (then turned). */
+  flipped = false;
 
   constructor(private readonly size: () => { width: number; height: number }) {}
 
@@ -49,31 +52,31 @@ export class Viewport {
 
   /** Where a point on screen is in the upright view (what the pages are laid out in). */
   unturned([sx, sy]: Point): Point {
-    if (!this.rotation) return [sx, sy];
+    if (!this.rotation && !this.flipped) return [sx, sy];
     const [cx, cy] = this.centre();
-    const [x, y] = turn(sx - cx, sy - cy, -this.rotation);
+    const [x, y] = this.unturnedFromCentre([sx, sy]);
     return [cx + x, cy + y];
   }
 
   /** Where a point of the upright view shows on screen. */
   onScreen([x, y]: Point): Point {
-    if (!this.rotation) return [x, y];
+    if (!this.rotation && !this.flipped) return [x, y];
     const [cx, cy] = this.centre();
-    const [dx, dy] = turn(x - cx, y - cy, this.rotation);
+    const [dx, dy] = turn(this.mirror(x - cx), y - cy, this.rotation);
     return [cx + dx, cy + dy];
   }
 
   /** The angle on screen of a point of the upright view, about the middle (for turning by a drag). */
   angleAt(x: number, y: number): number {
     const [cx, cy] = this.centre();
-    const [tx, ty] = turn(x - cx, y - cy, this.rotation);
+    const [tx, ty] = turn(this.mirror(x - cx), y - cy, this.rotation);
     return Math.atan2(ty, tx);
   }
 
   /** Moves the pages by a hand's move on screen, however the view is turned. */
   dragBy(dx: number, dy: number): void {
     const [x, y] = turn(dx, dy, -this.rotation);
-    this.pan[0] += x;
+    this.pan[0] += this.mirror(x);
     this.pan[1] += y;
   }
 
@@ -101,16 +104,30 @@ export class Viewport {
 
   /** The canvas transform for a device pixel ratio: CSS px, turned about the middle. */
   matrix(ratio: number): [number, number, number, number, number, number] {
-    if (!this.rotation) return [ratio, 0, 0, ratio, 0, 0];
+    if (!this.rotation && !this.flipped) return [ratio, 0, 0, ratio, 0, 0];
     const [cx, cy] = this.centre();
     const cos = Math.cos(this.rotation);
     const sin = Math.sin(this.rotation);
-    return [ratio * cos, ratio * sin, -ratio * sin, ratio * cos, ratio * (cx - cx * cos + cy * sin), ratio * (cy - cx * sin - cy * cos)];
+    const f = this.flipped ? -1 : 1;
+    // Turned after being mirrored: [[f cos, -sin], [f sin, cos]] about the middle.
+    const [a, b, c, d] = [f * cos, f * sin, -sin, cos];
+    return [ratio * a, ratio * b, ratio * c, ratio * d, ratio * (cx - a * cx - c * cy), ratio * (cy - b * cx - d * cy)];
   }
 
-  /** A point on screen as a vector from the middle, turned upright. */
+  /** Whether the view is turned or mirrored at all. */
+  get changed(): boolean {
+    return this.rotation !== 0 || this.flipped;
+  }
+
+  /** A length across, mirrored when the view is. */
+  private mirror(x: number): number {
+    return this.flipped ? -x : x;
+  }
+
+  /** A point on screen as a vector from the middle, turned upright (and mirrored back). */
   private unturnedFromCentre([sx, sy]: Point): Point {
     const [cx, cy] = this.centre();
-    return turn(sx - cx, sy - cy, -this.rotation);
+    const [x, y] = turn(sx - cx, sy - cy, -this.rotation);
+    return [this.mirror(x), y];
   }
 }

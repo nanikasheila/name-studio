@@ -74,3 +74,9 @@ export function readNumber(key: string, fallback: number, min: number, max: numb
 export function writeNumber(key: string, value: number): void {
   writeText(key, String(value));
 }
+
+/** One of `choices` kept under `key`, or the fallback. */
+export function readChoice<T extends string>(key: string, choices: readonly T[], fallback: T): T {
+  const value = readText(key);
+  return choices.includes(value as T) ? (value as T) : fallback;
+}

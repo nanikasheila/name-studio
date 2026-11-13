@@ -16,7 +16,10 @@ import {
   opacityOfLayer,
   roughLayersOf,
   setRoughLayer,
+  strokesOn,
 } from "../domain/roughlayers";
+import { drawPartThumb } from "../render/pagethumb";
+import { thumbSize } from "./layers";
 import { markPen } from "./toolmark";
 
 export type RoughChange =
@@ -244,6 +247,7 @@ export class RoughPanel {
       row.dataset.color = color;
       swatches.push(swatch);
     }
+    const picture = this.thumb(project, layer);
     const name = element("span", "layer-name", layer.name);
     name.title = "ダブルクリックで名前を変える";
     name.addEventListener("dblclick", (event) => {
@@ -289,8 +293,27 @@ export class RoughPanel {
     });
     remove.disabled = count < 2 && !layer.marks;
     menu.append(up, down, merge, remove);
-    row.append(eye, lock, ...swatches, name, lines, opacity, menu);
+    row.append(eye, lock, ...swatches, picture, name, lines, opacity, menu);
     return row;
+  }
+
+  /** ミニビュー: what is on the layer on the page worked on (the whole page, small). */
+  private thumb(project: Project, layer: RoughLayer): HTMLElement {
+    const size = thumbSize();
+    const editor = this.host.editor();
+    const pageId = editor.stage.focusedPageId;
+    const page = project.pages.find((p) => p.id === pageId) ?? project.pages[(editor.currentPages()[0] ?? 1) - 1];
+    if (size === "none" || !page) return element("span", "");
+    const canvas = document.createElement("canvas");
+    canvas.className = "layer-thumb";
+    canvas.style.width = size === "large" ? "60px" : "34px";
+    canvas.style.height = size === "large" ? "42px" : "24px";
+    canvas.title = "このレイヤーの、いまのページの線";
+    const strokes = strokesOn(project, page.strokes, layer).map((s) => (s.over ? { ...s, over: false } : s));
+    const [w, h] = project.pageFormat.canvasMm;
+    const shown = { ...page, panels: [], lines: [], fills: [], breakouts: [], stickies: [], roughs: [], strokes };
+    requestAnimationFrame(() => drawPartThumb(canvas, shown, [0, 0, w, h], false, layer.marks ? markColor(layer) : undefined));
+    return canvas;
   }
 
   private rename(name: HTMLElement, layer: RoughLayer): void {
