@@ -64,6 +64,8 @@ fn declarations() -> String {
         CspToolData::decl(&cfg),
         RoughImage::decl(&cfg),
         Character::decl(&cfg),
+        LineLook::decl(&cfg),
+        LineType::decl(&cfg),
         Scene::decl(&cfg),
         EmotionPoint::decl(&cfg),
         SourceSheet::decl(&cfg),

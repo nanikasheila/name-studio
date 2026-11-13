@@ -338,6 +338,7 @@ fn writes_a_work_with_editable_layers_from_the_built_template() {
             color: None,
             font: None,
             line_spacing: None,
+            edge: None,
         }),
     ];
     let expected: Vec<ExpectedLayer> = layers
@@ -693,6 +694,7 @@ fn a_plain_page_without_parts_gets_editable_layers_from_the_built_in_parts() {
             color: None,
             font: None,
             line_spacing: None,
+            edge: None,
         }),
     ];
     let expected: Vec<ExpectedLayer> = layers

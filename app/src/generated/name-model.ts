@@ -21,6 +21,10 @@ plan?: Plan,
  */
 lineShapes?: LineShapes, 
 /**
+ * セリフ種類 made for this name (beyond the five kinds), in the order offered.
+ */
+lineTypes: Array<LineType>, 
+/**
  * 保留コマ: panels taken off the pages until it is decided where they go.
  */
 held: Array<HeldPanel>, 
@@ -364,7 +368,11 @@ bend?: number,
  */
 root?: number, };
 
-export type Line = { id: string, text: string, kind: LineKind, speaker?: string, panel?: string, box: [number, number, number, number], fontSizePt: number, vertical: boolean, 
+export type Line = { id: string, text: string, kind: LineKind, 
+/**
+ * セリフ種類 made for the name ([`LineType::id`]); `kind` is its base.
+ */
+type?: string, speaker?: string, panel?: string, box: [number, number, number, number], fontSizePt: number, vertical: boolean, 
 /**
  * Balloon outline without tails and links, when the line has one. Made
  * from `balloon_shape` by the editor; kept as is for `Custom`.
@@ -378,6 +386,10 @@ linkTo?: string,
  * 白抜き: black balloon (or none on a black panel) with white text.
  */
 inverted: boolean, 
+/**
+ * 白縁: an edge round the letters (white; black round 白抜き letters).
+ */
+edge: boolean, 
 /**
  * 強調: bold type.
  */
@@ -559,7 +571,43 @@ export type Character = { id: string, name: string, color?: string,
 /**
  * 口調のメモ: how the character talks, to keep the dialogue in voice.
  */
-tone?: string, };
+tone?: string, 
+/**
+ * キャラのフキダシ設定: the look of what this character says (in kinds that follow the speaker).
+ */
+look?: LineLook, };
+
+export type LineLook = { shape?: BalloonShape, 
+/**
+ * フォント (as CLIP STUDIO PAINT names it).
+ */
+font?: string, fontSizePt?: number, 
+/**
+ * 白抜き.
+ */
+inverted?: boolean, 
+/**
+ * 白縁.
+ */
+edge?: boolean, };
+
+export type LineType = { id: string, name: string, base: LineKind, 
+/**
+ * Its lines keep this look whoever says them (the speaker's フキダシ設定 is not used).
+ */
+ownLook: boolean, shape?: BalloonShape, 
+/**
+ * フォント (as CLIP STUDIO PAINT names it).
+ */
+font?: string, fontSizePt?: number, 
+/**
+ * 白抜き.
+ */
+inverted?: boolean, 
+/**
+ * 白縁.
+ */
+edge?: boolean, };
 
 export type Scene = { id: string, title: string, summary: string, firstPage: string, lastPage: string, 
 /**
@@ -591,4 +639,4 @@ export type SeriesEpisode = {
  */
 path: string, title: string, storyIndex?: number, pages: number, };
 
-export type SeriesShared = { characters: Array<Character>, brushes: Array<Brush>, fonts?: LineFonts, style?: NameStyle, cspPage?: CspPage, lineShapes?: LineShapes, gutters?: Gutters, roughLayers: Array<RoughLayer>, };
+export type SeriesShared = { characters: Array<Character>, brushes: Array<Brush>, fonts?: LineFonts, style?: NameStyle, cspPage?: CspPage, lineShapes?: LineShapes, lineTypes: Array<LineType>, gutters?: Gutters, roughLayers: Array<RoughLayer>, };

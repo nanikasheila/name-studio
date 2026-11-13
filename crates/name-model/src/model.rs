@@ -49,6 +49,9 @@ pub struct Project {
     /// 作品ごとのフキダシの既定: the shape new lines of each kind get.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub line_shapes: Option<LineShapes>,
+    /// セリフ種類 made for this name (beyond the five kinds), in the order offered.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub line_types: Vec<LineType>,
     /// 保留コマ: panels taken off the pages until it is decided where they go.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub held: Vec<HeldPanel>,
@@ -767,6 +770,9 @@ pub struct Line {
     pub text: String,
     #[serde(default)]
     pub kind: LineKind,
+    /// セリフ種類 made for the name ([`LineType::id`]); `kind` is its base.
+    #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
+    pub line_type: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub speaker: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -789,6 +795,9 @@ pub struct Line {
     /// 白抜き: black balloon (or none on a black panel) with white text.
     #[serde(default, skip_serializing_if = "is_default")]
     pub inverted: bool,
+    /// 白縁: an edge round the letters (white; black round 白抜き letters).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub edge: bool,
     /// 強調: bold type.
     #[serde(default, skip_serializing_if = "is_default")]
     pub emphasis: bool,
@@ -1142,6 +1151,45 @@ pub struct Character {
     /// 口調のメモ: how the character talks, to keep the dialogue in voice.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tone: Option<String>,
+    /// キャラのフキダシ設定: the look of what this character says (in kinds that follow the speaker).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub look: Option<LineLook>,
+}
+
+/// セリフの見た目: what a セリフ種類 or a character gives its lines; a
+/// field left out comes from the one under it (作品の既定 → 種類 → キャラ → the line's own).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
+#[serde(rename_all = "camelCase")]
+pub struct LineLook {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shape: Option<BalloonShape>,
+    /// フォント (as CLIP STUDIO PAINT names it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_size_pt: Option<f64>,
+    /// 白抜き.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inverted: Option<bool>,
+    /// 白縁.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edge: Option<bool>,
+}
+
+/// セリフ種類 made for a name: one of the five kinds (`base`) with a look of its own.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
+#[serde(rename_all = "camelCase")]
+pub struct LineType {
+    pub id: String,
+    pub name: String,
+    pub base: LineKind,
+    #[serde(flatten)]
+    pub look: LineLook,
+    /// Its lines keep this look whoever says them (the speaker's フキダシ設定 is not used).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub own_look: bool,
 }
 
 /// A scene: a run of pages, with its place in story time for the timeline.
@@ -1204,6 +1252,7 @@ impl Project {
             alternatives: Vec::new(),
             plan: None,
             line_shapes: None,
+            line_types: Vec::new(),
             held: Vec::new(),
             held_pages: Vec::new(),
             images: Vec::new(),

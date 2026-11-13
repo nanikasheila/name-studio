@@ -15,6 +15,8 @@ import {
   removeCharacters,
 } from "../domain/castops";
 import { $, element } from "../platform/dom";
+import { changeLooks, tidyLook } from "../domain/linelook";
+import { lookFields } from "./lookfields";
 import { dragSort } from "./dragsort";
 import { canMove, moveRange } from "../domain/listorder";
 import { type ListActions, ListPicker, toolRow } from "./listops";
@@ -38,6 +40,8 @@ export class CastList {
   private readonly actions: ListActions;
   /** Characters whose lines are listed. */
   private readonly open = new Set<string>();
+  /** Characters whose フキダシ設定 is shown. */
+  private readonly looksOpen = new Set<string>();
 
   constructor(private readonly host: CastListHost) {
     const ids = () => this.host.project()?.characters.map((c) => c.id) ?? [];
@@ -211,6 +215,29 @@ export class CastList {
           else delete character.tone;
         });
       });
+      // フキダシ設定: the look of what this character says (over its kind's or type's).
+      const look = element("details", { className: "cast-look", open: this.looksOpen.has(character.id) });
+      const set = Object.keys(character.look ?? {}).length;
+      const summary = element("summary", {
+        textContent: `フキダシ設定${set ? `（${set} 項目）` : ""}`,
+        title: "この人のセリフの形・フォント・大きさ・白抜き・白縁（ナレーションや「人物に従わない」種類は別）",
+      });
+      // Kept at once (the toggle event comes later, after a redraw may have replaced it).
+      summary.addEventListener("click", () => (look.open ? this.looksOpen.delete(character.id) : this.looksOpen.add(character.id)));
+      look.append(
+        summary,
+        ...lookFields(character.look ?? {}, "種類のまま", (next) => {
+          let count = 0;
+          this.host.edit((p) => {
+            count = changeLooks(p, () => {
+              const tidy = tidyLook(next);
+              if (tidy) character.look = tidy;
+              else delete character.look;
+            });
+          });
+          this.host.status(`${character.name}のフキダシ設定を変えました${count ? `（セリフ ${count} 個も変わりました）` : ""}`);
+        }),
+      );
       // その人のセリフを並べて、口調が揃っているか見る。
       const open = this.open.has(character.id);
       const toggle = element("button", {
@@ -242,6 +269,7 @@ export class CastList {
         { className: "cast-block" },
         element("div", { className: "cast-item" }, grip, color, name, toggle),
         tone,
+        look,
         ...list,
       );
       return this.picker.row(block, character.id);

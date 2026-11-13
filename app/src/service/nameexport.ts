@@ -34,6 +34,7 @@ import type { BoxMm, Brush, Page, Project, ReferenceImage, RoughImage, RoughLaye
 import { basicBox, trimBox } from "../domain/pagebox";
 import { wantsSpread } from "../domain/panels";
 import { MM_PER_PT } from "../domain/project";
+import { EDGE_EM } from "../render/render";
 import { splitAtX } from "../domain/strokes";
 import { panelFolders } from "../domain/panelfolders";
 import {
@@ -263,6 +264,8 @@ export type LayerMeta =
       color?: [number, number, number];
       /** Line spacing in percent of the font size (CSP's 行間); absent keeps the template text's. */
       lineSpacing?: number;
+      /** 白縁 (CSP's テキストのフチ): its width in template px and colour; absent: none. */
+      edge?: { widthPx: number; color: [number, number, number] };
     };
 
 export type LinePartKind = Exclude<LayerKind, "text" | "fills" | "underFills" | "balloonFills">;
@@ -473,6 +476,9 @@ export function textLayers(page: Page, m: MmToPx, resolution: number): LayerMeta
         vertical: line.vertical,
         ...(line.inverted ? { color: [255, 255, 255] as [number, number, number] } : {}),
         ...(font ? { font } : {}),
+        ...(line.edge
+          ? { edge: { widthPx: size * EDGE_EM, color: (line.inverted ? [0, 0, 0] : [255, 255, 255]) as [number, number, number] } }
+          : {}),
         lineSpacing: lineSpacing(),
       };
     });

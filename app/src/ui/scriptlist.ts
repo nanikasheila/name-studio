@@ -3,7 +3,8 @@
 // write again in place (F2), to copy as script text, to give another
 // speaker or kind all at once, or to remove.
 import { ask } from "../platform/dialogs";
-import { KIND_LABELS, setLineKind } from "../domain/dialogue";
+import { KIND_LABELS } from "../domain/dialogue";
+import { setLineSpeaker, setLineType } from "../domain/linelook";
 import { $, element } from "../platform/dom";
 import type { Selection } from "./editor";
 import { copyText, ListPicker, toolRow } from "./listops";
@@ -149,8 +150,7 @@ export class ScriptList {
       for (const page of p.pages)
         for (const line of page.lines) {
           if (!ids.includes(line.id)) continue;
-          if (speaker) line.speaker = speaker;
-          else delete line.speaker;
+          setLineSpeaker(p, line, speaker ?? undefined);
           count++;
         }
     });
@@ -164,7 +164,7 @@ export class ScriptList {
       for (const page of p.pages)
         for (const line of page.lines) {
           if (!ids.includes(line.id) || line.kind === kind) continue;
-          setLineKind(p, line, kind);
+          setLineType(p, line, { kind });
           count++;
         }
     });

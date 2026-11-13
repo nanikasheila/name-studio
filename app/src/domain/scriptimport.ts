@@ -21,7 +21,8 @@ import { faces, inReadingDirection, layOut, moveClear, placingBox, wrapToFit } f
 import { balloonExtent } from "./balloon";
 import { PATTERNS, patternPanels } from "./koma";
 import { addCharacter, putScene } from "./cast";
-import { addLine, fitLine, moveLine, setLineKind } from "./dialogue";
+import { addLine, fitLine, moveLine } from "./dialogue";
+import { setLineSpeaker, setLineType } from "./linelook";
 import { rectShape } from "../model/geometry";
 import type { BalloonShape, Binding, BoxMm, Line, LineKind, Page, Panel, Project } from "../model/model";
 import { basicBox } from "./pagebox";
@@ -322,7 +323,7 @@ export function panelBoxes(box: BoxMm, count: number, gaps = DEFAULT_GUTTERS, bi
 function placeLines(project: Project, page: Page, panel: Panel | undefined, lines: ScriptLine[], speakers: Map<string, string>): void {
   const placed = lines.map((said) => {
     const line = addLine(project, page, [0, 0], said.text || "…", said.kind);
-    if (said.speaker) line.speaker = speakers.get(said.speaker);
+    if (said.speaker) setLineSpeaker(project, line, speakers.get(said.speaker));
     if (said.shape) line.balloonShape = said.shape;
     return line;
   });
@@ -511,12 +512,11 @@ function updatePage(project: Project, page: Page, used: ScriptPanel[], speakers:
       }
       const speaker = speakerOf(s);
       if ((line.speaker ?? undefined) !== speaker) {
-        if (speaker) line.speaker = speaker;
-        else delete line.speaker;
+        setLineSpeaker(project, line, speaker);
         changed = true;
       }
       if (line.kind !== s.kind) {
-        setLineKind(project, line, s.kind);
+        setLineType(project, line, { kind: s.kind });
         changed = true;
       }
       if (s.shape && line.balloonShape !== s.shape) {
@@ -537,7 +537,7 @@ function updatePage(project: Project, page: Page, used: ScriptPanel[], speakers:
       }
       const line = addLine(project, page, [0, 0], s.text || "…", s.kind);
       const speaker = speakerOf(s);
-      if (speaker) line.speaker = speaker;
+      if (speaker) setLineSpeaker(project, line, speaker);
       if (s.shape) line.balloonShape = s.shape;
       placeAfter(project, page, panel, line, previous, gone);
       previous = line;

@@ -557,6 +557,7 @@ export function drawLineText(ctx: CanvasRenderingContext2D, line: Line, m: MmToP
       vertical: line.vertical,
       inBalloon: !!line.balloon,
       color: line.inverted ? "#ffffff" : undefined,
+      edge: line.edge ? (line.inverted ? INK : "#ffffff") : undefined,
       bold: lineBold(line),
       pitch: linePitch(),
     },

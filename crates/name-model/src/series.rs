@@ -8,7 +8,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    Brush, Character, CspPage, Gutters, LineFonts, LineShapes, NameStyle, ProjectError, RoughLayer,
+    Brush, Character, CspPage, Gutters, LineFonts, LineShapes, LineType, NameStyle, ProjectError, RoughLayer,
     write_through_temporary,
 };
 
@@ -62,6 +62,8 @@ pub struct SeriesShared {
     pub csp_page: Option<CspPage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub line_shapes: Option<LineShapes>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub line_types: Vec<LineType>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gutters: Option<Gutters>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

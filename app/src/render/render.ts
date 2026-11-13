@@ -133,33 +133,52 @@ export function drawText(ctx: CanvasRenderingContext2D, text: TextView, t: Trans
     ctx.fillRect(left, top, Math.max(right - left, 1), Math.max((y1 - y0) * t.scale, 1));
     return;
   }
-  ctx.fillStyle = text.color ?? INK;
   ctx.font = canvasFont(text.fontName, size, !!text.bold);
   const lines = text.text.replace(/\r\n?/g, "\n").split("\n");
   const pitch = size * (text.pitch ?? 1.15);
+  // Each letter where it goes; with 白縁 they are all stroked first, so no edge covers a letter beside it.
+  const glyphs: [string, number, number, boolean][] = [];
   if (!text.vertical) {
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
-    lines.forEach((line, index) => ctx.fillText(line, left, top + index * pitch));
-    return;
-  }
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  lines.forEach((line, column) => {
-    const cx = right - size / 2 - column * pitch;
-    [...line].forEach((char, row) => {
-      const cy = top + size / 2 + row * size;
-      if (ROTATED.has(char)) {
-        ctx.save();
-        ctx.translate(cx, cy);
-        ctx.rotate(Math.PI / 2);
-        ctx.fillText(char, 0, 0);
-        ctx.restore();
-      } else if (SHIFTED.has(char)) {
-        ctx.fillText(char, cx + size * 0.12, cy - size * 0.12);
-      } else {
-        ctx.fillText(char, cx, cy);
-      }
+    lines.forEach((line, index) => glyphs.push([line, left, top + index * pitch, false]));
+  } else {
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    lines.forEach((line, column) => {
+      const cx = right - size / 2 - column * pitch;
+      [...line].forEach((char, row) => {
+        const cy = top + size / 2 + row * size;
+        if (ROTATED.has(char)) glyphs.push([char, cx, cy, true]);
+        else if (SHIFTED.has(char)) glyphs.push([char, cx + size * 0.12, cy - size * 0.12, false]);
+        else glyphs.push([char, cx, cy, false]);
+      });
     });
-  });
+  }
+  const put = (paint: (s: string, x: number, y: number) => void) => {
+    for (const [s, x, y, rotated] of glyphs) {
+      if (!rotated) {
+        paint(s, x, y);
+        continue;
+      }
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(Math.PI / 2);
+      paint(s, 0, 0);
+      ctx.restore();
+    }
+  };
+  if (text.edge) {
+    ctx.save();
+    ctx.strokeStyle = text.edge;
+    ctx.lineWidth = size * EDGE_EM;
+    ctx.lineJoin = "round";
+    put((s, x, y) => ctx.strokeText(s, x, y));
+    ctx.restore();
+  }
+  ctx.fillStyle = text.color ?? INK;
+  put((s, x, y) => ctx.fillText(s, x, y));
 }
+
+/** 白縁: the edge's width (a stroke that wide, half outside the letters) as a share of the font size. */
+export const EDGE_EM = 0.3;
