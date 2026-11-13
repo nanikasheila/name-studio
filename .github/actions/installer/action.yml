@@ -1,0 +1,75 @@
+name: Windows installer
+description: >-
+  Builds the NSIS installer of one version the way a release does (with the
+  updater key when there is one), then opens that release build and has it
+  write a name out for CSP, so a build that cannot start is never shipped.
+  Used by the release (build-app.yml) and by promote.yml, which builds the
+  version again to code-sign it.
+inputs:
+  version:
+    description: The version to build (0.2.N).
+    required: true
+  updater-pubkey:
+    description: The updater's public key (vars.TAURI_UPDATER_PUBKEY), empty for no updater files.
+    required: false
+    default: ""
+  updater-key:
+    description: The updater's private key (secrets.TAURI_SIGNING_PRIVATE_KEY).
+    required: false
+    default: ""
+  updater-key-password:
+    description: Its password (secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD).
+    required: false
+    default: ""
+  save-cache:
+    description: Whether to save the Rust build cache ("true" only on main's releases).
+    required: false
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - name: Rust (the version in rust-toolchain.toml)
+      shell: bash
+      run: rustup toolchain install
+
+    # What the last release built (and the CI's app check on pull requests
+    # starts from): only this repository's own crates are compiled again.
+    - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      with:
+        shared-key: app-release
+        save-if: ${{ inputs.save-cache == 'true' }}
+
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 22
+        cache: npm
+        cache-dependency-path: app/package-lock.json
+
+    - name: Version and update key
+      shell: bash
+      env:
+        PUBKEY: ${{ inputs.updater-pubkey }}
+        VERSION: ${{ inputs.version }}
+      run: node .github/scripts/release-config.mjs "$VERSION"
+
+    - name: Build installer
+      shell: bash
+      working-directory: app
+      env:
+        NAME_STUDIO_RELEASE: "1"
+        TAURI_SIGNING_PRIVATE_KEY: ${{ inputs.updater-key }}
+        TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ inputs.updater-key-password }}
+      run: |
+        npm ci
+        npx tauri build --bundles nsis
+
+    # The release build itself, before anyone gets it: its window opens a name
+    # and writes it out for CSP (as the CI's app check does on pull requests).
+    - name: A template page
+      shell: bash
+      run: cargo run -p clip-core --features fixtures --example fixture_page -- "$RUNNER_TEMP/app-check/page.clip"
+
+    - name: The release build starts and writes a name out
+      shell: bash
+      working-directory: app
+      run: node e2e/realapp.mjs "$RUNNER_TEMP/app-check"
