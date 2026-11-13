@@ -7,8 +7,9 @@ name: Release Windows app
 # promote.yml makes it the 正式版 that every copy takes.
 # With the updater key set up (docs/release.md), the release also carries
 # latest.json and the installer's signature, and installed copies update
-# themselves when they start. The installer itself is not code-signed, so
-# Windows shows a SmartScreen warning on the first install.
+# themselves when they start. A 試験版's installer is not code-signed (Windows
+# shows a SmartScreen warning on the first install); promote.yml code-signs
+# the 正式版 once SignPath is set up (docs/release.md).
 on:
   push:
     branches: [main]
@@ -37,47 +38,15 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Rust (the version in rust-toolchain.toml)
-        run: rustup toolchain install
-
-      # What the last release built (and the CI's app check on pull requests
-      # starts from): only this repository's own crates are compiled again.
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # Builds the installer and checks that the release build starts and
+      # writes a name out (.github/actions/installer, shared with promote.yml).
+      - uses: ./.github/actions/installer
         with:
-          shared-key: app-release
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: app/package-lock.json
-
-      - name: Version and update key
-        shell: bash
-        env:
-          PUBKEY: ${{ vars.TAURI_UPDATER_PUBKEY }}
-        run: node .github/scripts/release-config.mjs "$VERSION"
-
-      - name: Build installer
-        working-directory: app
-        env:
-          NAME_STUDIO_RELEASE: "1"
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: |
-          npm ci
-          npx tauri build --bundles nsis
-
-      # The release build itself, before anyone gets it: its window opens a name
-      # and writes it out for CSP (as the CI's app check does on pull requests).
-      - name: A template page
-        run: cargo run -p clip-core --features fixtures --example fixture_page -- "${{ runner.temp }}/app-check/page.clip"
-
-      - name: The release build starts and writes a name out
-        working-directory: app
-        shell: bash
-        run: node e2e/realapp.mjs "$RUNNER_TEMP/app-check"
+          version: ${{ env.VERSION }}
+          updater-pubkey: ${{ vars.TAURI_UPDATER_PUBKEY }}
+          updater-key: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          updater-key-password: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
 
       # What changed for the people who use the app: the pull request's
       # 「使う人への変更」 (.github/scripts/release-notes.mjs).
