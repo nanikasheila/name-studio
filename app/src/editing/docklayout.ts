@@ -16,6 +16,7 @@ export type PaletteId =
   | "notes"
   | "held"
   | "layers"
+  | "subview"
   | "series"
   | "assist"
   | "inspector";
@@ -88,6 +89,7 @@ export const PALETTE_IDS: PaletteId[] = [
   "notes",
   "held",
   "layers",
+  "subview",
   "series",
   "assist",
   "inspector",
@@ -113,6 +115,8 @@ export function defaultLayout(leftCollapsed = false): DockLayout {
       // AI に相談 and 詳細 on the right (相談 its icon until it is asked for).
       if (id === "assist") return [id, state("right", false, id)];
       if (id === "inspector") return [id, state("right", true, id)];
+      // サブビュー: the whole spread beside the main view, on the right (its icon until it is opened).
+      if (id === "subview") return [id, state("right", false, id)];
       return [id, state("left", shownLeft.includes(id), id)];
     }),
   ) as Record<PaletteId, PaletteState>;

@@ -84,6 +84,8 @@ const VIEW_STEPS: HelpStep[] = [
   { input: "Shift+Space+ドラッグ", does: "画面を回す" },
   { command: "view.flip", does: "画面を左右反転する・戻す" },
   { command: "view.fit", does: "全体を表示" },
+  { command: "view.panelNext", does: "次のコマに寄る（全体はサブビューに）" },
+  { command: "view.panelPrevious", does: "前のコマに寄る" },
 ];
 
 /** The tools on the page (コマ割り by its way of making panels: "cut.rect"); every tool has one. */
@@ -459,6 +461,18 @@ export const AREA_TOPICS: Record<string, HelpTopic> = {
       { input: "行をドラッグ・Alt+↑↓", does: "並べ替え" },
       { input: "↑↓", does: "前後のペンに持ち替え（一覧を押したあと）" },
       { input: "Ctrl+D / Delete", does: "複製・削除" },
+    ],
+  },
+  "side-subview": {
+    name: "サブビュー",
+    what: "画面分割: 見開きの全体。赤い枠が画面に出ている所",
+    steps: [
+      { input: "コマを押す", does: "画面がそのコマに寄る（1 コマずつ描ける）" },
+      { input: "コマの外を押す・ドラッグ", does: "画面をそこへ動かす（大きさはそのまま）" },
+      { command: "view.panelNext", does: "次のコマに寄る（読む順。次の見開きへも）" },
+      { command: "view.panelPrevious", does: "前のコマに寄る" },
+      { command: "view.fit", does: "見開き全体を表示（「全体」のボタンでも）" },
+      { input: "反転", does: "サブビューだけ左右反転（画面と書き出しはそのまま）" },
     ],
   },
   "side-color": {
