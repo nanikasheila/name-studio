@@ -609,6 +609,7 @@ fn writes_vector_and_text_layers_copied_from_the_sheet() {
         color: None,
         font: None,
         line_spacing: None,
+        edge: None,
     };
     let layers = [
         PageLayer::Vector {
@@ -733,6 +734,7 @@ fn checks_written_pages_and_works() {
         color: Some([255, 255, 255]),
         font: None,
         line_spacing: None,
+        edge: None,
     };
     let layers = vec![
         PageLayer::Raster(RasterLayer {
@@ -1436,6 +1438,7 @@ fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
         color: None,
         font: None,
         line_spacing: None,
+        edge: None,
     };
     let layers = [
         paper(290),

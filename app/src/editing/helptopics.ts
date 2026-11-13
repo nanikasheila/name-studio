@@ -156,6 +156,8 @@ export const TOOL_TOPICS: Record<ToolId, HelpTopic> & Record<string, HelpTopic> 
       { input: "Tab / Shift+Tab（書いている間）", does: "次・前のセリフへ" },
       { input: "Ctrl+Enter", does: "書き終える" },
       { input: "Alt+ホイール", does: "選んだセリフの文字の大きさ" },
+      { input: "右の欄の「種類」", does: "セリフ・ナレーションなどと、設定 › セリフ で作った種類から選ぶ" },
+      { input: "右の欄の「白縁」", does: "文字のまわりに白い縁（CSP ではテキストのフチ）" },
       ...VIEW_STEPS,
     ],
   },
@@ -571,6 +573,7 @@ export const AREA_TOPICS: Record<string, HelpTopic> = {
       { input: "F2", does: "名前を直す" },
       { input: "Ctrl+C / Ctrl+V", does: "コピー・貼り付け（ほかのネームにも）" },
       { input: "Delete", does: "削除（セリフの話者は空に）" },
+      { input: "フキダシ設定", does: "その人のセリフの形・フォント・大きさ・白抜き・白縁（空欄は種類のまま）" },
     ],
   },
   "side-notes": {

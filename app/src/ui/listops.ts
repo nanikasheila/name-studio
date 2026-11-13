@@ -136,7 +136,7 @@ export class ListPicker {
     element.dataset.listId = id;
     element.classList.toggle("picked", this.isPicked(id));
     element.addEventListener("click", (event) => {
-      if ((event.target as HTMLElement).closest("input, textarea, select, button")) return;
+      if ((event.target as HTMLElement).closest("input, textarea, select, button, details")) return;
       this.clicked(id, event);
     });
     element.addEventListener("contextmenu", (event) => {

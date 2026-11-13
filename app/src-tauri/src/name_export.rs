@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use clip_core::RgbaImage;
 use clip_core::raster::decode_png;
 use clip_core::raster::{Filter, resize};
-use clip_core::text::{FontName, NewText};
+use clip_core::text::{FontName, NewText, TextEdge};
 use clip_core::vector::{NewFrame, NewVectorLine};
 use clip_core::write::blank::{BuiltTemplate, PageSetup, write_builtin_template};
 use clip_core::write::raster_page::{
@@ -200,7 +200,18 @@ pub(crate) enum LayerMeta {
         /// Line spacing in percent of the font size; absent keeps the template text's.
         #[serde(default)]
         line_spacing: Option<f64>,
+        /// 白縁: an edge round the letters; absent leaves none.
+        #[serde(default)]
+        edge: Option<EdgeMeta>,
     },
+}
+
+/// テキストのフチ: its width in template px and its colour (8-bit RGB).
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct EdgeMeta {
+    width_px: f64,
+    color: [u8; 3],
 }
 
 /// A font by the name CSP shows and its PostScript name.
@@ -319,6 +330,7 @@ fn page_layer<'a>(
             color,
             font,
             line_spacing,
+            edge,
         } => PageLayer::Text(NewText {
             text,
             frame: frame.map(|value| value.round() as i32),
@@ -330,6 +342,10 @@ fn page_layer<'a>(
                 postscript: font.postscript,
             }),
             line_spacing,
+            edge: edge.map(|edge| TextEdge {
+                width_px: edge.width_px,
+                color: edge.color,
+            }),
         }),
     })
 }

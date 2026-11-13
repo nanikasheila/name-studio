@@ -36,7 +36,9 @@ import {
 import { joinPanels, joinedShape, neighbours } from "../domain/komaedit";
 import { tidyPanels } from "../domain/tidy";
 import { addCharacter } from "../domain/cast";
-import { fitLine, KIND_LABELS, setDefaultLineSize, setDefaultShape, setLineKind, setLineText, wrapTypedLine } from "../domain/dialogue";
+import { fitLine, KIND_LABELS, setDefaultLineSize, setDefaultShape, setLineText, wrapTypedLine } from "../domain/dialogue";
+import { setLineSpeaker, setLineType } from "../domain/linelook";
+import { lineChoiceSelect } from "./lookfields";
 import { rectShape } from "../model/geometry";
 import type {
   Alternatives,
@@ -44,7 +46,6 @@ import type {
   Fill,
   FillTone,
   Line,
-  LineKind,
   Page,
   Panel,
   PanelBorder,
@@ -159,8 +160,7 @@ export class Inspector {
       case "line": {
         const line = page.lines.find((l) => l.id === selection.id);
         if (!line) return [];
-        const kind = choice(KIND_LABELS, line.kind, (value: LineKind) => this.host.edit((p) => setLineKind(p, line, value)));
-        kind.title = "種類";
+        const kind = lineChoiceSelect(project, line, (picked) => this.host.edit((p) => setLineType(p, line, picked)));
         const tail = button("しっぽ", "しっぽを足す。丸い先をドラッグして話者に向ける", () =>
           this.host.edit(() => {
             const [x0, , , y1] = line.box;
@@ -394,10 +394,7 @@ export class Inspector {
       },
       { capture: true },
     );
-    const kind = element("select");
-    for (const [value, label] of Object.entries(KIND_LABELS)) kind.append(element("option", { value, textContent: label }));
-    kind.value = line.kind;
-    kind.addEventListener("change", () => this.host.edit((p) => setLineKind(p, line, kind.value as LineKind)));
+    const kind = lineChoiceSelect(project, line, (picked) => this.host.edit((p) => setLineType(p, line, picked)));
     const speaker = element("select");
     speaker.append(element("option", { value: "", textContent: "（なし）" }));
     for (const character of project.characters) speaker.append(element("option", { value: character.id, textContent: character.name }));
@@ -407,12 +404,10 @@ export class Inspector {
       this.host.edit((p) => {
         if (speaker.value === "__new") {
           // Named in the 人物 tab; a prompt here would interrupt the writing.
-          line.speaker = addCharacter(p, `人物${p.characters.length + 1}`).id;
+          setLineSpeaker(p, line, addCharacter(p, `人物${p.characters.length + 1}`).id);
           this.host.status("人物を足しました。名前は左の「人物」で変えられます");
-        } else if (speaker.value) {
-          line.speaker = speaker.value;
         } else {
-          delete line.speaker;
+          setLineSpeaker(p, line, speaker.value || undefined);
         }
       }),
     );
@@ -519,6 +514,8 @@ export class Inspector {
       return element("label", { className: "inline" }, box, label);
     };
     const inverted = flag("白抜き", !!line.inverted, (on) => (on ? (line.inverted = true) : delete line.inverted));
+    const edge = flag("白縁（文字のまわりに縁）", !!line.edge, (on) => (on ? (line.edge = true) : delete line.edge));
+    edge.title = "文字のまわりに白い縁（白抜きなら黒い縁）。CSP ではテキストのフチ";
     const emphasis = flag("太字（強調）", !!line.emphasis, (on) => (on ? (line.emphasis = true) : delete line.emphasis));
     const mask = flag("コマ枠でマスク（枠の外を隠す）", !!line.mask, (on) => (on ? (line.mask = true) : delete line.mask));
     if (!line.panel) {
@@ -610,7 +607,7 @@ export class Inspector {
         element("label", {}, "文字の大きさ（pt）", element("span", { className: "with-button" }, size, sizeDefault)),
         element("label", { className: "inline" }, vertical, "縦書き"),
       ),
-      element("div", { className: "row" }, emphasis, inverted),
+      element("div", { className: "row" }, emphasis, inverted, edge),
       element("label", {}, "フォント", font),
       element("h3", { textContent: "フキダシ" }),
       element("label", {}, "形", shape),

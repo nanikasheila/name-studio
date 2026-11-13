@@ -16,7 +16,14 @@
         "id": "char1",
         "name": "主人公",
         "color": "#cc3344",
-        "tone": "です・ます"
+        "tone": "です・ます",
+        "look": {
+          "shape": "rounded",
+          "font": "I-OTFアンチックStd B",
+          "fontSizePt": 10,
+          "inverted": false,
+          "edge": true
+        }
       }
     ],
     "brushes": [
@@ -222,6 +229,19 @@
       "sfx": "none",
       "aside": "dashed"
     },
+    "lineTypes": [
+      {
+        "id": "type1",
+        "name": "叫び",
+        "base": "speech",
+        "shape": "spike",
+        "font": "源暎ラテゴ",
+        "fontSizePt": 12,
+        "inverted": true,
+        "edge": true,
+        "ownLook": true
+      }
+    ],
     "gutters": {
       "across": 3,
       "down": 7.5

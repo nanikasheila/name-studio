@@ -96,6 +96,7 @@ impl PartDonors {
             color: None,
             font: None,
             line_spacing: None,
+            edge: None,
         };
         let mut vector = None;
         let mut text = None;

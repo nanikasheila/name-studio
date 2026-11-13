@@ -154,6 +154,9 @@ pub const ATTR_ORIGIN: u32 = 0x48;
 /// twice. Seen black (all 0) on dialogue and white (all `ff`) on text over
 /// black. A font run with [`RUN_HAS_COLOR`] overrides it.
 pub const ATTR_COLOR: u32 = 0x22;
+
+/// テキストのフチ (24 bytes, see [`TextEdge::to_attribute`]); seen in CSP EX 5.1 files.
+pub const ATTR_EDGE: u32 = 0x38;
 /// The text's font as CSP's tool property shows it: the shown name in UTF-8,
 /// with no length (in the add-attributes too). A CSP-made dialogue has it
 /// beside [`ATTR_FONT_NAME`] and the font run's name.
@@ -326,6 +329,28 @@ pub struct NewText {
     pub font: Option<FontName>,
     /// Line spacing in percent of the font size (CSP's 行間); `None` keeps the donor's.
     pub line_spacing: Option<f64>,
+    /// フチ (an edge round the letters); `None` leaves none.
+    pub edge: Option<TextEdge>,
+}
+
+/// テキストのフチ: an edge of `color` round the letters, `width_px` across
+/// (as a stroke that wide, half of it outside the letters).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TextEdge {
+    pub width_px: f64,
+    pub color: [u8; 3],
+}
+
+impl TextEdge {
+    /// [`ATTR_EDGE`]: `u32` on, `u32` width × 1000, `u32` 0, then the colour as [`ATTR_COLOR`] has it.
+    pub fn to_attribute(edge: Option<&TextEdge>) -> Vec<u8> {
+        let (on, width, color) = edge.map_or((0u32, 1000u32, [255, 255, 255]), |edge| {
+            (1, (edge.width_px * 1000.0).round().max(0.0) as u32, edge.color)
+        });
+        let mut value = [on, width, 0].iter().flat_map(|n| n.to_le_bytes()).collect::<Vec<u8>>();
+        value.extend(color_bytes(color));
+        value
+    }
 }
 
 /// A font as a text layer names it ([`ATTR_FONT_NAME`]): the name CSP shows
@@ -406,6 +431,7 @@ fn retarget(blob: &[u8], text: &NewText, counted_runs: bool) -> Result<Vec<u8>> 
         [0, 0, width * 100, 0, width * 100, height * 100, 0, height * 100]
     };
     let mut items = Vec::new();
+    let mut edged = false;
     for Record { id, data: mut value } in records(blob)? {
         if RUN_TAGS.contains(&id) {
             if !value.is_empty() {
@@ -453,6 +479,10 @@ fn retarget(blob: &[u8], text: &NewText, counted_runs: bool) -> Result<Vec<u8>> 
                         value = color_bytes(color);
                     }
                 }
+                ATTR_EDGE if counted_runs && value.len() == 24 => {
+                    value = TextEdge::to_attribute(text.edge.as_ref());
+                    edged = true;
+                }
                 ATTR_FONT_FAMILY if !value.is_empty() => {
                     if let Some(font) = &text.font {
                         value = font.name.as_bytes().to_vec();
@@ -468,6 +498,13 @@ fn retarget(blob: &[u8], text: &NewText, counted_runs: bool) -> Result<Vec<u8>> 
             }
         }
         items.push(Record { id, data: value });
+    }
+    // A donor from a CSP without フチ has no record for it: one is added only when there is an edge.
+    if counted_runs && !edged && text.edge.is_some() {
+        items.push(Record {
+            id: ATTR_EDGE,
+            data: TextEdge::to_attribute(text.edge.as_ref()),
+        });
     }
     Ok(blob_of(items))
 }

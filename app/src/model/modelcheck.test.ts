@@ -95,6 +95,8 @@ interface Pairs {
   CspToolData: [Rust.CspToolData, App.CspToolData];
   RoughImage: [Rust.RoughImage, App.RoughImage];
   Character: [Rust.Character, App.Character];
+  LineLook: [Rust.LineLook, App.LineLook];
+  LineType: [Rust.LineType, App.LineType];
   Scene: [Rust.Scene, App.Scene];
   EmotionPoint: [Rust.EmotionPoint, App.EmotionPoint];
   SourceSheet: [Rust.SourceSheet, App.SourceSheet];
@@ -156,6 +158,8 @@ const agreed: { [K in keyof Pairs]: Agrees<Pairs[K][0], Pairs[K][1]> } = {
   CspToolData: true,
   RoughImage: true,
   Character: true,
+  LineLook: true,
+  LineType: true,
   Scene: true,
   EmotionPoint: true,
   SourceSheet: true,

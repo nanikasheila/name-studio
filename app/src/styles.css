@@ -1670,3 +1670,13 @@ dialog.perf-dialog { width: min(720px, 92vw); }
 .color-add { border: none; background: none; padding: 0 4px; min-height: 0; cursor: pointer; color: inherit; }
 .color-empty { color: var(--muted); font-size: calc(11 * var(--px)); }
 .tone.color { border: 1px solid var(--line); }
+
+/* セリフの見た目（種類・人物のフキダシ設定） */
+.look-row { display: grid; grid-template-columns: 5em 1fr; align-items: center; gap: 6px; font-size: calc(12 * var(--px)); }
+.look-row select, .look-row input { min-width: 0; }
+.cast-look summary { cursor: pointer; font-size: calc(12 * var(--px)); color: var(--muted); }
+.cast-look[open] { display: flex; flex-direction: column; gap: 4px; padding-bottom: 4px; }
+.line-types { display: flex; flex-direction: column; gap: 8px; }
+.line-type { display: flex; flex-direction: column; gap: 4px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; max-width: 30em; }
+.line-type-head { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; }
+.line-types > button { align-self: flex-start; }

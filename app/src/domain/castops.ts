@@ -4,6 +4,7 @@ import { PALETTE, removeCharacter } from "./cast";
 import { freeName, type MoveTo, moveIds } from "./listorder";
 import type { Character, Project } from "../model/model";
 import { newId } from "./project";
+import { setLineSpeaker } from "./linelook";
 
 /** Characters copied (kept while the app runs, so they can go into another name). */
 export interface CharacterClip {
@@ -82,7 +83,7 @@ export function mergeCharacters(project: Project, into: string, ids: readonly st
   for (const page of project.pages) {
     for (const line of page.lines) {
       if (line.speaker && others.includes(line.speaker)) {
-        line.speaker = into;
+        setLineSpeaker(project, line, into);
         moved++;
       }
     }

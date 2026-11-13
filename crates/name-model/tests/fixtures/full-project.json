@@ -70,6 +70,7 @@
           "id": "page1-line1",
           "text": "セリフ\n二行目",
           "kind": "thought",
+          "type": "type1",
           "speaker": "char1",
           "panel": "page1-panel1",
           "box": [
@@ -108,6 +109,7 @@
           ],
           "linkTo": "page1-line2",
           "inverted": true,
+          "edge": true,
           "emphasis": true,
           "balloonScale": [
             0.8,
@@ -264,7 +266,14 @@
       "id": "char1",
       "name": "主人公",
       "color": "#cc3344",
-      "tone": "です・ます"
+      "tone": "です・ます",
+      "look": {
+        "shape": "rounded",
+        "font": "I-OTFアンチックStd B",
+        "fontSizePt": 10,
+        "inverted": false,
+        "edge": true
+      }
     }
   ],
   "scenes": [
@@ -487,6 +496,7 @@
                   "id": "page9-line1",
                   "text": "セリフ\n二行目",
                   "kind": "thought",
+                  "type": "type1",
                   "speaker": "char1",
                   "panel": "page9-panel1",
                   "box": [
@@ -525,6 +535,7 @@
                   ],
                   "linkTo": "page9-line2",
                   "inverted": true,
+                  "edge": true,
                   "emphasis": true,
                   "balloonScale": [
                     0.8,
@@ -710,6 +721,19 @@
     "sfx": "none",
     "aside": "dashed"
   },
+  "lineTypes": [
+    {
+      "id": "type1",
+      "name": "叫び",
+      "base": "speech",
+      "shape": "spike",
+      "font": "源暎ラテゴ",
+      "fontSizePt": 12,
+      "inverted": true,
+      "edge": true,
+      "ownLook": true
+    }
+  ],
   "held": [
     {
       "id": "held1",
@@ -755,6 +779,7 @@
           "id": "page1-line1",
           "text": "セリフ\n二行目",
           "kind": "thought",
+          "type": "type1",
           "speaker": "char1",
           "panel": "page1-panel1",
           "box": [
@@ -793,6 +818,7 @@
           ],
           "linkTo": "page1-line2",
           "inverted": true,
+          "edge": true,
           "emphasis": true,
           "balloonScale": [
             0.8,
@@ -947,6 +973,7 @@
               "id": "page8-line1",
               "text": "セリフ\n二行目",
               "kind": "thought",
+              "type": "type1",
               "speaker": "char1",
               "panel": "page8-panel1",
               "box": [
@@ -985,6 +1012,7 @@
               ],
               "linkTo": "page8-line2",
               "inverted": true,
+              "edge": true,
               "emphasis": true,
               "balloonScale": [
                 0.8,

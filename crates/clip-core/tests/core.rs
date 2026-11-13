@@ -2,7 +2,7 @@
 //! of the repository; `tools/compare_with_python.py` covers them locally.
 
 use clip_core::text::{
-    FontName, NewText, build_tlv, line_spacing, parse_text_attributes, parse_tlv, retarget_add_attributes,
+    FontName, NewText, TextEdge, build_tlv, line_spacing, parse_text_attributes, parse_tlv, retarget_add_attributes,
     retarget_text_attributes, split_attribute_array, transform_text_attributes,
 };
 use clip_core::vector::{parse_vector_data, select_vector_objects, transform_vector_data};
@@ -371,6 +371,7 @@ fn new_text_takes_one_run_from_a_text_styled_in_parts() {
         color: None,
         font: None,
         line_spacing: None,
+        edge: None,
     };
     let retargeted = retarget_text_attributes(&blob, &text).unwrap();
     let items = parse_tlv(&retargeted).unwrap();
@@ -393,6 +394,60 @@ fn new_text_takes_one_run_from_a_text_styled_in_parts() {
     // A run list that does not add up is refused rather than guessed at.
     let broken = build_tlv(&[(0x1a, runs(vec![run(0, 45, 9, &[1, 0])]))]);
     assert!(retarget_text_attributes(&broken, &text).is_err());
+}
+
+#[test]
+fn new_text_writes_its_edge_as_csp_does() {
+    // As CSP EX 5.1 wrote フチ 34 in white (and with the edge turned off, 11 kept).
+    let off = [
+        vec![0, 0, 0, 0],
+        11000u32.to_le_bytes().to_vec(),
+        vec![0; 4],
+        vec![0xff; 12],
+    ]
+    .concat();
+    let blob = build_tlv(&[(0x20, 400i32.to_le_bytes().to_vec()), (0x38, off.clone())]);
+    let mut text = NewText {
+        text: "ドン".into(),
+        frame: [0, 0, 100, 300],
+        font_size_pt: 9.0,
+        vertical: true,
+        color: None,
+        font: None,
+        line_spacing: None,
+        edge: Some(TextEdge {
+            width_px: 34.0,
+            color: [255, 255, 255],
+        }),
+    };
+    let edge_of = |blob: &[u8]| {
+        parse_tlv(blob)
+            .unwrap()
+            .into_iter()
+            .find(|(tag, _)| *tag == 0x38)
+            .map(|(_, value)| value.to_vec())
+    };
+    let edged = retarget_text_attributes(&blob, &text).unwrap();
+    let expected = [
+        1u32.to_le_bytes().to_vec(),
+        34000u32.to_le_bytes().to_vec(),
+        vec![0; 4],
+        vec![0xff; 12],
+    ]
+    .concat();
+    assert_eq!(edge_of(&edged), Some(expected.clone()));
+    // A donor without the record gets one only for an edge.
+    let bare = build_tlv(&[(0x20, 400i32.to_le_bytes().to_vec())]);
+    assert_eq!(
+        edge_of(&retarget_text_attributes(&bare, &text).unwrap()),
+        Some(expected)
+    );
+    text.edge = None;
+    assert_eq!(edge_of(&retarget_text_attributes(&bare, &text).unwrap()), None);
+    assert_eq!(
+        edge_of(&retarget_text_attributes(&blob, &text).unwrap()).unwrap()[0..4],
+        [0, 0, 0, 0]
+    );
 }
 
 #[test]
@@ -434,6 +489,7 @@ fn new_text_writes_the_line_spacing_into_its_paragraph_run() {
         color: None,
         font: None,
         line_spacing: None,
+        edge: None,
     };
     // Kept as the donor has it, as one run over the new text.
     let kept = retarget_text_attributes(&blob, &text).unwrap();
@@ -473,6 +529,7 @@ fn new_text_names_its_font_as_csp_does() {
         color: None,
         font: None,
         line_spacing: None,
+        edge: None,
     };
     let kept = retarget_text_attributes(&blob, &text).unwrap();
     assert_eq!(
@@ -558,6 +615,7 @@ fn new_text_takes_one_run_in_the_added_attributes_too() {
         color: None,
         font: None,
         line_spacing: None,
+        edge: None,
     };
     let retargeted = retarget_add_attributes(&blob, &text).unwrap();
     let items = parse_tlv(&retargeted[4..]).unwrap();

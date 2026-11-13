@@ -10,6 +10,8 @@ export interface TextView extends SheetText {
   /** Ink colour; white for 白抜き. */
   color?: string;
   bold?: boolean;
+  /** 白縁: the edge's colour round the letters; its width is EDGE_EM of the font size. */
+  edge?: string;
   /** Line pitch as a multiple of the font size (1.15 when not given). */
   pitch?: number;
 }

@@ -92,6 +92,8 @@ export interface Line {
   id: string;
   text: string;
   kind: LineKind;
+  /** セリフ種類 made for the name (`LineType.id`); `kind` is its base. */
+  type?: string;
   speaker?: string;
   panel?: string;
   box: BoxMm;
@@ -105,6 +107,8 @@ export interface Line {
   linkTo?: string;
   /** 白抜き: black balloon, white text. */
   inverted?: boolean;
+  /** 白縁: an edge round the letters (white; black round 白抜き letters). */
+  edge?: boolean;
   /** 強調: bold. */
   emphasis?: boolean;
   /** コマ枠でマスク: the balloon is cut off at the border of its panel. */
@@ -384,6 +388,32 @@ export interface Character {
   color?: string;
   /** 口調のメモ: how the character talks. */
   tone?: string;
+  /** キャラのフキダシ設定: the look of what this character says (in kinds that follow the speaker). */
+  look?: LineLook;
+}
+
+/**
+ * セリフの見た目: what a セリフ種類 or a character gives its lines; a field
+ * left out comes from the one under it (作品の既定 → 種類 → キャラ → the line's own).
+ */
+export interface LineLook {
+  shape?: BalloonShape;
+  /** フォント (as CLIP STUDIO PAINT names it). */
+  font?: string;
+  fontSizePt?: number;
+  /** 白抜き. */
+  inverted?: boolean;
+  /** 白縁. */
+  edge?: boolean;
+}
+
+/** セリフ種類 made for a name: one of the five kinds (`base`) with a look of its own. */
+export interface LineType extends LineLook {
+  id: string;
+  name: string;
+  base: LineKind;
+  /** Its lines keep this look whoever says them (the speaker's フキダシ設定 is not used). */
+  ownLook?: boolean;
 }
 
 export interface Scene {
@@ -428,6 +458,8 @@ export interface Project {
   plan?: Plan;
   /** 作品ごとのフキダシの既定: the shape new lines of each kind get. */
   lineShapes?: Partial<Record<LineKind, BalloonShape>>;
+  /** セリフ種類 made for this name (beyond the five kinds), in the order offered. */
+  lineTypes?: LineType[];
   /** 保留コマ: panels taken off the pages until it is decided where they go. */
   held?: HeldPanel[];
   /** 保留のページ: pages taken out of the name (a page, a 見開き, a run) until it is decided whether and where they go back. */
@@ -476,6 +508,7 @@ export interface SeriesShared {
   style?: NameStyle;
   cspPage?: CspPage;
   lineShapes?: Partial<Record<LineKind, BalloonShape>>;
+  lineTypes?: LineType[];
   gutters?: Gutters;
   roughLayers?: RoughLayer[];
 }

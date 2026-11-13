@@ -6,7 +6,8 @@
 // Skills' command line (skill/namestudio.ts) both use this.
 import { BORDER_LABELS, EFFECT_LABELS, FILL_LABELS, PATTERNS, patternPanels, replacePanels } from "./koma";
 import { addCharacter, putScene, setEmotion } from "./cast";
-import { addLine, fitLine, KIND_LABELS, mostlyHalfWidth, setLineKind, textAmount } from "./dialogue";
+import { addLine, fitLine, KIND_LABELS, mostlyHalfWidth, textAmount } from "./dialogue";
+import { setLineSpeaker, setLineType } from "./linelook";
 import { area, bounds, boxCenter, rectShape } from "../model/geometry";
 import type { BalloonShape, BoxMm, Character, Line, LineKind, Page, Panel, Project, StickyColor } from "../model/model";
 import { basicBox } from "./pagebox";
@@ -519,7 +520,7 @@ function applyOne(project: Project, op: AssistOp, done: string[]): string {
           : undefined;
       const speaker = op.speaker ? speakerFor(project, op.speaker, done) : undefined;
       const line = addLine(project, page, [0, 0], op.text || "…", kind);
-      if (speaker) line.speaker = speaker;
+      if (speaker) setLineSpeaker(project, line, speaker);
       if (shape && shape !== "auto") line.balloonShape = shape;
       placeAfter(project, page, panel, line, previous && page.lines.includes(previous) ? previous : undefined);
       assignPanels(page);
@@ -532,14 +533,14 @@ function applyOne(project: Project, op: AssistOp, done: string[]): string {
       const shape = checkShape(op.shape);
       const changes: string[] = [];
       if (op.speaker === null) {
-        delete line.speaker;
+        setLineSpeaker(project, line, undefined);
         changes.push("話者なし");
       } else if (op.speaker !== undefined) {
-        line.speaker = speakerFor(project, op.speaker, done);
+        setLineSpeaker(project, line, speakerFor(project, op.speaker, done));
         changes.push(`話者 ${op.speaker}`);
       }
       if (kind && kind !== line.kind) {
-        setLineKind(project, line, kind);
+        setLineType(project, line, { kind });
         changes.push(KIND_LABELS[kind]);
       }
       if (shape) {
