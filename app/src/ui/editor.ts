@@ -436,10 +436,28 @@ export class PageEditor {
 
   fitView(): void {
     this.stage.fitView();
+    this.showFlipped();
   }
 
   rotateView(degrees: number): void {
     this.stage.rotateView(degrees);
+  }
+
+  /** 左右反転 of the view (on screen only). */
+  get flipped(): boolean {
+    return this.view.flipped;
+  }
+
+  setFlipped(flipped: boolean): void {
+    this.stage.setFlipped(flipped);
+    this.showFlipped();
+  }
+
+  /** The 左右反転 button says whether the view is mirrored. */
+  private showFlipped(): void {
+    const button = document.getElementById("view-flip");
+    button?.setAttribute("aria-pressed", String(this.view.flipped));
+    button?.classList.toggle("active", this.view.flipped);
   }
 
   resize(): void {

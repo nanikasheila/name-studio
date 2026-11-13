@@ -204,7 +204,7 @@ export class EditorStage {
     const { width, height } = this.stageSize();
     const [x0, y0, x1, y1] = box;
     const inside = x0 >= 0 && x1 <= width && y0 >= 0 && y1 <= height;
-    if (inside || this.view.rotation) {
+    if (inside || this.view.changed) {
       this.host.draw();
       return;
     }
@@ -241,7 +241,7 @@ export class EditorStage {
     this.sliding = null;
   }
 
-  /** Ctrl+0: the whole spread, upright (連続: the spread worked on, in the middle). */
+  /** Ctrl+0: the whole spread, upright and not mirrored (連続: the spread worked on, in the middle). */
   fitView(): void {
     if (this.continuous) {
       const project = this.host.project();
@@ -256,7 +256,17 @@ export class EditorStage {
     } else {
       this.resetView();
     }
+    this.view.flipped = false;
     this.setRotation(0);
+  }
+
+  /** 左右反転: mirror the view (to see the balance of a page afresh, as CSP's 画面の左右反転). */
+  setFlipped(flipped: boolean): void {
+    if (this.view.flipped === flipped) return;
+    this.view.flipped = flipped;
+    this.applyViewTransform();
+    this.host.draw();
+    this.host.status(flipped ? "画面を左右反転しています（もう一度で戻す）" : "画面の左右反転を戻しました");
   }
 
   /** Turn the view by `degrees` (Shift + Space + drag turns it freely). */
@@ -269,7 +279,8 @@ export class EditorStage {
     this.applyViewTransform();
     this.host.draw();
     const degrees = Math.round((this.view.rotation * 180) / Math.PI);
-    this.host.status(degrees ? `画面を ${degrees}° 回しています（Ctrl+0 で戻す）` : "画面の回転を戻しました");
+    const flipped = this.view.flipped ? "（左右反転中）" : "";
+    this.host.status(degrees ? `画面を ${degrees}° 回しています${flipped}（Ctrl+0 で戻す）` : `画面の回転を戻しました${flipped}`);
   }
 
   /** Where an event is in the view before turning (what the pages are laid out in). */

@@ -36,6 +36,28 @@ describe("the editor's view", () => {
     close([(a * p[0] + c * p[1] + e) / 2, (b * p[0] + d * p[1] + f) / 2], onScreen);
   });
 
+  it("mirrors the view (左右反転), turned or not, and maps both ways", () => {
+    const v = view();
+    v.flipped = true;
+    close(v.onScreen([100, 50]), [700, 50]);
+    close(v.unturned([700, 50]), [100, 50]);
+    v.turnTo(0.6);
+    const p: [number, number] = [123, 456];
+    close(v.onScreen(v.unturned(p)), p);
+    const [a, b, c, d, e, f] = v.matrix(1);
+    const q: [number, number] = [210, 80];
+    close([a * q[0] + c * q[1] + e, b * q[0] + d * q[1] + f], v.onScreen(q));
+    // A drag on screen still turns by the angle the pointer went round.
+    const s: [number, number] = [500, 300];
+    expect(v.angleAt(...v.unturned(s))).toBeCloseTo(Math.atan2(0, 100), 9);
+    // The hand moves what is under it along with it.
+    const under = v.unturned([300, 200]);
+    const before = v.onScreen(under);
+    v.dragBy(15, -7);
+    const moved = v.onScreen([under[0] + v.pan[0], under[1] + v.pan[1]]);
+    close([moved[0] - before[0], moved[1] - before[1]], [15, -7]);
+  });
+
   it("moves the pages with the hand however the view is turned", () => {
     const v = view();
     v.turnTo(Math.PI / 2);

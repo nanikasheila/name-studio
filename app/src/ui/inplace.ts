@@ -73,6 +73,13 @@ export function writeInPlace(
       setLineText(line, value);
     }
   };
+  /** The box between two points of the layout as it lies on screen (turned or 左右反転). */
+  const onScreenBox = (a: Point, b: Point): [number, number, number, number] => {
+    const corners = [a, b, [a[0], b[1]] as Point, [b[0], a[1]] as Point].map((p) => host.onScreen(p));
+    const xs = corners.map((p) => p[0]);
+    const ys = corners.map((p) => p[1]);
+    return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+  };
   const place = () => {
     const slot = host.slotOf(pageId);
     if (!slot) return;
@@ -80,15 +87,16 @@ export function writeInPlace(
     if (panel) {
       const { x, y } = host.noteAt(slot, panel);
       const [x0, , x1] = bounds(panel.shape);
-      const [left, top] = host.onScreen([x, y]);
+      const width = Math.max(180, Math.min((x1 - x0) * slot.scale - 8, 320));
+      const [left, top] = onScreenBox([x, y], [x + width, y]);
       style.left = `${left}px`;
       style.top = `${top}px`;
-      style.width = `${Math.max(180, Math.min((x1 - x0) * slot.scale - 8, 320))}px`;
+      style.width = `${width}px`;
       style.height = `${NOTE_ROW * 4 + 8}px`;
       style.font = NOTE_FONT;
       style.writingMode = "horizontal-tb";
     } else if (line) {
-      const [x0, y0, x1] = line.box;
+      const [x0, y0, x1, y1] = line.box;
       // Never smaller than can be read, even when the page is shown small.
       const size = Math.max(line.fontSizePt * MM_PER_PT * slot.scale, 12);
       const pad = 6;
@@ -100,13 +108,13 @@ export function writeInPlace(
       const across = (rows.length + 1) * size * linePitch() + 2 * pad;
       const along = (longest + 1) * size + 2 * pad;
       const [w, h] = line.vertical ? [across, along] : [along, across];
-      // Vertical text starts at the right, as it is read.
-      const [ax, ay] = host.onScreen([
-        line.vertical ? slot.x + x1 * slot.scale + pad : slot.x + x0 * slot.scale - pad,
-        slot.y + y0 * slot.scale - pad,
-      ]);
-      style.left = `${line.vertical ? ax - w : ax}px`;
-      style.top = `${ay}px`;
+      // Vertical text starts at the right, as it is read (wherever the box lies on a turned or mirrored view).
+      const [left, top, right] = onScreenBox(
+        [slot.x + x0 * slot.scale, slot.y + y0 * slot.scale],
+        [slot.x + x1 * slot.scale, slot.y + y1 * slot.scale],
+      );
+      style.left = `${line.vertical ? right + pad - w : left - pad}px`;
+      style.top = `${top - pad}px`;
       style.width = `${w}px`;
       style.height = `${h}px`;
       style.lineHeight = String(linePitch());

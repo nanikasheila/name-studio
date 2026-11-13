@@ -501,7 +501,7 @@ export function buildCommands(host: CommandHost): Command[] {
     lanes("view.timeline", "帯に時系列を出す", ["F4"], ["time"]),
     {
       id: "view.fit",
-      label: "全体を表示（拡大・移動・回転を戻す）",
+      label: "全体を表示（拡大・移動・回転・反転を戻す）",
       group: "画面",
       keys: ["Ctrl+0"],
       available: named,
@@ -522,6 +522,15 @@ export function buildCommands(host: CommandHost): Command[] {
       keys: ["^"],
       available: named,
       run: always(() => editor.rotateView(15)),
+    },
+    {
+      id: "view.flip",
+      label: "画面を左右反転する・戻す（バランスを見直す。書き出しには関係しません）",
+      group: "画面",
+      keys: ["Shift+H"],
+      words: "反転 左右 ミラー 鏡 flip",
+      available: named,
+      run: always(() => editor.setFlipped(!editor.flipped)),
     },
     {
       id: "view.continuous",

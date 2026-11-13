@@ -137,6 +137,7 @@ export class Workbench {
   private workspaces!: Workspaces;
   private workspaceDialog!: WorkspaceDialog;
   private readonly layerView = new LayerView({
+    project: () => this.session.project,
     selected: (ref) => this.layerSelected(ref),
     select: (ref) => this.selectLayer(ref),
     hidden: () => this.editor.hidden,
@@ -961,6 +962,7 @@ export class Workbench {
     $("brush-edit").addEventListener("click", () => this.brushEditor.openFor(this.editor.tool === "eraser" ? "eraser" : "pen"));
     $("name-export").addEventListener("click", () => this.exportDialog.open());
     $("focus-mode").addEventListener("click", () => this.toggleFocus());
+    $("view-flip").addEventListener("click", () => this.editor.setFlipped(!this.editor.flipped));
     $("read-mode").addEventListener("click", () => void this.reader.open());
     // 一時切り替え: let go of a held tool key (or end the stroke made with it) for the tool from before.
     const giveBack = (tool: Tool | null) => tool && this.session.project && this.setTool(tool);
