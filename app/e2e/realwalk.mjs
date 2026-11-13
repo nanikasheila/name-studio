@@ -190,13 +190,26 @@ try {
   // the window (lib.rs palette_window), the palette is drawn and works there, and closing it puts it back.
   await page.locator("#tab-subview").click();
   await page.locator('.palette[data-lead="subview"] .palette-menu').click();
-  const opened = page
-    .context()
-    .waitForEvent("page", { timeout: 20_000 })
-    .catch(() => null);
   await page.locator(".popup-menu [role=menuitem]", { hasText: "別のウィンドウへ" }).click();
-  const outside = await opened;
-  check(!!outside, "別のウィンドウへ opens a window of its own");
+  // WebView2 shows more than one page for the window: the window's own blank page comes first and is
+  // replaced by the popup (SetNewWindow), so the page looked for is the one the palette is in.
+  let outside = null;
+  for (let i = 0; i < 80 && !outside; i++) {
+    for (const other of page.context().pages()) {
+      if (other === page || other.isClosed()) continue;
+      const holds = await other.evaluate(() => !!document.querySelector(".palette-window")).catch(() => false);
+      if (holds) outside = other;
+    }
+    if (!outside) await page.waitForTimeout(250);
+  }
+  check(
+    !!outside,
+    `別のウィンドウへ opens a window of its own (pages: ${page
+      .context()
+      .pages()
+      .map((p) => p.url())
+      .join(", ")})`,
+  );
   if (outside) {
     await page.waitForTimeout(800);
     const there = await outside
