@@ -1,8 +1,8 @@
 // The built app's own window, walked through as a person does (Windows: the
 // WebView2 of the installed app, driven through its debugging port): the
 // start screen, 見本で試す and its guide, a line drawn with the pen, undone and
-// done again, the command palette and the help, a colour theme chosen, and
-// autosave writing a copy through the Rust side. Then the app is stopped
+// done again, the command palette and the help, a colour theme chosen, a
+// palette out in a window of its own, and autosave writing a copy through the Rust side. Then the app is stopped
 // without saving and started again: it offers the copy, brings it back with
 // the line, and the theme is as chosen. No page errors, nothing in the
 // console's errors. What the browser walk-throughs cannot see: the real
@@ -185,6 +185,39 @@ try {
   await page.locator('[data-theme-id="dark"]').click();
   await page.keyboard.press("Escape");
   check((await page.evaluate(() => document.documentElement.dataset.theme)) === "dark", "暗い is chosen");
+
+  // 4b. A palette out in a window of its own (別のウィンドウへ, for another display): the app opens
+  // the window (lib.rs palette_window), the palette is drawn and works there, and closing it puts it back.
+  await page.locator("#tab-subview").click();
+  await page.locator('.palette[data-lead="subview"] .palette-menu').click();
+  const opened = page
+    .context()
+    .waitForEvent("page", { timeout: 20_000 })
+    .catch(() => null);
+  await page.locator(".popup-menu [role=menuitem]", { hasText: "別のウィンドウへ" }).click();
+  const outside = await opened;
+  check(!!outside, "別のウィンドウへ opens a window of its own");
+  if (outside) {
+    await page.waitForTimeout(800);
+    const there = await outside
+      .evaluate(() => {
+        const canvas = document.querySelector(".subview-canvas");
+        if (!canvas) return { canvas: false, white: 0, title: document.title };
+        const data = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+        let white = 0;
+        for (let i = 0; i < data.length; i += 4) if (data[i] > 240 && data[i + 1] > 225 && data[i + 3] > 250) white++;
+        return { canvas: true, white, title: document.title };
+      })
+      .catch((error) => ({ canvas: false, white: 0, title: String(error) }));
+    check(there.canvas && there.white > 1000, `the サブビュー is drawn in it (${JSON.stringify(there)})`);
+    check((await page.locator("#dock-right .subview-canvas").count()) === 0, "and is out of the main window");
+    await outside.locator(".subview-bar button", { hasText: "次のコマ" }).click();
+    await page.waitForTimeout(200);
+    check(((await page.locator("#status").textContent()) ?? "").includes("コマ目"), "次のコマ pressed there moves the main view");
+    await outside.close();
+    await page.waitForTimeout(1500);
+    check((await page.locator("#dock-right .subview-canvas").count()) === 1, "closing the window puts the palette back");
+  }
 
   // 5. Autosave writes a copy through the Rust side (the sample has no file yet).
   let copies = [];

@@ -14,6 +14,7 @@ import { SUBVIEW_FLIP_KEY } from "../platform/prefs";
 import { readFlag, writeFlag } from "../platform/settings";
 import { drawThumb } from "../render/pagethumb";
 import type { PageEditor } from "./editor";
+import { PALETTE_RESIZED } from "./popout";
 
 export interface SubViewHost {
   project(): Project | null;
@@ -84,6 +85,7 @@ export class SubView {
     this.canvas.addEventListener("pointerup", stop);
     this.canvas.addEventListener("pointercancel", stop);
     new ResizeObserver(() => this.redraw()).observe(this.canvas);
+    box.addEventListener(PALETTE_RESIZED, () => this.redraw());
     box.replaceChildren(
       element(
         "div",

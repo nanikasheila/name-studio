@@ -47,7 +47,7 @@ export function editorDocks(changed: () => void): Docks {
     tabId,
     body: $(id === "inspector" ? "inspector" : `side-${id}`),
   });
-  return new Docks(
+  const docks = new Docks(
     { left: $("dock-left"), right: $("dock-right") },
     [
       palette(
@@ -103,4 +103,7 @@ export function editorDocks(changed: () => void): Docks {
     // Dropped on the pages: floating there.
     document.querySelector<HTMLElement>("#editor .stage-column"),
   );
+  // Palettes left out in windows of their own go out again, once the screen is up.
+  setTimeout(() => docks.restoreOutside(), 0);
+  return docks;
 }

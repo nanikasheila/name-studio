@@ -168,8 +168,43 @@ fn open_window(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     {
         window = window.additional_browser_args(&format!("{WEBVIEW_ARGS} --remote-debugging-port={port}"));
     }
-    window.build()?;
+    let handle = app.handle().clone();
+    window
+        .on_new_window(move |url, features| palette_window(&handle, &url, features))
+        .build()?;
     Ok(())
+}
+
+/// A palette taken out into a window of its own (ui/popout.ts: `window.open("")`,
+/// so that it can go onto another display). The page fills it from the main
+/// window's script, which keeps running it: the window is only the opener's
+/// popup, empty, its title following the page's. Anything else asked for with
+/// window.open is not opened.
+fn palette_window<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    url: &tauri::Url,
+    features: tauri::webview::NewWindowFeatures,
+) -> tauri::webview::NewWindowResponse<R> {
+    static COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    if url.as_str() != "about:blank" {
+        return tauri::webview::NewWindowResponse::Deny;
+    }
+    let label = format!("palette-{}", COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
+    let built = tauri::WebviewWindowBuilder::new(app, label, tauri::WebviewUrl::External(url.clone()))
+        .window_features(features)
+        .title("Name Studio")
+        .min_inner_size(160.0, 120.0)
+        .on_document_title_changed(|window, title| {
+            let _ = window.set_title(&title);
+        })
+        .build();
+    match built {
+        Ok(window) => tauri::webview::NewWindowResponse::Create { window },
+        Err(error) => {
+            errorlog::append(&format!("palette window: {error}"));
+            tauri::webview::NewWindowResponse::Deny
+        }
+    }
 }
 
 pub fn run() {

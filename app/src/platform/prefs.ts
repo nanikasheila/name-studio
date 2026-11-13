@@ -23,6 +23,8 @@ export const PANEL_CARRIES_KEY = "namestudio.panelCarries";
 export const BALLOON_TEXT_KEY = "namestudio.balloonTextFollows";
 export const SHOW_NOTES_KEY = "namestudio.showNotes";
 export const SHOW_STICKIES_KEY = "namestudio.showStickies";
+/** 欄を別のウィンドウへ: where each palette's window was, and which were out (ui/popout.ts). */
+export const PALETTE_WINDOWS_KEY = "namestudio.paletteWindows";
 /** サブビューだけ左右反転. */
 export const SUBVIEW_FLIP_KEY = "namestudio.subviewFlipped";
 export const SINGLE_PAGE_KEY = "namestudio.singlePage";
