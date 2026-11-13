@@ -35,14 +35,20 @@ try {
   check((await page.locator("#layer-rows .layer-page.layer-folder").count()) >= 1, "the page is a folder");
   const thumbs = await page.locator("#layer-rows canvas.layer-thumb").count();
   check(thumbs >= all, `each row has its ミニビュー (${thumbs})`);
-  const inked = await page.locator("#layer-rows .layer-row.layer-folder canvas.layer-thumb").first().evaluate((canvas) => {
-    const data = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
-    let dark = 0;
-    for (let i = 0; i < data.length; i += 4) if (data[i] < 200) dark++;
-    return dark;
-  });
+  const inked = await page
+    .locator("#layer-rows .layer-row.layer-folder canvas.layer-thumb")
+    .first()
+    .evaluate((canvas) => {
+      const data = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+      let dark = 0;
+      for (let i = 0; i < data.length; i += 4) if (data[i] < 200) dark++;
+      return dark;
+    });
   check(inked > 10, `a panel's ミニビュー shows what is drawn in it (${inked} dark pixels)`);
-  const border = await page.locator("#layer-rows .layer-row").first().evaluate((row) => getComputedStyle(row).borderBottomStyle);
+  const border = await page
+    .locator("#layer-rows .layer-row")
+    .first()
+    .evaluate((row) => getComputedStyle(row).borderBottomStyle);
   check(border === "solid", "rows are parted by a line");
   check((await page.locator("#rough-layers canvas.layer-thumb").count()) >= 1, "the ラフ線のレイヤー have their ミニビュー too");
 
@@ -75,7 +81,10 @@ try {
   // The ミニビュー's size, kept.
   await page.locator('.layer-thumb-size button[data-size="large"]').click();
   await page.waitForTimeout(150);
-  const width = await page.locator("#layer-rows canvas.layer-thumb").first().evaluate((c) => c.getBoundingClientRect().width);
+  const width = await page
+    .locator("#layer-rows canvas.layer-thumb")
+    .first()
+    .evaluate((c) => c.getBoundingClientRect().width);
   check(width > 50, `大 makes them bigger (${width}px)`);
   await page.locator('.layer-thumb-size button[data-size="none"]').click();
   await page.waitForTimeout(150);
