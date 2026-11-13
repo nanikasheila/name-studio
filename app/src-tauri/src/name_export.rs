@@ -645,7 +645,7 @@ mod tests {
             [
                 PageLayer::Raster(blank),
                 PageLayer::Raster(fill),
-                PageLayer::Vector { name, lines },
+                PageLayer::Vector { name, lines, .. },
                 PageLayer::Frames { frames, ink, .. },
                 PageLayer::Text(text),
             ] => {
