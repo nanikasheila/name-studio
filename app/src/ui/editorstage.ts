@@ -458,6 +458,53 @@ export class EditorStage {
     return moved;
   }
 
+  /**
+   * サブビュー: the main view brought to `box` (mm on the page `pageId`, laid
+   * out now): zoomed to fit it (`fit`, as far as the zoom goes) or only moved
+   * to have it in the middle. Turned and mirrored as it is.
+   */
+  lookAt(pageId: string, box: BoxMm, fit: boolean): void {
+    const project = this.host.project();
+    const find = () => (project ? this.layout(project).find((slot) => slot.page.id === pageId) : undefined);
+    const slot = find();
+    if (!project || !slot) return;
+    const { width, height } = this.stageSize();
+    const mid: Point = [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2];
+    if (fit) {
+      // The box as it shows turned: its upright extent at the turned angle.
+      const [cos, sin] = [Math.abs(Math.cos(this.view.rotation)), Math.abs(Math.sin(this.view.rotation))];
+      const [w, h] = [(box[2] - box[0]) * slot.scale, (box[3] - box[1]) * slot.scale];
+      const shownW = Math.max(w * cos + h * sin, 1);
+      const shownH = Math.max(w * sin + h * cos, 1);
+      const zoom = this.view.zoom * Math.min((width - 2 * MARGIN) / shownW, (height - 2 * MARGIN) / shownH);
+      this.view.zoomAbout(
+        [slot.x + mid[0] * slot.scale, slot.y + mid[1] * slot.scale],
+        Math.min(Math.max(zoom, this.continuous ? 0.02 : 0.3), 12),
+      );
+    }
+    // The page numbers' room and the gaps are px, not zoomed: place the point from the layout as it is now.
+    const moved = find();
+    if (moved) {
+      this.view.pan[0] += width / 2 - (moved.x + mid[0] * moved.scale);
+      this.view.pan[1] += height / 2 - (moved.y + mid[1] * moved.scale);
+    }
+    this.sliding = null;
+    this.host.draw();
+  }
+
+  /** サブビュー: the corners of what the main view shows, in the upright layout (as the pages are laid out). */
+  shownArea(): Point[] {
+    const { width, height } = this.stageSize();
+    return (
+      [
+        [0, 0],
+        [width, 0],
+        [width, height],
+        [0, height],
+      ] as Point[]
+    ).map((corner) => this.view.unturned(corner));
+  }
+
   /** The wheel over the pages: down a 縦スクロール strip, along the row (Shift, or a sideways swipe), else zooming about the pointer. */
   wheel(event: WheelEvent, project: Project): void {
     if (project.scroll && !event.ctrlKey && !event.metaKey && !event.shiftKey && Math.abs(event.deltaY) >= Math.abs(event.deltaX)) {

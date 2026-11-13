@@ -1,8 +1,6 @@
-// The name editor around the canvas: opening the name (the session keeps it
-// and its undo steps; saving it is namesaver.ts), the palettes beside the pages (the
-// lists are in sidelists.ts) and the inspector for the selection. The bars
-// above the pages are controlbar.ts and referencebar.ts; the changes the
-// palettes and commands ask for are nameedits.ts.
+// The name editor around the canvas: opening the name (the session keeps it and its undo steps; saving it is namesaver.ts),
+// the palettes beside the pages (the lists are in sidelists.ts, サブビュー subview.ts) and the inspector for the selection.
+// The bars above the pages are controlbar.ts and referencebar.ts; the changes the palettes and commands ask for are nameedits.ts.
 import { call } from "../platform/backend";
 import { useFonts } from "../domain/fonts";
 import { useStyle } from "../domain/style";
@@ -29,6 +27,7 @@ import { LayerView, type LayerRef } from "./layers";
 import { RoughPanel } from "./roughpanel";
 import { ColorPanel } from "./colorpanel";
 import { SeriesPanel } from "./seriespanel";
+import { SubView } from "./subview";
 import { isMark, ROUGH_BASE } from "../domain/roughlayers";
 import { buildCommands } from "./actions";
 import { replaceSubtoolCommands, type Command } from "../editing/commands";
@@ -183,6 +182,7 @@ export class Workbench {
     status: (message) => this.setStatus(message),
     pickFromPage: (done) => this.editor.pickColorOnce(done),
   });
+  readonly subView = new SubView({ project: () => this.session.project, editor: () => this.editor, status: (m) => this.setStatus(m) });
   private readonly seriesPanel = new SeriesPanel({
     project: () => this.session.project,
     path: () => this.session.path,
@@ -363,6 +363,7 @@ export class Workbench {
     this.commands = buildCommands({
       editor: this.editor,
       board: this.board,
+      subView: this.subView,
       hasProject: () => this.session.project !== null,
       status: (message) => this.setStatus(message),
       save: (saveAs) => void this.save(saveAs),
@@ -724,10 +725,8 @@ export class Workbench {
   }
 
   /**
-   * A line drawn with the pen: the pages show it already. The strip, the
-   * palettes and the inspector (all of them drawn anew, the pages' pictures
-   * with them) follow once the pen rests, so lines drawn one after another
-   * do not stop for them.
+   * A line drawn with the pen: the pages show it already. The strip, the palettes and the inspector (all of them
+   * drawn anew, the pages' pictures with them) follow once the pen rests, so lines drawn one after another do not stop for them.
    */
   private afterLine(): void {
     this.updateTitle();
@@ -876,6 +875,7 @@ export class Workbench {
     if (open("held")) this.lists.held(project);
     if (open("layers")) this.renderLayers();
     if (open("color")) this.colorPanel.render($("side-color"));
+    if (open("subview")) this.subView.render($("side-subview"));
     if (open("series")) this.seriesPanel.render($("side-series"));
     this.lists.assist(open("assist"));
   }

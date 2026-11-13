@@ -84,6 +84,8 @@ const VIEW_STEPS: HelpStep[] = [
   { input: "Shift+Space+ドラッグ", does: "画面を回す" },
   { command: "view.flip", does: "画面を左右反転する・戻す" },
   { command: "view.fit", does: "全体を表示" },
+  { command: "view.panelNext", does: "次のコマに寄る（全体はサブビューに）" },
+  { command: "view.panelPrevious", does: "前のコマに寄る" },
 ];
 
 /** The tools on the page (コマ割り by its way of making panels: "cut.rect"); every tool has one. */
@@ -380,6 +382,7 @@ const DOCK_STEPS: HelpStep[] = [
   { input: "端のアイコン", does: "欄を出す・隠す" },
   { input: "見出しをドラッグ", does: "並べ替え・列の端で新しい列・ほかの見出しの上でタブに・ページの上で浮かせる" },
   { input: "≡・見出しを右クリック", does: "同じことをメニューで（高さを中身に合わせる も）" },
+  { input: "≡ › 別のウィンドウへ", does: "その欄だけのウィンドウに出す（別の画面に置ける。閉じると戻る）" },
   { input: "見出しをダブルクリック", does: "たたむ" },
   { input: "列の内側の端をドラッグ", does: "その列の幅（間の線は高さ）" },
 ];
@@ -459,6 +462,18 @@ export const AREA_TOPICS: Record<string, HelpTopic> = {
       { input: "行をドラッグ・Alt+↑↓", does: "並べ替え" },
       { input: "↑↓", does: "前後のペンに持ち替え（一覧を押したあと）" },
       { input: "Ctrl+D / Delete", does: "複製・削除" },
+    ],
+  },
+  "side-subview": {
+    name: "サブビュー",
+    what: "画面分割: 見開きの全体。赤い枠が画面に出ている所",
+    steps: [
+      { input: "コマを押す", does: "画面がそのコマに寄る（1 コマずつ描ける）" },
+      { input: "コマの外を押す・ドラッグ", does: "画面をそこへ動かす（大きさはそのまま）" },
+      { command: "view.panelNext", does: "次のコマに寄る（読む順。次の見開きへも）" },
+      { command: "view.panelPrevious", does: "前のコマに寄る" },
+      { command: "view.fit", does: "見開き全体を表示（「全体」のボタンでも）" },
+      { input: "反転", does: "サブビューだけ左右反転（画面と書き出しはそのまま）" },
     ],
   },
   "side-color": {
@@ -909,7 +924,7 @@ export const TOUR_STOPS: TourStop[] = [
     title: "左の欄",
     text: [
       "サブツール・ページの一覧・台本・付箋・レイヤーなど。端のアイコンで出し入れします。",
-      "見出しのドラッグか ≡ で、新しい列（片側 3 列まで）・ほかの欄とタブ・ページの上に浮かせる、ができます。",
+      "見出しのドラッグか ≡ で、新しい列（片側 3 列まで）・ほかの欄とタブ・ページの上に浮かせる・別のウィンドウ（別の画面）に出す、ができます。",
     ],
   },
   {

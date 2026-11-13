@@ -38,6 +38,7 @@ import {
   type Side,
 } from "../editing/docklayout";
 import { openMenu, SEPARATOR, type MenuItem } from "./popupmenu";
+import { forgetOut, PaletteWindow, palettesOut } from "./popout";
 
 export { clampWidth, column, defaultLayout, isOpen, movePalette, readLayout, MAX_COLUMNS };
 export type { DockLayout, PaletteId, Side };
@@ -77,6 +78,8 @@ export class Docks {
   private dragging: PaletteId | null = null;
   private readonly floats: HTMLElement;
   private saveSoon = 0;
+  /** Palettes out in windows of their own (popout.ts); not kept in the layout, they open there again on start. */
+  private readonly outside = new Map<PaletteId, PaletteWindow>();
 
   constructor(
     private readonly sides: Record<Side, HTMLElement>,
@@ -97,14 +100,54 @@ export class Docks {
     for (const side of ["left", "right"] as const) this.listen(sides[side], side);
     if (floatArea) this.listenFloat(floatArea);
     this.render();
+    window.addEventListener("pagehide", () => {
+      for (const out of this.outside.values()) out.closeForNow();
+    });
+  }
+
+  /** On start: the palettes that were out in windows of their own go out again (where windows can be opened). */
+  restoreOutside(): void {
+    for (const id of palettesOut()) {
+      if (!this.defs.has(id as PaletteId) || this.popOut(id as PaletteId)) continue;
+      forgetOut(id);
+      this.layout.palettes[id as PaletteId].shown = true;
+      this.commit();
+    }
+  }
+
+  /** 別のウィンドウへ: the palette in a window of its own (another display); false when none could be opened. */
+  popOut(id: PaletteId): boolean {
+    const def = this.defs.get(id);
+    if (!def || this.outside.has(id)) return !!def;
+    const near = this.sectionOf(id)?.getBoundingClientRect();
+    const out = PaletteWindow.open(id, def.title, def.body, () => this.comeBack(id), near);
+    if (!out) return false;
+    this.outside.set(id, out);
+    this.layout.palettes[id].shown = false;
+    this.commit();
+    return true;
+  }
+
+  /** Whether a palette is out in a window of its own. */
+  isOutside(id: PaletteId): boolean {
+    return this.outside.has(id);
+  }
+
+  /** Its window closed: the palette back where it was. */
+  private comeBack(id: PaletteId): void {
+    if (!this.outside.delete(id)) return;
+    this.layout.palettes[id].shown = true;
+    this.commit();
   }
 
   isOpen(id: PaletteId): boolean {
-    return isOpen(this.layout, id);
+    return this.outside.has(id) || isOpen(this.layout, id);
   }
 
   /** Bring a palette into sight (its side open, it unfolded and in front) and scroll to it. */
   open(id: PaletteId): void {
+    const out = this.outside.get(id);
+    if (out) return out.focus();
     const p = this.layout.palettes[id];
     p.shown = true;
     this.layout.palettes[frameKey(this.layout, id)].folded = false;
@@ -116,6 +159,8 @@ export class Docks {
 
   /** Its icon: show it, or (shown) hide it; in a folded side, open the side with it. */
   toggle(id: PaletteId): void {
+    const out = this.outside.get(id);
+    if (out) return out.focus();
     const p = this.layout.palettes[id];
     const lead = this.layout.palettes[frameKey(this.layout, id)];
     if (!p.float && this.layout.collapsed[p.side]) {
@@ -191,8 +236,9 @@ export class Docks {
       button.title = `${def.title}: ${def.tip}（もう一度で隠す。見出しをドラッグで別の列・タブ・紙面の上へ）`;
       button.setAttribute("aria-label", def.title);
       button.innerHTML = `${def.icon}<span>${def.title}</span>`;
-      button.classList.toggle("active", p.shown && (!!p.float || !narrow));
-      button.classList.toggle("floating", !!p.float);
+      button.classList.toggle("active", this.outside.has(id) || (p.shown && (!!p.float || !narrow)));
+      button.classList.toggle("floating", !!p.float || this.outside.has(id));
+      if (this.outside.has(id)) button.title = `${def.title}: 別のウィンドウに出ています（押すとそのウィンドウを前に。閉じると欄に戻る）`;
       button.addEventListener("click", () => this.toggle(id));
       rail.append(button);
     }
@@ -220,7 +266,7 @@ export class Docks {
     dock.replaceChildren(rail, columns, parked);
     for (const id of ids) {
       const def = this.defs.get(id);
-      if (def && !this.placed.has(id)) parked.append(def.body);
+      if (def && !this.placed.has(id) && !this.outside.has(id)) parked.append(def.body);
     }
   }
 
@@ -407,6 +453,13 @@ export class Docks {
               this.commit();
             },
           },
+      {
+        label: "別のウィンドウへ（ほかの画面にも置ける）",
+        title: "この欄だけのウィンドウに出す。ウィンドウを閉じると欄に戻る。次に開いたときも同じ所に出る",
+        run: () => {
+          if (!this.popOut(id)) openMenu([{ label: "ウィンドウを開けませんでした", disabled: true, run: () => {} }], x, y);
+        },
+      },
       SEPARATOR,
       { label: "隠す", run: () => ((p.shown = false), this.commit()) },
     ];

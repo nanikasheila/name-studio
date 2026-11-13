@@ -2,6 +2,7 @@
 // (R16) and the command palette run these, and the key settings list them.
 // An action is added here once, with its label, group, keys and what it does.
 import type { Board, LaneId } from "./board";
+import type { SubView } from "./subview";
 import type { Command } from "../editing/commands";
 import type { PaletteId } from "./dock";
 import { ERASE_MODE_LABELS, type EditorEraseMode, type PageEditor, type PanelMode, type Tool } from "./editor";
@@ -29,6 +30,8 @@ export interface PageCommands {
 export interface CommandHost {
   readonly editor: PageEditor;
   readonly board: Board;
+  /** サブビュー (画面分割): 前・次のコマに寄る. */
+  readonly subView: SubView;
   /** Whether a name is open. */
   hasProject(): boolean;
   status(message: string): void;
@@ -509,6 +512,24 @@ export function buildCommands(host: CommandHost): Command[] {
       run: always(() => editor.fitView()),
     },
     {
+      id: "view.panelNext",
+      label: "次のコマに寄る（読む順。画面にそのコマだけ大きく、全体はサブビューに）",
+      group: "画面",
+      keys: ["PageDown"],
+      words: "画面分割 1コマ ズーム サブビュー",
+      available: named,
+      run: always(() => host.subView.step(1)),
+    },
+    {
+      id: "view.panelPrevious",
+      label: "前のコマに寄る（読む順）",
+      group: "画面",
+      keys: ["PageUp"],
+      words: "画面分割 1コマ ズーム サブビュー",
+      available: named,
+      run: always(() => host.subView.step(-1)),
+    },
+    {
       id: "view.rotateLeft",
       label: "画面を左に 15° 回す（Shift + Space + ドラッグで自由に）",
       group: "画面",
@@ -704,6 +725,7 @@ export function buildCommands(host: CommandHost): Command[] {
     palette("notes", "付箋", "メモ 未決"),
     palette("held", "保留", "置き場所"),
     palette("layers", "レイヤー", "コマ枠 フォルダ"),
+    palette("subview", "サブビュー", "画面分割 全体 ナビゲーター 1コマ 寄る"),
     palette("series", "シリーズ", "話 次の話"),
     palette("assist", "相談", "AI 相談 Claude Codex LLM 行き詰まり アシスタント"),
     palette("inspector", "詳細", "設定 プロパティ"),

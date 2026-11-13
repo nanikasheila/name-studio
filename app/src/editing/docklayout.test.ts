@@ -21,14 +21,14 @@ describe("欄（パレット）", () => {
   it("moves a palette to the other column, before another or at the bottom, shown and open", () => {
     const layout = defaultLayout();
     movePalette(layout, "script", "right", "inspector");
-    expect(column(layout, "right")).toEqual(["assist", "script", "inspector"]);
+    expect(column(layout, "right")).toEqual(["subview", "assist", "script", "inspector"]);
     expect(layout.palettes.script).toMatchObject({ side: "right", shown: true, folded: false });
     movePalette(layout, "notes", "right", null);
-    expect(column(layout, "right")).toEqual(["assist", "script", "inspector", "notes"]);
+    expect(column(layout, "right")).toEqual(["subview", "assist", "script", "inspector", "notes"]);
     movePalette(layout, "inspector", "left", "pages");
     const left = column(layout, "left");
     expect(left.indexOf("inspector")).toBe(left.indexOf("pages") - 1);
-    expect(column(layout, "right")).toEqual(["assist", "script", "notes"]);
+    expect(column(layout, "right")).toEqual(["subview", "assist", "script", "notes"]);
   });
 
   it("opens a folded column when something is put in it", () => {
@@ -79,14 +79,14 @@ describe("欄（パレット）", () => {
       "color",
     ]);
     expect(layout.order.indexOf("script")).toBeLessThan(layout.order.indexOf("inspector"));
-    expect(layout.order).toHaveLength(13);
+    expect(layout.order).toHaveLength(14);
     expect(layout.palettes.subtools).toMatchObject({ side: "left", shown: true });
     expect(layout.palettes.pages).toMatchObject({ side: "right", col: 0, shown: true, folded: true, weight: 2, tab: null, float: null });
     expect(layout.palettes.script.side).toBe("left");
     // One column a side, its width as it was (in range).
     expect(layout.widths).toEqual({ left: [640], right: [160] });
     expect(layout.collapsed).toEqual({ left: true, right: false });
-    expect(readLayout("{not json").order).toHaveLength(13);
+    expect(readLayout("{not json").order).toHaveLength(14);
     // A side's width kept with the icons above it: the column alone is that much narrower now they stand beside it.
     expect(readLayout(JSON.stringify({ width: { left: 280, right: 300 } })).widths).toEqual({ left: [240], right: [260] });
   });

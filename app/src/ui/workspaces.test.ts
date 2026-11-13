@@ -53,7 +53,7 @@ describe("作業の配置", () => {
     const overview = store.saved.overview!;
     expect([overview.view, overview.rows, overview.band]).toEqual(["continuous", 2, "wide"]);
     // Palettes left out of what was kept are where they go by default.
-    expect(overview.docks.order).toHaveLength(13);
+    expect(overview.docks.order).toHaveLength(14);
     expect(readWorkspaces("{not json").current).toBe("draw");
   });
 

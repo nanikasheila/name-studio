@@ -25,7 +25,18 @@ export function noDialogBut(id: string): boolean {
 }
 
 /** The element with this id (the app's page always has it). */
-export const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+/** Documents of windows a palette was taken out into (ui/popout.ts): what is there is found by `$` too. */
+export const outerDocuments = new Set<Document>();
+
+export const $ = <T extends HTMLElement>(id: string) => {
+  const found = document.getElementById(id);
+  if (found || !outerDocuments.size) return found as T;
+  for (const doc of outerDocuments) {
+    const there = doc.getElementById(id);
+    if (there) return there as T;
+  }
+  return null as unknown as T;
+};
 
 /** A new element with these properties and children. */
 export function element<K extends keyof HTMLElementTagNameMap>(

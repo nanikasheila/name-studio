@@ -28,6 +28,8 @@ const HELD_ICON =
   '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="3.5" y="3.5" width="13" height="13" rx="1" stroke-dasharray="2.2 2"/><path d="M10 7v6M7 10h6"/></svg>';
 const LAYERS_ICON =
   '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3l7 3.8-7 3.8-7-3.8z"/><path d="M3 10.5l7 3.8 7-3.8M3 14l7 3.8 7-3.8"/></svg>';
+const SUBVIEW_ICON =
+  '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="4" width="15" height="12" rx="1"/><path d="M10 4v12"/><rect x="11.8" y="7" width="4" height="4" fill="none"/></svg>';
 const SERIES_ICON =
   '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="5" width="9" height="12" rx="1"/><path d="M6 5V3h9.5v12h-4"/></svg>';
 const ASSIST_ICON =
@@ -45,7 +47,7 @@ export function editorDocks(changed: () => void): Docks {
     tabId,
     body: $(id === "inspector" ? "inspector" : `side-${id}`),
   });
-  return new Docks(
+  const docks = new Docks(
     { left: $("dock-left"), right: $("dock-right") },
     [
       palette(
@@ -79,6 +81,12 @@ export function editorDocks(changed: () => void): Docks {
         LAYERS_ICON,
         "tab-layers-edit",
       ),
+      palette(
+        "subview",
+        "サブビュー",
+        "画面分割: 見開きの全体と、画面に出ている所（赤い枠）。コマを押すとそのコマに寄る（PageDown・PageUp で次・前のコマ）",
+        SUBVIEW_ICON,
+      ),
       palette("series", "シリーズ", "何話ものネームで人物・ブラシ・フォント・設定を共有する（話から話へ移る・次の話を作る）", SERIES_ICON),
       palette(
         "assist",
@@ -95,4 +103,7 @@ export function editorDocks(changed: () => void): Docks {
     // Dropped on the pages: floating there.
     document.querySelector<HTMLElement>("#editor .stage-column"),
   );
+  // Palettes left out in windows of their own go out again, once the screen is up.
+  setTimeout(() => docks.restoreOutside(), 0);
+  return docks;
 }

@@ -31,7 +31,7 @@ import { noteUse } from "../platform/usagestore";
 import { ROUGH_BASE } from "../domain/roughlayers";
 import { neighbour, setLineText } from "../domain/dialogue";
 import type { FillSettings } from "../editing/fillsettings";
-import type { Binding, Brush, Page, Panel, Point, Project } from "../model/model";
+import type { Binding, BoxMm, Brush, Page, Panel, Point, Project } from "../model/model";
 import { gutters, pageIndex } from "../domain/project";
 import { assignPanels, sortLines } from "../domain/readingorder";
 import { asideSlot, pressHeld } from "./toolaside";
@@ -294,6 +294,7 @@ export class PageEditor {
       laidOut: () => {
         this.inline?.place();
         this.picks.placeBar();
+        this.afterDraw?.();
       },
     };
   }
@@ -439,6 +440,16 @@ export class PageEditor {
 
   resetView(zoom = 1): void {
     this.stage.resetView(zoom);
+  }
+
+  /** Called after each drawing of the pages (サブビュー follows the view). */
+  afterDraw: (() => void) | null = null;
+
+  /** サブビュー: the view brought to `box` on page `pageId` (its spread shown first); `fit`: zoomed to it. */
+  lookAt(pageId: string, box: BoxMm, fit: boolean): void {
+    const project = this.host.project();
+    if (project && !this.slots.some((slot) => slot.page.id === pageId)) this.stage.showPage(pageIndex(project, pageId) + 1);
+    this.stage.lookAt(pageId, box, fit);
   }
 
   fitView(): void {
