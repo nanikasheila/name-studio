@@ -10,6 +10,8 @@ import type { HelpKind } from "../editing/helptopics";
 import { movePane } from "./panefocus";
 import { TOOL_IDS, TOOLS } from "../editing/tooldefs";
 import { WORKSPACES, type WorkspaceId } from "./workspaces";
+import { CURSOR_LABELS, type PenCursor } from "../editing/pen";
+import { penPreferences } from "../platform/prefs";
 
 /** What the page commands do (pagelist.ts). */
 export interface PageCommands {
@@ -36,6 +38,8 @@ export interface CommandHost {
   setRows(rows: number): void;
   setTool(tool: Tool): void;
   setEraseMode(mode: EditorEraseMode): void;
+  /** 選択: a drag around things picks what it surrounds, or anything it touches. */
+  togglePickMode(): void;
   /** 塗り: take up a sub tool ("next": the one after the one in hand), the fill tool with it. */
   setFillWay(way: FillWay | "next"): void;
   /** コマ割り: how a drag makes panels (the tool comes too). */
@@ -362,6 +366,29 @@ export function buildCommands(host: CommandHost): Command[] {
       words: "保留 置き場所 あとで",
       available: () => editor.selection?.kind === "panel",
       run: () => host.holdSelected(),
+    },
+    {
+      id: "select.pickMode",
+      label: "囲んで選ぶもの（囲んだものだけ／少しでもかかったもの）を切り替える",
+      group: "道具",
+      keys: [],
+      words: "範囲選択 囲む 選択 かかる 接触 触れる 一部 少しでも 投げなわ",
+      available: named,
+      run: always(() => host.togglePickMode()),
+    },
+    {
+      id: "pen.cursorNext",
+      label: "ペンのカーソルの形を切り替える（ブラシの大きさ・◯だけ・十字・点・出さない）",
+      group: "道具",
+      keys: [],
+      words: "カーソル ポインター 丸 円 ◯ 十字 クロス 点 ブラシサイズ ペン先 見えない 出さない",
+      available: () => true,
+      run: always(() => {
+        const looks = Object.keys(CURSOR_LABELS) as PenCursor[];
+        const next = looks[(looks.indexOf(penPreferences.settings.cursor) + 1) % looks.length];
+        penPreferences.update({ cursor: next });
+        host.status(`ペンのカーソル: ${CURSOR_LABELS[next]}（設定 › ペン・キー でも選べます）`);
+      }),
     },
     {
       id: "eraser.next",

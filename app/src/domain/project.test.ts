@@ -266,6 +266,42 @@ describe("範囲選択と囲って消す", () => {
     expect(picked.strokes).toEqual([page.strokes[1].id]);
     expect(picked.lines).toEqual(line.box[0] + line.box[2] < 14 ? [line.id] : []);
   });
+
+  it("picks anything the shape touches when asked to (少しでもかかったもの)", () => {
+    const { project, page } = setup();
+    const [crossing, inside, outside] = page.strokes;
+    // A panel and a fill that reach into the box; dialogue whose box only overlaps its corner.
+    const panel = addPanel(project, page, rectShape([6, 6, 40, 40]));
+    const far = addPanel(project, page, rectShape([50, 50, 80, 80]));
+    const fill = addFill(project, page, rectShape([-5, -5, 4, 4]), "black");
+    const line = addLine(project, page, [0, 0]);
+    line.box = [-10, -10, 3.5, 3.5];
+    const surrounded = pickInside(page, box);
+    expect(surrounded.strokes).toEqual([inside.id]);
+    expect(surrounded.panels).toEqual([]);
+    expect(surrounded.fills).toEqual([]);
+    expect(surrounded.lines).toEqual([]);
+    const touched = pickInside(page, box, "touch");
+    expect(touched.strokes).toEqual([crossing.id, inside.id]);
+    expect(touched.strokes).not.toContain(outside.id);
+    expect(touched.panels).toEqual([panel.id]);
+    expect(touched.panels).not.toContain(far.id);
+    expect(touched.fills).toEqual([fill.id]);
+    expect(touched.lines).toEqual([line.id]);
+  });
+
+  it("touching, picks dialogue by its tail alone, and a panel the shape lies wholly inside", () => {
+    const project = newProject("t", 1);
+    const page = project.pages[0];
+    const line = addLine(project, page, [30, 30]);
+    line.box = [25, 25, 35, 35];
+    line.tails = [{ tip: [5, 5] }];
+    const panel = addPanel(project, page, rectShape([100, 100, 200, 200]));
+    expect(pickInside(page, rectShape([4, 4, 12, 12])).lines).toEqual([]);
+    expect(pickInside(page, rectShape([4, 4, 12, 12]), "touch").lines).toEqual([line.id]);
+    expect(pickInside(page, rectShape([140, 140, 150, 150]), "touch").panels).toEqual([panel.id]);
+    expect(pickInside(page, rectShape([140, 140, 150, 150])).panels).toEqual([]);
+  });
 });
 
 describe("見開きのノド", () => {

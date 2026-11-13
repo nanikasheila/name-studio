@@ -98,6 +98,21 @@ try {
     await page.waitForTimeout(200);
     await audit("書き出し");
     await page.keyboard.press("Escape");
+    // タイマー: a work period running (red in the bar), an alarm in its list, and 設定 › タイマー.
+    await page.click("#timer-chip");
+    await page.click("#timer-tab-pomodoro");
+    await page.locator("#timer-pop").getByRole("button", { name: "始める" }).click();
+    await page.waitForTimeout(200);
+    await audit("タイマー（ポモドーロ）");
+    await page.click("#timer-tab-alarms");
+    await page.locator("#timer-pop").getByRole("button", { name: "足す" }).click();
+    await page.waitForTimeout(200);
+    await audit("タイマー（アラーム）");
+    await page.click("#timer-tab-pomodoro");
+    await page.locator("#timer-pop").getByRole("button", { name: "設定…" }).click();
+    await page.waitForTimeout(200);
+    await audit("設定 › タイマー");
+    await page.keyboard.press("Escape");
     check(errors.length === 0, `${theme}: no page errors (${errors.join(" / ")})`);
     await context.close();
   }

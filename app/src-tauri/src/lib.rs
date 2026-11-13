@@ -10,10 +10,12 @@
 //! Commands by what they are for: [`viewer`] (the open sheet), [`project_io`]
 //! (loading, saving, autosave and versions), [`name_export`] (CSP pages and
 //! works), [`files`] (CSP's tools, PDF and script), [`fonts`] (the fonts on
-//! the computer), [`dialogs`] (the file dialogs); [`ipc`] reads the raw
+//! the computer), [`dialogs`] (the file dialogs), [`attention`] (a timer
+//! come due, said outside the window); [`ipc`] reads the raw
 //! request bodies they share, and [`paths`] says where a file may be written.
 
 pub mod ai;
+mod attention;
 pub mod batch;
 mod dialogs;
 pub mod errorlog;
@@ -177,6 +179,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(AppState::default())
         .manage(ai::AiRuns::default())
         .setup(|app| {
@@ -242,6 +245,7 @@ pub fn run() {
             updates::install_release,
             batch_export_task,
             end_batch_export,
+            attention::timer_notice,
             ai::programs::ai_detect,
             ai::session::ai_prepare_session,
             ai::session::ai_install_skill,

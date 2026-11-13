@@ -17,6 +17,7 @@ import { $, choice, element } from "../platform/dom";
 import { fontField } from "./fontpicker";
 import { APP_FONT_LABEL, FONT_ROLES, FONT_ROLE_LABELS, roleFont, setRoleFont } from "../domain/fonts";
 import type { PageEditor } from "./editor";
+import type { PickMode } from "../domain/strokes";
 import { helpBarShown, showHelpBar } from "./helpbar";
 import { LookPane } from "./lookpane";
 import {
@@ -26,12 +27,14 @@ import {
   type CspSyncMode,
   PAGE_GAP_KEY,
   PANEL_CARRIES_KEY,
+  penPreferences,
   saveNewNameDefaults,
   saveSnap,
   setCspSyncMode,
   setStripOrder,
   setSwapFit,
   stripOrder,
+  pickMode,
   swapFit,
 } from "../platform/prefs";
 import { GRID_GAP_MM } from "../editing/layout";
@@ -66,6 +69,8 @@ import {
 } from "../domain/style";
 import { explain } from "../platform/errortext";
 import { UsagePane, type UseLabel } from "./usagepane";
+import { CURSOR_LABELS, drawsSize, type PenCursor } from "../editing/pen";
+import { drawPenCursor } from "../render/screendraw";
 
 export interface SettingsHost {
   readonly editor: PageEditor;
@@ -75,6 +80,8 @@ export interface SettingsHost {
   status(message: string): void;
   /** The snap settings changed (the grid box beside the panel tool shows them). */
   snapChanged(): void;
+  /** How a drag around things with the select tool picks them (the tool's bar shows it too). */
+  setPickMode(mode: PickMode): void;
   /** The order of the pages in the strip under the pages changed. */
   stripOrderChanged(): void;
   /** 自動保存 was turned on or off. */
@@ -131,6 +138,18 @@ export function matchesQuery(text: string, query: string): boolean {
     .split(/\s+/)
     .filter(Boolean)
     .every((word) => haystack.includes(word));
+}
+
+/** The kind to open on next (設定 › タイマー from the timer). */
+let nextPane: string | null = null;
+
+/** 設定 opened on `pane`, as its button does; false when the button is not there (no name open). */
+export function openSettingsAt(pane: string): boolean {
+  const button = document.getElementById("settings");
+  if (!button || button.hidden) return false;
+  nextPane = pane;
+  button.click();
+  return true;
 }
 
 export class SettingsDialog {
@@ -224,6 +243,9 @@ export class SettingsDialog {
           : "コマの入れ替えで、中身を入れ替え先のコマに合わせるようにしました",
       );
     });
+    $<HTMLSelectElement>("st-pick-mode").addEventListener("change", (event) => {
+      this.host.setPickMode((event.target as HTMLSelectElement).value === "touch" ? "touch" : "inside");
+    });
     $<HTMLInputElement>("st-balloon-text").addEventListener("change", (event) => {
       this.host.editor.balloonTextFollows = (event.target as HTMLInputElement).checked;
       writeFlag(BALLOON_TEXT_KEY, this.host.editor.balloonTextFollows);
@@ -299,6 +321,14 @@ export class SettingsDialog {
         await installRelease(version, { status: (message) => this.host.status(message), prepare: () => this.host.prepareRestart() });
     });
     $("st-open-pen").addEventListener("click", () => this.host.openPenSettings());
+    const cursor = $<HTMLSelectElement>("st-pen-cursor");
+    cursor.replaceChildren(...Object.entries(CURSOR_LABELS).map(([value, label]) => new Option(label, value)));
+    cursor.addEventListener("change", () => {
+      penPreferences.update({ cursor: cursor.value as PenCursor });
+      this.host.status(`ペンのカーソル: ${CURSOR_LABELS[cursor.value as PenCursor]}`);
+    });
+    // The ペン設定 (opened from here too) changes it as well.
+    penPreferences.onChange(() => this.showPenCursor());
     $("st-csp-list").addEventListener("click", () => this.host.openCspTools());
     $<HTMLSelectElement>("st-csp-sync").addEventListener("change", (event) => {
       const mode = (event.target as HTMLSelectElement).value as CspSyncMode;
@@ -337,6 +367,7 @@ export class SettingsDialog {
       this.host.editor.ctrlPans = true;
       writeFlag(CTRL_PAN_KEY, true);
       setSwapFit("stretch");
+      this.host.setPickMode("inside");
       setAutosaveTiming({ delay: AUTOSAVE_DELAY_MS / 1000, maxWait: AUTOSAVE_MAX_WAIT_MS / 1000 });
       showHelpBar(true);
       this.look.resetToDefault();
@@ -359,6 +390,8 @@ export class SettingsDialog {
   }
 
   open(): void {
+    if (nextPane) this.pane = nextPane;
+    nextPane = null;
     $<HTMLInputElement>("st-search").value = "";
     this.render();
     $<HTMLDialogElement>("settings-dialog").showModal();
@@ -402,6 +435,13 @@ export class SettingsDialog {
           }),
       ]),
     );
+  }
+
+  /** ペンのカーソル: the one chosen, and how it looks at the end of a line. */
+  private showPenCursor(): void {
+    const look = penPreferences.settings.cursor;
+    $<HTMLSelectElement>("st-pen-cursor").value = look;
+    drawCursorLook($<HTMLCanvasElement>("st-pen-cursor-look"), look);
   }
 
   /** One kind of settings, or with a search, every setting that matches it. */
@@ -560,6 +600,7 @@ export class SettingsDialog {
     $<HTMLInputElement>("st-balloon-text").checked = this.host.editor.balloonTextFollows;
     $<HTMLSelectElement>("st-swap-fit").value = swapFit();
     $<HTMLInputElement>("st-ctrl-pan").checked = this.host.editor.ctrlPans;
+    $<HTMLSelectElement>("st-pick-mode").value = pickMode();
     $<HTMLInputElement>("st-autosave").checked = autosaveToFile();
     const timing = autosaveTiming();
     for (const [id, value] of [
@@ -571,6 +612,7 @@ export class SettingsDialog {
     }
     $<HTMLSelectElement>("st-update-mode").value = updateMode();
     $<HTMLSelectElement>("st-csp-sync").value = cspSyncMode();
+    this.showPenCursor();
     $<HTMLInputElement>("st-update-beta").checked = updateChannel() === "beta";
     const snap = this.host.editor.snapping;
     for (const [key, id] of SNAP_BOXES) $<HTMLInputElement>(id).checked = snap[key] as boolean;
@@ -614,6 +656,54 @@ export class SettingsDialog {
       this.releasesLoaded = false;
       select.replaceChildren(element("option", { value: "", textContent: "（版の一覧を読めませんでした）" }));
       note.textContent = explain(error).text;
+    }
+  }
+}
+
+/** A pen's cursor at the end of a line it drew (the setting's sample): a thin pen and a thick one. */
+export function drawCursorLook(canvas: HTMLCanvasElement, look: PenCursor): void {
+  const ratio = window.devicePixelRatio || 1;
+  const [width, height] = [120, 44];
+  if (canvas.width !== width * ratio) {
+    canvas.width = width * ratio;
+    canvas.height = height * ratio;
+  }
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  for (const [x0, radius] of [
+    [6, 2.5],
+    [62, 9],
+  ]) {
+    const at: [number, number] = [x0 + 36, 22];
+    ctx.strokeStyle = "#3a3834";
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(x0 + 4, 36);
+    ctx.quadraticCurveTo(x0 + 16, 12, at[0], at[1]);
+    ctx.stroke();
+    if (drawsSize(look)) {
+      drawPenCursor(ctx, at, radius, look);
+      continue;
+    }
+    ctx.lineWidth = 1;
+    if (look === "cross") {
+      ctx.strokeStyle = "#111111";
+      ctx.beginPath();
+      ctx.moveTo(at[0] - 8, at[1] + 0.5);
+      ctx.lineTo(at[0] + 9, at[1] + 0.5);
+      ctx.moveTo(at[0] + 0.5, at[1] - 8);
+      ctx.lineTo(at[0] + 0.5, at[1] + 9);
+      ctx.stroke();
+    } else if (look === "dot") {
+      ctx.fillStyle = "#222222";
+      ctx.strokeStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(at[0], at[1], 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
     }
   }
 }

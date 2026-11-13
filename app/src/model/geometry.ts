@@ -71,6 +71,43 @@ export function segmentDistance(p: Point, a: Point, b: Point): number {
   return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
 }
 
+/** Whether the segments a-b and c-d meet (touching ends count). */
+export function segmentsMeet(a: readonly number[], b: readonly number[], c: readonly number[], d: readonly number[]): boolean {
+  const side = (o: readonly number[], p: readonly number[], q: readonly number[]) =>
+    (p[0] - o[0]) * (q[1] - o[1]) - (p[1] - o[1]) * (q[0] - o[0]);
+  const within = (o: readonly number[], p: readonly number[], q: readonly number[]) =>
+    Math.min(o[0], p[0]) <= q[0] && q[0] <= Math.max(o[0], p[0]) && Math.min(o[1], p[1]) <= q[1] && q[1] <= Math.max(o[1], p[1]);
+  const d1 = side(c, d, a);
+  const d2 = side(c, d, b);
+  const d3 = side(a, b, c);
+  const d4 = side(a, b, d);
+  if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return true;
+  return (d1 === 0 && within(c, d, a)) || (d2 === 0 && within(c, d, b)) || (d3 === 0 && within(a, b, c)) || (d4 === 0 && within(a, b, d));
+}
+
+function boxesMeet([a0, b0, a1, b1]: BoxMm, [c0, d0, c1, d1]: BoxMm): boolean {
+  return a0 <= c1 && c0 <= a1 && b0 <= d1 && d0 <= b1;
+}
+
+/** Whether the edges of two outlines (`closed`: the last point joins the first) cross anywhere. */
+function edgesMeet(a: readonly (readonly number[])[], aClosed: boolean, b: readonly Point[]): boolean {
+  for (let i = aClosed ? 0 : 1, h = aClosed ? a.length - 1 : 0; i < a.length; h = i++)
+    for (let j = 0, k = b.length - 1; j < b.length; k = j++) if (segmentsMeet(a[h], a[i], b[k], b[j])) return true;
+  return false;
+}
+
+/** Whether an open line (a rough line's points) touches a closed shape at all: a point inside it, or crossing its outline. */
+export function lineTouchesShape(shape: readonly Point[], points: readonly (readonly number[])[]): boolean {
+  if (shape.length < 3 || points.length === 0 || !boxesMeet(bounds(shape), bounds(points))) return false;
+  return points.some(([x, y]) => insidePolygon(shape, [x, y])) || edgesMeet(points, false, shape);
+}
+
+/** Whether two closed shapes overlap at all: a corner of one inside the other, or their outlines crossing. */
+export function shapesOverlap(a: readonly Point[], b: readonly Point[]): boolean {
+  if (a.length < 3 || b.length < 3 || !boxesMeet(bounds(a), bounds(b))) return false;
+  return a.some((point) => insidePolygon(b, point)) || b.some((point) => insidePolygon(a, point)) || edgesMeet(a, true, b);
+}
+
 export function boxCenter([x0, y0, x1, y1]: BoxMm): Point {
   return [(x0 + x1) / 2, (y0 + y1) / 2];
 }

@@ -652,6 +652,18 @@ export interface TextView {
   inBalloon: boolean;
 }
 
+/** What to say, and how (設定 › タイマー). */
+export interface TimerNotice {
+  title: string;
+  body: string;
+  /** Windows' notification. */
+  toast: boolean;
+  /** The taskbar button flashes (only while the window is not the one in front). */
+  flash: boolean;
+  /** The window is shown, restored and brought to the front. */
+  front: boolean;
+}
+
 /** A brush tip picture: white, with the tip's coverage in alpha. */
 export interface TipImage {
   width: number;
@@ -850,6 +862,13 @@ export interface Commands {
    * sure to be seen by whatever ran it.
    */
   end_batch_export: [{ code: number; message?: string | null }, void];
+  // attention.rs
+  /**
+   * Say that a timer came due outside the window. A part that fails (no
+   * notifications on this computer) does not stop the others; the first
+   * failure is given back to be logged.
+   */
+  timer_notice: [{ notice: TimerNotice }, void];
   // ai/programs.rs
   /** Which AI tools (and Node, for the Skill's command line) this computer has. */
   ai_detect: [{ claude?: string | null; codex?: string | null }, AiTools];

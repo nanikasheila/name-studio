@@ -536,9 +536,38 @@ export function drawDashedLine(ctx: CanvasRenderingContext2D, from: Point, to: P
   ctx.setLineDash([]);
 }
 
-/** The pen's size where it will draw (a cross in it when it is small). */
-export function drawPenCursor(ctx: CanvasRenderingContext2D, [px, py]: Point, radius: number): void {
+/** Empty a canvas (all of it, whatever the view's transform). */
+export function clearCanvas(ctx: CanvasRenderingContext2D): void {
   ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.restore();
+}
+
+/**
+ * The pen's size where it will draw: a circle, with a cross around it when
+ * it is small ("brush"), always ("circleCross") or never ("circle").
+ */
+export function drawPenCursor(
+  ctx: CanvasRenderingContext2D,
+  [px, py]: Point,
+  radius: number,
+  look: "brush" | "circle" | "circleCross" = "brush",
+): void {
+  const cross = look === "circleCross" || (look === "brush" && radius < 5);
+  const ticks = (inner: number, outer: number) => {
+    for (const [dx, dy] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ]) {
+      ctx.moveTo(px + dx * inner, py + dy * inner);
+      ctx.lineTo(px + dx * outer, py + dy * outer);
+    }
+  };
+  ctx.save();
+  // A light edge first, so that the cursor shows on dark lines too.
   ctx.lineWidth = 1;
   ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
   ctx.beginPath();
@@ -547,17 +576,7 @@ export function drawPenCursor(ctx: CanvasRenderingContext2D, [px, py]: Point, ra
   ctx.strokeStyle = "rgba(30, 30, 30, 0.85)";
   ctx.beginPath();
   ctx.arc(px, py, radius, 0, Math.PI * 2);
-  if (radius < 5) {
-    for (const [dx, dy] of [
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-      [0, -1],
-    ]) {
-      ctx.moveTo(px + dx * (radius + 2), py + dy * (radius + 2));
-      ctx.lineTo(px + dx * (radius + 6), py + dy * (radius + 6));
-    }
-  }
+  if (cross) ticks(radius + 2, radius + 6);
   ctx.stroke();
   ctx.restore();
 }

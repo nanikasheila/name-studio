@@ -4,6 +4,7 @@
 import { FRAME_HANDLES, type Tool } from "./editorcore";
 import type { Seam } from "../domain/komaedit";
 import { TOOLS } from "../editing/tooldefs";
+import { drawsSize, type PenCursor } from "../editing/pen";
 
 const DOT_CURSOR = `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="9" height="9"><circle cx="4.5" cy="4.5" r="2" fill="#222" stroke="#fff" stroke-width="1"/></svg>')}") 4 4, crosshair`;
 
@@ -22,18 +23,23 @@ export interface CursorState {
   erasing: boolean;
   lasso: boolean;
   hover: HoverLook | null;
-  /** How the pen shows: as its brush (drawn), a dot or a cross. */
-  penLook: string;
+  /** How the pen shows: its size (drawn on the pages), a cross, a dot or nothing. */
+  penLook: PenCursor;
 }
 
 export function editorCursor(state: CursorState): string {
   if (state.panning) return "grab";
   if (state.erasing) return state.lasso ? "crosshair" : "none";
   if (state.tool === "select" && state.hover) return hoverCursor(state.hover);
-  // The 指示 pen has no brush to show: a dot or a cross.
-  if (state.tool === "pen" || state.tool === "mark")
-    return state.penLook === "dot" ? DOT_CURSOR : state.penLook === "brush" && state.tool === "pen" ? "none" : "crosshair";
+  if (state.tool === "pen" || state.tool === "mark") return penCursor(state.penLook, state.tool === "pen");
   return TOOLS[state.tool].cursor;
+}
+
+/** The pen's (or the 指示 tool's) cursor; `sized`: the pen's size is drawn on the pages instead (the 指示 tool has no brush to show: a cross). */
+export function penCursor(look: PenCursor, sized: boolean): string {
+  if (look === "none") return "none";
+  if (look === "dot") return DOT_CURSOR;
+  return drawsSize(look) && sized ? "none" : "crosshair";
 }
 
 function hoverCursor(hover: HoverLook): string {
