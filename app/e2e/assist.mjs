@@ -189,8 +189,16 @@ try {
       !(await page.isVisible(".assist-steps code")),
     "what the AI did shows as it does it, in words, its commands folded away",
   );
-  await page.click(".assist-steps summary");
-  check((await page.textContent(".assist-steps code")) === "ネーム.md", "and opened, what it read or ran as is");
+  // Opened by a click (once more if the click came while the log was being drawn again).
+  const stepsOpen = () => page.evaluate(() => document.querySelector(".assist-steps")?.open === true);
+  for (let i = 0; i < 3 && !(await stepsOpen()); i++) {
+    await page.click(".assist-steps summary");
+    await page.waitForFunction(() => document.querySelector(".assist-steps")?.open, null, { timeout: 500 }).catch(() => {});
+  }
+  check(
+    (await stepsOpen()) && (await page.isVisible(".assist-steps code")) && (await page.textContent(".assist-steps code")) === "ネーム.md",
+    "and opened, what it read or ran as is",
+  );
   check(
     (await page.locator(".assist-entry.user + .assist-entry.assistant .assist-who").textContent()) === "Claude Code",
     "the reply says who answers, under the question",
@@ -199,10 +207,14 @@ try {
   check((await page.locator(".assist-ops").count()) === 1, "its 変更の案 shows as a card");
   check(await page.locator(".assist-ops button.primary").isDisabled(), "not to be applied while the reply is still coming");
   await page.evaluate(() => window.__say(1, "done", ""));
+  const ended = await page
+    .waitForFunction(() => !document.querySelector(".assist-working"), null, { timeout: 3000 })
+    .then(() => true)
+    .catch(() => false);
   await settle();
   check(
-    (await page.locator(".assist-working").count()) === 0 && (await page.isVisible(".assist-steps code")),
-    "and stops saying so when done (the steps stay as opened)",
+    ended && (await stepsOpen()) && (await page.isVisible(".assist-steps code")),
+    `and stops saying so when done (the steps stay as opened: ${await page.locator(".assist-working").count()} working, open ${await stepsOpen()})`,
   );
   const card = await page.textContent(".assist-ops");
   if (process.env.ASSIST_SHOT) await page.screenshot({ path: process.env.ASSIST_SHOT.replace(".png", "-card.png") });

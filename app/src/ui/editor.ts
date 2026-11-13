@@ -10,7 +10,15 @@
 // Coordinates on a page are millimetres; each page of the spread has its own
 // mm → screen mapping.
 import { isTyping } from "../platform/dom";
-import { BALLOON_TEXT_KEY, loadFillSettings, loadSnap, PANEL_CARRIES_KEY, penPreferences, SHOW_STICKIES_KEY } from "../platform/prefs";
+import {
+  BALLOON_TEXT_KEY,
+  CTRL_PAN_KEY,
+  loadFillSettings,
+  loadSnap,
+  PANEL_CARRIES_KEY,
+  penPreferences,
+  SHOW_STICKIES_KEY,
+} from "../platform/prefs";
 import { PLAIN_SIZE_MM } from "../editing/brushpicks";
 import { toPage, type Slot } from "../editing/layout";
 import { addDrawnPanel, spanGutter } from "../domain/koma";
@@ -64,6 +72,9 @@ export class PageEditor {
   /** A balloon transformed on its own: its text grows and shrinks with it (off: only the balloon changes). */
   balloonTextFollows = readFlag(BALLOON_TEXT_KEY, true);
 
+  /** Ctrl + drag moves the view (as the middle button and Space + drag do). */
+  ctrlPans = readFlag(CTRL_PAN_KEY, true);
+
   penWidthMm = 0.4;
 
   /** The ラフ線のレイヤー the pen draws on (ROUGH_BASE when the name has one layer). */
@@ -100,6 +111,9 @@ export class PageEditor {
   private drag: Drag | null = null;
 
   private spaceHeld = false;
+
+  /** Ctrl (⌘) is held: with ctrlPans, a drag moves the view. */
+  private ctrlHeld = false;
 
   private pointer: Point | null = null;
 
@@ -209,12 +223,19 @@ export class PageEditor {
         this.spaceHeld = true;
         this.canvas.style.cursor = "grab";
       }
+      if (event.key === "Control" || event.key === "Meta") this.holdCtrl(true);
     });
     window.addEventListener("keyup", (event) => {
       if (event.code === "Space") {
         this.spaceHeld = false;
         this.updateCursor();
       }
+      if (event.key === "Control" || event.key === "Meta") this.holdCtrl(false);
+    });
+    // A key let go in another window is never heard: nothing is held on coming back.
+    window.addEventListener("blur", () => {
+      this.spaceHeld = false;
+      this.holdCtrl(false);
     });
   }
 
@@ -234,8 +255,8 @@ export class PageEditor {
       get pointer() {
         return editor.pointer;
       },
-      get spaceHeld() {
-        return editor.spaceHeld;
+      get panReady() {
+        return editor.handReady();
       },
       get polygon() {
         return editor.polygon;
@@ -758,7 +779,7 @@ export class PageEditor {
     const lasso = this.eraseMode === "lasso";
     this.canvas.style.cursor = editorCursor({
       tool: this.tool,
-      panning: this.spaceHeld,
+      panning: this.handReady() && this.hover?.kind !== "handle",
       erasing: this.erasing(),
       lasso,
       hover,
@@ -872,6 +893,27 @@ export class PageEditor {
     this.painter.draw();
   }
 
+  /** Space held, or Ctrl with ctrlPans: a drag moves the view. */
+  private handReady(): boolean {
+    return this.spaceHeld || (this.ctrlPans && this.ctrlHeld);
+  }
+
+  private holdCtrl(held: boolean): void {
+    if (this.ctrlHeld === held) return;
+    this.ctrlHeld = held;
+    if (this.hoverAt && !this.drag) this.updateHover(...this.hoverAt);
+    this.updateCursor();
+    this.painter.requestOverlay();
+  }
+
+  /** Ctrl + drag moves the view, but Ctrl + a corner of the transform frame still warps it (自由変形). */
+  private ctrlDragPans(event: PointerEvent, sx: number, sy: number): boolean {
+    if (!this.ctrlPans || !(event.ctrlKey || event.metaKey) || event.button !== 0 || event.pointerType === "touch") return false;
+    if (this.tipEraser) return false;
+    const handle = this.tool === "select" ? this.picks.frameHandleAt(sx, sy) : -1;
+    return !(handle >= 0 && handle < 4);
+  }
+
   private press(event: PointerEvent): void {
     const project = this.host.project();
     if (!project) return;
@@ -886,12 +928,12 @@ export class PageEditor {
       // A pointer the browser no longer tracks: carry on without capture.
     }
     const [sx, sy] = this.stage.at(event);
-    // Shift + Space: turn the view (as in CSP); Space or the middle button: move it.
+    // Shift + Space: turn the view (as in CSP); Space, the middle button or Ctrl + drag: move it.
     if (this.spaceHeld && event.shiftKey) {
       this.drag = { kind: "turn", from: this.view.angleAt(sx, sy), rotation: this.view.rotation };
       return;
     }
-    if (event.button === 1 || this.spaceHeld) {
+    if (event.button === 1 || this.spaceHeld || this.ctrlDragPans(event, sx, sy)) {
       this.drag = { kind: "pan", x: event.clientX, y: event.clientY };
       return;
     }
@@ -1064,6 +1106,8 @@ export class PageEditor {
     const drag = this.drag;
     if (!drag) {
       this.setTipEraser(event);
+      // Ctrl pressed or let go outside the window: the pointer says so.
+      if (event.pointerType !== "touch") this.holdCtrl(event.ctrlKey || event.metaKey);
       this.scheduleHover(ex, ey);
       if (this.erasing() || this.tool === "pen" || this.polygon) this.painter.requestOverlay();
       return;
@@ -1159,8 +1203,10 @@ export class PageEditor {
     if (project && this.tool === "select" && !this.spaceHeld && !this.tipEraser) {
       const slot = this.stage.slotAt(sx, sy, project);
       const frameHandle = this.picks.frameHandleAt(sx, sy);
-      if (frameHandle >= 0 && slot) hover = { kind: "handle", slot, handle: frameHandle };
-      else if (slot) {
+      // With Ctrl a drag moves the view: only the frame's corners (自由変形) are still grabbed.
+      const panning = this.handReady();
+      if (frameHandle >= 0 && slot && (!panning || frameHandle < 4)) hover = { kind: "handle", slot, handle: frameHandle };
+      else if (slot && !panning) {
         const point = toPage(slot, sx, sy);
         const tail = this.picks.tailAt(slot, sx, sy);
         if (tail) hover = { kind: "tail", slot, hit: tail };

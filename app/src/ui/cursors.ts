@@ -17,7 +17,7 @@ export type HoverLook =
 
 export interface CursorState {
   tool: Tool;
-  /** Space held: the view is dragged. */
+  /** Space (or Ctrl, as set) held: the view is dragged. */
   panning: boolean;
   /** The eraser (or the pen's eraser end, or the 指示 tool erasing) is in hand. */
   erasing: boolean;
