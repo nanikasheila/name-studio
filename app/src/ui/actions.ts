@@ -12,6 +12,7 @@ import { TOOL_IDS, TOOLS } from "../editing/tooldefs";
 import { WORKSPACES, type WorkspaceId } from "./workspaces";
 import { CURSOR_LABELS, type PenCursor } from "../editing/pen";
 import { penPreferences } from "../platform/prefs";
+import { drawColors } from "../platform/drawcolor";
 
 /** What the page commands do (pagelist.ts). */
 export interface PageCommands {
@@ -522,6 +523,45 @@ export function buildCommands(host: CommandHost): Command[] {
       keys: ["^"],
       available: named,
       run: always(() => editor.rotateView(15)),
+    },
+    {
+      id: "color.swap",
+      label: "描画色のメインとサブを入れ替える",
+      group: "画面",
+      keys: ["X"],
+      words: "色 カラー 描画色 サブ 入れ替え",
+      available: named,
+      run: always(() => {
+        drawColors.swap();
+        host.status(`描画色: ${drawColors.main}`);
+      }),
+    },
+    {
+      id: "color.dropper",
+      label: "スポイト（紙面をクリックしてその色を描画色に。ペン・塗りでは Alt+クリックでも）",
+      group: "画面",
+      keys: [],
+      words: "色 カラー スポイト 拾う",
+      available: named,
+      run: always(() => {
+        host.status("スポイト: 紙面をクリックするとその色を描画色にします（Esc でやめる）");
+        editor.pickColorOnce((color) => {
+          if (color) drawColors.setMain(color);
+          host.status(color ? `スポイト: 描画色を ${color} にしました` : "スポイトをやめました");
+        });
+      }),
+    },
+    {
+      id: "color.black",
+      label: "描画色を黒に戻す",
+      group: "画面",
+      keys: [],
+      words: "色 カラー 黒 戻す",
+      available: named,
+      run: always(() => {
+        drawColors.setMain("#000000");
+        host.status("描画色を黒に戻しました");
+      }),
     },
     {
       id: "view.flip",

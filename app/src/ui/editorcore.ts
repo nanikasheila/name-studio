@@ -20,6 +20,14 @@ export type Tool = ToolId;
 /** コマ割り: cut panels apart, draw them by hand (仮のコマ), draw a rectangle panel, or place the corners of any shape (台形 and the like). */
 export type PanelMode = "cut" | "sketch" | "rect" | "polygon";
 
+/** What 多角形 shows: the corners placed, and the outline on to the pointer (closing: onto the first corner). */
+export interface PolygonPreview {
+  slot: Slot;
+  placed: Point[];
+  outline: Point[];
+  closing: boolean;
+}
+
 /** How the eraser works: CSP's three vector erasers, and 囲って消す. */
 export type EditorEraseMode = EraseMode | "lasso";
 

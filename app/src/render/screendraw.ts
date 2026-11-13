@@ -25,6 +25,7 @@ import {
   drawPanelFills,
   drawStrokes,
   tracePath,
+  roughInk,
 } from "./pagedraw";
 import { pictureOf } from "./pictures";
 import { imageOf, opacityOf } from "../domain/references";
@@ -105,7 +106,7 @@ export function drawScreenPage(ctx: CanvasRenderingContext2D, project: Project, 
 
   const m = at(slot);
   const brushes = project.brushes ?? [];
-  const strokeColor = (stroke: Stroke) => (marks.selected("stroke", stroke.id) ? ACCENT : "#3a3834");
+  const strokeColor = (stroke: Stroke) => (marks.selected("stroke", stroke.id) ? ACCENT : roughInk(stroke));
   const style = { color: strokeColor, minWidthPx: 0.7, brushes };
   const roughs = roughLayersOf(project);
   // Each ラフ線のレイヤー at its own opacity (hidden ones are not in `page`).

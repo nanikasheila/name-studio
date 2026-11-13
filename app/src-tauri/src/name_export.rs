@@ -139,6 +139,9 @@ pub(crate) struct LineMeta {
     points: Vec<[f64; 3]>,
     closed: bool,
     width_px: f64,
+    /// 8-bit RGB; none: black.
+    #[serde(default)]
+    color: Option<[u8; 3]>,
 }
 
 /// One panel of a コマ枠フォルダー in template px.
@@ -269,6 +272,7 @@ fn page_layer<'a>(
         }
         LayerMeta::Vector { name, lines } => PageLayer::Vector {
             name,
+            colors: lines.iter().map(|line| line.color).collect(),
             lines: lines
                 .into_iter()
                 .map(|line| NewVectorLine {

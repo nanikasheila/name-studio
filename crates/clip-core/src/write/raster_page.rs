@@ -18,7 +18,7 @@ use csp_format::database::{Row, select};
 use csp_format::edit::NewLayer;
 use csp_format::rusqlite::types::Value;
 use csp_format::story::canvas_value;
-use csp_format::vector::VectorData;
+use csp_format::vector::{VectorData, VectorObject};
 use serde::{Deserialize, Serialize};
 
 use super::Values;
@@ -48,6 +48,8 @@ pub enum PageLayer {
     Vector {
         name: String,
         lines: Vec<NewVectorLine>,
+        /// Each line's colour (8-bit RGB) by index; missing or none: black.
+        colors: Vec<Option<[u8; 3]>>,
     },
     /// A text layer holding one text (named after it, as CSP does).
     Text(NewText),
@@ -377,19 +379,51 @@ fn with_vector_data(data: Vec<u8>) -> impl Fn(&str, &str, Vec<u8>) -> csp_format
     }
 }
 
+/// Vector data holding `lines`, each in its colour (black where it has none).
+pub(crate) fn colored_lines(lines: &[NewVectorLine], colors: &[Option<[u8; 3]>], brush: u32) -> VectorData {
+    let objects = lines
+        .iter()
+        .enumerate()
+        .filter_map(|(index, line)| {
+            let mut object = VectorObject::new_line(line, brush)?;
+            if let Some(Some(color)) = colors.get(index) {
+                set_main_color(&mut object, *color);
+            }
+            Some(object)
+        })
+        .collect();
+    VectorData {
+        lead: 0,
+        objects,
+        trailing: Vec::new(),
+    }
+}
+
+/// A vector line's main colour (CSP keeps each channel as a `u32` whose bytes all repeat the 8-bit value).
+pub(crate) fn set_main_color(object: &mut VectorObject, [r, g, b]: [u8; 3]) {
+    for (index, value) in [r, g, b].into_iter().enumerate() {
+        let word = u32::from(value) * 0x0101_0101;
+        object.header[VECTOR_COLOR + 4 * index..VECTOR_COLOR + 4 * index + 4].copy_from_slice(&word.to_be_bytes());
+    }
+}
+
+/// Where a vector object's header keeps its main colour.
+const VECTOR_COLOR: usize = 40;
+
 /// A vector layer holding `lines`, on top of `parent`'s children.
 pub(crate) fn add_vector_layer(
     file: &mut ClipFile,
     donor: &PartDonors,
     name: &str,
     lines: &[NewVectorLine],
+    colors: &[Option<[u8; 3]>],
     parent: i64,
 ) -> Result<i64> {
     let (layer_id, donor_style) = donor
         .vector
         .ok_or_else(|| CspError::format("No vector layer to copy"))?;
     let brush = csp_format::copy::brush_style_in(file.database(), donor_style)?;
-    let payload_hook = with_vector_data(VectorData::from_lines(lines, brush).to_bytes());
+    let payload_hook = with_vector_data(colored_lines(lines, colors, brush).to_bytes());
     let mut edit = |row: &mut Row| -> Result<()> {
         freshen(row, name);
         Ok(())
@@ -571,9 +605,9 @@ impl PageBuilder<'_> {
                 }
                 id
             }
-            PageLayer::Vector { name, lines } => {
+            PageLayer::Vector { name, lines, colors } => {
                 let donor = self.donors.vector.as_ref().ok_or_else(|| missing("vector"))?;
-                add_vector_layer(file, donor, name, lines, parent)?
+                add_vector_layer(file, donor, name, lines, colors, parent)?
             }
             PageLayer::Text(text) => {
                 let donor = self.donors.text.as_ref().ok_or_else(|| missing("text"))?;
@@ -715,7 +749,7 @@ fn add_to_record(record: &mut PageRecord, layers: &[PageLayer], images: &[String
     for layer in layers {
         match layer {
             PageLayer::Text(text) => record.texts.get_or_insert_with(Vec::new).push(text.text.clone()),
-            PageLayer::Vector { name, lines } => {
+            PageLayer::Vector { name, lines, .. } => {
                 let points: Vec<Vec<(f64, f64)>> = lines.iter().map(NewVectorLine::xy).collect();
                 record.vectors.insert(
                     format!("{prefix}{name}"),
@@ -973,5 +1007,25 @@ impl RasterWorkWriter {
             work,
             records: std::mem::take(&mut self.records),
         })
+    }
+}
+
+#[cfg(test)]
+mod color_tests {
+    use super::*;
+
+    #[test]
+    fn colours_lines_and_leaves_the_rest_black() {
+        let line = |x: f64| NewVectorLine {
+            points: vec![(x, 0.0, 1.0), (x + 10.0, 5.0, 1.0)],
+            closed: false,
+            width_px: 2.0,
+        };
+        let data = colored_lines(&[line(0.0), line(20.0), line(40.0)], &[None, Some([229, 56, 59])], 7);
+        let colors: Vec<[u8; 3]> = data.objects.iter().map(|object| object.main_color()).collect();
+        assert_eq!(colors, vec![[0, 0, 0], [229, 56, 59], [0, 0, 0]]);
+        // Read back as CSP's lines are.
+        let again = VectorData::parse(&data.to_bytes()).unwrap();
+        assert_eq!(again.objects[1].main_color(), [229, 56, 59]);
     }
 }

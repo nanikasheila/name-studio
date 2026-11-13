@@ -613,10 +613,12 @@ fn writes_vector_and_text_layers_copied_from_the_sheet() {
     let layers = [
         PageLayer::Vector {
             name: "コマ枠".into(),
+            colors: vec![],
             lines: vec![panel.clone()],
         },
         PageLayer::Vector {
             name: "ラフ線".into(),
+            colors: vec![],
             lines: vec![stroke.clone()],
         },
         PageLayer::Text(text.clone()),
@@ -743,6 +745,7 @@ fn checks_written_pages_and_works() {
         }),
         PageLayer::Vector {
             name: "コマ枠".into(),
+            colors: vec![],
             lines: vec![NewVectorLine {
                 points: vec![(20.0, 30.0, 1.0), (380.0, 30.0, 1.0), (380.0, 250.0, 1.0)],
                 closed: true,
@@ -1204,6 +1207,7 @@ fn writes_a_panel_as_a_folder_with_a_layer_mask() {
             children: vec![
                 PageLayer::Vector {
                     name: "ラフ線".into(),
+                    colors: vec![],
                     lines: vec![line],
                 },
                 PageLayer::Raster(RasterLayer {
@@ -1381,6 +1385,7 @@ fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
     .unwrap();
     let balloon = |x: f64| PageLayer::Vector {
         name: "フキダシ".into(),
+        colors: vec![],
         lines: vec![NewVectorLine {
             points: vec![
                 (x, 40.0, 1.0),

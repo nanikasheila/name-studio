@@ -14,10 +14,11 @@ import {
   REFER_LABELS,
   nextFillWay,
   type AreaWay,
+  type FillInk,
   type FillWay,
 } from "../editing/fillsettings";
+import { drawColors } from "../platform/drawcolor";
 import type { FillRefer } from "../domain/fillregion";
-import type { FillTone } from "../model/model";
 import { saveFillSettings } from "../platform/prefs";
 import { TONE_LABELS } from "../domain/strokes";
 
@@ -45,7 +46,13 @@ const ICONS: Record<FillWay, string> = {
 const UNDER_TITLE = "ラフ線の下に塗る（CSP では「塗り（線の下）」レイヤー）。切ると線の上に塗り、線も隠れます（ホワイトで消すとき）";
 const CENTER_TITLE = "ベクターの中心で塗り止まり: 線の下、線の中心まで塗って、線との間に隙間を残さない（切ると線の手前で止まる）";
 
-const TONE_TITLES: Record<FillTone, string> = { black: "黒（ベタ）", gray: "グレー（トーンの代わり）", white: "白（ホワイトで消す）" };
+const TONE_TITLES: Record<FillInk, string> = {
+  black: "黒（ベタ）",
+  gray: "グレー（トーンの代わり）",
+  white: "白（ホワイトで消す）",
+  color: "描画色（カラーの欄で選んだ色。人物ごとの色分けに）",
+};
+const INK_LABELS: Record<FillInk, string> = { ...TONE_LABELS, color: "描画色" };
 
 export class FillBar {
   constructor(private readonly host: FillBarHost) {}
@@ -77,11 +84,11 @@ export class FillBar {
     this.setWay(nextFillWay(this.fill.way));
   }
 
-  setTone(tone: FillTone): void {
+  setTone(tone: FillInk): void {
     this.fill.tone = tone;
     if (this.host.editor.tool !== "fill") this.host.setTool("fill");
     this.save();
-    this.host.status(`塗り: ${TONE_LABELS[tone]}`);
+    this.host.status(`塗り: ${INK_LABELS[tone]}`);
   }
 
   private save(): void {
@@ -109,7 +116,7 @@ export class FillBar {
   /** The tones; `palette`: for the サブツール palette (no ids: the bar has them). */
   tones(palette = false): HTMLElement {
     const group = this.group("segmented", "塗りの色");
-    for (const tone of ["black", "gray", "white"] as const) {
+    for (const tone of ["black", "gray", "white", "color"] as const) {
       const button = element("button", {
         ...idOf(palette, tone),
         type: "button",
@@ -117,7 +124,8 @@ export class FillBar {
         title: TONE_TITLES[tone],
       });
       const swatch = element("i", { className: `tone ${tone}` });
-      button.append(swatch, TONE_LABELS[tone].replace(/（.*/, ""));
+      if (tone === "color") swatch.style.background = drawColors.main;
+      button.append(swatch, INK_LABELS[tone].replace(/（.*/, ""));
       button.addEventListener("click", () => this.setTone(tone));
       group.append(button);
     }

@@ -142,7 +142,8 @@
             true,
             false
           ],
-          "layer": "rough2"
+          "layer": "rough2",
+          "color": "#3a7bd5"
         }
       ],
       "roughs": [
@@ -238,6 +239,7 @@
             ]
           ],
           "tone": "gray",
+          "color": "#e5383b",
           "under": true
         }
       ],
@@ -557,7 +559,8 @@
                     true,
                     false
                   ],
-                  "layer": "rough2"
+                  "layer": "rough2",
+                  "color": "#3a7bd5"
                 }
               ],
               "roughs": [
@@ -653,6 +656,7 @@
                     ]
                   ],
                   "tone": "gray",
+                  "color": "#e5383b",
                   "under": true
                 }
               ],
@@ -823,7 +827,8 @@
             true,
             false
           ],
-          "layer": "rough2"
+          "layer": "rough2",
+          "color": "#3a7bd5"
         }
       ],
       "fills": [
@@ -860,6 +865,7 @@
             ]
           ],
           "tone": "gray",
+          "color": "#e5383b",
           "under": true
         }
       ],
@@ -1013,7 +1019,8 @@
                 true,
                 false
               ],
-              "layer": "rough2"
+              "layer": "rough2",
+              "color": "#3a7bd5"
             }
           ],
           "roughs": [
@@ -1109,6 +1116,7 @@
                 ]
               ],
               "tone": "gray",
+              "color": "#e5383b",
               "under": true
             }
           ],

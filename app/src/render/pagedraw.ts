@@ -16,6 +16,10 @@ import { markColor, markLayersOf, opacityOfLayer, strokesOn } from "../domain/ro
 export type { MmToPx };
 
 export const INK = "#1b1a18";
+/** Rough lines with no colour of their own: a soft black, so the borders and words stand out over them. */
+export const ROUGH_INK = "#3a3834";
+/** A rough line's ink: its own colour, or the rough's. */
+export const roughInk = (stroke: Stroke): string => stroke.color ?? ROUGH_INK;
 /** Line widths on the manuscript, in mm. */
 
 export function tracePath(ctx: CanvasRenderingContext2D, points: readonly (readonly number[])[], m: MmToPx, close: boolean): void {
@@ -303,7 +307,7 @@ export function drawPageFills(
       hole.forEach(([x, y], i) => (i ? ctx.lineTo : ctx.moveTo).call(ctx, x * m.scale + m.x, y * m.scale + m.y));
       ctx.closePath();
     }
-    ctx.fillStyle = FILLS[fill.tone ?? "black"];
+    ctx.fillStyle = fill.color ?? FILLS[fill.tone ?? "black"];
     ctx.fill("evenodd");
     const color = outline?.(fill.id);
     if (color) {

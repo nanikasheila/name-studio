@@ -24,6 +24,8 @@ import { toPage, type Slot } from "../editing/layout";
 import { addDrawnPanel, spanGutter } from "../domain/koma";
 import { joinPanels, seamAt } from "../domain/komaedit";
 import { onTipLoaded } from "../render/pagedraw";
+import { Dropper } from "./dropper";
+import { PolygonOutline } from "./editorpolygon";
 import { perfMeter } from "../platform/perfmeter";
 import { noteUse } from "../platform/usagestore";
 import { ROUGH_BASE } from "../domain/roughlayers";
@@ -103,7 +105,6 @@ export class PageEditor {
   panelMode: PanelMode = "cut";
 
   /** 多角形: the corners placed so far on a page (the panel is made when the outline is closed). */
-  private polygon: { pageId: string; points: Point[] } | null = null;
 
   /** Lines snapped to while dragging (page mm), shown as guides. */
   private guides: Guides | null = null;
@@ -131,6 +132,24 @@ export class PageEditor {
 
   /** Run once the pointer is up (opening a text field during the press would lose its focus). */
   private afterUp: (() => void) | null = null;
+
+  /** スポイト: waiting for a click on the page to give its colour. */
+  private readonly dropper = new Dropper();
+
+  /** 多角形: the corners being placed. */
+  private readonly polygon = new PolygonOutline({
+    project: () => this.host.project(),
+    slots: () => this.slots,
+    snap: (slot, point, free, beside) => {
+      const project = this.host.project();
+      return project ? this.snapped(slot, point, this.snapTargetsOn(project, slot.page), free, beside) : point;
+    },
+    addPanel: (project, page, outline) => this.addFreePanel(project, page, outline),
+    status: (message) => this.host.status(message),
+    clearGuides: () => (this.guides = null),
+    requestOverlay: () => this.painter.requestOverlay(),
+    draw: () => this.painter.draw(),
+  });
 
   /** The pointer the drag belongs to: other pens and fingers do not disturb it. */
   private dragPointer: number | null = null;
@@ -197,16 +216,8 @@ export class PageEditor {
     window.addEventListener(
       "keydown",
       (event) => {
-        if (!this.polygon || isTyping(event)) return;
-        const done =
-          event.key === "Enter"
-            ? this.finishPolygon()
-            : event.key === "Backspace"
-              ? this.cancelPolygon(true)
-              : event.key === "Escape"
-                ? this.cancelPolygon()
-                : false;
-        if (done) {
+        const taken = event.key === "Escape" && this.dropper.cancel() ? (this.updateCursor(), true) : this.polygon.key(event);
+        if (taken) {
           event.preventDefault();
           event.stopImmediatePropagation();
         }
@@ -258,9 +269,6 @@ export class PageEditor {
       get panReady() {
         return editor.handReady();
       },
-      get polygon() {
-        return editor.polygon;
-      },
       get guides() {
         return editor.guides;
       },
@@ -279,8 +287,7 @@ export class PageEditor {
       get eraseMode() {
         return editor.eraseMode;
       },
-      polygonSlot: () => this.polygonSlot(),
-      nextCorner: (slot, point, free) => this.nextCorner(slot, point, free),
+      polygonPreview: (pointer) => this.polygon.preview(pointer),
       erasing: () => this.erasing(),
       eraserRadiusPx: () => this.eraserRadiusPx(),
       brush: (kind) => this.brush(kind),
@@ -551,7 +558,7 @@ export class PageEditor {
   setTool(tool: Tool): void {
     if (tool !== this.tool) noteUse("tool", tool);
     this.tool = tool;
-    if (tool !== "cut") this.cancelPolygon();
+    if (tool !== "cut") this.polygon.cancel();
     if (tool === "sticky" && !this.stage.showStickies) this.setStickiesShown(true); // 付箋 put while hidden would not be seen.
     this.picks.toolTaken(tool);
     this.updateCursor();
@@ -662,78 +669,10 @@ export class PageEditor {
     return this.host.project()?.binding ?? "right";
   }
 
-  /** 多角形: whether corners are being placed. */
-  get placingCorners(): boolean {
-    return this.polygon !== null;
-  }
-
-  /** The page of the outline being placed, as laid out now. */
-  private polygonSlot(): Slot | null {
-    const polygon = this.polygon;
-    return polygon ? (this.slots.find((slot) => slot.page.id === polygon.pageId) ?? null) : null;
-  }
-
-  /** The next corner, snapped, from the pointer at `point` on the outline's page. */
-  private nextCorner(slot: Slot, point: Point, free: boolean): Point {
-    const points = this.polygon?.points ?? [];
-    const project = this.host.project();
-    if (!project) return point;
-    const beside = points.length ? [points[points.length - 1], points[0]] : [];
-    return this.snapped(slot, point, this.snapTargetsOn(project, slot.page), free, beside);
-  }
-
-  /** 多角形: a click places a corner; on the first corner (or the last again) it closes the outline into a panel. */
-  private placeCorner(slot: Slot, point: Point, free: boolean): void {
-    const polygon = this.polygon?.pageId === slot.page.id ? this.polygon : null;
-    if (!polygon) {
-      this.polygon = { pageId: slot.page.id, points: [this.nextCorner(slot, point, free)] };
-      this.host.status(
-        "多角形: クリックで角を置く。最初の角をクリック・ダブルクリック・Enter で閉じてコマに（Backspace で 1 つ戻す、Esc でやめる）",
-      );
-      this.painter.requestOverlay();
-      return;
-    }
-    const near = (p: Point) => Math.hypot(p[0] - point[0], p[1] - point[1]) * slot.scale <= 8;
-    if (polygon.points.length >= 3 && (near(polygon.points[0]) || near(polygon.points[polygon.points.length - 1]))) {
-      this.finishPolygon();
-      return;
-    }
-    polygon.points.push(this.nextCorner(slot, point, free));
-    this.guides = null;
-    this.painter.requestOverlay();
-  }
-
-  /** 多角形: the corners placed make a panel (with three or more). */
-  finishPolygon(): boolean {
-    const polygon = this.polygon;
-    const project = this.host.project();
-    if (!polygon || !project) return false;
-    this.polygon = null;
-    this.guides = null;
-    const page = project.pages.find((p) => p.id === polygon.pageId);
-    if (page && polygon.points.length >= 3) this.addFreePanel(project, page, polygon.points);
-    else this.host.status("コマにするには角を 3 つ以上置いてください");
-    this.painter.draw();
-    return true;
-  }
-
-  /** 多角形: stop placing corners (`last`: take back only the last one). */
-  cancelPolygon(last = false): boolean {
-    if (!this.polygon) return false;
-    if (last && this.polygon.points.length > 1) this.polygon.points.pop();
-    else {
-      this.polygon = null;
-      this.host.status("");
-    }
-    this.guides = null;
-    this.painter.requestOverlay();
-    return true;
-  }
-
   /** コマ割り: cut, draw rectangles or place corners. */
   setPanelMode(mode: PanelMode): void {
     this.panelMode = mode;
-    if (mode !== "polygon") this.cancelPolygon();
+    if (mode !== "polygon") this.polygon.cancel();
     this.painter.requestOverlay();
   }
 
@@ -793,6 +732,10 @@ export class PageEditor {
   }
 
   private updateCursor(): void {
+    if (this.dropper.armed) {
+      this.canvas.style.cursor = "crosshair";
+      return;
+    }
     const hover = this.hover && (this.hover.kind === "tail" ? { kind: "tail" as const, part: this.hover.hit.part } : this.hover);
     const lasso = this.eraseMode === "lasso";
     this.canvas.style.cursor = editorCursor({
@@ -946,6 +889,14 @@ export class PageEditor {
       // A pointer the browser no longer tracks: carry on without capture.
     }
     const [sx, sy] = this.stage.at(event);
+    // スポイト: armed from the colour palette, or Alt + click with the pen or the fill (as CSP's).
+    if (event.button === 0 && (this.dropper.armed || (event.altKey && !this.spaceHeld && (this.tool === "pen" || this.tool === "fill")))) {
+      const ratio = window.devicePixelRatio || 1;
+      const said = this.dropper.take(this.painter.pixelAt(Math.round(event.offsetX * ratio), Math.round(event.offsetY * ratio)));
+      this.updateCursor();
+      if (said) this.host.status(said);
+      return;
+    }
     // Shift + Space: turn the view (as in CSP); Space, the middle button or Ctrl + drag: move it.
     if (this.spaceHeld && event.shiftKey) {
       this.drag = { kind: "turn", from: this.view.angleAt(sx, sy), rotation: this.view.rotation };
@@ -990,6 +941,12 @@ export class PageEditor {
     const point = toPage(slot, sx, sy);
     // The 指示 tool's eraser end erases 指示 only.
     PRESS[this.tipEraser && this.tool !== "mark" ? "eraser" : this.tool](this.core, { event, project, slot, point, sx, sy });
+  }
+
+  /** スポイト: the next click on the page gives its colour (`done(null)`: given up, with Esc or another スポイト). */
+  pickColorOnce(done: (color: string | null) => void): void {
+    this.dropper.arm(done);
+    this.updateCursor();
   }
 
   /** What the tools may see and do (their press, drag and finish are in their own modules). */
@@ -1080,7 +1037,7 @@ export class PageEditor {
       carryToPageUnder: (project) => this.picks.carryToPageUnder(project),
       spanPanels: (project, pageId) => this.spanPanels(project, pageId),
       addFreePanel: (project, page, outline) => this.addFreePanel(project, page, outline),
-      placeCorner: (slot, point, free) => this.placeCorner(slot, point, free),
+      placeCorner: (slot, point, free) => this.polygon.place(slot, point, free),
       editInPlace: (pageId, kind, id, fresh) => this.editInPlace(pageId, kind, id, fresh),
     };
   }
@@ -1127,7 +1084,7 @@ export class PageEditor {
       // Ctrl pressed or let go outside the window: the pointer says so.
       if (event.pointerType !== "touch") this.holdCtrl(event.ctrlKey || event.metaKey);
       this.scheduleHover(ex, ey);
-      if (this.erasing() || this.tool === "pen" || this.polygon) this.painter.requestOverlay();
+      if (this.erasing() || this.tool === "pen" || this.polygon.placing) this.painter.requestOverlay();
       return;
     }
     if (drag.kind === "pan") {
@@ -1265,7 +1222,7 @@ export class PageEditor {
   /** The cursor for moving a border: across it. */
   private doubleClick(event: MouseEvent): void {
     window.clearTimeout(this.cycleTimer);
-    if (this.tool === "cut" && this.finishPolygon()) return;
+    if (this.tool === "cut" && this.polygon.finish()) return;
     const project = this.host.project();
     if (!project || this.tool !== "select") return;
     const [ex, ey] = this.stage.at(event);

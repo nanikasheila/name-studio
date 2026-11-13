@@ -74,7 +74,7 @@ impl ExpectedLayer {
                     }),
                 }
             }
-            PageLayer::Vector { name, lines } => ExpectedLayer::Vector {
+            PageLayer::Vector { name, lines, .. } => ExpectedLayer::Vector {
                 name: name.clone(),
                 lines: lines.iter().filter(|line| line.points.len() >= 2).count(),
             },

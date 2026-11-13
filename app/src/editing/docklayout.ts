@@ -9,6 +9,7 @@ export type PaletteId =
   | "subtools"
   | "toolprops"
   | "brushsize"
+  | "color"
   | "pages"
   | "script"
   | "cast"
@@ -80,6 +81,7 @@ export const PALETTE_IDS: PaletteId[] = [
   "subtools",
   "toolprops",
   "brushsize",
+  "color",
   "pages",
   "script",
   "cast",
@@ -92,7 +94,7 @@ export const PALETTE_IDS: PaletteId[] = [
 ];
 
 /** As tall as what they hold, out of the box (the sub tools are short; the lists take the rest). */
-const FIT: ReadonlySet<PaletteId> = new Set(["subtools", "toolprops", "brushsize"]);
+const FIT: ReadonlySet<PaletteId> = new Set(["subtools", "toolprops", "brushsize", "color"]);
 
 /** Palettes split off another one since: where that one is, after it, shown as it was (ブラシサイズ hidden). */
 const SPLIT_FROM: Partial<Record<PaletteId, { from: PaletteId; shown: boolean }>> = {

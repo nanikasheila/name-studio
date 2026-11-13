@@ -328,6 +328,7 @@ fn writes_a_work_with_editable_layers_from_the_built_template() {
                 closed: true,
                 width_px: 3.0,
             }],
+            colors: vec![],
         },
         PageLayer::Text(NewText {
             text: "セリフ".into(),
@@ -682,6 +683,7 @@ fn a_plain_page_without_parts_gets_editable_layers_from_the_built_in_parts() {
                 closed: true,
                 width_px: 3.0,
             }],
+            colors: vec![],
         },
         PageLayer::Text(NewText {
             text: "セリフ".into(),

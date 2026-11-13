@@ -3,15 +3,18 @@
 // marks, the pen's cursor, the eraser's ring, a line being drawn — costs no
 // drawing of the pages), and over them what is picked, dragged and snapped to. It looks at the editor's state
 // (PaintScene) and changes none of it.
+import { ownColor } from "../domain/color";
+import { drawColors } from "../platform/drawcolor";
+import { ROUGH_INK } from "../render/pagedraw";
 import { drawAside } from "../render/asidedraw";
-import type { Drag, DragOf, EditorEraseMode, EditorHost, Guides, Hover, Tool } from "./editorcore";
+import type { Drag, DragOf, EditorEraseMode, EditorHost, Guides, Hover, PolygonPreview, Tool } from "./editorcore";
 import type { EditorPicks } from "./editorpicks";
 import type { EditorStage } from "./editorstage";
 import type { FillSettings } from "../editing/fillsettings";
 import { bounds } from "../model/geometry";
 import { panelBadge } from "../editing/hittest";
 import { seamLines } from "../domain/komaedit";
-import { toPage, type Slot } from "../editing/layout";
+import type { Slot } from "../editing/layout";
 import type { BoxMm, Brush, Line, Page, Panel, Point, Project } from "../model/model";
 import { ACCENT, drawSticky, NOTE_FONT, NOTE_ROW, noteBox, type NoteBox } from "../render/notedraw";
 import { snapCut } from "../domain/pagebox";
@@ -62,10 +65,8 @@ export interface PaintScene {
   readonly pointer: Point | null;
   /** Space (or Ctrl, as set) held: a drag moves the view, so no brush is shown. */
   readonly panReady: boolean;
-  /** 多角形: the corners placed so far, the page they are on and where the next one would go. */
-  readonly polygon: { pageId: string; points: Point[] } | null;
-  polygonSlot(): Slot | null;
-  nextCorner(slot: Slot, point: Point, free: boolean): Point;
+  /** 多角形: the corners placed and the outline to the screen point `pointer` (null: none being placed). */
+  polygonPreview(pointer: readonly [number, number] | null): PolygonPreview | null;
   readonly guides: Guides | null;
   readonly snapping: SnapSettings;
   readonly reference: { pageId: string; id: string } | null;
@@ -318,7 +319,8 @@ export class EditorPainter {
 
   /** A line being drawn: its width (mm), colour and brush. */
   private liveInk(drag: DragOf<"pen">): [number, string, Brush | undefined] {
-    return [drag.mark?.widthMm ?? this.scene.penWidthMm, drag.mark?.color ?? "#3a3834", drag.mark ? undefined : this.scene.brush("pen")];
+    const ink = ownColor(drawColors.main) ?? ROUGH_INK;
+    return [drag.mark?.widthMm ?? this.scene.penWidthMm, drag.mark?.color ?? ink, drag.mark ? undefined : this.scene.brush("pen")];
   }
 
   /** The picture of the pages, the size of the screen (device pixels). */
@@ -330,6 +332,15 @@ export class EditorPainter {
     }
     this.cache = cache;
     return cache.getContext("2d")!;
+  }
+
+  /** スポイト: the colour of the pages (without what lies over them: the cursor, hover marks) at a device pixel. */
+  pixelAt(x: number, y: number): [number, number, number] | null {
+    if (!this.cache || this.cacheStale) this.draw();
+    const ctx = this.cache?.getContext("2d");
+    if (!ctx || x < 0 || y < 0 || x >= this.cache!.width || y >= this.cache!.height) return null;
+    const [r, g, b] = ctx.getImageData(x, y, 1, 1).data;
+    return [r, g, b];
   }
 
   /** Redraw only what lies over the pages (hover marks, the eraser ring) on the next frame. */
@@ -573,18 +584,8 @@ export class EditorPainter {
 
   /** 多角形: the corners placed, and the side to where the pointer is. */
   private drawPolygon(): void {
-    const polygon = this.scene.polygon;
-    const slot = this.scene.polygonSlot();
-    if (!polygon || !slot) return;
-    const points = [...polygon.points];
-    let closing = false;
-    if (this.scene.pointer && !this.scene.drag) {
-      const pointer = toPage(slot, ...this.scene.pointer);
-      const first = polygon.points[0];
-      closing = polygon.points.length >= 3 && Math.hypot(first[0] - pointer[0], first[1] - pointer[1]) * slot.scale <= 8;
-      if (!closing) points.push(this.scene.nextCorner(slot, pointer, false));
-    }
-    drawCorners(this.ctx, slot, polygon.points, points, closing);
+    const preview = this.scene.polygonPreview(this.scene.drag ? null : this.scene.pointer);
+    if (preview) drawCorners(this.ctx, preview.slot, preview.placed, preview.outline, preview.closing);
   }
 
   private drawFrame(): void {

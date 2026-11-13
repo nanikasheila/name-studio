@@ -26,8 +26,10 @@ import {
   drawStrokes,
   loadTips,
   type MmToPx,
+  roughInk,
 } from "../render/pagedraw";
 import { bounds } from "../model/geometry";
+import { parseHex } from "../domain/color";
 import type { BoxMm, Brush, Page, Project, ReferenceImage, RoughImage, RoughLayer, StrokePoint } from "../model/model";
 import { basicBox, trimBox } from "../domain/pagebox";
 import { wantsSpread } from "../domain/panels";
@@ -203,7 +205,7 @@ export function drawPart(ctx: CanvasRenderingContext2D, page: Page, kind: LayerK
   switch (kind) {
     case "strokes":
     case "overStrokes":
-      drawStrokes(ctx, page, m, kind === "overStrokes", () => "#3a3834", 1, brushes);
+      drawStrokes(ctx, page, m, kind === "overStrokes", roughInk, 1, brushes);
       break;
     case "underFills":
       drawPageFills(ctx, page, m, undefined, true);
@@ -232,6 +234,8 @@ export interface VectorLineMeta {
   points: [number, number, number][];
   closed: boolean;
   widthPx: number;
+  /** 8-bit RGB; none: black. */
+  color?: [number, number, number];
 }
 
 /** One panel of a コマ枠フォルダー in template px. */
@@ -285,10 +289,12 @@ export function vectorLines(
             stroke,
             brushes.find((brush) => brush.id === stroke.brush),
           );
+          const color = stroke.color ? parseHex(stroke.color) : null;
           return {
             points: map(stroke.points, (_, i) => factors[i]),
             closed: stroke.closed,
             widthPx: stroke.widthMm * m.scale,
+            ...(color ? { color } : {}),
           };
         });
     case "panels":

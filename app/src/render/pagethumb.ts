@@ -1,6 +1,6 @@
 // A small picture of a page (物語の帯, page lists): the same drawing as the
 // editor, without brush tips.
-import type { BoxMm, Page, Project } from "../model/model";
+import type { BoxMm, Page, Project, Stroke } from "../model/model";
 import { withoutMarks } from "../domain/roughlayers";
 import { drawBalloons, drawPageFills, drawPageTexts, drawPanelBorders, drawPanelFills, drawStrokes, type MmToPx } from "./pagedraw";
 
@@ -21,7 +21,13 @@ export function drawThumb(
 }
 
 /** What lies on a page, small: rough lines, fills, borders, balloons and (with `text`) the words. */
-function drawParts(ctx: CanvasRenderingContext2D, page: Page, m: MmToPx, text: boolean, ink: () => string = () => "#55524c"): void {
+function drawParts(
+  ctx: CanvasRenderingContext2D,
+  page: Page,
+  m: MmToPx,
+  text: boolean,
+  ink: (stroke: Stroke) => string = (stroke) => stroke.color ?? "#55524c",
+): void {
   drawPageFills(ctx, page, m, undefined, true);
   drawStrokes(ctx, page, m, false, ink, 0.5);
   drawPanelFills(ctx, page, m, 0.4);
