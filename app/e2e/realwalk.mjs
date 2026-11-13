@@ -191,44 +191,42 @@ try {
   await page.locator("#tab-subview").click();
   await page.locator('.palette[data-lead="subview"] .palette-menu').click();
   await page.locator(".popup-menu [role=menuitem]", { hasText: "別のウィンドウへ" }).click();
-  // WebView2 shows more than one page for the window: the window's own blank page comes first and is
-  // replaced by the popup (SetNewWindow), so the page looked for is the one the palette is in.
-  let outside = null;
-  for (let i = 0; i < 80 && !outside; i++) {
-    for (const other of page.context().pages()) {
-      if (other === page || other.isClosed()) continue;
-      const holds = await other.evaluate(() => !!document.querySelector(".palette-window")).catch(() => false);
-      if (holds) outside = other;
-    }
-    if (!outside) await page.waitForTimeout(250);
-  }
-  check(
-    !!outside,
-    `別のウィンドウへ opens a window of its own (pages: ${page
-      .context()
-      .pages()
-      .map((p) => p.url())
-      .join(", ")})`,
-  );
-  if (outside) {
-    await page.waitForTimeout(800);
-    const there = await outside
-      .evaluate(() => {
-        const canvas = document.querySelector(".subview-canvas");
-        if (!canvas) return { canvas: false, white: 0, title: document.title };
+  await page.waitForTimeout(1500);
+  // The window is looked at from the page that opened it (window.open with its name finds it again, and
+  // opens nothing new): WebView2 does not show the popup to the debugger as a page of its own.
+  const there = () =>
+    page.evaluate(() => {
+      const win = window.open("", "namestudio-subview");
+      if (!win) return { out: false };
+      if (win.closed) return { out: true, closed: true };
+      const canvas = win.document.querySelector(".palette-window .subview-canvas");
+      let white = 0;
+      if (canvas) {
         const data = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
-        let white = 0;
         for (let i = 0; i < data.length; i += 4) if (data[i] > 240 && data[i + 1] > 225 && data[i + 3] > 250) white++;
-        return { canvas: true, white, title: document.title };
-      })
-      .catch((error) => ({ canvas: false, white: 0, title: String(error) }));
-    check(there.canvas && there.white > 1000, `the サブビュー is drawn in it (${JSON.stringify(there)})`);
-    check((await page.locator("#dock-right .subview-canvas").count()) === 0, "and is out of the main window");
-    await outside.locator(".subview-bar button", { hasText: "次のコマ" }).click();
+      }
+      return { out: true, closed: false, canvas: !!canvas, white, title: win.document.title, size: [win.outerWidth, win.outerHeight] };
+    });
+  const targets = await run.browser
+    .newBrowserCDPSession()
+    .then((cdp) => cdp.send("Target.getTargets"))
+    .then((r) => r.targetInfos.map((t) => `${t.type}:${t.url}`).join(", "))
+    .catch((error) => String(error));
+  const opened = await there();
+  check(opened.out && !opened.closed, `別のウィンドウへ opens a window of its own (${JSON.stringify(opened)}; targets: ${targets})`);
+  check(opened.canvas && opened.white > 1000 && opened.size?.[0] > 100, "the サブビュー is drawn in it");
+  check((await page.locator("#dock-right .subview-canvas").count()) === 0, "and is out of the main window");
+  if (opened.out && !opened.closed) {
+    await page.evaluate(() => {
+      const win = window.open("", "namestudio-subview");
+      const next = Array.from(win.document.querySelectorAll(".subview-bar button")).find((b) => b.textContent.includes("次のコマ"));
+      next.click();
+    });
     await page.waitForTimeout(200);
     check(((await page.locator("#status").textContent()) ?? "").includes("コマ目"), "次のコマ pressed there moves the main view");
-    await outside.close();
-    await page.waitForTimeout(1500);
+    // Shut from outside, as its ✕ would.
+    await page.evaluate(() => window.open("", "namestudio-subview").close());
+    await page.waitForTimeout(2000);
     check((await page.locator("#dock-right .subview-canvas").count()) === 1, "closing the window puts the palette back");
   }
 

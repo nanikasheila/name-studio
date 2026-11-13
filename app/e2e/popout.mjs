@@ -64,6 +64,11 @@ try {
     return { white, width: canvas.clientWidth };
   });
   check(drawn.white > 1000 && drawn.width > 200, `the pages are drawn there, filling it (${JSON.stringify(drawn)})`);
+  check(
+    await page.evaluate(() => !!window.open("", "namestudio-subview").document.querySelector(".palette-window .subview-canvas")),
+    "the window is found again by its name, as it is (e2e/realwalk.mjs looks at it so)",
+  );
+  check(page.context().pages().length === 2, "and nothing new opens");
   const styled = await popup.evaluate(() => getComputedStyle(document.querySelector(".subview-bar")).display);
   check(styled === "flex", "the main window's styles are there");
 
