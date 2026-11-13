@@ -3,6 +3,14 @@ name: Promote to 正式版
 # A 試験版 (every release build.yml publishes) becomes the 正式版 that every
 # installed copy takes, once it was checked in CLIP STUDIO PAINT. By hand:
 # Actions → Promote to 正式版 → Run workflow (empty: the newest 試験版).
+#
+# With SignPath set up (docs/release.md: the variable SIGNPATH_ORGANIZATION_ID
+# and the secret SIGNPATH_API_TOKEN), the 正式版's installer is code-signed
+# first: the version is built again from its own commit in this run (SignPath
+# signs only what a run built itself), signed once the author approves the
+# request in SignPath, and replaces the release's unsigned installer, with
+# the updater's signature and latest.json made anew for the signed file.
+# Without it the release is promoted as it is.
 on:
   workflow_dispatch:
     inputs:
@@ -13,25 +21,172 @@ on:
 
 permissions: {}
 
-concurrency:
-  group: release
-  cancel-in-progress: false
-
 jobs:
-  promote:
+  pick:
+    name: Which version
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
+    outputs:
+      tag: ${{ steps.pick.outputs.tag }}
+      version: ${{ steps.pick.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Promote
+      - name: The version to promote
+        id: pick
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
         run: |
           gh release list --limit 100 --json tagName,isPrerelease,isDraft,isLatest > "$RUNNER_TEMP/releases.json"
           tag="$(node .github/scripts/promote-version.mjs "$RUNNER_TEMP/releases.json" "$VERSION")"
-          gh release edit "$tag" --prerelease=false --latest
-          echo "### $tag を正式版にしました" >> "$GITHUB_STEP_SUMMARY"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+  sign:
+    name: Code-sign the installer (SignPath)
+    needs: pick
+    if: vars.SIGNPATH_ORGANIZATION_ID != ''
+    runs-on: windows-latest
+    # The approval in SignPath may take a while: the request waits up to 5 hours.
+    timeout-minutes: 340
+    permissions:
+      contents: read
+      # SignPath reads this job and downloads the unsigned installer with the token.
+      actions: read
+    env:
+      VERSION: ${{ needs.pick.outputs.version }}
+    steps:
+      # The version's own commit (its tag), as build-app.yml built it ...
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.pick.outputs.tag }}
+
+      # ... and the build steps as main has them now (an older tag may not have them).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: ci
+          sparse-checkout: .github
+
+      - uses: ./ci/.github/actions/installer
+        with:
+          version: ${{ env.VERSION }}
+          updater-pubkey: ${{ vars.TAURI_UPDATER_PUBKEY }}
+          updater-key: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          updater-key-password: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: The installer to sign
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/unsigned"
+          setup="$(ls target/release/bundle/nsis/*-setup.exe | grep -F "$VERSION")"
+          cp "$setup" "$RUNNER_TEMP/unsigned/NameStudio_${VERSION}_x64-setup.exe"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        id: unsigned
+        with:
+          name: unsigned-installer
+          path: ${{ runner.temp }}/unsigned/
+          if-no-files-found: error
+
+      # Waits until the author approves the request on signpath.io (an e-mail
+      # comes), then downloads the signed installer.
+      - name: Code-sign (approve the request in SignPath)
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'name-studio' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 18000
+          output-artifact-directory: ${{ runner.temp }}/signed
+
+      - name: The signature is valid and timestamped
+        shell: pwsh
+        run: |
+          $file = Join-Path $env:RUNNER_TEMP "signed/NameStudio_$($env:VERSION)_x64-setup.exe"
+          $sig = Get-AuthenticodeSignature $file
+          if ($sig.Status -ne 'Valid') { Write-Error "not validly signed: $($sig.Status) $($sig.StatusMessage)"; exit 1 }
+          if (-not $sig.TimeStamperCertificate) { Write-Error "signed without a timestamp (it would expire with the certificate)"; exit 1 }
+          "### v$($env:VERSION) をコード署名しました（$($sig.SignerCertificate.Subject)）" >> $env:GITHUB_STEP_SUMMARY
+
+      # The updater checks its own signature over the installer's bytes, which
+      # the code signature changed: sign the signed file for the updater again.
+      - name: The updater's signature of the signed installer
+        if: vars.TAURI_UPDATER_PUBKEY != ''
+        shell: bash
+        working-directory: app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npx tauri signer sign --app-version "$VERSION" "$RUNNER_TEMP/signed/NameStudio_${VERSION}_x64-setup.exe"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: signed-installer
+          path: ${{ runner.temp }}/signed/
+          if-no-files-found: error
+
+  promote:
+    name: Promote
+    needs: [pick, sign]
+    # After signing, or straight away when signing is not set up.
+    if: ${{ !cancelled() && needs.pick.result == 'success' && (needs.sign.result == 'success' || needs.sign.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # One release at a time (and not while build-app.yml publishes one). Only
+    # this job: the wait for the approval above holds back no 試験版.
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.pick.outputs.tag }}
+      VERSION: ${{ needs.pick.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Signing may have taken hours: the version must still be one to promote.
+      - name: Still a 試験版 newer than the 正式版
+        run: |
+          gh release list --limit 100 --json tagName,isPrerelease,isDraft,isLatest > "$RUNNER_TEMP/releases.json"
+          node .github/scripts/promote-version.mjs "$RUNNER_TEMP/releases.json" "$VERSION" > /dev/null
+
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        if: needs.sign.result == 'success'
+        with:
+          name: signed-installer
+          path: signed
+
+      # The signed installer (and the updater's signature of it) in place of the
+      # unsigned one, then the latest.json files that point at this version.
+      - name: The signed installer in the release
+        if: needs.sign.result == 'success'
+        run: |
+          installer="NameStudio_${VERSION}_x64-setup.exe"
+          files=("signed/$installer")
+          [ -f "signed/$installer.sig" ] && files+=("signed/$installer.sig")
+          gh release upload "$TAG" "${files[@]}" --clobber
+          if [ -f "signed/$installer.sig" ]; then
+            mkdir -p own beta
+            if gh release download "$TAG" -p latest.json -D own; then
+              node .github/scripts/signed-latest.mjs own/latest.json "signed/$installer.sig" "$VERSION"
+              gh release upload "$TAG" own/latest.json --clobber
+            fi
+            if gh release download channel-beta -p latest.json -D beta; then
+              if node .github/scripts/signed-latest.mjs beta/latest.json "signed/$installer.sig" "$VERSION"; then
+                gh release upload channel-beta beta/latest.json --clobber
+              fi
+            fi
+          fi
+          echo "### $TAG のインストーラーをコード署名つきに差し替えました" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Promote
+        run: |
+          gh release edit "$TAG" --prerelease=false --latest
+          echo "### $TAG を正式版にしました" >> "$GITHUB_STEP_SUMMARY"

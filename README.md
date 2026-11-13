@@ -29,6 +29,7 @@ CSP 本体には手を入れず、.clip / .cmc ファイルを読み書きする
 
 1. [最新のリリース](https://github.com/nanikasheila/name-studio/releases/latest) から `NameStudio_…_x64-setup.exe` を落として入れます（Windows 10 / 11）。
    インストーラーにはまだコード署名がないので、はじめて開くと Windows の SmartScreen が止めます。「詳細情報」を押し、出てきた「実行」で進めてください（アプリの中の自動更新で入る版では、ふつう出ません）。
+   正式版のインストーラーは SignPath Foundation の証明書で署名する準備をしています（[コード署名の方針](docs/code-signing-policy.md)）。
 
    ![SmartScreen の進め方: 「詳細情報」→「実行」→ セットアップ](docs/images/smartscreen.svg)
 2. 起動して「新しいネーム」（白紙から）か「開く」（CSP のネーム用紙 .clip や、前に作ったネーム .namestudio）。

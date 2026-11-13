@@ -25,6 +25,7 @@ Actions の「Release Windows app」→ Run workflow で手で流すこともで
 2. 試験版を PC の CLIP STUDIO PAINT で確かめます（書き出したページ・作品が開けて、変更マーク「*」がない、など）。
 3. Actions →「Promote to 正式版」→ Run workflow（版を空にすると、いちばん新しい試験版）。その版が GitHub の
    latest になり、ふつうの設定のアプリ（正式版だけ）はこれを受け取ります。今の正式版より古い版は正式版にできません。
+   コード署名の設定があれば、その前にインストーラーを署名つきに差し替えます（SignPath での承認が要ります。下の「コード署名」）。
 
 試験版で困ったときは、「前の版に戻す」（一覧に「試験版」と出ます）で正式版に戻せます。
 
@@ -69,20 +70,54 @@ Actions の「Release Windows app」→ Run workflow で手で流すこともで
 
 鍵をなくすと、それまでに入れたアプリは新しい版を受け付けません（インストーラーで入れ直せば直ります）。
 
-## コード署名（まだしていない。2026-11 の調べ）
+## コード署名（SignPath Foundation、正式版だけ）
 
-インストーラーには Authenticode のコード署名がなく、はじめて開くと SmartScreen が止めます（README に「詳細情報 → 実行」の図）。
-更新の署名（上の鍵）とは別物です。署名しても、新しい証明書は使われた数が増えるまで警告が出ることがあり、すぐには消えません
-（EV 証明書ですぐ信頼される扱いは 2024 年になくなった）。日本の個人で選べるもの:
+インストーラーの Authenticode のコード署名は、[SignPath Foundation](https://signpath.org/)（オープンソース向け、無料）の
+証明書で、**正式版に上げるときだけ**します（方針: [code-signing-policy.md](code-signing-policy.md)）。更新の署名（上の鍵）とは別物です。
+署名すると SmartScreen の「詳細情報 → 実行」が要らなくなっていきます。発行元は「SignPath Foundation」と出ます。
 
-| 方法 | 費用 | 条件・手間 | CI（GitHub Actions）から |
-|---|---|---|---|
-| Azure Artifact Signing（旧 Trusted Signing） | 月 約 9.99 ドル | 個人は米国・カナダのみ。日本は法人だけ | できる |
-| SignPath Foundation（オープンソース向け） | 無料 | OSI のライセンス（GPL 可）・公開された版・サイトに「コード署名の方針」・全員 MFA・版ごとに人が承認。受け入れは審査次第 | できる（承認の一手間） |
-| Certum Open Source Code Signing（クラウド） | 年 49 ユーロ | 個人の「Open Source Developer」名義・本人確認 | スマホのアプリのコードが要り、無人では難しい |
+「Promote to 正式版」を流すと（`.github/workflows/promote.yml`）:
 
-2026-11-10 の作者の判断: **いまは署名しない**（README の「詳細情報 → 実行」の図で案内する）。署名するなら、無料で CI のまま
-署名できる SignPath Foundation への申し込みが第一候補（承認の一手間は正式版に上げるときにまとめる）。申し込みは作者の名前とアカウントで行う。
+1. その版のタグ `v0.2.N` のコミットから、同じ実行の中でインストーラーをビルドし直し、起動と書き出しを確かめます
+   （`.github/actions/installer`。SignPath は、その実行が自分でビルドしたものにしか署名しないため）。
+2. SignPath に署名を依頼します。**作者に SignPath からメールが来るので、signpath.io で依頼を開いて承認します**（5 時間まで待ちます）。
+3. 署名が正しくタイムスタンプつきかを確かめ、署名後のファイルに更新の署名（`.sig`）を付け直します。
+4. リリースの無署名のインストーラーを署名つきに差し替え、その版を指す `latest.json`（その版のリリースと、
+   まだその版を指していれば `channel-beta`）の署名を書き換えてから、正式版にします。
+
+承認を待つ間も、試験版の公開（build-app.yml）は止まりません。承認しなかった・断ったときは、正式版にはなりません
+（もう一度流せばやり直せます）。署名の設定（下の変数）がないときは、今までどおり署名なしで正式版にします。
+
+### 最初に一度だけ（作者がすること）
+
+1. GitHub で 2 段階認証（Settings → Password and authentication）がオンになっていること。
+2. [signpath.org/apply](https://signpath.org/apply) から申し込む。聞かれたら:
+   リポジトリ `https://github.com/nanikasheila/name-studio`、ライセンス GPL-3.0-or-later、
+   ダウンロードのページ `https://github.com/nanikasheila/name-studio/releases/latest`、
+   署名の方針 `https://github.com/nanikasheila/name-studio/blob/main/docs/code-signing-policy.md`、
+   ビルドは GitHub Actions（GitHub がホストするランナー）。審査に数日かかります。
+3. 受け入れられたら、SignPath の案内に従って SignPath にサインインし、2 段階認証をオンにする。プロジェクトは:
+   - プロジェクトの slug `name-studio`（違う名前になったら下の変数 `SIGNPATH_PROJECT_SLUG` に）
+   - Trusted Build System に「GitHub.com」をつなぐ
+   - 署名ポリシーは release-signing（違う名前なら `SIGNPATH_POLICY_SLUG`）。許すブランチは `main`、承認者は自分
+   - 成果物の設定（Artifact configuration）に、リポジトリの `.signpath/artifact-configuration.xml` の中身を貼って既定にする
+4. SignPath で CI 用の API トークンを作る（Users → CI ユーザーを作る、または自分の API トークン。
+   プロジェクトの「Submitter」の役割が要る）。
+5. GitHub の name-studio → Settings → Secrets and variables → Actions:
+   - Secrets に `SIGNPATH_API_TOKEN`（4. のトークン）
+   - Variables に `SIGNPATH_ORGANIZATION_ID`（SignPath の組織 ID。SignPath の画面の URL や Settings に出る）
+   - slug が上と違うときだけ Variables に `SIGNPATH_PROJECT_SLUG`・`SIGNPATH_POLICY_SLUG`
+
+これで次の「Promote to 正式版」から署名つきになります。`SIGNPATH_ORGANIZATION_ID` を消せば、署名なしに戻ります。
+
+### 選ばなかった方法（2026-11 の調べ）
+
+| 方法 | 費用 | 選ばなかったわけ |
+|---|---|---|
+| Azure Artifact Signing（旧 Trusted Signing） | 月 約 10 ドル | 個人は米国・カナダのみ。日本は法人だけ |
+| Certum Open Source Code Signing（クラウド） | 年 49 ユーロ | 発行元に本名が出る。スマホのアプリのコードが要り、無人の CI では難しい |
+
+EV 証明書ですぐ信頼される扱いは 2024 年になくなったので、どの方法でも、新しい証明書はしばらく警告が出ることがあります。
 
 ## 版の番号
 
