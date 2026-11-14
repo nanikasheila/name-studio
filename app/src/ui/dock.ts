@@ -38,7 +38,7 @@ import {
   type Side,
 } from "../editing/docklayout";
 import { openMenu, SEPARATOR, type MenuItem } from "./popupmenu";
-import { forgetOut, PaletteWindow, palettesOut } from "./popout";
+import { forgetOut, PaletteWindow, palettesOut, type WindowPlace } from "./popout";
 
 export { clampWidth, column, defaultLayout, isOpen, movePalette, readLayout, MAX_COLUMNS };
 export type { DockLayout, PaletteId, Side };
@@ -103,6 +103,19 @@ export class Docks {
     window.addEventListener("pagehide", () => {
       for (const out of this.outside.values()) out.closeForNow();
     });
+    // A drag that ended without its dragend (its header redrawn under it) is over once the pointer moves again:
+    // left over, it would mark the sides and float that palette on the next thing dropped on the pages.
+    window.addEventListener("pointermove", () => {
+      if (this.dragging) this.endDrag();
+    });
+  }
+
+  /** Whether a point on the screen is outside the main window (a palette let go there goes out into a window). */
+  private outsideWindow(screenX: number, screenY: number): boolean {
+    if (!screenX && !screenY) return false;
+    const left = window.screenX;
+    const top = window.screenY;
+    return screenX < left || screenY < top || screenX > left + window.outerWidth || screenY > top + window.outerHeight;
   }
 
   /** On start: the palettes that were out in windows of their own go out again (where windows can be opened). */
@@ -115,12 +128,15 @@ export class Docks {
     }
   }
 
-  /** 別のウィンドウへ: the palette in a window of its own (another display); false when none could be opened. */
-  popOut(id: PaletteId): boolean {
+  /**
+   * 別のウィンドウへ: the palette in a window of its own (another display), where it was last or at `at`
+   * (dragged out of the main window: where it was let go); false when none could be opened.
+   */
+  popOut(id: PaletteId, at?: WindowPlace): boolean {
     const def = this.defs.get(id);
     if (!def || this.outside.has(id)) return !!def;
     const near = this.sectionOf(id)?.getBoundingClientRect();
-    const out = PaletteWindow.open(id, def.title, def.body, () => this.comeBack(id), near);
+    const out = PaletteWindow.open(id, def.title, def.body, () => this.comeBack(id), near, at);
     if (!out) return false;
     this.outside.set(id, out);
     this.layout.palettes[id].shown = false;
@@ -281,11 +297,15 @@ export class Docks {
     const stack = document.createElement("div");
     stack.className = "dock-stack";
     const list = frames(this.layout, side, col);
+    // The shares as parts of the column's whole: weights adding up to less than 1 (one left alone after the others
+    // went or were hidden) would leave the rest of the column empty.
+    const sharing = list.map((f) => this.layout.palettes[f.lead]).filter((p) => !p.fit && !p.folded);
+    const total = sharing.reduce((sum, p) => sum + p.weight, 0);
     list.forEach((frame, i) => {
       const prev = list[i - 1];
       if (prev && !this.layout.palettes[prev.lead].folded && !this.layout.palettes[frame.lead].folded)
-        stack.append(this.splitter(prev.lead, frame.lead));
-      stack.append(this.frame(frame));
+        stack.append(this.splitter(prev.lead, frame.lead, total));
+      stack.append(this.frame(frame, false, total || 1));
     });
     const resize = document.createElement("div");
     resize.className = "dock-resize";
@@ -336,7 +356,7 @@ export class Docks {
   }
 
   /** A frame: its header (title, or tabs), its buttons, and the body of the tab in front. */
-  private frame(frame: Frame, floats = false): HTMLElement {
+  private frame(frame: Frame, floats = false, total = 1): HTMLElement {
     const lead = this.layout.palettes[frame.lead];
     const front = this.defs.get(frame.front);
     const section = document.createElement("section");
@@ -347,11 +367,11 @@ export class Docks {
     section.classList.toggle("fit", lead.fit && !lead.folded);
     section.classList.toggle("tabbed", frame.members.length > 1);
     section.classList.toggle("floating", floats);
-    if (!floats) section.style.flex = lead.folded ? "0 0 auto" : lead.fit ? "0 1 auto" : `${lead.weight} 1 0`;
+    if (!floats) section.style.flex = lead.folded ? "0 0 auto" : lead.fit ? "0 1 auto" : `${lead.weight / total} 1 0`;
     const head = document.createElement("header");
     head.title = floats
-      ? "ドラッグで動かす（欄の上で離すとそこへ）。ダブルクリックでたたむ"
-      : "ドラッグで別の場所・別の列・ほかの欄のタブ・紙面の上へ。ダブルクリックでたたむ";
+      ? "ドラッグで動かす（欄の上で離すとそこへ、ウィンドウの外で離すと別のウィンドウに）。ダブルクリックでたたむ"
+      : "ドラッグで別の場所・別の列・ほかの欄のタブ・紙面の上へ（ウィンドウの外で離すと別のウィンドウに）。ダブルクリックでたたむ";
     const titles = document.createElement("div");
     titles.className = "palette-tabs";
     titles.setAttribute("role", frame.members.length > 1 ? "tablist" : "presentation");
@@ -474,14 +494,41 @@ export class Docks {
   /** A header or tab dragged: where it can go is marked while it moves. */
   private dragSource(node: HTMLElement, id: PaletteId): void {
     node.draggable = true;
+    let grab = { x: 0, y: 0, w: 0, h: 0 };
+    let last = { x: 0, y: 0 };
     node.addEventListener("dragstart", (event) => {
       event.stopPropagation();
       this.dragging = id;
       event.dataTransfer?.setData(PALETTE_TYPE, id);
       if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
       document.body.classList.add("palette-dragging");
+      const box = this.sectionOf(id)?.getBoundingClientRect();
+      grab = {
+        x: event.clientX - (box?.left ?? event.clientX),
+        y: event.clientY - (box?.top ?? event.clientY),
+        w: box?.width ?? 0,
+        h: box?.height ?? 0,
+      };
+      last = { x: event.screenX, y: event.screenY };
     });
-    node.addEventListener("dragend", () => this.endDrag());
+    // Where it is (the drag's own events: the pointer's are not sent while dragging).
+    node.addEventListener("drag", (event) => {
+      if (event.screenX || event.screenY) last = { x: event.screenX, y: event.screenY };
+    });
+    node.addEventListener("dragend", (event) => {
+      const dropped = this.dragging === id;
+      this.endDrag();
+      // Let go outside the main window (nothing took it): out into a window of its own, there.
+      const at = event.screenX || event.screenY ? { x: event.screenX, y: event.screenY } : last;
+      if (dropped && event.dataTransfer?.dropEffect === "none" && this.outsideWindow(at.x, at.y))
+        this.popOut(id, {
+          x: Math.round(at.x - grab.x),
+          y: Math.round(at.y - grab.y),
+          w: Math.round(Math.max(grab.w, 260)),
+          h: Math.round(Math.max(grab.h, 240)),
+          grab: { x: Math.round(grab.x), y: Math.round(grab.y) },
+        });
+    });
   }
 
   /** Where a palette dragged to (x, y) over a side goes. */
@@ -490,9 +537,11 @@ export class Docks {
     // Over another frame's header: a tab of it.
     const head = (target instanceof Element ? target : null)?.closest<HTMLElement>(".palette > header");
     const section = head?.parentElement;
-    if (head && section && dock.contains(head)) {
+    if (head && section && dock.contains(head) && !section.classList.contains("floating")) {
       const lead = section.dataset.lead as PaletteId;
       if (frameKey(this.layout, id) !== lead || this.layout.palettes[id].tab) return { kind: "tab", with: lead };
+      // Its own header: it stays.
+      if (this.alone(id)) return null;
     }
     const cols = [...dock.querySelectorAll<HTMLElement>(".dock-col")];
     if (!cols.length) return { kind: "place", place: { side, col: 0, newColumn: true } };
@@ -512,11 +561,21 @@ export class Docks {
       if (innerEdge >= 0 && innerEdge < EDGE) return { kind: "place", place: { side, col: col + 1, newColumn: true } };
     }
     const sections = [...cols[index].querySelectorAll<HTMLElement>(".dock-stack > .palette")];
-    const next = sections.find((s) => {
+    const at = sections.findIndex((s) => {
       const b = s.getBoundingClientRect();
       return y < b.top + b.height / 2;
     });
+    const next = at < 0 ? undefined : sections[at];
+    // Just above or below itself: it stays (else it would go to the column's bottom).
+    const own = (s: HTMLElement | undefined) => s?.dataset.lead === id;
+    if (this.alone(id) && (own(next) || own(sections[(at < 0 ? sections.length : at) - 1]))) return null;
     return { kind: "place", place: { side, col, before: (next?.dataset.lead as PaletteId | undefined) ?? null } };
+  }
+
+  /** A palette in a frame of its own (no tabs with it): dropped where it is, nothing changes. */
+  private alone(id: PaletteId): boolean {
+    const p = this.layout.palettes[id];
+    return !p.tab && !p.float && !this.layout.order.some((x) => this.layout.palettes[x].tab === id && this.layout.palettes[x].shown);
   }
 
   /** The mark of where the drop goes. */
@@ -641,6 +700,17 @@ export class Docks {
         const drop = moved ? over(e) : null;
         this.clearMarks();
         if (!moved) return;
+        // Let go outside the main window: out into a window of its own, there.
+        if (e.clientX < 0 || e.clientY < 0 || e.clientX > window.innerWidth || e.clientY > window.innerHeight) {
+          const at = {
+            x: Math.round(e.screenX - dx),
+            y: Math.round(e.screenY - dy),
+            w: Math.round(box.width),
+            h: Math.round(box.height),
+            grab: { x: Math.round(dx), y: Math.round(dy) },
+          };
+          if (this.popOut(id, at)) return;
+        }
         if (drop) {
           this.applyDrop(drop, id);
           return;
@@ -683,7 +753,7 @@ export class Docks {
   }
 
   /** The line between two frames: drag to share the height differently (one as tall as it holds starts to share). */
-  private splitter(above: PaletteId, below: PaletteId): HTMLElement {
+  private splitter(above: PaletteId, below: PaletteId, columnTotal: number): HTMLElement {
     const line = document.createElement("div");
     line.className = "dock-splitter";
     line.title = "ドラッグで高さを分け直す";
@@ -702,6 +772,7 @@ export class Docks {
         (s) => s !== a && s !== b,
       );
       const unit = sharing ? sharing.getBoundingClientRect().height / this.layout.palettes[sharing.dataset.lead as PaletteId].weight : 100;
+      const before = pa.weight * +!pa.fit + pb.weight * +!pb.fit;
       for (const [p, h] of [
         [pa, ha],
         [pb, hb],
@@ -711,13 +782,15 @@ export class Docks {
       a.classList.remove("fit");
       b.classList.remove("fit");
       const total = pa.weight + pb.weight;
+      // The column's whole, with these two now sharing.
+      const whole = Math.max(columnTotal - before, 0) + total;
       const start = event.clientY;
       const move = (e: PointerEvent) => {
         const d = Math.min(Math.max(e.clientY - start, 60 - ha), hb - 60);
         pa.weight = (total * (ha + d)) / (ha + hb);
         pb.weight = total - pa.weight;
-        a.style.flex = `${pa.weight} 1 0`;
-        b.style.flex = `${pb.weight} 1 0`;
+        a.style.flex = `${pa.weight / whole} 1 0`;
+        b.style.flex = `${pb.weight / whole} 1 0`;
       };
       const up = () => {
         line.removeEventListener("pointermove", move);

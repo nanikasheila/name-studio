@@ -137,6 +137,56 @@ try {
     "the 人物 list is back too",
   );
 
+  // --- dragged out of the main window: a floating palette let go outside goes out into a window there ---
+  await page.locator("#tab-notes").click();
+  await page.waitForTimeout(100);
+  await page.locator('.palette[data-palette="notes"] .palette-menu').click();
+  await page.locator(".popup-menu [role=menuitem]", { hasText: "浮かせる" }).click();
+  await page.waitForTimeout(150);
+  const fhead = await page.locator('.dock-floats .palette[data-palette="notes"] > header').boundingBox();
+  await page.mouse.move(fhead.x + 30, fhead.y + fhead.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(fhead.x + 30, fhead.y + 40, { steps: 3 });
+  const [dragged] = await Promise.all([
+    page.waitForEvent("popup"),
+    (async () => {
+      await page.mouse.move(-40, fhead.y + 40, { steps: 6 });
+      await page.mouse.up();
+    })(),
+  ]);
+  await page.waitForTimeout(300);
+  check(
+    (await dragged.locator(".palette-window #side-notes").count()) === 1,
+    "a floating palette dragged out of the window goes out into a window of its own",
+  );
+  check((await page.locator('.dock-floats .palette[data-palette="notes"]').count()) === 0, "and floats over the pages no more");
+  await dragged.close();
+  await page.waitForTimeout(1300);
+  check((await page.locator('.dock-floats .palette[data-palette="notes"]').count()) === 1, "closed, it floats where it was");
+  // A docked palette's header dragged (HTML drag) and let go outside the window, nothing taking it: out too.
+  await page.locator('.dock-floats .palette[data-palette="notes"] .palette-menu').click();
+  await page.locator(".popup-menu [role=menuitem]", { hasText: "欄に戻す" }).click();
+  await page.waitForTimeout(150);
+  const [dropped] = await Promise.all([
+    page.waitForEvent("popup"),
+    page.evaluate(() => {
+      const head = document.querySelector('.palette[data-palette="notes"] > header');
+      const data = new DataTransfer();
+      head.dispatchEvent(
+        new DragEvent("dragstart", { bubbles: true, dataTransfer: data, clientX: 50, clientY: 50, screenX: 50, screenY: 50 }),
+      );
+      const x = window.screenX + window.outerWidth + 200;
+      head.dispatchEvent(new DragEvent("dragend", { bubbles: true, dataTransfer: data, screenX: x, screenY: window.screenY + 100 }));
+    }),
+  ]);
+  await page.waitForTimeout(300);
+  check(
+    (await dropped.locator(".palette-window #side-notes").count()) === 1,
+    "a header dragged out of the window and let go there goes out too",
+  );
+  await dropped.close();
+  await page.waitForTimeout(1300);
+
   check(errors.length === 0, `no page errors (${errors.join(" | ")})`);
 } finally {
   await browser.close();

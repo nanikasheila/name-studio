@@ -128,6 +128,58 @@ try {
   });
   check(fill?.color === "#4caf50", `the fill in 描画色 takes it (${fill?.color})`);
 
+  // HLS: the sliders in H, L, S, and the circle in the HLS 色空間 (its square: lightness upwards).
+  await page.locator(".color-hex").fill("#3a7bd5");
+  await page.locator(".color-hex").press("Enter");
+  await page.locator('.color-modes button[data-mode="hls"]').click();
+  const l = Number(await page.locator('.color-slider input[aria-label="L"]').inputValue());
+  check(Math.abs(l - 53) <= 1, `HLS sliders show the lightness (L ${l})`);
+  await page.locator('.color-slider input[aria-label="L"] + input').fill("90");
+  await page.locator('.color-slider input[aria-label="L"] + input').press("Enter");
+  const light = await main();
+  check(light !== "#3a7bd5" && Number.parseInt(light.slice(1, 3), 16) > 200, `L 90 is lighter (${light})`);
+  await page.locator('.color-space button[data-space="hls"]').click();
+  const sq = await page.locator(".color-wheel").boundingBox();
+  // Top of the square: white; bottom: black (whatever the hue).
+  await page.mouse.click(sq.x + sq.width / 2, sq.y + sq.height * 0.24);
+  const top = await main();
+  await page.mouse.click(sq.x + sq.width / 2, sq.y + sq.height * 0.76);
+  const bottom = await main();
+  const lum = (hex) => [1, 3, 5].reduce((sum, i) => sum + Number.parseInt(hex.slice(i, i + 2), 16), 0);
+  check(lum(top) > 600 && lum(bottom) < 165, `the HLS square: light at the top, dark at the bottom (${top}, ${bottom})`);
+  check(
+    await page.evaluate(() => {
+      const c = document.querySelector(".color-wheel");
+      const ctx = c.getContext("2d");
+      const px = (fx, fy) => [...ctx.getImageData(Math.round(c.width * fx), Math.round(c.height * fy), 1, 1).data];
+      const t = px(0.5, 0.28);
+      const b = px(0.5, 0.72);
+      return t[0] + t[1] + t[2] > b[0] + b[1] + b[2] + 300;
+    }),
+    "and it is drawn so",
+  );
+  // Each part can be hidden, and the choice is kept.
+  const height = async () => await page.locator("#side-color").evaluate((n) => n.scrollHeight);
+  const full = await height();
+  for (const part of ["wheel", "sliders", "history", "sets"]) await page.locator(`.color-parts button[data-part="${part}"]`).click();
+  check(
+    (await page.locator(".color-wheel").isHidden()) &&
+      (await page.locator(".color-sliders").isHidden()) &&
+      (await page.locator(".color-sets").isHidden()),
+    "サークル・スライダー・履歴・セット each hide",
+  );
+  const small = await height();
+  check(small < full / 3, `the palette takes little room then (${full} → ${small})`);
+  check(
+    (await page.evaluate(() => JSON.parse(localStorage.getItem("namestudio.colorParts")).wheel)) === false,
+    "which are shown is kept for the next start",
+  );
+  for (const part of ["wheel", "sliders", "history", "sets"]) await page.locator(`.color-parts button[data-part="${part}"]`).click();
+  check(await page.locator(".color-wheel").isVisible(), "and shown again");
+  await page.locator('.color-space button[data-space="hsv"]').click();
+  await page.locator('.color-modes button[data-mode="hsv"]').click();
+  await page.locator('.color-swatch[data-color="#4caf50"]').first().click();
+
   // The colours are kept for the next start.
   const kept = await page.evaluate(() => JSON.parse(localStorage.getItem("namestudio.colors")));
   check(kept?.main === "#4caf50" && kept.history.includes("#3a7bd5"), "the colours are kept for the next start");

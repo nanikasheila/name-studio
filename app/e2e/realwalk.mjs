@@ -260,7 +260,13 @@ try {
   check(run.errors.length === 0, `no errors after the restart either (${run.errors.join(" / ")})`);
 } finally {
   if (run) await stop(run);
-  rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
+  // The WebView's own processes can hold its folder a while after the app exits: what is left in the
+  // temporary folder is not the walk's failure.
+  try {
+    rmSync(work, { recursive: true, force: true, maxRetries: 10, retryDelay: 1000 });
+  } catch (error) {
+    console.log(`(the temporary folder stays: ${error.message})`);
+  }
 }
 if (failures.length) {
   console.error(`\n${failures.length} failed`);

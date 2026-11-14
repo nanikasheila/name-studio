@@ -207,6 +207,104 @@ fn palette_window<R: tauri::Runtime>(
     }
 }
 
+/// Where a palette's window (ui/popout.ts) goes once it is open. The place window.open asks for is kept on
+/// the main window's display by the WebView, and the page's screen pixels do not say which display a point is
+/// on when the displays are scaled differently, so the app puts the window there itself.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PalettePlace {
+    /// The window's title (the palette's name): it takes it a moment after it opens.
+    pub title: String,
+    /// Where it goes: the screen's own pixels (`physical`, as [`palette_window_rect`] gave them), or, with
+    /// `at_cursor`, the point of the window held under the pointer (the page's pixels, from its top left;
+    /// dragged out of the main window, it opens where it was let go), else the page's screen pixels.
+    pub x: f64,
+    pub y: f64,
+    /// Its size in the page's pixels (as large on any display).
+    pub width: f64,
+    pub height: f64,
+    pub physical: bool,
+    pub at_cursor: bool,
+}
+
+/// Where a palette's window is: `x`, `y` in the screen's own pixels, its size in the page's.
+#[derive(Debug, serde::Serialize)]
+pub struct PaletteRect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+fn palette_window_titled(app: &tauri::AppHandle, title: &str) -> Option<tauri::WebviewWindow> {
+    app.webview_windows()
+        .into_iter()
+        .find(|(label, window)| label.starts_with("palette-") && window.title().is_ok_and(|t| t == title))
+        .map(|(_, window)| window)
+}
+
+/// Put a palette's window where [`PalettePlace`] says (on whichever display that is).
+#[tauri::command]
+async fn place_palette_window(app: tauri::AppHandle, place: PalettePlace) -> Result<(), String> {
+    let mut window = None;
+    for _ in 0..40 {
+        window = palette_window_titled(&app, &place.title);
+        if window.is_some() {
+            break;
+        }
+        // (On the async runtime: the window takes its title meanwhile on the main thread.)
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let window = window.ok_or_else(|| format!("palette window not found: {}", place.title))?;
+    let error = |error: tauri::Error| error.to_string();
+    let scale_at = |x: f64, y: f64| -> f64 {
+        app.monitor_from_point(x, y)
+            .ok()
+            .flatten()
+            .map(|monitor| monitor.scale_factor())
+            .unwrap_or_else(|| window.scale_factor().unwrap_or(1.0))
+    };
+    let (x, y) = if place.at_cursor {
+        let cursor = app.cursor_position().map_err(error)?;
+        let scale = scale_at(cursor.x, cursor.y);
+        (cursor.x - place.x * scale, cursor.y - place.y * scale)
+    } else if place.physical {
+        (place.x, place.y)
+    } else {
+        let scale = window.scale_factor().map_err(error)?;
+        (place.x * scale, place.y * scale)
+    };
+    // A place on no display (one unplugged since): left where the WebView put it.
+    if app.monitor_from_point(x + 40.0, y + 10.0).ok().flatten().is_none() {
+        return Ok(());
+    }
+    let scale = scale_at(x + 40.0, y + 10.0);
+    window
+        .set_position(tauri::PhysicalPosition::new(x.round() as i32, y.round() as i32))
+        .map_err(error)?;
+    window
+        .set_size(tauri::PhysicalSize::new(
+            (place.width.max(160.0) * scale).round() as u32,
+            (place.height.max(120.0) * scale).round() as u32,
+        ))
+        .map_err(error)
+}
+
+/// Where a palette's window is now (kept, so that it opens there again); none when it is not open.
+#[tauri::command]
+fn palette_window_rect(app: tauri::AppHandle, title: String) -> Option<PaletteRect> {
+    let window = palette_window_titled(&app, &title)?;
+    let at = window.outer_position().ok()?;
+    let size = window.inner_size().ok()?;
+    let scale = window.scale_factor().ok()?;
+    Some(PaletteRect {
+        x: f64::from(at.x),
+        y: f64::from(at.y),
+        width: f64::from(size.width) / scale,
+        height: f64::from(size.height) / scale,
+    })
+}
+
 pub fn run() {
     STARTED.get_or_init(std::time::SystemTime::now);
     SAFE_LOOK.get_or_init(|| std::env::args().any(|arg| arg == "--safe-look") || shift_held());
@@ -296,7 +394,9 @@ pub fn run() {
             ai::history::ai_history_delete,
             dialogs::choose_open,
             dialogs::choose_save,
-            dialogs::place_chosen
+            dialogs::place_chosen,
+            place_palette_window,
+            palette_window_rect
         ])
         .build(tauri::generate_context!())
         .expect("error while running Name Studio")

@@ -10,6 +10,7 @@
 // Closing the window puts the palette back. Where each window was is kept, so
 // it opens there again (on the display it was moved to).
 
+import { call } from "../platform/backend";
 import { PALETTE_WINDOWS_KEY } from "../platform/prefs";
 import { outerDocuments } from "../platform/dom";
 import { readJson, writeJson } from "../platform/settings";
@@ -19,6 +20,13 @@ export interface WindowRect {
   y: number;
   w: number;
   h: number;
+  /** `x`, `y` in the screen's own pixels (as the app gave them), not the page's. */
+  physical?: boolean;
+}
+
+/** Where a window is to open: a place, and (dragged out of the main window) the point of it held under the pointer. */
+export interface WindowPlace extends WindowRect {
+  grab?: { x: number; y: number };
 }
 
 interface Kept {
@@ -78,6 +86,8 @@ export class PaletteWindow {
   private readonly poll: number;
   /** Where the window is, as last seen (once it is shut it cannot be asked). */
   private last: WindowRect | null = null;
+  /** The window's title (the app finds the window by it). */
+  readonly windowTitle: string;
 
   private constructor(
     win: Window,
@@ -87,10 +97,11 @@ export class PaletteWindow {
     private readonly back: () => void,
   ) {
     this.win = win;
+    this.windowTitle = `${title} — Name Studio`;
     const doc = win.document;
     this.style = doc.createElement("style");
     const named = doc.createElement("title");
-    named.textContent = `${title} — Name Studio`;
+    named.textContent = this.windowTitle;
     doc.head.replaceChildren(named, this.style);
     outerDocuments.add(doc);
     const main = doc.createElement("main");
@@ -108,23 +119,27 @@ export class PaletteWindow {
     win.addEventListener("resize", () => body.dispatchEvent(new Event(PALETTE_RESIZED)));
     win.addEventListener("pagehide", () => this.ended());
     // pagehide is not always told when the window is shut from outside.
-    this.poll = window.setInterval(() => (win.closed ? this.ended() : (this.last = this.rect())), 1000);
+    this.poll = window.setInterval(() => (win.closed ? this.ended() : this.look()), 1000);
   }
 
   /**
-   * Opens `body` in a window of its own; null when no window could be opened
+   * Opens `body` in a window of its own — at `at`, else where it was last, else beside where it was —
+   * null when no window could be opened
    * (a browser blocking it, or the app not letting it).
    */
-  static open(id: string, title: string, body: HTMLElement, back: () => void, near?: DOMRect): PaletteWindow | null {
-    const rect = kept().rects[id] ?? {
+  static open(id: string, title: string, body: HTMLElement, back: () => void, near?: DOMRect, at?: WindowPlace): PaletteWindow | null {
+    const beside: WindowRect = {
       x: Math.round(window.screenX + (near?.left ?? 80) + 24),
       y: Math.round(window.screenY + (near?.top ?? 80) + 24),
       w: Math.round(Math.max(near?.width ?? 300, 260)),
       h: Math.round(Math.max(near?.height ?? 420, 240)),
     };
+    const rect: WindowPlace = at ?? kept().rects[id] ?? beside;
+    // A place in the screen's own pixels means nothing to window.open: it opens beside, and the app moves it.
+    const asked = rect.physical ? { ...beside, w: rect.w, h: rect.h } : rect;
     let win: Window | null = null;
     try {
-      win = window.open("", `namestudio-${id}`, `popup,left=${rect.x},top=${rect.y},width=${rect.w},height=${rect.h}`);
+      win = window.open("", `namestudio-${id}`, `popup,left=${asked.x},top=${asked.y},width=${asked.w},height=${asked.h}`);
     } catch {
       win = null;
     }
@@ -132,7 +147,21 @@ export class PaletteWindow {
     keep((k) => {
       if (!k.open.includes(id)) k.open.push(id);
     });
-    return new PaletteWindow(win, id, title, body, back);
+    const out = new PaletteWindow(win, id, title, body, back);
+    // The WebView keeps a window it opens on the main window's display: the app puts it where it was asked for
+    // (another display, under the pointer it was let go with). Outside the app (no backend) it stays as opened.
+    void call("place_palette_window", {
+      place: {
+        title: out.windowTitle,
+        x: rect.grab?.x ?? rect.x,
+        y: rect.grab?.y ?? rect.y,
+        width: rect.w,
+        height: rect.h,
+        physical: !rect.grab && !!rect.physical,
+        atCursor: !!rect.grab,
+      },
+    }).catch(() => undefined);
+    return out;
   }
 
   /** Bring the window to the front (its icon pressed in the main window). */
@@ -148,6 +177,16 @@ export class PaletteWindow {
   /** The main window going away: the window goes too, and opens again on the next start. */
   closeForNow(): void {
     this.ended(false, true);
+  }
+
+  /** Where the window is now: from the app (the screen's own pixels: any display), else as the page sees it. */
+  private look(): void {
+    if (!this.last?.physical) this.last = this.rect();
+    call("palette_window_rect", { title: this.windowTitle })
+      .then((r) => {
+        if (r && !this.closed) this.last = { x: r.x, y: r.y, w: Math.round(r.width), h: Math.round(r.height), physical: true };
+      })
+      .catch(() => undefined);
   }
 
   private rect(): WindowRect {
@@ -175,7 +214,8 @@ export class PaletteWindow {
     window.clearInterval(this.poll);
     this.watcher.disconnect();
     outerDocuments.delete(this.win.document);
-    const rect = this.win.closed ? this.last : this.rect();
+    // As the app last saw it (any display), else as the page sees it now.
+    const rect = this.last?.physical || this.win.closed ? this.last : this.rect();
     if (rect) keep((k) => (k.rects[this.id] = rect));
     if (!forNow) forgetOut(this.id);
     // The body comes back into the main document (adopted) before the window goes.

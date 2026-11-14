@@ -138,6 +138,60 @@ try {
   await page.locator(".popup-menu button", { hasText: "高さを列に合わせて分ける" }).click();
   check(!(await layout()).palettes.subtools.fit, "≡ › 高さを列に合わせて分ける");
 
+  // A palette left alone in a column with a small share (the one beside it hidden) still fills the column.
+  await page.evaluate(async () => {
+    const { placePalette } = await import("/src/editing/docklayout.ts");
+    const docks = window.nameStudio.workbench.docks;
+    const L = structuredClone(docks.layout);
+    placePalette(L, "inspector", { side: "right", col: 0, newColumn: true });
+    L.palettes.inspector.weight = 0.4;
+    L.palettes.inspector.fit = false;
+    docks.apply(L);
+  });
+  await page.waitForTimeout(150);
+  {
+    const lone = await page.locator('.palette[data-lead="inspector"]').boundingBox();
+    const column = await page
+      .locator('.palette[data-lead="inspector"]')
+      .evaluate((s) => s.closest(".dock-stack").getBoundingClientRect().height);
+    check(lone.height >= column - 2, `a lone palette with a small share fills its column (${lone.height} of ${column})`);
+  }
+  // Dropped on itself: it stays where it is (it went to the column's bottom).
+  {
+    const before = (await layout()).order.filter((id) => ["subtools", "toolprops", "pages", "script"].includes(id)).join();
+    const sub = page.locator('.palette[data-lead="subtools"] > header');
+    const b = await sub.boundingBox();
+    await sub.dragTo(sub, { targetPosition: { x: b.width / 3, y: b.height / 2 } });
+    const after = (await layout()).order.filter((id) => ["subtools", "toolprops", "pages", "script"].includes(id)).join();
+    check(before === after, `a header dropped on itself stays (${before} → ${after})`);
+  }
+  // A frame whose first palette is hidden: the next one leads it, and folding it works (by its menu and its icon).
+  await page.evaluate(async () => {
+    const { joinTab } = await import("/src/editing/docklayout.ts");
+    const docks = window.nameStudio.workbench.docks;
+    const L = structuredClone(docks.layout);
+    L.palettes.cast.shown = true;
+    L.palettes.notes.shown = true;
+    joinTab(L, "notes", "cast");
+    L.palettes.cast.shown = false;
+    docks.apply(L);
+  });
+  await page.waitForTimeout(150);
+  await page.locator('.palette[data-palette="notes"] .palette-menu').click();
+  await page.locator(".popup-menu button", { hasText: "たたむ" }).first().click();
+  check(
+    await page.locator('.palette[data-palette="notes"]').evaluate((s) => s.classList.contains("folded")),
+    "≡ › たたむ folds a frame whose first is hidden",
+  );
+  await page.click("#tab-notes");
+  check(
+    !(await page.locator('.palette[data-palette="notes"]').evaluate((s) => s.classList.contains("folded"))),
+    "and its icon opens it again",
+  );
+  await page.locator('.palette[data-palette="notes"] .palette-fold').click();
+  await page.locator('.palette[data-palette="notes"] .palette-fold').click();
+  check(await page.locator("#side-notes").isVisible(), "its fold button folds and opens it");
+
   // 名前をつけた配置: the screen as it is, kept under a name and gone back to.
   await page.click("#ws-mine");
   await page.locator(".popup-menu button", { hasText: "今の配置に名前をつけて残す" }).click();

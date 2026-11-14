@@ -1,10 +1,12 @@
 // カラー: the 描画色 as CSP's colour palettes give it — the メイン and サブ
-// colours, a カラーサークル (hue ring round a saturation × value square), HSV
-// and RGB sliders with the hex, the カラー履歴, and a カラーセット: the basic
-// colours, each character's colour (to tell them apart in the name) and the
-// person's own. スポイト picks a colour off the page. Built once; what changes
+// colours, a カラーサークル (hue ring round a square: saturation × value, or
+// in the HLS 色空間 saturation × lightness), HSV, HLS and RGB sliders with the
+// hex, the カラー履歴, and a カラーセット: the basic colours, each character's
+// colour (to tell them apart in the name) and the person's own. Each part can
+// be shown or hidden (the toggles at the top), so the palette takes only the
+// room wanted. スポイト picks a colour off the page. Built once; what changes
 // is only redrawn.
-import { BASIC_COLORS, hsvToRgb, normalHex, parseHex, rgbToHsv, toHex, type Hsv } from "../domain/color";
+import { BASIC_COLORS, hlsToRgb, hsvToRgb, normalHex, parseHex, rgbToHls, rgbToHsv, toHex, type Hls, type Hsv } from "../domain/color";
 import { drawColors } from "../platform/drawcolor";
 import type { Project } from "../model/model";
 
@@ -15,8 +17,46 @@ export interface ColorPanelHost {
   pickFromPage(done: (color: string | null) => void): void;
 }
 
-type SliderMode = "hsv" | "rgb";
+type SliderMode = "hsv" | "hls" | "rgb";
+type WheelSpace = "hsv" | "hls";
+/** The parts of the palette that can be hidden. */
+type Part = "wheel" | "sliders" | "history" | "sets";
 const MODE_KEY = "namestudio.colorSliders";
+const SPACE_KEY = "namestudio.colorWheelSpace";
+const PARTS_KEY = "namestudio.colorParts";
+const PARTS: readonly { part: Part; label: string; title: string }[] = [
+  { part: "wheel", label: "サークル", title: "カラーサークルを出す・隠す" },
+  { part: "sliders", label: "スライダー", title: "カラースライダー（HSV・HLS・RGB）を出す・隠す" },
+  { part: "history", label: "履歴", title: "カラー履歴を出す・隠す" },
+  { part: "sets", label: "セット", title: "カラーセット（基本色・人物の色・自分の色）を出す・隠す" },
+];
+
+function readKept(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function keep(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Not kept; the choice still holds now.
+  }
+}
+
+function readParts(): Record<Part, boolean> {
+  const shown: Record<Part, boolean> = { wheel: true, sliders: true, history: true, sets: true };
+  try {
+    const kept = JSON.parse(readKept(PARTS_KEY) ?? "{}") as Partial<Record<Part, unknown>>;
+    for (const { part } of PARTS) if (typeof kept[part] === "boolean") shown[part] = kept[part] as boolean;
+  } catch {
+    // As they come.
+  }
+  return shown;
+}
 
 const node = <K extends keyof HTMLElementTagNameMap>(tag: K, className = "", text?: string): HTMLElementTagNameMap[K] => {
   const element = document.createElement(tag);
@@ -29,8 +69,15 @@ export class ColorPanel {
   private built: HTMLElement | null = null;
   /** The colour as the circle holds it: the hue stays where it was at grey and black. */
   private hsv: Hsv = [0, 0, 0];
-  private mode: SliderMode = localStorage.getItem(MODE_KEY) === "rgb" ? "rgb" : "hsv";
+  /** The same in HLS: its saturation stays where it was at black and white. */
+  private hls: Hls = [0, 0, 0];
+  private mode: SliderMode = (["hsv", "hls", "rgb"] as const).find((m) => m === readKept(MODE_KEY)) ?? "hsv";
+  private space: WheelSpace = readKept(SPACE_KEY) === "hls" ? "hls" : "hsv";
+  private readonly parts = readParts();
   private wheel!: HTMLCanvasElement;
+  private wheelBox!: HTMLElement;
+  private sliderBox!: HTMLElement;
+  private historyBox!: HTMLElement;
   private mainChip!: HTMLButtonElement;
   private subChip!: HTMLButtonElement;
   private hex!: HTMLInputElement;
@@ -55,6 +102,22 @@ export class ColorPanel {
 
   private build(): HTMLElement {
     const root = node("div", "color-panel");
+    // Which parts are shown (CSP's separate palettes: サークル, スライダー, 履歴, セット).
+    const toggles = node("div", "color-parts");
+    toggles.setAttribute("role", "group");
+    toggles.setAttribute("aria-label", "カラーの欄に出すもの");
+    for (const { part, label, title } of PARTS) {
+      const button = node("button", "", label);
+      button.type = "button";
+      button.title = title;
+      button.dataset.part = part;
+      button.addEventListener("click", () => {
+        this.parts[part] = !this.parts[part];
+        keep(PARTS_KEY, JSON.stringify(this.parts));
+        this.update();
+      });
+      toggles.append(button);
+    }
     // メイン and サブ, the swap, the hex and the スポイト.
     const top = node("div", "color-top");
     const chips = node("div", "color-chips");
@@ -97,32 +160,50 @@ export class ColorPanel {
     black.title = "描画色を黒に戻す";
     black.addEventListener("click", () => drawColors.setMain("#000000"));
     top.append(chips, this.hex, this.dropper, black);
-    // カラーサークル.
+    // カラーサークル, in the HSV or the HLS 色空間.
+    this.wheelBox = node("div", "color-wheel-box");
     this.wheel = node("canvas", "color-wheel");
-    this.wheel.setAttribute("aria-label", "カラーサークル: 外の輪で色相、中の四角で彩度と明度");
     this.bindWheel();
+    const spaces = node("div", "segmented color-space");
+    spaces.setAttribute("aria-label", "カラーサークルの色空間");
+    for (const space of ["hsv", "hls"] as const) {
+      const button = node("button", "", space.toUpperCase());
+      button.type = "button";
+      button.dataset.space = space;
+      button.title =
+        space === "hsv"
+          ? "HSV 色空間: 中の四角は横が彩度、縦が明度（上ほど明るい）"
+          : "HLS 色空間: 中の四角は横が彩度、縦が輝度（上が白・下が黒、真ん中が鮮やか）";
+      button.addEventListener("click", () => {
+        this.space = space;
+        keep(SPACE_KEY, space);
+        this.update();
+      });
+      spaces.append(button);
+    }
+    this.wheelBox.append(this.wheel, spaces);
     // スライダー.
+    this.sliderBox = node("div", "color-slider-box");
     const tabs = node("div", "segmented color-modes");
-    for (const mode of ["hsv", "rgb"] as const) {
+    for (const mode of ["hsv", "hls", "rgb"] as const) {
       const button = node("button", "", mode.toUpperCase());
       button.type = "button";
       button.dataset.mode = mode;
       button.addEventListener("click", () => {
         this.mode = mode;
-        try {
-          localStorage.setItem(MODE_KEY, mode);
-        } catch {
-          // Not kept; the choice still holds now.
-        }
+        keep(MODE_KEY, mode);
         this.update();
       });
       tabs.append(button);
     }
     this.sliders = node("div", "color-sliders");
+    this.sliderBox.append(tabs, this.sliders);
     // カラー履歴 and カラーセット.
+    this.historyBox = node("div", "color-history-box");
     this.history = node("div", "color-swatches color-history");
+    this.historyBox.append(node("div", "color-heading", "カラー履歴"), this.history);
     this.sets = node("div", "color-sets");
-    root.append(top, this.wheel, tabs, this.sliders, node("div", "color-heading", "カラー履歴"), this.history, this.sets);
+    root.append(toggles, top, this.wheelBox, this.sliderBox, this.historyBox, this.sets);
     return root;
   }
 
@@ -130,23 +211,54 @@ export class ColorPanel {
   private update(): void {
     if (!this.built) return;
     const main = drawColors.main;
-    // The circle keeps its hue when the colour is the same one (dragging into grey).
-    if (toHex(hsvToRgb(this.hsv)) !== main) {
-      const rgb = parseHex(main) ?? [0, 0, 0];
-      const [h, s, v] = rgbToHsv(rgb);
-      this.hsv = [s === 0 || v === 0 ? this.hsv[0] : h, v === 0 ? this.hsv[1] : s, v];
-    }
+    this.follow(main);
     this.mainChip.style.background = main;
     this.subChip.style.background = drawColors.sub;
     if (document.activeElement !== this.hex) this.hex.value = main;
-    this.drawWheel();
-    for (const button of this.built.querySelectorAll<HTMLButtonElement>(".color-modes button")) {
-      button.classList.toggle("active", button.dataset.mode === this.mode);
-      button.setAttribute("aria-pressed", String(button.dataset.mode === this.mode));
+    const press = (selector: string, on: (button: HTMLButtonElement) => boolean) => {
+      for (const button of this.built!.querySelectorAll<HTMLButtonElement>(selector)) {
+        button.classList.toggle("active", on(button));
+        button.setAttribute("aria-pressed", String(on(button)));
+      }
+    };
+    press(".color-parts button", (b) => this.parts[b.dataset.part as Part]);
+    press(".color-modes button", (b) => b.dataset.mode === this.mode);
+    press(".color-space button", (b) => b.dataset.space === this.space);
+    this.wheelBox.hidden = !this.parts.wheel;
+    this.sliderBox.hidden = !this.parts.sliders;
+    this.historyBox.hidden = !this.parts.history;
+    this.sets.hidden = !this.parts.sets;
+    this.wheel.setAttribute(
+      "aria-label",
+      this.space === "hsv"
+        ? "カラーサークル: 外の輪で色相、中の四角で彩度と明度"
+        : "カラーサークル（HLS）: 外の輪で色相、中の四角で彩度と輝度",
+    );
+    if (this.parts.wheel) this.drawWheel();
+    if (this.parts.sliders) this.renderSliders();
+    if (this.parts.history) this.renderSwatches(this.history, drawColors.history, "まだありません（描くと使った色が並びます）");
+    if (this.parts.sets) this.renderSets();
+  }
+
+  /**
+   * The circle's and the sliders' numbers for the 描画色. A colour that is
+   * already theirs keeps them (dragging into grey keeps the hue; into black or
+   * white, the saturation).
+   */
+  private follow(main: string): void {
+    if (toHex(hsvToRgb(this.hsv)) !== main) {
+      const [h, s, v] = rgbToHsv(parseHex(main) ?? [0, 0, 0]);
+      this.hsv = [s === 0 || v === 0 ? this.hsv[0] : h, v === 0 ? this.hsv[1] : s, v];
     }
-    this.renderSliders();
-    this.renderSwatches(this.history, drawColors.history, "まだありません（描くと使った色が並びます）");
-    this.renderSets();
+    if (toHex(hlsToRgb(this.hls)) !== main) {
+      const [h, l, s] = rgbToHls(parseHex(main) ?? [0, 0, 0]);
+      this.hls = [s === 0 ? this.hsv[0] : h, l, l === 0 || l === 1 ? this.hls[2] : s];
+    }
+  }
+
+  /** The hue the circle shows. */
+  private hue(): number {
+    return this.space === "hsv" ? this.hsv[0] : this.hls[0];
   }
 
   // --- カラーサークル -----------------------------------------------------------
@@ -179,20 +291,22 @@ export class ColorPanel {
       ctx.fillStyle = `hsl(${degree}, 100%, 50%)`;
       ctx.fill();
     }
-    // The square: the hue, whiter to the left, darker downwards.
-    const [h, s, v] = this.hsv;
-    ctx.fillStyle = toHex(hsvToRgb([h, 1, 1]));
-    ctx.fillRect(g.x0, g.y0, g.side, g.side);
-    const white = ctx.createLinearGradient(g.x0, 0, g.x0 + g.side, 0);
-    white.addColorStop(0, "#ffffff");
-    white.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = white;
-    ctx.fillRect(g.x0, g.y0, g.side, g.side);
-    const dark = ctx.createLinearGradient(0, g.y0, 0, g.y0 + g.side);
-    dark.addColorStop(0, "rgba(0,0,0,0)");
-    dark.addColorStop(1, "#000000");
-    ctx.fillStyle = dark;
-    ctx.fillRect(g.x0, g.y0, g.side, g.side);
+    const h = this.hue();
+    if (this.space === "hsv") {
+      // The square: the hue, whiter to the left, darker downwards.
+      ctx.fillStyle = toHex(hsvToRgb([h, 1, 1]));
+      ctx.fillRect(g.x0, g.y0, g.side, g.side);
+      const white = ctx.createLinearGradient(g.x0, 0, g.x0 + g.side, 0);
+      white.addColorStop(0, "#ffffff");
+      white.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = white;
+      ctx.fillRect(g.x0, g.y0, g.side, g.side);
+      const dark = ctx.createLinearGradient(0, g.y0, 0, g.y0 + g.side);
+      dark.addColorStop(0, "rgba(0,0,0,0)");
+      dark.addColorStop(1, "#000000");
+      ctx.fillStyle = dark;
+      ctx.fillRect(g.x0, g.y0, g.side, g.side);
+    } else this.drawHlsSquare(ctx, g, ratio, h);
     // Where the colour is: on the ring and in the square.
     const angle = ((h - 90) * Math.PI) / 180;
     const ring = (g.outer + g.inner) / 2;
@@ -207,7 +321,26 @@ export class ColorPanel {
       ctx.stroke();
     };
     mark(g.centre + Math.cos(angle) * ring, g.centre + Math.sin(angle) * ring, (g.outer - g.inner) / 2);
-    mark(g.x0 + s * g.side, g.y0 + (1 - v) * g.side, 5);
+    const [x, y] = this.space === "hsv" ? [this.hsv[1], this.hsv[2]] : [this.hls[2], this.hls[1]];
+    mark(g.x0 + x * g.side, g.y0 + (1 - y) * g.side, 5);
+  }
+
+  /** The HLS square: saturation to the right, lightness upwards (white at the top, black at the bottom). */
+  private drawHlsSquare(ctx: CanvasRenderingContext2D, g: ReturnType<ColorPanel["geometry"]>, ratio: number, hue: number): void {
+    const size = Math.max(1, Math.round(g.side * ratio));
+    const image = ctx.createImageData(size, size);
+    for (let row = 0; row < size; row++) {
+      const l = 1 - row / (size - 1 || 1);
+      for (let col = 0; col < size; col++) {
+        const [r, gg, b] = hlsToRgb([hue, l, col / (size - 1 || 1)]);
+        const i = (row * size + col) * 4;
+        image.data[i] = r;
+        image.data[i + 1] = gg;
+        image.data[i + 2] = b;
+        image.data[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(image, Math.round(g.x0 * ratio), Math.round(g.y0 * ratio));
   }
 
   private bindWheel(): void {
@@ -219,15 +352,17 @@ export class ColorPanel {
     const apply = (event: PointerEvent) => {
       const g = this.geometry();
       const [x, y] = at(event);
-      let [h, s, v] = this.hsv;
+      let h = this.hue();
+      let across = this.space === "hsv" ? this.hsv[1] : this.hls[2];
+      let up = this.space === "hsv" ? this.hsv[2] : this.hls[1];
       if (part === "ring") {
         h = ((Math.atan2(y - g.centre, x - g.centre) * 180) / Math.PI + 90 + 360) % 360;
       } else if (part === "square") {
-        s = Math.min(1, Math.max(0, (x - g.x0) / g.side));
-        v = Math.min(1, Math.max(0, 1 - (y - g.y0) / g.side));
+        across = Math.min(1, Math.max(0, (x - g.x0) / g.side));
+        up = Math.min(1, Math.max(0, 1 - (y - g.y0) / g.side));
       }
-      this.hsv = [h, s, v];
-      if (!drawColors.setMain(toHex(hsvToRgb(this.hsv)))) this.drawWheel();
+      if (this.space === "hsv") this.setHsv([h, across, up]);
+      else this.setHls([h, up, across]);
     };
     this.wheel.addEventListener("pointerdown", (event) => {
       const g = this.geometry();
@@ -260,11 +395,17 @@ export class ColorPanel {
             ["S", 0, 100, Math.round(this.hsv[1] * 100), (n: number) => this.setHsv([this.hsv[0], n / 100, this.hsv[2]])],
             ["V", 0, 100, Math.round(this.hsv[2] * 100), (n: number) => this.setHsv([this.hsv[0], this.hsv[1], n / 100])],
           ] as const)
-        : ([
-            ["R", 0, 255, rgb[0], (n: number) => drawColors.setMain(toHex([n, rgb[1], rgb[2]]))],
-            ["G", 0, 255, rgb[1], (n: number) => drawColors.setMain(toHex([rgb[0], n, rgb[2]]))],
-            ["B", 0, 255, rgb[2], (n: number) => drawColors.setMain(toHex([rgb[0], rgb[1], n]))],
-          ] as const);
+        : this.mode === "hls"
+          ? ([
+              ["H", 0, 359, Math.round(this.hls[0]), (n: number) => this.setHls([n, this.hls[1], this.hls[2]])],
+              ["L", 0, 100, Math.round(this.hls[1] * 100), (n: number) => this.setHls([this.hls[0], n / 100, this.hls[2]])],
+              ["S", 0, 100, Math.round(this.hls[2] * 100), (n: number) => this.setHls([this.hls[0], this.hls[1], n / 100])],
+            ] as const)
+          : ([
+              ["R", 0, 255, rgb[0], (n: number) => drawColors.setMain(toHex([n, rgb[1], rgb[2]]))],
+              ["G", 0, 255, rgb[1], (n: number) => drawColors.setMain(toHex([rgb[0], n, rgb[2]]))],
+              ["B", 0, 255, rgb[2], (n: number) => drawColors.setMain(toHex([rgb[0], rgb[1], n]))],
+            ] as const);
     // While a slider is dragged it stays as it is (only its numbers change).
     const existing = [...this.sliders.querySelectorAll<HTMLInputElement>("input[type=range]")];
     if (existing.length === 3 && this.sliders.dataset.mode === this.mode) {
@@ -300,9 +441,18 @@ export class ColorPanel {
     );
   }
 
+  /** Set by HSV numbers (the circle's or the sliders'); the HLS ones keep the hue. */
   private setHsv(hsv: Hsv): void {
     this.hsv = hsv;
+    this.hls = [hsv[0], this.hls[1], this.hls[2]];
     if (!drawColors.setMain(toHex(hsvToRgb(hsv)))) this.update();
+  }
+
+  /** Set by HLS numbers; the HSV ones keep the hue. */
+  private setHls(hls: Hls): void {
+    this.hls = hls;
+    this.hsv = [hls[0], this.hsv[1], this.hsv[2]];
+    if (!drawColors.setMain(toHex(hlsToRgb(hls)))) this.update();
   }
 
   // --- 履歴とカラーセット ---------------------------------------------------------

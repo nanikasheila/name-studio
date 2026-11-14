@@ -463,6 +463,36 @@ export interface PageSetup {
   story?: StoryLayout;
 }
 
+/**
+ * Where a palette's window (ui/popout.ts) goes once it is open. The place window.open asks for is kept on
+ * the main window's display by the WebView, and the page's screen pixels do not say which display a point is
+ * on when the displays are scaled differently, so the app puts the window there itself.
+ */
+export interface PalettePlace {
+  /** The window's title (the palette's name): it takes it a moment after it opens. */
+  title: string;
+  /**
+   * Where it goes: the screen's own pixels (`physical`, as [`palette_window_rect`] gave them), or, with
+   * `at_cursor`, the point of the window held under the pointer (the page's pixels, from its top left;
+   * dragged out of the main window, it opens where it was let go), else the page's screen pixels.
+   */
+  x: number;
+  y: number;
+  /** Its size in the page's pixels (as large on any display). */
+  width: number;
+  height: number;
+  physical: boolean;
+  atCursor: boolean;
+}
+
+/** Where a palette's window is: `x`, `y` in the screen's own pixels, its size in the page's. */
+export interface PaletteRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 /** What was picked: nothing (the dialog was closed), one path or several. */
 export type Picked = string | string[] | null;
 
@@ -912,4 +942,9 @@ export interface Commands {
    * 「前回と同じ設定で書き出す」 asks before it writes there without a dialog.
    */
   place_chosen: [{ path: string }, boolean];
+  // lib.rs
+  /** Put a palette's window where [`PalettePlace`] says (on whichever display that is). */
+  place_palette_window: [{ place: PalettePlace }, void];
+  /** Where a palette's window is now (kept, so that it opens there again); none when it is not open. */
+  palette_window_rect: [{ title: string }, PaletteRect | null];
 }
