@@ -947,4 +947,9 @@ export interface Commands {
   place_palette_window: [{ place: PalettePlace }, void];
   /** Where a palette's window is now (kept, so that it opens there again); none when it is not open. */
   palette_window_rect: [{ title: string }, PaletteRect | null];
+  /**
+   * Close a palette's window (its palette is back in the main window). The page's own `close()` on the window
+   * it opened leaves the window on screen in the app; any left so before goes too.
+   */
+  close_palette_window: [{ title: string }, void];
 }

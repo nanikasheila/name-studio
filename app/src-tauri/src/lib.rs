@@ -290,6 +290,17 @@ async fn place_palette_window(app: tauri::AppHandle, place: PalettePlace) -> Res
         .map_err(error)
 }
 
+/// Close a palette's window (its palette is back in the main window). The page's own `close()` on the window
+/// it opened leaves the window on screen in the app; any left so before goes too.
+#[tauri::command]
+fn close_palette_window(app: tauri::AppHandle, title: String) {
+    for (label, window) in app.webview_windows() {
+        if label.starts_with("palette-") && window.title().is_ok_and(|t| t == title) {
+            let _ = window.destroy();
+        }
+    }
+}
+
 /// Where a palette's window is now (kept, so that it opens there again); none when it is not open.
 #[tauri::command]
 fn palette_window_rect(app: tauri::AppHandle, title: String) -> Option<PaletteRect> {
@@ -396,7 +407,8 @@ pub fn run() {
             dialogs::choose_save,
             dialogs::place_chosen,
             place_palette_window,
-            palette_window_rect
+            palette_window_rect,
+            close_palette_window
         ])
         .build(tauri::generate_context!())
         .expect("error while running Name Studio")
