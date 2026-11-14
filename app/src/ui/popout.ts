@@ -112,16 +112,18 @@ export class PaletteWindow {
   }
 
   /**
-   * Opens `body` in a window of its own; null when no window could be opened
+   * Opens `body` in a window of its own — at `at`, else where it was last, else beside where it was —
+   * null when no window could be opened
    * (a browser blocking it, or the app not letting it).
    */
-  static open(id: string, title: string, body: HTMLElement, back: () => void, near?: DOMRect): PaletteWindow | null {
-    const rect = kept().rects[id] ?? {
-      x: Math.round(window.screenX + (near?.left ?? 80) + 24),
-      y: Math.round(window.screenY + (near?.top ?? 80) + 24),
-      w: Math.round(Math.max(near?.width ?? 300, 260)),
-      h: Math.round(Math.max(near?.height ?? 420, 240)),
-    };
+  static open(id: string, title: string, body: HTMLElement, back: () => void, near?: DOMRect, at?: WindowRect): PaletteWindow | null {
+    const rect = at ??
+      kept().rects[id] ?? {
+        x: Math.round(window.screenX + (near?.left ?? 80) + 24),
+        y: Math.round(window.screenY + (near?.top ?? 80) + 24),
+        w: Math.round(Math.max(near?.width ?? 300, 260)),
+        h: Math.round(Math.max(near?.height ?? 420, 240)),
+      };
     let win: Window | null = null;
     try {
       win = window.open("", `namestudio-${id}`, `popup,left=${rect.x},top=${rect.y},width=${rect.w},height=${rect.h}`);

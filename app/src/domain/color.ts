@@ -5,6 +5,8 @@
 export type Rgb = [number, number, number];
 /** Hue 0..360, saturation and value 0..1. */
 export type Hsv = [number, number, number];
+/** Hue 0..360, lightness and saturation 0..1 (CSP's HLS 色空間: the order its sliders show). */
+export type Hls = [number, number, number];
 
 /** The pen's own black: a line in it keeps no colour of its own (the rough's ink). */
 export const BLACK = "#000000";
@@ -57,6 +59,20 @@ export function hsvToRgb([h, s, v]: Hsv): Rgb {
   const m = v - c;
   const [r, g, b] = hue < 1 ? [c, x, 0] : hue < 2 ? [x, c, 0] : hue < 3 ? [0, c, x] : hue < 4 ? [0, x, c] : hue < 5 ? [x, 0, c] : [c, 0, x];
   return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+}
+
+export function rgbToHls([r, g, b]: Rgb): Hls {
+  const [h, , v] = rgbToHsv([r, g, b]);
+  const min = Math.min(r, g, b) / 255;
+  const l = (v + min) / 2;
+  const s = v === min ? 0 : (v - min) / (1 - Math.abs(2 * l - 1));
+  return [h, l, clamp(s, 0, 1)];
+}
+
+export function hlsToRgb([h, l, s]: Hls): Rgb {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const v = l + c / 2;
+  return hsvToRgb([h, v === 0 ? 0 : c / v, v]);
 }
 
 /** Whether a colour is the pen's black (none on the line). */

@@ -271,7 +271,9 @@ export function detach(layout: DockLayout, id: PaletteId): void {
     p.tab = null;
     return;
   }
-  const others = layout.order.filter((other) => layout.palettes[other].tab === id);
+  // The next one shown leads (a hidden one cannot hold the frame's state on screen).
+  const tabs = layout.order.filter((other) => layout.palettes[other].tab === id);
+  const others = [...tabs.filter((other) => layout.palettes[other].shown), ...tabs.filter((other) => !layout.palettes[other].shown)];
   if (!others.length) return;
   const [lead, ...rest] = others;
   layout.palettes[lead].tab = null;
@@ -314,6 +316,13 @@ export function tidy(layout: DockLayout): void {
       p.col = shownCols.indexOf(nearest(p.col));
     }
     layout.widths[side] = shownCols.map((col) => widths[col] ?? DEFAULT_WIDTH[side]);
+  }
+  // A frame whose first is hidden (or out): the next one shown leads it, so that the frame's
+  // height and folding are the ones on screen (folding a frame led by a hidden one did nothing).
+  for (const id of PALETTE_IDS) {
+    const p = layout.palettes[id];
+    if (p.shown || p.tab) continue;
+    if (PALETTE_IDS.some((other) => layout.palettes[other].tab === id && layout.palettes[other].shown)) detach(layout, id);
   }
   // A tab whose frame is gone, elsewhere or itself a tab: on its own.
   for (const id of PALETTE_IDS) {
@@ -376,6 +385,7 @@ export function movePalette(layout: DockLayout, id: PaletteId, side: Side, befor
 
 /** A palette as a tab of another one's frame, in front. */
 export function joinTab(layout: DockLayout, id: PaletteId, other: PaletteId): void {
+  tidy(layout);
   const key = frameKey(layout, other);
   if (key === id || frameKey(layout, id) === key) {
     layout.front[key] = id;
