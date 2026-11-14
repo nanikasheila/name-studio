@@ -38,7 +38,7 @@ import {
   type Side,
 } from "../editing/docklayout";
 import { openMenu, SEPARATOR, type MenuItem } from "./popupmenu";
-import { forgetOut, PaletteWindow, palettesOut, type WindowRect } from "./popout";
+import { forgetOut, PaletteWindow, palettesOut, type WindowPlace } from "./popout";
 
 export { clampWidth, column, defaultLayout, isOpen, movePalette, readLayout, MAX_COLUMNS };
 export type { DockLayout, PaletteId, Side };
@@ -132,7 +132,7 @@ export class Docks {
    * 別のウィンドウへ: the palette in a window of its own (another display), where it was last or at `at`
    * (dragged out of the main window: where it was let go); false when none could be opened.
    */
-  popOut(id: PaletteId, at?: WindowRect): boolean {
+  popOut(id: PaletteId, at?: WindowPlace): boolean {
     const def = this.defs.get(id);
     if (!def || this.outside.has(id)) return !!def;
     const near = this.sectionOf(id)?.getBoundingClientRect();
@@ -526,6 +526,7 @@ export class Docks {
           y: Math.round(at.y - grab.y),
           w: Math.round(Math.max(grab.w, 260)),
           h: Math.round(Math.max(grab.h, 240)),
+          grab: { x: Math.round(grab.x), y: Math.round(grab.y) },
         });
     });
   }
@@ -701,7 +702,13 @@ export class Docks {
         if (!moved) return;
         // Let go outside the main window: out into a window of its own, there.
         if (e.clientX < 0 || e.clientY < 0 || e.clientX > window.innerWidth || e.clientY > window.innerHeight) {
-          const at = { x: Math.round(e.screenX - dx), y: Math.round(e.screenY - dy), w: Math.round(box.width), h: Math.round(box.height) };
+          const at = {
+            x: Math.round(e.screenX - dx),
+            y: Math.round(e.screenY - dy),
+            w: Math.round(box.width),
+            h: Math.round(box.height),
+            grab: { x: Math.round(dx), y: Math.round(dy) },
+          };
           if (this.popOut(id, at)) return;
         }
         if (drop) {
