@@ -220,6 +220,13 @@ export class PaletteWindow {
     if (!forNow) forgetOut(this.id);
     // The body comes back into the main document (adopted) before the window goes.
     this.back();
-    if (byUs || forNow) this.win.close();
+    // In the app the window is closed by the app: the page's close() leaves the window itself on screen
+    // (a WebView2 popup made by the app), still showing and still found by its title.
+    if (byUs || forNow)
+      call("close_palette_window", { title: this.windowTitle })
+        .catch(() => undefined)
+        .finally(() => {
+          if (!this.win.closed) this.win.close();
+        });
   }
 }
