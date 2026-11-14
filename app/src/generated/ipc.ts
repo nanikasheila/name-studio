@@ -912,4 +912,12 @@ export interface Commands {
    * 「前回と同じ設定で書き出す」 asks before it writes there without a dialog.
    */
   place_chosen: [{ path: string }, boolean];
+  // lib.rs
+  /**
+   * Put a palette's window (ui/popout.ts) at `x`, `y` with the size `width` × `height`, in the page's screen
+   * pixels: where it was let go or left last. The place window.open asks for is kept on the main window's
+   * display by the WebView, so a window for another display is moved there afterwards. The window is found
+   * by its title (the palette's name), which it takes a moment after it opens.
+   */
+  place_palette_window: [{ title: string; x: number; y: number; width: number; height: number }, void];
 }

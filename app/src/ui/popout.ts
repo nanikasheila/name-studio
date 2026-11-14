@@ -10,6 +10,7 @@
 // Closing the window puts the palette back. Where each window was is kept, so
 // it opens there again (on the display it was moved to).
 
+import { call } from "../platform/backend";
 import { PALETTE_WINDOWS_KEY } from "../platform/prefs";
 import { outerDocuments } from "../platform/dom";
 import { readJson, writeJson } from "../platform/settings";
@@ -134,7 +135,13 @@ export class PaletteWindow {
     keep((k) => {
       if (!k.open.includes(id)) k.open.push(id);
     });
-    return new PaletteWindow(win, id, title, body, back);
+    const out = new PaletteWindow(win, id, title, body, back);
+    // The WebView keeps a window it opens on the main window's display: the app moves it to where it was asked
+    // for (another display). Outside the app (no backend) it stays where the browser put it.
+    void call("place_palette_window", { title: `${title} — Name Studio`, x: rect.x, y: rect.y, width: rect.w, height: rect.h }).catch(
+      () => undefined,
+    );
+    return out;
   }
 
   /** Bring the window to the front (its icon pressed in the main window). */

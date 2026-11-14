@@ -207,6 +207,37 @@ fn palette_window<R: tauri::Runtime>(
     }
 }
 
+/// Put a palette's window (ui/popout.ts) at `x`, `y` with the size `width` × `height`, in the page's screen
+/// pixels: where it was let go or left last. The place window.open asks for is kept on the main window's
+/// display by the WebView, so a window for another display is moved there afterwards. The window is found
+/// by its title (the palette's name), which it takes a moment after it opens.
+#[tauri::command]
+async fn place_palette_window(
+    app: tauri::AppHandle,
+    title: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    for _ in 0..40 {
+        let found = app
+            .webview_windows()
+            .into_iter()
+            .find(|(label, window)| label.starts_with("palette-") && window.title().is_ok_and(|t| t == title));
+        if let Some((_, window)) = found {
+            window
+                .set_position(tauri::LogicalPosition::new(x, y))
+                .and_then(|()| window.set_size(tauri::LogicalSize::new(width.max(160.0), height.max(120.0))))
+                .map_err(|error| error.to_string())?;
+            return Ok(());
+        }
+        // (On the async runtime: the window takes its title meanwhile on the main thread.)
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    Err(format!("palette window not found: {title}"))
+}
+
 pub fn run() {
     STARTED.get_or_init(std::time::SystemTime::now);
     SAFE_LOOK.get_or_init(|| std::env::args().any(|arg| arg == "--safe-look") || shift_held());
@@ -296,7 +327,8 @@ pub fn run() {
             ai::history::ai_history_delete,
             dialogs::choose_open,
             dialogs::choose_save,
-            dialogs::place_chosen
+            dialogs::place_chosen,
+            place_palette_window
         ])
         .build(tauri::generate_context!())
         .expect("error while running Name Studio")
