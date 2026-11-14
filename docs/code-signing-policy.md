@@ -1,8 +1,8 @@
 # コード署名の方針 / Code signing policy
 
-Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
-
-（SignPath Foundation に申し込み中です。署名が始まるまでは、インストーラーは無署名です。）
+**今は署名していません。** インストーラーは無署名です（SignPath Foundation への申し込みは 2026-11-14 に通りませんでした）。
+下は、署名するようになったときに守る方針です。
+Name Studio's installers are currently not code-signed. The policy below applies once signing is set up.
 
 ## 何に署名するか / What is signed
 

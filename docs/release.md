@@ -72,6 +72,11 @@ Actions の「Release Windows app」→ Run workflow で手で流すこともで
 
 ## コード署名（SignPath Foundation、正式版だけ）
 
+**2026-11-14 現在: SignPath Foundation への申し込みは通らず、署名していません。** 下の仕組み（promote.yml）は
+`SIGNPATH_ORGANIZATION_ID` がないので動かず、正式版は今までどおり無署名です。もう一度申し込んで受け入れられたら、
+「最初に一度だけ」から進めれば有効になります（README の「はじめかた」に、申し込みで求められる一文
+「Free code signing provided by SignPath.io, certificate by SignPath Foundation.」を書き戻すこと）。
+
 インストーラーの Authenticode のコード署名は、[SignPath Foundation](https://signpath.org/)（オープンソース向け、無料）の
 証明書で、**正式版に上げるときだけ**します（方針: [code-signing-policy.md](code-signing-policy.md)）。更新の署名（上の鍵）とは別物です。
 署名すると SmartScreen の「詳細情報 → 実行」が要らなくなっていきます。発行元は「SignPath Foundation」と出ます。
