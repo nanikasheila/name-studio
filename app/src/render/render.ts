@@ -1,6 +1,7 @@
 // Drawing a name sheet (or part of it) onto a 2D canvas.
 import { canvasFont } from "../domain/fonts";
 import type { LayerView, Rect, SheetView, TextView } from "../model/types";
+import { thinLine } from "./thinline";
 
 /** Sheet pixels → screen pixels: `screen = sheet * scale + offset`. */
 export interface Transform {
@@ -104,9 +105,12 @@ function drawVectors(ctx: CanvasRenderingContext2D, layer: LayerView, t: Transfo
   ctx.strokeStyle = INK;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
+  const alpha = ctx.globalAlpha;
   for (const vector of layer.vectors) {
     if (vector.points.length < 2) continue;
-    ctx.lineWidth = Math.max(vector.brushSize * t.scale, 0.6);
+    const [width, ink] = thinLine(vector.brushSize * t.scale, 0.6);
+    ctx.lineWidth = width;
+    ctx.globalAlpha = alpha * ink;
     ctx.beginPath();
     vector.points.forEach(([x, y], index) => {
       const sx = x * t.scale + t.offsetX;
@@ -117,6 +121,7 @@ function drawVectors(ctx: CanvasRenderingContext2D, layer: LayerView, t: Transfo
     if (vector.closed) ctx.closePath();
     ctx.stroke();
   }
+  ctx.globalAlpha = alpha;
 }
 
 /** Draw one text block inside its box: vertical columns right to left, or horizontal lines. */

@@ -63,7 +63,9 @@ try {
         status: document.getElementById("status").textContent,
       };
     });
-  // The colour drawn on the canvas at a point of the page (mm).
+  // The colour drawn on the canvas at a point of the page (mm): of the pixels
+  // just above and below it, the one with the most ink (a thin line drawn as
+  // thin as it is lies between two rows of pixels, partly on each).
   const pixel = async (mm) => {
     const [x, y] = await at(mm);
     return page.evaluate(
@@ -71,13 +73,16 @@ try {
         const canvas = document.getElementById("editor-canvas");
         const box = canvas.getBoundingClientRect();
         const ratio = canvas.width / box.width;
-        const data = canvas.getContext("2d").getImageData(Math.round((x - box.left) * ratio), Math.round((y - box.top) * ratio), 1, 1).data;
-        return [data[0], data[1], data[2]];
+        const [px, py] = [Math.round((x - box.left) * ratio), Math.round((y - box.top) * ratio)];
+        const data = canvas.getContext("2d").getImageData(px, py - 1, 1, 3).data;
+        const rows = [0, 1, 2].map((i) => [data[i * 4], data[i * 4 + 1], data[i * 4 + 2]]);
+        return rows.reduce((best, c) => (c[0] + c[1] + c[2] < best[0] + best[1] + best[2] ? c : best));
       },
       [x, y],
     );
   };
-  const red = ([r, g, b]) => r > 170 && g < 120 && b < 120;
+  // Red ink (a 1 px line, partly on two rows of pixels, shows lighter than its colour).
+  const red = ([r, g, b]) => r > 170 && r - g > 60 && r - b > 60;
 
   // R takes up the 指示 tool, with its bar.
   await page.mouse.move(800, 500);

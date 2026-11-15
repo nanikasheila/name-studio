@@ -24,6 +24,18 @@ function recorder() {
   return { ctx: ctx as unknown as CanvasRenderingContext2D, calls };
 }
 
+/** The segments drawn, each with the width and opacity it was stroked with (however they were put into paths). */
+function segments(calls: string[]): string[] {
+  const out: string[] = [];
+  let path: string[] = [];
+  for (const call of calls) {
+    if (call.startsWith("M")) path = [call.slice(1)];
+    else if (call.startsWith("L")) path.push(call.slice(1));
+    else if (call.startsWith("S")) for (let i = 1; i < path.length; i++) out.push(`${path[i - 1]}>${path[i]}@${call.slice(1)}`);
+  }
+  return out;
+}
+
 const brush: Brush = {
   id: "b",
   name: "ペン",
@@ -50,7 +62,8 @@ describe("a line painted as it is drawn", () => {
     const pieces = recorder();
     const live = new LiveLine(pieces.ctx);
     for (const end of [1, 2, 5, 6, 17, 30, 40]) expect(live.paint(points.slice(0, end), 1, m, "#000", brush)).toBe(true);
-    expect(pieces.calls).toEqual(whole.calls);
+    expect(segments(pieces.calls)).toEqual(segments(whole.calls));
+    expect(segments(whole.calls)).toHaveLength(points.length - 1);
   });
 
   it("starts again when the view moved", () => {
@@ -62,7 +75,7 @@ describe("a line painted as it is drawn", () => {
     live.paint(points.slice(0, 12), 1, { ...m, scale: 4 }, "#000");
     expect(calls).toEqual([]);
     live.paint(points.slice(0, 13), 1, { ...m, scale: 4 }, "#000");
-    expect(calls.filter((c) => c.startsWith("S"))).toHaveLength(1);
+    expect(segments(calls)).toHaveLength(1);
   });
 
   it("shows the line on through where the pen is about to be, and keeps none of it", () => {
@@ -71,9 +84,47 @@ describe("a line painted as it is drawn", () => {
     live.paint(points.slice(0, 10), 1, m, "#000");
     calls.length = 0;
     live.ahead(ctx, points.slice(0, 10), points.slice(10, 12), 1, m, "#000");
-    expect(calls.filter((c) => c.startsWith("S"))).toHaveLength(2);
+    expect(segments(calls)).toHaveLength(2);
     calls.length = 0;
     live.paint(points.slice(0, 11), 1, m, "#000");
+    expect(segments(calls)).toHaveLength(1);
+  });
+});
+
+describe("lines thinner than the screen shows", () => {
+  const plain: StrokePoint[] = Array.from({ length: 30 }, (_, i) => [10 + i * 0.2, 20 + Math.sin(i / 5), 1]);
+  const draw = (scale: number, pixelRatio = 2) => {
+    const { ctx, calls } = recorder();
+    (ctx as unknown as { getTransform: () => DOMMatrix }).getTransform = () =>
+      ({ a: pixelRatio, b: 0, c: 0, d: pixelRatio, e: 0, f: 0 }) as DOMMatrix;
+    drawStroke(ctx, { id: "", points: plain, widthMm: 0.4, closed: false }, { scale, x: 0, y: 0 }, "#000", 0.7);
+    return calls;
+  };
+
+  it("are drawn at the thinnest width but fainter, with the ink of their real width", () => {
+    // 0.4 mm at 0.5 px/mm is 0.2 px: drawn 0.7 px wide at 0.2 / 0.7 of the ink, not 0.7 px of full ink.
+    const strokes = draw(0.5).filter((c) => c.startsWith("S"));
+    const [width, alpha] = strokes[0].slice(1).split("/").map(Number);
+    expect(width).toBeCloseTo(0.75, 2);
+    expect(width * alpha).toBeCloseTo(0.2, 1);
+  });
+
+  it("go as one path while their width stays the same, so close points do not darken them", () => {
+    const calls = draw(0.5);
     expect(calls.filter((c) => c.startsWith("S"))).toHaveLength(1);
+    expect(segments(calls)).toHaveLength(plain.length - 1);
+  });
+
+  it("thick enough are drawn as wide as they are, at full ink", () => {
+    const strokes = draw(10).filter((c) => c.startsWith("S"));
+    expect(strokes).toHaveLength(1);
+    const [width, alpha] = strokes[0].slice(1).split("/").map(Number);
+    expect(width).toBeCloseTo(4, 1);
+    expect(alpha).toBe(1);
+  });
+
+  it("never vanish", () => {
+    const strokes = draw(0.01).filter((c) => c.startsWith("S"));
+    expect(Number(strokes[0].split("/")[1])).toBeGreaterThan(0.15);
   });
 });
