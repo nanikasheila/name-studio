@@ -33,12 +33,12 @@ export function pageThumbnail(project: Project, page: Page, width = THUMB_WIDTH)
   const brushes = project.brushes;
   const rough = { ...page, strokes: withoutMarks(project, page.strokes) };
   drawPageFills(ctx, page, m, undefined, true);
-  drawStrokes(ctx, rough, m, false, roughInk, 0.4, brushes);
-  drawPanelFills(ctx, page, m, 0.4);
+  drawStrokes(ctx, rough, m, false, roughInk, { widen: 0.4 }, brushes);
+  drawPanelFills(ctx, page, m, { widen: 0.4 });
   drawPageFills(ctx, page, m);
-  drawPanelBorders(ctx, page, m, undefined, 0.6);
-  drawStrokes(ctx, rough, m, true, roughInk, 0.4, brushes);
-  drawBalloons(ctx, page, m, 0.5);
+  drawPanelBorders(ctx, page, m, undefined, { widen: 0.6 });
+  drawStrokes(ctx, rough, m, true, roughInk, { widen: 0.4 }, brushes);
+  drawBalloons(ctx, page, m, { widen: 0.5 });
   drawPageTexts(ctx, page, m);
   return canvas;
 }

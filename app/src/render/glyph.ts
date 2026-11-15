@@ -76,12 +76,12 @@ export function heldThumbnail(project: Project, held: HeldPanel, width = 116): H
   };
   const m = { scale, x: pad - x0 * scale, y: pad - y0 * scale };
   drawPageFills(ctx, page, m, undefined, true);
-  drawStrokes(ctx, page, m, false, roughInk, 0.4, project.brushes);
-  drawPanelFills(ctx, page, m, 0.4);
+  drawStrokes(ctx, page, m, false, roughInk, { widen: 0.4 }, project.brushes);
+  drawPanelFills(ctx, page, m, { widen: 0.4 });
   drawPageFills(ctx, page, m);
-  drawPanelBorders(ctx, page, m, undefined, 0.8);
-  drawStrokes(ctx, page, m, true, roughInk, 0.4, project.brushes);
-  drawBalloons(ctx, page, m, 0.5);
+  drawPanelBorders(ctx, page, m, undefined, { widen: 0.8 });
+  drawStrokes(ctx, page, m, true, roughInk, { widen: 0.4 }, project.brushes);
+  drawBalloons(ctx, page, m, { widen: 0.5 });
   drawPageTexts(ctx, page, m);
   return canvas;
 }

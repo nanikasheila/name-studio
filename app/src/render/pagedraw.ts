@@ -7,6 +7,7 @@ import { lineBold, lineFont } from "../domain/fonts";
 import { borderLines, borderWidthMm, dashes, effectStrokes, stacked } from "../domain/koma";
 import { MM_PER_PT } from "../domain/project";
 import { drawText } from "./render";
+import { thinLine, thinnestPx, type Thinnest } from "./thinline";
 import { balloonLineMm, linePitch } from "../domain/style";
 import type { MmToPx } from "../model/geometry";
 import { panelArea, panelsAbove, type PanelFolder } from "../domain/panelfolders";
@@ -24,6 +25,11 @@ export const roughInk = (stroke: Stroke): string => stroke.color ?? ROUGH_INK;
 
 export function tracePath(ctx: CanvasRenderingContext2D, points: readonly (readonly number[])[], m: MmToPx, close: boolean): void {
   ctx.beginPath();
+  addPath(ctx, points, m, close);
+}
+
+/** `points` added to the path being made. */
+function addPath(ctx: CanvasRenderingContext2D, points: readonly (readonly number[])[], m: MmToPx, close: boolean): void {
   points.forEach(([x, y], i) => {
     const px = x * m.scale + m.x;
     const py = y * m.scale + m.y;
@@ -38,7 +44,14 @@ export function tracePath(ctx: CanvasRenderingContext2D, points: readonly (reado
  * pressure curves, 入り抜き and opacity apply, and a tip picture (or a flat
  * tip) is stamped along the line.
  */
-export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke, m: MmToPx, color: string, minWidthPx = 0.7, brush?: Brush): void {
+export function drawStroke(
+  ctx: CanvasRenderingContext2D,
+  stroke: Stroke,
+  m: MmToPx,
+  color: string,
+  minWidthPx: Thinnest = 0.7,
+  brush?: Brush,
+): void {
   paintSegments(ctx, stroke, m, color, minWidthPx, brush, 0, 0, false);
 }
 
@@ -53,7 +66,7 @@ function paintSegments(
   stroke: Stroke,
   m: MmToPx,
   color: string,
-  minWidthPx: number,
+  minWidthPx: Thinnest,
   brush: Brush | undefined,
   from: number,
   carry: number,
@@ -62,23 +75,55 @@ function paintSegments(
   const points = stroke.points;
   // The points before `from` - 1 are not drawn: their widths are not worked out.
   const factors = widthFactors(stroke, brush, from - 1, growing);
-  const widthPx = (i: number) => Math.max(stroke.widthMm * factors[i] * m.scale, minWidthPx);
+  const widthPx = (i: number) => stroke.widthMm * factors[i] * m.scale;
   const opacity = opacityFactors(stroke, brush, from - 1);
-  if (brush && points.length && stampTip(brush)) return stampStroke(ctx, stroke, brush, m, color, widthPx, opacity, from, carry);
+  if (brush && points.length && stampTip(brush))
+    return stampStroke(ctx, stroke, brush, m, color, widthPx, minWidthPx, opacity, from, carry);
   ctx.save();
   ctx.strokeStyle = color;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
+  // Segments of (about) the same width and opacity go as one path, stroked
+  // once: stroked one by one, their soft edges would lay over each other and
+  // darken, the more so the closer the points are on the screen (zoomed out,
+  // lines looked several times thicker than they are).
+  const k = devicePixels(ctx);
+  let run: { width: number; alpha: number } | null = null;
   for (let i = Math.max(1, from); i < points.length; i++) {
-    ctx.lineWidth = (widthPx(i - 1) + widthPx(i)) / 2;
-    ctx.globalAlpha = (opacity[i - 1] + opacity[i]) / 2;
-    ctx.beginPath();
-    ctx.moveTo(points[i - 1][0] * m.scale + m.x, points[i - 1][1] * m.scale + m.y);
-    ctx.lineTo(points[i][0] * m.scale + m.x, points[i][1] * m.scale + m.y);
-    ctx.stroke();
+    const [width, ink] = thinLine((widthPx(i - 1) + widthPx(i)) / 2, minWidthPx);
+    const look = { width: evenWidth(width, k), alpha: evenAlpha(((opacity[i - 1] + opacity[i]) / 2) * ink) };
+    const [x0, y0] = [points[i - 1][0] * m.scale + m.x, points[i - 1][1] * m.scale + m.y];
+    const [x1, y1] = [points[i][0] * m.scale + m.x, points[i][1] * m.scale + m.y];
+    if (!run || run.width !== look.width || run.alpha !== look.alpha) {
+      if (run) ctx.stroke();
+      run = look;
+      ctx.lineWidth = look.width;
+      ctx.globalAlpha = look.alpha;
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+    }
+    ctx.lineTo(x1, y1);
   }
+  if (run) ctx.stroke();
   ctx.restore();
   return 0;
+}
+
+/** Device pixels to the canvas unit (1 for a context that cannot tell). */
+function devicePixels(ctx: CanvasRenderingContext2D): number {
+  const t = typeof ctx.getTransform === "function" ? ctx.getTransform() : null;
+  return (t && Math.hypot(t.a, t.b)) || 1;
+}
+
+/** A width on a step too small to see (a quarter device pixel, or 4 %), so the segments of a line can share paths. */
+function evenWidth(width: number, k: number): number {
+  const device = width * k;
+  if (device < 6) return Math.max(Math.round(device * 4), 1) / 4 / k;
+  return Math.exp(Math.round(Math.log(device) * 25) / 25) / k;
+}
+
+function evenAlpha(alpha: number): number {
+  return Math.max(Math.round(alpha * 32), 1) / 32;
 }
 
 /**
@@ -234,6 +279,7 @@ function stampStroke(
   m: MmToPx,
   color: string,
   widthPx: (i: number) => number,
+  minWidthPx: Thinnest,
   opacity: number[],
   from = 0,
   carried = 0,
@@ -248,8 +294,11 @@ function stampStroke(
   const flat = Math.max(brush.thickness, 1) / 100;
   const angle = (brush.rotation * Math.PI) / 180;
   ctx.save();
-  const stamp = (x: number, y: number, width: number, alpha: number) => {
-    ctx.globalAlpha = alpha;
+  const stamp = (x: number, y: number, real: number, alpha: number) => {
+    // A tip smaller than the thinnest shown: that large, but fainter by as much as it is smaller
+    // (stamps then go as far apart as for the larger tip, so the line keeps the ink of its real width).
+    const [width, ink] = thinLine(real, minWidthPx);
+    ctx.globalAlpha = alpha * ink;
     const height = width * aspect * flat;
     if (angle === 0) {
       ctx.drawImage(tip, x - width / 2, y - height / 2, width, height);
@@ -274,7 +323,7 @@ function stampStroke(
     for (;;) {
       const t = at / segment;
       const width = widthPx(i - 1) + (widthPx(i) - widthPx(i - 1)) * Math.min(t, 1);
-      const step = Math.max(width * interval, 0.5, minStep);
+      const step = Math.max(Math.max(width, thinnestPx(minWidthPx)) * interval, 0.5, minStep);
       at += step;
       if (at > segment) {
         carry = at - segment;
@@ -322,7 +371,7 @@ export function drawPageFills(
  * Panel fills and background effects, bottom panel first, then the はみ出し
  * areas blanked white. Borders are drawn separately (drawPanelBorders).
  */
-export function drawPanelFills(ctx: CanvasRenderingContext2D, page: Page, m: MmToPx, minWidthPx = 0.6): void {
+export function drawPanelFills(ctx: CanvasRenderingContext2D, page: Page, m: MmToPx, minWidthPx: Thinnest = 0.6): void {
   for (const panel of stacked(page.panels)) {
     const fill = panel.fill ?? "none";
     if (fill !== "none") {
@@ -337,7 +386,9 @@ export function drawPanelFills(ctx: CanvasRenderingContext2D, page: Page, m: MmT
     tracePath(ctx, panel.shape, m, true);
     ctx.clip();
     ctx.strokeStyle = fill === "black" ? "rgba(255, 255, 255, 0.6)" : EFFECT_INK;
-    ctx.lineWidth = Math.max(0.2 * m.scale, minWidthPx);
+    const [width, ink] = thinLine(0.2 * m.scale, minWidthPx);
+    ctx.lineWidth = width;
+    ctx.globalAlpha *= ink;
     ctx.lineCap = "round";
     ctx.beginPath();
     for (const [a, b] of lines) {
@@ -368,7 +419,7 @@ export function drawPanelBorders(
   page: Page,
   m: MmToPx,
   color: (panel: Panel) => string = () => INK,
-  minWidthPx = 1,
+  minWidthPx: Thinnest = 1,
   pencil = false,
 ): void {
   ctx.lineJoin = "miter";
@@ -379,12 +430,16 @@ export function drawPanelBorders(
       continue;
     }
     ctx.strokeStyle = color(line.panel);
-    ctx.lineWidth = Math.max(borderWidthMm(line.panel) * m.scale, minWidthPx);
+    const [width, ink] = thinLine(borderWidthMm(line.panel) * m.scale, minWidthPx);
+    ctx.lineWidth = width;
     const parts = line.panel.border === "dashed" ? dashes(line.points, line.closed).map((points) => ({ points, closed: false })) : [line];
-    for (const part of parts) {
-      tracePath(ctx, part.points, m, part.closed);
-      ctx.stroke();
-    }
+    // One path for all the parts, so the corners where they meet are not darker.
+    const alpha = ctx.globalAlpha;
+    ctx.globalAlpha = alpha * ink;
+    ctx.beginPath();
+    for (const part of parts) addPath(ctx, part.points, m, part.closed);
+    ctx.stroke();
+    ctx.globalAlpha = alpha;
   }
 }
 
@@ -413,8 +468,9 @@ function drawPencil(
   ctx.lineJoin = "round";
   const count = closed ? points.length : points.length - 1;
   for (const pass of [0, 1]) {
-    ctx.globalAlpha = pass ? 0.55 : 0.85;
-    ctx.lineWidth = Math.max((pass ? 0.18 : 0.3) * m.scale, pass ? 0.7 : 1.1);
+    const [width, ink] = thinLine((pass ? 0.18 : 0.3) * m.scale, pass ? 0.7 : 1.1);
+    ctx.globalAlpha = (pass ? 0.55 : 0.85) * ink;
+    ctx.lineWidth = width;
     ctx.beginPath();
     for (let i = 0; i < count; i++) {
       const a = points[i];
@@ -441,8 +497,14 @@ function drawPencil(
 }
 
 /** Balloons of a page: tails, links, shapes, 白抜き. */
-export function drawBalloons(ctx: CanvasRenderingContext2D, page: Page, m: MmToPx, minWidthPx = 0.8): void {
-  const width = Math.max(balloonLineMm() * m.scale, minWidthPx);
+export function drawBalloons(ctx: CanvasRenderingContext2D, page: Page, m: MmToPx, minWidthPx: Thinnest = 0.8): void {
+  const [width, ink] = thinLine(balloonLineMm() * m.scale, minWidthPx);
+  const stroke = () => {
+    const alpha = ctx.globalAlpha;
+    ctx.globalAlpha = alpha * ink;
+    ctx.stroke();
+    ctx.globalAlpha = alpha;
+  };
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
   for (const balloon of pageBalloons(page)) {
@@ -455,14 +517,14 @@ export function drawBalloons(ctx: CanvasRenderingContext2D, page: Page, m: MmToP
         ctx.fillStyle = fill;
         ctx.fill();
       }
-      ctx.stroke();
+      stroke();
     }
     if (balloon.outline.length < 3) continue;
     tracePath(ctx, balloon.outline, m, true);
     ctx.fillStyle = fill;
     ctx.fill();
     ctx.setLineDash(balloon.shape === "dashed" ? [Math.max(1.6 * m.scale, 3), Math.max(1.2 * m.scale, 2)] : []);
-    ctx.stroke();
+    stroke();
     ctx.setLineDash([]);
   }
 }
@@ -509,7 +571,7 @@ export function drawStrokes(
   m: MmToPx,
   over: boolean,
   color: (stroke: Stroke) => string,
-  minWidthPx?: number,
+  minWidthPx?: Thinnest,
   brushes: Brush[] = [],
 ): void {
   for (const stroke of page.strokes) {
@@ -531,7 +593,7 @@ export function drawMarks(
   project: Pick<Project, "roughLayers" | "brushes">,
   page: Page,
   m: MmToPx,
-  minWidthPx?: number,
+  minWidthPx?: Thinnest,
   all = false,
 ): void {
   for (const layer of markLayersOf(project)) {
