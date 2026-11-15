@@ -151,7 +151,10 @@
 * { box-sizing: border-box; }
 /* The screen's font in every field too (a field that needs its own sets it after). */
 input, select, textarea { font-family: inherit; }
-body { margin: 0; height: 100vh; display: flex; flex-direction: column; }
+/* The window never scrolls or springs back as a whole: each part scrolls inside itself
+   (and keepWindowStill in dom.ts puts the root back if something moves it anyway). */
+html { overflow: hidden; overscroll-behavior: none; }
+body { margin: 0; height: 100vh; display: flex; flex-direction: column; overflow: clip; overscroll-behavior: none; }
 button {
   font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line);
   border-radius: 6px; padding: 4px 10px; cursor: pointer;
