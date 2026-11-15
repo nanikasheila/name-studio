@@ -7,7 +7,7 @@ import { lineBold, lineFont } from "../domain/fonts";
 import { borderLines, borderWidthMm, dashes, effectStrokes, stacked } from "../domain/koma";
 import { MM_PER_PT } from "../domain/project";
 import { drawText } from "./render";
-import { thinLine } from "./thinline";
+import { thinLine, thinnestPx, type Thinnest } from "./thinline";
 import { balloonLineMm, linePitch } from "../domain/style";
 import type { MmToPx } from "../model/geometry";
 import { panelArea, panelsAbove, type PanelFolder } from "../domain/panelfolders";
@@ -44,7 +44,14 @@ function addPath(ctx: CanvasRenderingContext2D, points: readonly (readonly numbe
  * pressure curves, 入り抜き and opacity apply, and a tip picture (or a flat
  * tip) is stamped along the line.
  */
-export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke, m: MmToPx, color: string, minWidthPx = 0.7, brush?: Brush): void {
+export function drawStroke(
+  ctx: CanvasRenderingContext2D,
+  stroke: Stroke,
+  m: MmToPx,
+  color: string,
+  minWidthPx: Thinnest = 0.7,
+  brush?: Brush,
+): void {
   paintSegments(ctx, stroke, m, color, minWidthPx, brush, 0, 0, false);
 }
 
@@ -59,7 +66,7 @@ function paintSegments(
   stroke: Stroke,
   m: MmToPx,
   color: string,
-  minWidthPx: number,
+  minWidthPx: Thinnest,
   brush: Brush | undefined,
   from: number,
   carry: number,
@@ -272,7 +279,7 @@ function stampStroke(
   m: MmToPx,
   color: string,
   widthPx: (i: number) => number,
-  minWidthPx: number,
+  minWidthPx: Thinnest,
   opacity: number[],
   from = 0,
   carried = 0,
@@ -316,7 +323,7 @@ function stampStroke(
     for (;;) {
       const t = at / segment;
       const width = widthPx(i - 1) + (widthPx(i) - widthPx(i - 1)) * Math.min(t, 1);
-      const step = Math.max(Math.max(width, minWidthPx) * interval, 0.5, minStep);
+      const step = Math.max(Math.max(width, thinnestPx(minWidthPx)) * interval, 0.5, minStep);
       at += step;
       if (at > segment) {
         carry = at - segment;
@@ -364,7 +371,7 @@ export function drawPageFills(
  * Panel fills and background effects, bottom panel first, then the はみ出し
  * areas blanked white. Borders are drawn separately (drawPanelBorders).
  */
-export function drawPanelFills(ctx: CanvasRenderingContext2D, page: Page, m: MmToPx, minWidthPx = 0.6): void {
+export function drawPanelFills(ctx: CanvasRenderingContext2D, page: Page, m: MmToPx, minWidthPx: Thinnest = 0.6): void {
   for (const panel of stacked(page.panels)) {
     const fill = panel.fill ?? "none";
     if (fill !== "none") {
@@ -412,7 +419,7 @@ export function drawPanelBorders(
   page: Page,
   m: MmToPx,
   color: (panel: Panel) => string = () => INK,
-  minWidthPx = 1,
+  minWidthPx: Thinnest = 1,
   pencil = false,
 ): void {
   ctx.lineJoin = "miter";
@@ -490,7 +497,7 @@ function drawPencil(
 }
 
 /** Balloons of a page: tails, links, shapes, 白抜き. */
-export function drawBalloons(ctx: CanvasRenderingContext2D, page: Page, m: MmToPx, minWidthPx = 0.8): void {
+export function drawBalloons(ctx: CanvasRenderingContext2D, page: Page, m: MmToPx, minWidthPx: Thinnest = 0.8): void {
   const [width, ink] = thinLine(balloonLineMm() * m.scale, minWidthPx);
   const stroke = () => {
     const alpha = ctx.globalAlpha;
@@ -564,7 +571,7 @@ export function drawStrokes(
   m: MmToPx,
   over: boolean,
   color: (stroke: Stroke) => string,
-  minWidthPx?: number,
+  minWidthPx?: Thinnest,
   brushes: Brush[] = [],
 ): void {
   for (const stroke of page.strokes) {
@@ -586,7 +593,7 @@ export function drawMarks(
   project: Pick<Project, "roughLayers" | "brushes">,
   page: Page,
   m: MmToPx,
-  minWidthPx?: number,
+  minWidthPx?: Thinnest,
   all = false,
 ): void {
   for (const layer of markLayersOf(project)) {

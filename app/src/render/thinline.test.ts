@@ -17,4 +17,9 @@ describe("thinLine", () => {
   it("keeps a very thin line faintly seen", () => {
     expect(thinLine(0.001, 0.7)[1]).toBe(FAINTEST);
   });
+
+  it("for small pictures, draws a thinner line wider at full ink", () => {
+    expect(thinLine(0.2, { widen: 0.5 })).toEqual([0.5, 1]);
+    expect(thinLine(2, { widen: 0.5 })).toEqual([2, 1]);
+  });
 });

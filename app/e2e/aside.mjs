@@ -105,7 +105,11 @@ try {
   await shot("sketch beside the page");
   // What is drawn beside the page is kept as a picture (like the page's own
   // lines): drawn again as the room it covers grows, the lines stay where they are.
-  /** Ink on the screen near `mm` on page `n`: the darkest opaque red channel near it (255: none). */
+  /**
+   * Ink on the screen near `mm` on page `n`: the darkest red channel near it
+   * of the pixels drawn on (255: none). A 0.4 mm line zoomed out this far is
+   * drawn as thin as it is: faint, so not quite opaque.
+   */
   const inkAt = async (n, mm) => {
     await settle();
     const [x, y] = await at(n, mm);
@@ -116,7 +120,7 @@ try {
         const [px, py] = [Math.round(((x - r.left) * canvas.width) / r.width), Math.round(((y - r.top) * canvas.height) / r.height)];
         const data = canvas.getContext("2d").getImageData(px - 3, py - 3, 7, 7).data;
         let darkest = 255;
-        for (let i = 0; i < data.length; i += 4) if (data[i + 3] > 100) darkest = Math.min(darkest, data[i]);
+        for (let i = 0; i < data.length; i += 4) if (data[i + 3] > 40) darkest = Math.min(darkest, data[i]);
         return darkest;
       },
       [x, y],

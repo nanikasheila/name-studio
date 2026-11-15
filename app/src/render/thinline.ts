@@ -7,12 +7,26 @@
 export const FAINTEST = 0.25;
 
 /**
- * How a line `widthPx` wide is shown when lines show at least `minWidthPx`:
+ * The thinnest a line shows (px). A number: thinner lines are drawn that wide
+ * but fainter (the paper, as it is). `{ widen }`: thinner lines are drawn
+ * that wide, at full ink, for small pictures (ミニビュー, page lists) where
+ * seeing what is drawn matters more than how thick it is.
+ */
+export type Thinnest = number | { widen: number };
+
+/**
+ * How a line `widthPx` wide is shown when lines show at least `thinnest`:
  * [width, ink]. A thinner line is drawn that wide but fainter, carrying the
  * ink of its real width, so zoomed out it looks as thin as it is (not
  * thicker), and is still seen.
  */
-export function thinLine(widthPx: number, minWidthPx: number): [number, number] {
-  if (!(minWidthPx > 0) || widthPx >= minWidthPx) return [widthPx, 1];
-  return [minWidthPx, Math.max(widthPx / minWidthPx, FAINTEST)];
+export function thinLine(widthPx: number, thinnest: Thinnest): [number, number] {
+  if (typeof thinnest === "object") return [Math.max(widthPx, thinnest.widen), 1];
+  if (!(thinnest > 0) || widthPx >= thinnest) return [widthPx, 1];
+  return [thinnest, Math.max(widthPx / thinnest, FAINTEST)];
+}
+
+/** The width (px) below which a line is drawn wider. */
+export function thinnestPx(thinnest: Thinnest): number {
+  return typeof thinnest === "object" ? thinnest.widen : thinnest;
 }

@@ -29,12 +29,12 @@ function drawParts(
   ink: (stroke: Stroke) => string = (stroke) => stroke.color ?? "#55524c",
 ): void {
   drawPageFills(ctx, page, m, undefined, true);
-  drawStrokes(ctx, page, m, false, ink, 0.5);
-  drawPanelFills(ctx, page, m, 0.4);
+  drawStrokes(ctx, page, m, false, ink, { widen: 0.5 });
+  drawPanelFills(ctx, page, m, { widen: 0.4 });
   drawPageFills(ctx, page, m);
-  drawPanelBorders(ctx, page, m, undefined, 0.8);
-  drawStrokes(ctx, page, m, true, ink, 0.5);
-  drawBalloons(ctx, page, m, 0.6);
+  drawPanelBorders(ctx, page, m, undefined, { widen: 0.8 });
+  drawStrokes(ctx, page, m, true, ink, { widen: 0.5 });
+  drawBalloons(ctx, page, m, { widen: 0.6 });
   if (text) drawPageTexts(ctx, page, m);
   else {
     ctx.fillStyle = "rgba(27, 26, 24, 0.3)";
