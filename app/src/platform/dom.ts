@@ -93,3 +93,23 @@ export function pressable(id: string): HTMLButtonElement | null {
   if (!(target instanceof HTMLButtonElement) || target.disabled || target.closest("[hidden]")) return null;
   return target;
 }
+
+/**
+ * The window itself never scrolls: every part of the screen has its own place
+ * and scrolls inside it. The root is fixed in the CSS (overflow and
+ * overscroll-behavior on html and body), but a scrollIntoView or focus can
+ * still move a hidden-overflow root, and a pen or finger dragged past the end
+ * of a list in WebView2 can push the whole window (it then stays shifted with
+ * empty bands above or below). Whatever moved it, it is put back at once.
+ */
+export function keepWindowStill(win: Window = window): void {
+  const doc = win.document;
+  const back = () => {
+    const root = doc.scrollingElement;
+    if (root && (root.scrollTop || root.scrollLeft)) root.scrollTo(0, 0);
+    if (doc.body && (doc.body.scrollTop || doc.body.scrollLeft)) doc.body.scrollTo(0, 0);
+  };
+  win.addEventListener("scroll", back, { passive: true });
+  doc.body?.addEventListener("scroll", back, { passive: true });
+  back();
+}

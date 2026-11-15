@@ -31,7 +31,7 @@ import { showAlert } from "./platform/alerts";
 import { SheetViewer } from "./ui/viewer";
 import { PROJECT_EXTENSION } from "./ui/namesaver";
 import { Workbench } from "./ui/workbench";
-import { $, isTyping } from "./platform/dom";
+import { $, isTyping, keepWindowStill } from "./platform/dom";
 import { installDialogEnter } from "./ui/dialogkeys";
 import { ImageImportDialog } from "./ui/imageimport";
 import { panelAt, panelBadge } from "./editing/hittest";
@@ -53,6 +53,7 @@ function setStatus(message: string): void {
   showStatus(message);
 }
 installStatus();
+keepWindowStill();
 
 let workspace: "viewer" | "editor" = "viewer";
 

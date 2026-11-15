@@ -242,6 +242,44 @@ try {
     `a bar over the pages says so, with the pages it changed (${bar})`,
   );
   check((await page.textContent(".assist-ops")).includes("画面に表示中"), "and the card says it is on screen, with 採用 and 却下");
+  // The window itself never scrolls (it did after 画面で見る: the whole screen shifted, bands above or below).
+  const rootAt = () =>
+    page.evaluate(() => {
+      const root = document.scrollingElement;
+      return root.scrollTop + root.scrollLeft + document.body.scrollTop + document.body.scrollLeft;
+    });
+  const rootStyle = await page.evaluate(() =>
+    [document.documentElement, document.body].map((el) => {
+      const style = getComputedStyle(el);
+      return `${style.overflowY}/${style.overscrollBehaviorY}`;
+    }),
+  );
+  check(
+    rootStyle[0] === "hidden/none" && rootStyle[1] === "clip/none",
+    `the root neither scrolls nor springs back by a drag or the wheel (${rootStyle})`,
+  );
+  await page.mouse.move(
+    ...(await page
+      .locator(".assist-log")
+      .boundingBox()
+      .then((b) => [b.x + b.width / 2, b.y + b.height / 2])),
+  );
+  for (const dy of [2000, -4000, 2000]) await page.mouse.wheel(0, dy);
+  await settle();
+  check((await rootAt()) === 0, "the wheel past the ends of the 相談 log does not move the window");
+  const pushed = await page.evaluate(async () => {
+    // Something taller than the window, and the root moved by code: it is put back at once.
+    const tall = document.createElement("div");
+    tall.style.height = "3000px";
+    document.documentElement.append(tall);
+    document.scrollingElement.scrollTop = 400;
+    tall.scrollIntoView();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const at = document.scrollingElement.scrollTop;
+    tall.remove();
+    return at;
+  });
+  check(pushed === 0, `and when something moves it anyway, it goes back (${pushed})`);
   await page.click("#assist-trial button:has-text('▶')");
   await settle();
   check((await page.textContent("#editor-page-label")).includes("2"), "▶ goes to the next changed page");
