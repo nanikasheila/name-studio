@@ -325,6 +325,7 @@ export const HOVER_TOPICS: Record<string, HelpTopic> = {
       { input: "ドラッグ（枠の中ならどこでも）", does: "まとめて動かす" },
       { input: "枠の四角・丸をドラッグ", does: "拡大縮小・回転（ラフ線は太さも）。Ctrl + 角で自由変形" },
       { input: "Shift+クリック", does: "足す・外す" },
+      { input: "右の欄の項目", does: "話者・文字の大きさ・枠線などをまとめて設定" },
       { command: "copy", does: "コピー" },
       { command: "delete", does: "消す" },
     ],
@@ -398,6 +399,16 @@ export const AREA_TOPICS: Record<string, HelpTopic> = {
     name: "右の欄",
     what: "詳細（選んだものの設定）と相談。片側 3 列まで分けられる",
     steps: DOCK_STEPS,
+  },
+  "inspector-bulk": {
+    name: "まとめて設定",
+    what: "選んだセリフ・コマ・線・塗りの設定を、種類ごとに全部そろえて変える",
+    steps: [
+      { input: "項目を変える", does: "選んだもの全部に（元に戻すは 1 回で）" },
+      { input: "「いろいろ」・空欄・半分のチェック", does: "値がちがうもの。変えるとそろう" },
+      { input: "フォントの ×", does: "フォントの指定をやめて種類ごとのフォントに" },
+      { input: "Shift+クリック・囲む", does: "選ぶものを足す・外す（ページをまたいでも）" },
+    ],
   },
   "timer-chip": {
     name: "タイマー",
@@ -840,7 +851,7 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
   {
     target: "#dock-right",
     name: "右の欄（詳細・相談）",
-    text: "選んだもの（ページ・コマ・セリフ・付箋・シーン）の設定と、AI に相談",
+    text: "選んだもの（ページ・コマ・セリフ・付箋・シーン）の設定（複数ならまとめて）と、AI に相談",
     side: "inside",
   },
   { target: "#help-bar", name: "ヘルプの帯", text: "ポインターの下の名前と操作。設定 › 表示で隠せる", side: "above" },
@@ -930,7 +941,10 @@ export const TOUR_STOPS: TourStop[] = [
   {
     target: "#dock-right",
     title: "右の欄（詳細）",
-    text: ["選んだもの（ページ・コマ・セリフ・付箋・シーン）の設定です。左の欄と同じように、列に分ける・タブ・浮かせるができます。"],
+    text: [
+      "選んだもの（ページ・コマ・セリフ・付箋・シーン）の設定です。複数選ぶと、話者や枠線などをまとめて変えられます。",
+      "左の欄と同じように、列に分ける・タブ・浮かせるができます。",
+    ],
   },
   {
     target: "#name-export",

@@ -10,6 +10,8 @@ import type { Board } from "./board";
 import { $, choice, element, plainButton, svg } from "../platform/dom";
 import { pickedSummary, type PageEditor, type Selection } from "./editor";
 import { BALLOON_TEXT_KEY, PANEL_CARRIES_KEY } from "../platform/prefs";
+import { BulkFields } from "./bulkfields";
+import { pickedThings } from "../domain/bulk";
 import { fontField } from "./fontpicker";
 import { APP_FONT_LABEL, FONT_ROLE_LABELS, lineFont } from "../domain/fonts";
 import { writeFlag } from "../platform/settings";
@@ -62,6 +64,7 @@ import { pageIndex, pageIsEmpty } from "../domain/project";
 import { cannotRemove, deletePages, insertBlankPages } from "../domain/pageops";
 import { moveBlock, pageBlock } from "../domain/reorder";
 import { assignPanels, orderPanels, sortLines } from "../domain/readingorder";
+import { isMark } from "../domain/roughlayers";
 import { linkLabel, STICKY_COLORS } from "../domain/stickies";
 import { TONE_LABELS } from "../domain/strokes";
 
@@ -189,8 +192,14 @@ export class Inspector {
           remove,
         ];
       }
+      case "group": {
+        // Only セリフ picked: their 種類 at hand, as for one.
+        const items = selection.items ?? [];
+        const lines = items.length && items.every((item) => item.kind === "line") ? this.bulk(selection) : null;
+        const found = lines ? pickedThings(project, selection.pageId, items).lines.map(({ item }) => item) : [];
+        return [...(found.length ? [lines!.kindSelect(project, found)] : []), ...turns(), copy, remove];
+      }
       case "stroke":
-      case "group":
         return [...turns(), copy, remove];
       case "fill": {
         const fill = page.fills?.find((f) => f.id === selection.id);
@@ -291,6 +300,7 @@ export class Inspector {
           className: "hint",
           textContent: `${pickedSummary(s.items ?? [])}${overPages(s) ? "（ページをまたいで）" : ""}。枠の中ならどこをドラッグしても（ものの間でも）まとめて動かせます。矢印キーでも（コマは中に描いたものと一緒に）。枠の四角で大きさ（Shift で縦横別々、Alt で中心から）、上の丸で向き（Shift で 15° ずつ）、Ctrl + 角で自由変形。Shift + クリックで足す・外す（向かいのページのものも）。Ctrl+C / Ctrl+V でほかのページへも写せます。`,
         }),
+        ...this.bulk(s).sections(project),
         ...this.transformButtons(),
         remove,
       );
@@ -299,17 +309,9 @@ export class Inspector {
       const stroke = page.strokes.find((x) => x.id === s.id);
       const remove = element("button", { className: "danger", textContent: "この線を消す" });
       remove.addEventListener("click", () => this.host.deleteSelection());
-      const over = element("input", { type: "checkbox", checked: !!stroke?.over });
-      over.addEventListener("change", () =>
-        this.host.edit(() => {
-          if (!stroke) return;
-          if (over.checked) stroke.over = true;
-          else delete stroke.over;
-        }),
-      );
       return panel.replaceChildren(
-        element("h2", { textContent: "ラフの線" }),
-        element("label", { className: "inline" }, over, "コマ枠の上に描く（はみ出し）"),
+        element("h2", { textContent: stroke && isMark(project, stroke) ? "指示の線" : "ラフの線" }),
+        ...(stroke ? this.bulk(s).strokeFields(project, [{ page, item: stroke }]) : []),
         ...this.transformButtons(),
         remove,
       );
@@ -782,6 +784,12 @@ export class Inspector {
       }),
       remove,
     ];
+  }
+
+  /** まとめて設定 of what `s` has picked (the fields of one rough line, too). */
+  private bulk(s: Selection): BulkFields {
+    const items = s.kind === "group" ? (s.items ?? []) : s.kind === "stroke" ? [{ kind: "stroke" as const, id: s.id }] : [];
+    return new BulkFields(this.host, s.pageId, items);
   }
 
   /** 塗り: over the rough lines or under them. */
