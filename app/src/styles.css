@@ -1716,3 +1716,17 @@ dialog.perf-dialog { width: min(720px, 92vw); }
   cursor: pointer;
   touch-action: none;
 }
+
+/* まとめて設定: the fields of several things picked, kind by kind, each in its kind's colour. */
+.inspector .bulk { display: flex; flex-direction: column; gap: 10px; }
+.inspector .bulk-kind { display: flex; flex-direction: column; gap: 8px; }
+.inspector .bulk-line { --kind: var(--c-line); }
+.inspector .bulk-panel { --kind: var(--c-panel); }
+.inspector .bulk-stroke { --kind: var(--c-pen); }
+.inspector .bulk-fill { --kind: var(--c-fill); }
+.inspector .bulk-note { color: var(--muted); font-size: calc(11 * var(--px)); margin: 0; line-height: 1.5; }
+.inspector h4 { margin: 2px 0 0; font-size: calc(11 * var(--px)); color: var(--muted); font-weight: normal; }
+/* A field whose things differ: 「いろいろ」 in italics, a half-ticked box as it is. */
+.inspector select.mixed, .inspector input.mixed::placeholder, .inspector label.mixed { font-style: italic; }
+.inspector select.mixed { color: var(--muted); }
+.inspector input[type="color"] { padding: 1px 2px; height: 26px; min-width: 3em; }

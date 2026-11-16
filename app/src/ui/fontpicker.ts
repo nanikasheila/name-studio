@@ -52,7 +52,15 @@ let openMenu: { close(pick: boolean): void } | null = null;
  * one is picked from the list or typed and the field is left (empty for
  * none). `sample` is the text the preview shows (a line's own words).
  */
-export function fontField(value: string, fallback: string, change: (name: string) => void, title = "", sample = SAMPLE): HTMLElement {
+export function fontField(
+  value: string,
+  fallback: string,
+  change: (name: string) => void,
+  title = "",
+  sample = SAMPLE,
+  /** Several things with different fonts (まとめて設定): the field is empty, and × clears them all. */
+  mixed = false,
+): HTMLElement {
   const input = element("input", { type: "text", value, placeholder: fallback, title, spellcheck: false, autocomplete: "off" });
   input.setAttribute("role", "combobox");
   input.setAttribute("aria-expanded", "false");
@@ -62,11 +70,13 @@ export function fontField(value: string, fallback: string, change: (name: string
   show(value);
   const open = element("button", { type: "button", className: "font-open", textContent: "▾", title: "フォントの一覧（その書体で表示）" });
   const clear = element("button", { type: "button", className: "font-clear", textContent: "×", title: "指定をやめる" });
-  clear.disabled = !value;
-  // What the field holds as chosen (the name given, then each one picked).
-  let chosen = value;
-  const commit = (name: string) => {
+  clear.disabled = !value && !mixed;
+  // What the field holds as chosen (the name given, then each one picked); mixed: none of them.
+  let chosen: string | null = mixed ? null : value;
+  const commit = (name: string, clearing = false) => {
     const picked = name.trim();
+    // Mixed and left empty: they keep their own (only × clears them all).
+    if (chosen === null && !picked && !clearing) return;
     input.value = picked;
     show(picked);
     if (picked) remember(picked);
@@ -77,7 +87,7 @@ export function fontField(value: string, fallback: string, change: (name: string
   };
   clear.addEventListener("click", () => {
     openMenu?.close(false);
-    commit("");
+    commit("", true);
   });
 
   let menu: FontMenu | null = null;
