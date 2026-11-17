@@ -37,7 +37,7 @@ export class BackgroundBar {
       });
       modes.append(button);
     }
-    const label = element("input", { type: "text", placeholder: "物の名前（例: バン）", ariaLabel: "物の名前", id: "background-label" });
+    const label = element("input", { type: "text", placeholder: "物の名前（例: バン 横向き）", ariaLabel: "物の名前", id: "background-label" });
     label.value = backgroundPen.label;
     label.addEventListener("input", () => {
       backgroundPen.label = label.value;
