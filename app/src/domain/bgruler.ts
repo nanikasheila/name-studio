@@ -7,9 +7,11 @@
 // other, so a point beyond the panel (or the paper) is set from inside it.
 // Moving the eye level keeps the lines and slides the points along them;
 // moving a point moves the eye level with it and turns the lines to it.
+// The eye level may lie beyond the panel (shown fainter there), and is
+// turned by its ends (at the panel's sides) about the other end.
 import { bounds } from "../model/geometry";
 import type { Panel, PanelBackground, Point } from "../model/model";
-import { backgroundOf, setBackground } from "./background";
+import { backgroundOf, horizonAcross, setBackground } from "./background";
 
 export type Perspective = 0 | 1 | 2 | 3;
 export const PERSPECTIVES: readonly Perspective[] = [0, 1, 2, 3];
@@ -239,13 +241,51 @@ function settle(panel: Panel, ruler: Ruler): Ruler {
 /** The eye level drawn anew (`a`–`b`; a click: level across the panel): the points slide along their lines onto it. */
 export function drawHorizon(panel: Panel, a: Point, b: Point): void {
   const flat = Math.hypot(b[0] - a[0], b[1] - a[1]) < 2;
-  const horizon: Line = flat ? level(panel, a[1]) : [a, b];
-  const ruler = rulerOf(panel);
+  placeHorizon(panel, rulerOf(panel), flat ? level(panel, a[1]) : [a, b]);
+}
+
+/** `ruler` with the eye level `horizon`: the points slide along their lines onto it. */
+function placeHorizon(panel: Panel, ruler: Ruler, horizon: Line): void {
   if (!ruler.vanishing.length) {
-    setBackground(panel, { horizon });
+    setBackground(panel, { horizon: [round(horizon[0]), round(horizon[1])] });
     return;
   }
   save(panel, settle(panel, { ...ruler, horizon, vanishing: onLines(panel, ruler, horizon) }));
+}
+
+/** The eye level's ends as shown and held: where it crosses the panel's left and right sides (beyond the panel too). */
+export const horizonEnds = (panel: Panel, horizon: Line): Line => horizonAcross(panel, horizon);
+
+/** How far left and right the eye level is shown: past the panel to its points (on it), and a little more. */
+export function horizonReach(panel: Panel, ruler: Ruler): [number, number] {
+  const { box, w } = size(panel);
+  const xs = [box[0], box[2], ...ruler.vanishing.slice(0, 2).map(([x]) => x)];
+  const pad = Math.max(8, 0.1 * w);
+  return [Math.min(...xs) - pad, Math.max(...xs) + pad];
+}
+
+/** Steepest the eye level turns (the camera's roll), and how near level it snaps level. */
+const TURN_LIMIT = Math.tan((60 * Math.PI) / 180);
+const LEVEL_SNAP = Math.tan((1.5 * Math.PI) / 180);
+
+/** The eye level turned by dragging its end `end` (as `horizonEnds` gives) to `to`, about the other end; near level it snaps level (not with `free`). The points slide along their lines. */
+export function turnHorizon(panel: Panel, start: Ruler, end: 0 | 1, to: Point, free = false): void {
+  if (!start.horizon) return;
+  const pivot = horizonEnds(panel, start.horizon)[end === 0 ? 1 : 0];
+  const dx = to[0] - pivot[0];
+  // Not across the other end: the side the end is on stays.
+  const run = Math.max(Math.abs(dx), 0.25 * size(panel).w) * (end === 0 ? -1 : 1);
+  let slope = (to[1] - pivot[1]) / run;
+  slope = clamp(slope, -TURN_LIMIT, TURN_LIMIT);
+  if (!free && Math.abs(slope) < LEVEL_SNAP) slope = 0;
+  const other: Point = [pivot[0] + run, pivot[1] + slope * run];
+  placeHorizon(panel, start, end === 0 ? [other, pivot] : [pivot, other]);
+}
+
+/** How far the eye level leans from level, in degrees (+: down to the right). */
+export function horizonTilt(horizon: Line): number {
+  const f = frameOf(horizon);
+  return (Math.atan2(f.u[1], f.u[0]) * 180) / Math.PI;
 }
 
 /** The eye level moved across itself by the drag from `from` to `to`: the points slide along their lines. */
@@ -383,9 +423,13 @@ export function removeVanishing(panel: Panel, index: number): void {
 
 // --- what lies under the pointer ------------------------------------------------------------------
 
-export type RulerPart = { kind: "vanishing"; index: number } | { kind: "guide"; index: number; end: 0 | 1 } | { kind: "horizon" };
+export type RulerPart =
+  | { kind: "vanishing"; index: number }
+  | { kind: "guide"; index: number; end: 0 | 1 }
+  | { kind: "horizonEnd"; end: 0 | 1 }
+  | { kind: "horizon" };
 
-/** The part of a panel's ruler at `point` (within `near` mm): a point, a line's end, else the eye level. */
+/** The part of a panel's ruler at `point` (within `near` mm): a point, a line's end, an end of the eye level (to turn it), else the eye level (beyond the panel too, as far as it is shown). */
 export function rulerPartAt(panel: Panel, point: Point, near: number): RulerPart | null {
   const ruler = rulerOf(panel);
   const distance = (p: Point) => Math.hypot(p[0] - point[0], p[1] - point[1]);
@@ -395,8 +439,10 @@ export function rulerPartAt(panel: Panel, point: Point, near: number): RulerPart
     for (const end of [1, 0] as const) if (distance(ruler.guides[k][end]) <= near) return { kind: "guide", index: k, end };
   }
   if (ruler.horizon) {
+    const ends = horizonEnds(panel, ruler.horizon);
+    for (const end of [1, 0] as const) if (distance(ends[end]) <= near * 1.2) return { kind: "horizonEnd", end };
     const f = frameOf(ruler.horizon);
-    const [x0, , x1] = bounds(panel.shape);
+    const [x0, x1] = horizonReach(panel, ruler);
     const s = along(f, point);
     const inside = point[0] >= x0 - near && point[0] <= x1 + near;
     if (inside && Math.abs(off(f, point)) <= near && Number.isFinite(s)) return { kind: "horizon" };

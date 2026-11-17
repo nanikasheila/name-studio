@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { Panel, Point } from "../model/model";
 import { cameraFit } from "./bgcamera";
+import { instructionWords } from "./bgrequest";
 import {
   drawGuide,
   drawHorizon,
+  horizonEnds,
+  horizonTilt,
   moveGuide,
   moveHorizon,
   moveVanishing,
@@ -12,6 +15,7 @@ import {
   rulerOf,
   rulerPartAt,
   setPerspective,
+  turnHorizon,
 } from "./bgruler";
 
 const panel = (): Panel => ({
@@ -166,5 +170,53 @@ describe("透視の定規", () => {
     drawHorizon(one, [0, 60], [200, 50]);
     expect(rulerOf(one).guides).toEqual(ruler.guides);
     holdsTogether(one);
+  });
+
+  it("keeps the eye level beyond the panel, found there and on towards its points", () => {
+    const one = panel();
+    setPerspective(one, 2);
+    const start = rulerOf(one);
+    // Dragged up past the panel's top: kept there, the points on it.
+    moveHorizon(one, start, [100, 45], [100, -30]);
+    const ruler = rulerOf(one);
+    expect(ruler.horizon![0][1]).toBeCloseTo(-30);
+    holdsTogether(one);
+    expect(rulerPartAt(one, [100, -30], 2)).toEqual({ kind: "horizon" });
+    expect(instructionWords(one)).toContain("アイレベル（地平線・カメラの高さ）: y = -30mm（コマの外・上へ 30mm。コマの中はすべてアイレベルより下）");
+    // Out beside the panel, towards a point beyond it.
+    const x = (ruler.vanishing[1][0] + 200) / 2;
+    expect(rulerPartAt(one, [x, -30], 2)).toEqual({ kind: "horizon" });
+    expect(rulerPartAt(one, [ruler.vanishing[1][0] + 200, -30], 2)).toBeNull();
+  });
+
+  it("turns the eye level by an end about the other, snapping level near it, the points sliding along their lines", () => {
+    const one = panel();
+    setPerspective(one, 2);
+    const start = rulerOf(one);
+    const [left, right] = horizonEnds(one, start.horizon!);
+    expect(left).toEqual([0, 45]);
+    expect(right).toEqual([200, 45]);
+    expect(rulerPartAt(one, [200, 45.5], 2)).toEqual({ kind: "horizonEnd", end: 1 });
+    expect(rulerPartAt(one, [0.5, 45], 2)).toEqual({ kind: "horizonEnd", end: 0 });
+    // The right end down 20mm: about the left end.
+    turnHorizon(one, start, 1, [200, 65]);
+    let ruler = rulerOf(one);
+    const ends = horizonEnds(one, ruler.horizon!);
+    expect(ends[0][1]).toBeCloseTo(45);
+    expect(ends[1][1]).toBeCloseTo(65);
+    expect(horizonTilt(ruler.horizon!)).toBeCloseTo((Math.atan2(20, 200) * 180) / Math.PI);
+    expect(ruler.guides).toEqual(start.guides);
+    holdsTogether(one);
+    // Near level: level (not with Alt).
+    turnHorizon(one, start, 0, [0, 47]);
+    ruler = rulerOf(one);
+    expect(horizonTilt(ruler.horizon!)).toBe(0);
+    turnHorizon(one, start, 0, [0, 47], true);
+    expect(horizonTilt(rulerOf(one).horizon!)).not.toBe(0);
+    // An eye level alone (no points) turns too.
+    const alone = panel();
+    drawHorizon(alone, [50, 50], [50, 50]);
+    turnHorizon(alone, rulerOf(alone), 1, [200, 30]);
+    expect(horizonEnds(alone, rulerOf(alone).horizon!)[1][1]).toBeCloseTo(30);
   });
 });

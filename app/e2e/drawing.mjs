@@ -179,6 +179,33 @@ try {
   await settle();
   check(Math.abs((await ruler()).horizon[0][1] - across[1]) < 0.6, "Ctrl+Z puts the eye level back in one step");
 
+  // Beyond the panel: the eye level dragged above it stays there to take again, and turns by its ends.
+  const dragOn = async (from, to) => {
+    await page.mouse.move(...(await at(from)));
+    await page.mouse.down();
+    await page.mouse.move(...(await at(to)), { steps: 5 });
+    await page.mouse.up();
+    await settle();
+  };
+  const yAt = (one, x) =>
+    one.horizon[0][1] + ((one.horizon[1][1] - one.horizon[0][1]) * (x - one.horizon[0][0])) / (one.horizon[1][0] - one.horizon[0][0]);
+  const top = Math.min(...first.shape.map(([, y]) => y));
+  const [left, right] = [Math.min(...first.shape.map(([x]) => x)), Math.max(...first.shape.map(([x]) => x))];
+  bg = await ruler();
+  await dragOn([cx, yAt(bg, cx)], [cx, top - 6]);
+  bg = await ruler();
+  check(Math.abs(yAt(bg, cx) - (top - 6)) < 0.6 && together(bg), "the eye level is dragged out of the panel (above it)");
+  await dragOn([cx, top - 6], [cx, top - 10]);
+  bg = await ruler();
+  check(Math.abs(yAt(bg, cx) - (top - 10)) < 0.6, "and is found there and moved again");
+  await dragOn([right, yAt(bg, right)], [right, yAt(bg, right) + 8]);
+  bg = await ruler();
+  check(
+    Math.abs(yAt(bg, right) - yAt(bg, left) - 8) < 0.8 && Math.abs(yAt(bg, left) - (top - 10)) < 0.6 && together(bg),
+    "its right end turns it about the left end",
+  );
+  if (process.env.RULER_SHOT) await page.locator("#editor-canvas").screenshot({ path: process.env.RULER_SHOT });
+
   // 物: placed, then moved from inside, sized by a corner and named anew in the bar.
   await page.click("#background-bar [data-bg-mode=object]");
   const drag = async (from, to) => {
