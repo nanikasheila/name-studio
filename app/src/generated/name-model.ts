@@ -388,6 +388,10 @@ vanishing: Array<[number, number]>,
  */
 perspective?: number, 
 /**
+ * 場所: the 素材 (by name) the panel's background takes place in.
+ */
+place?: string, 
+/**
  * XYZ の線: lines along the edges in the panel, each aimed at its
  * vanishing point (one each for the first two, two for the third).
  */
@@ -399,7 +403,11 @@ objects: Array<BackgroundObject>, };
 
 export type BackgroundCamera = "eye" | "low" | "high";
 
-export type BackgroundObject = { id: string, label: string, shape: Array<[number, number]>, };
+export type BackgroundObject = { id: string, label: string, shape: Array<[number, number]>, 
+/**
+ * The 素材 (by name) it is made from; none: the one named as it is, if any.
+ */
+asset?: string, };
 
 export type BackgroundSettings = { 
 /**
@@ -409,7 +417,12 @@ brief: string,
 /**
  * The folder the backgrounds are made in; none: beside the name.
  */
-folder?: string, };
+folder?: string, 
+/**
+ * 素材: the folder of places and things kept for reuse (3D files listed
+ * in its 素材.json), shared by the names of a series; none: 背景素材 beside the name.
+ */
+assets?: string, };
 
 export type PanelBorder = "solid" | "thick" | "none" | "dashed" | "wavy";
 

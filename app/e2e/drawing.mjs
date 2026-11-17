@@ -5,7 +5,10 @@
 // write there only (work = the folder), apart from 相談; the takes listed in
 // 背景.json show per panel; 採用 lays one in the panel (cut to its shape,
 // undone with Ctrl+Z), 修正 asks again in the same conversation, 外す takes it
-// out.
+// out. 素材: the folder of places and things kept for reuse is listed (3D
+// files added with one button, renamed with the panels that name them), a
+// panel's 場所 and a 物's 素材 are chosen, and the request names them and lets
+// the AI write in that folder too.
 // Run: node e2e/drawing.mjs
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
@@ -19,6 +22,7 @@ const check = (ok, what) => {
 };
 
 const FOLDER = "C:\\work\\屋上_背景";
+const ASSETS = "C:\\work\\背景素材";
 const server = await createServer({ root, logLevel: "error", server: { port: 1443, strictPort: false } });
 await server.listen();
 const url = server.resolvedUrls.local[0];
@@ -26,43 +30,57 @@ const browser = await chromium.launch();
 try {
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
   await page.addInitScript({ path: fileURLToPath(new URL("tauri-mock.js", import.meta.url)) });
-  await page.addInitScript((folder) => {
-    window.__turns = [];
-    window.__sessions = [];
-    window.__writes = [];
-    window.__files = {};
-    window.__listeners = [];
-    window.__answer = (command, args) => {
-      if (command === "plugin:event|listen" && args.event === "ai-event") {
-        window.__listeners.push(args.handler);
-        return window.__listeners.length;
-      }
-      if (command === "ai_detect")
-        return { claude: { path: "C:\\bin\\claude.exe", version: "2.1.0 (Claude Code)" }, codex: null, node: null };
-      if (command === "ai_models")
-        return [{ value: "", label: "Default", description: "", efforts: ["low", "high"], defaultEffort: null, isDefault: true }];
-      if (command === "ai_prepare_session") {
-        window.__sessions.push(args);
-        return args.dir ?? "C:\\data\\ai-sessions\\draw-1";
-      }
-      if (command === "ai_turn") {
-        window.__turns.push(args.turn);
-        return window.__turns.length;
-      }
-      if (command === "ai_stop") return null;
-      if (command === "bg_folder") return folder;
-      if (command === "bg_blender") return "C:\\Program Files\\Blender Foundation\\Blender 5.2\\blender.exe";
-      if (command === "bg_write") {
-        window.__writes.push(args);
-        return null;
-      }
-      if (command === "bg_read") return window.__files[args.path] ?? null;
-      return undefined;
-    };
-    window.__say = (run, kind, text) => {
-      for (const id of window.__listeners) window[`_${id}`]?.({ event: "ai-event", id: 1, payload: { run, kind, text } });
-    };
-  }, FOLDER);
+  await page.addInitScript(
+    ([folder, assets]) => {
+      window.__assetFiles = {
+        "素材.json": JSON.stringify({ assets: [{ name: "団地の屋上", kind: "place", file: "団地の屋上/屋上.blend", note: "北が給水塔" }] }),
+      };
+      window.__assetWrites = [];
+      window.__turns = [];
+      window.__sessions = [];
+      window.__writes = [];
+      window.__files = {};
+      window.__listeners = [];
+      window.__answer = (command, args) => {
+        if (command === "plugin:event|listen" && args.event === "ai-event") {
+          window.__listeners.push(args.handler);
+          return window.__listeners.length;
+        }
+        if (command === "ai_detect")
+          return { claude: { path: "C:\\bin\\claude.exe", version: "2.1.0 (Claude Code)" }, codex: null, node: null };
+        if (command === "ai_models")
+          return [{ value: "", label: "Default", description: "", efforts: ["low", "high"], defaultEffort: null, isDefault: true }];
+        if (command === "ai_prepare_session") {
+          window.__sessions.push(args);
+          return args.dir ?? "C:\\data\\ai-sessions\\draw-1";
+        }
+        if (command === "ai_turn") {
+          window.__turns.push(args.turn);
+          return window.__turns.length;
+        }
+        if (command === "ai_stop") return null;
+        if (command === "bg_folder") return folder;
+        if (command === "bg_blender") return "C:\\Program Files\\Blender Foundation\\Blender 5.2\\blender.exe";
+        if (command === "bg_assets") return assets;
+        if (command === "bg_models") return ["団地の屋上/屋上.blend", "給水塔/給水塔.blend"];
+        if (command === "bg_write" && args.folder === assets) {
+          window.__assetWrites.push(args);
+          for (const file of args.files) window.__assetFiles[file.path] = file.text;
+          return null;
+        }
+        if (command === "bg_write") {
+          window.__writes.push(args);
+          return null;
+        }
+        if (command === "bg_read") return (args.folder === assets ? window.__assetFiles : window.__files)[args.path] ?? null;
+        return undefined;
+      };
+      window.__say = (run, kind, text) => {
+        for (const id of window.__listeners) window[`_${id}`]?.({ event: "ai-event", id: 1, payload: { run, kind, text } });
+      };
+    },
+    [FOLDER, ASSETS],
+  );
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(url);
@@ -71,6 +89,7 @@ try {
     const { newProject } = await import("/src/domain/project.ts");
     const { applyOps } = await import("/src/domain/assist.ts");
     const project = newProject("屋上", 2);
+    project.backgrounds = { assets: "C:\\work\\背景素材" };
     applyOps(project, [{ op: "panels", page: 1, count: 3 }]);
     window.nameStudio.show(project);
     const wb = window.nameStudio.workbench;
@@ -192,6 +211,41 @@ try {
     (await page.textContent("#side-drawing .assist-state")).includes("Claude Code に背景を描いてもらいます"),
     "says which AI will draw",
   );
+  // 素材: listed from 素材.json; the 3D files not listed added as 物.
+  await page.waitForFunction(() => document.querySelector('#side-drawing [data-part="assets-count"]')?.textContent === "1 件");
+  check(true, "素材 lists what 素材.json has");
+  await page.click("#side-drawing .drawing-assets > summary");
+  await page.click('#side-drawing [data-part="assets-models"]');
+  await page.waitForFunction(() => window.__assetWrites.length === 1);
+  const listed = () => page.evaluate(() => JSON.parse(window.__assetFiles["素材.json"]).assets);
+  check(
+    JSON.stringify((await listed()).map((asset) => [asset.name, asset.kind])) ===
+      JSON.stringify([
+        ["団地の屋上", "place"],
+        ["給水塔", "thing"],
+      ]),
+    "the 3D file not listed is added as a 物 named after its file",
+  );
+  // 場所 of the panel, from the 素材.
+  const row = `#side-drawing .drawing-panel[data-panel="${first.id}"]`;
+  await page.fill(`${row} .drawing-place`, "団地の屋上");
+  await page.press(`${row} .drawing-place`, "Enter");
+  await settle();
+  check((await ruler()).place === "団地の屋上", "a panel's 場所 is chosen from the 素材");
+  await page.selectOption(`${row} .drawing-object-asset select`, "給水塔");
+  await settle();
+  check((await ruler()).objects[0].asset === "給水塔", "a 物's 素材 is chosen");
+  // Renamed in the list: the 物 naming it follows.
+  const name = '#side-drawing .drawing-asset[data-asset="給水塔"] input[aria-label="素材の名前"]';
+  await page.fill(name, "給水塔 大");
+  await page.press(name, "Enter");
+  await page.waitForFunction(() => window.__assetWrites.length === 2);
+  await settle();
+  check(
+    (await listed())[1].name === "給水塔 大" && (await ruler()).objects[0].asset === "給水塔 大",
+    "a 素材 renamed is renamed where it is used",
+  );
+
   await page.selectOption('#side-drawing [data-part="scope"]', "marked");
   await settle();
   check((await page.textContent('#side-drawing [data-part="count"]')) === "1 コマ", "背景の指示があるコマ counts the panel marked");
@@ -218,6 +272,13 @@ try {
       Object.keys(written).some((path) => /\/p001\.png$/.test(path)),
     "with the panel's picture and its page's",
   );
+  check(
+    brief.includes("## 素材（使い回す 3D）") &&
+      brief.includes("場所の素材: 「団地の屋上」") &&
+      brief.includes("物「バン 横向き」の素材: 「給水塔 大」") &&
+      brief.includes("あたり（モック）"),
+    "依頼.md names the 素材 of the panel and asks for a quick あたり",
+  );
   const [session] = await page.evaluate(() => window.__sessions);
   check(
     ["SYSTEM.md", "CLAUDE.md", "AGENTS.md"].every((path) => session.files.some((file) => file.path === path && file.text.includes(FOLDER))),
@@ -225,6 +286,7 @@ try {
   );
   const [turn] = await page.evaluate(() => window.__turns);
   check(turn.kind === "claude" && turn.work === FOLDER && turn.resume === null, "the turn may write in that folder only");
+  check(turn.assets === ASSETS && session.files[0].text.includes(ASSETS), "and in the folder of 素材 (it is told so)");
   check(turn.prompt.includes("依頼.md"), "and is pointed at 依頼.md");
   check((await page.evaluate(() => document.querySelectorAll("#side-assist .assist-entry").length)) === 0, "相談 has none of it");
 

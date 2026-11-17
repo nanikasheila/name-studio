@@ -63,6 +63,96 @@ pub fn held_folder(chosen: &Chosen, folder: &str) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
+/// 背景の素材: the folder of places and things kept for reuse: `folder` when
+/// chosen, else 背景素材 beside the name's folder (shared by the names there,
+/// the episodes of a series), made when missing.
+pub fn assets_folder(chosen: &Chosen, name: Option<&str>, folder: Option<&str>) -> Result<PathBuf, String> {
+    let dir = match (folder.filter(|f| !f.is_empty()), name.filter(|n| !n.is_empty())) {
+        (Some(folder), _) => held_or_chosen(chosen, folder)?,
+        (None, Some(name)) => {
+            let name = Path::new(name);
+            if !name.is_absolute() || !chosen.holds(name) {
+                return Err(format!("{}: {}", crate::paths::UNCHOSEN, name.display()));
+            }
+            let dir = name
+                .parent()
+                .ok_or("ネームの場所から素材のフォルダーを決められません")?
+                .join(ASSETS_DIR);
+            chosen.folder(&dir);
+            dir
+        }
+        (None, None) => {
+            return Err("ネームを保存してから使ってください（素材のフォルダーはネームの隣に作ります）".to_owned());
+        }
+    };
+    std::fs::create_dir_all(&dir).map_err(|error| format!("{}: {error}", dir.display()))?;
+    Ok(dir)
+}
+
+/// The folder of 素材 made beside the names when none is chosen.
+pub const ASSETS_DIR: &str = "背景素材";
+
+fn held_or_chosen(chosen: &Chosen, folder: &str) -> Result<PathBuf, String> {
+    let dir = PathBuf::from(folder);
+    if !dir.is_absolute() || !chosen.holds(&dir) {
+        return Err(format!("{}: {folder}", crate::paths::UNCHOSEN));
+    }
+    Ok(dir)
+}
+
+#[tauri::command]
+pub fn bg_assets(
+    chosen: tauri::State<'_, Chosen>,
+    name: Option<String>,
+    folder: Option<String>,
+) -> Result<String, String> {
+    assets_folder(&chosen, name.as_deref(), folder.as_deref()).map(|dir| dir.display().to_string())
+}
+
+/// The 3D files in a folder (and three levels under it), "/" between folders, sorted.
+pub fn models_in(dir: &Path) -> Vec<String> {
+    fn walk(dir: &Path, base: &Path, depth: usize, out: &mut Vec<String>) {
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if depth < 3 {
+                    walk(&path, base, depth + 1, out);
+                }
+                continue;
+            }
+            let model = path
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .is_some_and(|ext| MODEL_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str()));
+            if let (true, Ok(relative)) = (model, path.strip_prefix(base)) {
+                let parts: Vec<String> = relative
+                    .components()
+                    .map(|part| part.as_os_str().to_string_lossy().into_owned())
+                    .collect();
+                out.push(parts.join("/"));
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(dir, dir, 0, &mut out);
+    out.sort();
+    out
+}
+
+/// What counts as a 3D file in the folder of 素材.
+pub const MODEL_EXTENSIONS: &[&str] = &[
+    "blend", "fbx", "glb", "gltf", "obj", "usd", "usda", "usdc", "usdz", "abc", "dae", "stl", "ply",
+];
+
+#[tauri::command]
+pub async fn bg_models(chosen: tauri::State<'_, Chosen>, folder: String) -> Result<Vec<String>, String> {
+    let dir = held_folder(&chosen, &folder)?;
+    tauri::async_runtime::spawn_blocking(move || models_in(&dir))
+        .await
+        .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 pub fn bg_folder(
     chosen: tauri::State<'_, Chosen>,
@@ -216,6 +306,35 @@ mod tests {
             other
         );
         assert!(held_folder(&chosen, "相対/のフォルダー").is_err());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn the_assets_are_beside_the_names_and_their_3d_files_are_listed() {
+        let root = std::env::temp_dir().join(format!("bg-assets-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let name = root.join("第4話.namestudio");
+        let chosen = Chosen::default();
+        assert!(assets_folder(&chosen, Some(name.to_str().unwrap()), None).is_err());
+        assert!(assets_folder(&chosen, None, None).is_err());
+        chosen.file(&name);
+        let dir = assets_folder(&chosen, Some(name.to_str().unwrap()), None).unwrap();
+        assert_eq!(dir, root.join(ASSETS_DIR));
+        assert!(held_folder(&chosen, dir.to_str().unwrap()).is_ok());
+        for file in [
+            "叔母の家/叔母の家.blend",
+            "車/バン.GLB",
+            "車/メモ.txt",
+            "a/b/c/d/深すぎ.obj",
+        ] {
+            let path = dir.join(file);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, b"x").unwrap();
+        }
+        assert_eq!(models_in(&dir), vec!["叔母の家/叔母の家.blend", "車/バン.GLB"]);
+        let other = root.join("ほか");
+        std::fs::create_dir_all(&other).unwrap();
+        assert!(assets_folder(&chosen, None, Some(other.to_str().unwrap())).is_err());
         std::fs::remove_dir_all(&root).unwrap();
     }
 

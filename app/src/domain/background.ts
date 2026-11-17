@@ -74,7 +74,9 @@ export function backgroundOf(panel: Panel): PanelBackground {
 /** Whether a panel has instructions for its background (words, camera, lines or things). */
 export function hasInstructions(panel: Panel): boolean {
   const bg = panel.background;
-  return !!bg && (!!bg.brief?.trim() || !!bg.camera || !!bg.horizon || !!bg.vanishing?.length || !!bg.objects?.length);
+  return (
+    !!bg && (!!bg.brief?.trim() || !!bg.place?.trim() || !!bg.camera || !!bg.horizon || !!bg.vanishing?.length || !!bg.objects?.length)
+  );
 }
 
 /** Change a panel's instructions; what is left empty is taken out (and the whole when nothing is left). */

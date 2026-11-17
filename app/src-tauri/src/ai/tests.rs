@@ -27,6 +27,7 @@ fn turn_in(dir: &Path) -> AiTurn {
         endpoint: None,
         messages: Vec::new(),
         work: None,
+        assets: None,
     }
 }
 
@@ -85,6 +86,7 @@ fn turn(kind: AiKind) -> AiTurn {
         endpoint: None,
         messages: Vec::new(),
         work: None,
+        assets: None,
     }
 }
 
@@ -122,6 +124,24 @@ fn only_a_turn_drawing_backgrounds_may_write_and_only_in_its_folder() {
         args.iter()
             .any(|arg| arg == "sandbox_workspace_write.writable_roots=['C:\\ネーム\\背景']")
     );
+    // With the folder of 素材: written to as well, by both.
+    drawing.assets = Some("C:\\ネーム\\背景素材".to_owned());
+    assert!(
+        codex_args(&drawing)
+            .iter()
+            .any(|arg| arg == "sandbox_workspace_write.writable_roots=['C:\\ネーム\\背景','C:\\ネーム\\背景素材']")
+    );
+    let mut claude_assets = turn(AiKind::Claude);
+    claude_assets.assets = Some("C:/ネーム/背景素材".to_owned());
+    // Not without a background request.
+    assert!(!claude_args(&claude_assets).iter().any(|arg| arg == "--add-dir"));
+    claude_assets.work = Some("C:/ネーム/第4話_背景".to_owned());
+    assert!(
+        claude_args(&claude_assets)
+            .windows(2)
+            .any(|pair| pair == ["--add-dir", "C:/ネーム/背景素材"])
+    );
+    drawing.assets = None;
     drawing.resume = Some("019c".to_owned());
     assert!(
         codex_args(&drawing)
@@ -531,6 +551,7 @@ fn live() {
             endpoint: None,
             messages: Vec::new(),
             work: None,
+            assets: None,
         };
         let mut child = start_process(&turn, &Chosen::default()).unwrap();
         let stdout = child.stdout.take().unwrap();

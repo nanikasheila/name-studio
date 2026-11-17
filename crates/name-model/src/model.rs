@@ -105,6 +105,10 @@ pub struct BackgroundSettings {
     /// The folder the backgrounds are made in; none: beside the name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub folder: Option<String>,
+    /// 素材: the folder of places and things kept for reuse (3D files listed
+    /// in its 素材.json), shared by the names of a series; none: 背景素材 beside the name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assets: Option<String>,
 }
 
 /// 保留コマ: a panel taken off its page with what is in it, where they were
@@ -647,6 +651,9 @@ pub struct PanelBackground {
     /// none: as many as are placed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub perspective: Option<u8>,
+    /// 場所: the 素材 (by name) the panel's background takes place in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub place: Option<String>,
     /// XYZ の線: lines along the edges in the panel, each aimed at its
     /// vanishing point (one each for the first two, two for the third).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -677,6 +684,9 @@ pub struct BackgroundObject {
     pub id: String,
     pub label: String,
     pub shape: Vec<Point>,
+    /// The 素材 (by name) it is made from; none: the one named as it is, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asset: Option<String>,
 }
 
 fn is_default<T: Default + PartialEq>(value: &T) -> bool {

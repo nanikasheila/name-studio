@@ -84,6 +84,7 @@
               ]
             ],
             "perspective": 1,
+            "place": "叔母の家の居間",
             "guides": [
               [
                 [
@@ -100,6 +101,7 @@
               {
                 "id": "page1-object1",
                 "label": "ソファ",
+                "asset": "ソファ（青）",
                 "shape": [
                   [
                     20,
@@ -570,6 +572,7 @@
                       ]
                     ],
                     "perspective": 1,
+                    "place": "叔母の家の居間",
                     "guides": [
                       [
                         [
@@ -586,6 +589,7 @@
                       {
                         "id": "page9-object1",
                         "label": "ソファ",
+                        "asset": "ソファ（青）",
                         "shape": [
                           [
                             20,
@@ -914,6 +918,7 @@
             ]
           ],
           "perspective": 1,
+          "place": "叔母の家の居間",
           "guides": [
             [
               [
@@ -930,6 +935,7 @@
             {
               "id": "page1-object1",
               "label": "ソファ",
+              "asset": "ソファ（青）",
               "shape": [
                 [
                   20,
@@ -1165,6 +1171,7 @@
                   ]
                 ],
                 "perspective": 1,
+                "place": "叔母の家の居間",
                 "guides": [
                   [
                     [
@@ -1181,6 +1188,7 @@
                   {
                     "id": "page8-object1",
                     "label": "ソファ",
+                    "asset": "ソファ（青）",
                     "shape": [
                       [
                         20,
@@ -1516,7 +1524,8 @@
   ],
   "backgrounds": {
     "brief": "ライト建築風の家と黒い EV バン",
-    "folder": "第1話_背景"
+    "folder": "第1話_背景",
+    "assets": "../背景素材"
   },
   "series": "../作品.nameseries",
   "nextId": 42

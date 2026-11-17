@@ -1761,3 +1761,15 @@ dialog.perf-dialog { width: min(720px, 92vw); }
 .inspector select.mixed, .inspector input.mixed::placeholder, .inspector label.mixed { font-style: italic; }
 .inspector select.mixed { color: var(--muted); }
 .inspector input[type="color"] { padding: 1px 2px; height: 26px; min-width: 3em; }
+.drawing-assets { border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
+.drawing-assets > summary { cursor: pointer; }
+.drawing-assets[open] > summary { margin-bottom: 4px; }
+.drawing-asset-list { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.drawing-asset { display: flex; gap: 6px; align-items: flex-start; }
+.drawing-asset-picture { flex: 0 0 auto; width: 48px; }
+.drawing-asset-picture img { width: 48px; height: auto; border-radius: 3px; display: block; }
+.drawing-asset-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.drawing-asset-body input[type="text"] { min-width: 0; flex: 1 1 auto; }
+.drawing-asset-file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.drawing-object-asset { display: inline-flex; gap: 2px; align-items: center; }
+.drawing-place[data-listed="true"] { border-color: var(--accent); }

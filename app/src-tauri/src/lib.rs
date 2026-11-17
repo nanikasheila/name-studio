@@ -396,6 +396,8 @@ pub fn run() {
             ai::ai_turn,
             ai::ai_stop,
             ai::background::bg_folder,
+            ai::background::bg_assets,
+            ai::background::bg_models,
             ai::background::bg_write,
             ai::background::bg_read,
             ai::background::bg_blender,
