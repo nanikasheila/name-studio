@@ -36,6 +36,34 @@ export function drawPicture(
   ctx.restore();
 }
 
+/** Where a vanishing point beyond the panel lies, marked on the panel's edge: an arrow towards it and its name. */
+function edgeMark(
+  ctx: CanvasRenderingContext2D,
+  [x0, y0, x1, y1]: [number, number, number, number],
+  point: readonly number[],
+  label: string,
+  toPx: (p: readonly number[]) => [number, number],
+  px: number,
+): void {
+  // The nearest point of the panel's box: a point beyond the side on the eye level stays on it.
+  const [nx, ny] = [Math.min(x1, Math.max(x0, point[0])), Math.min(y1, Math.max(y0, point[1]))];
+  const [ex, ey] = toPx([nx, ny]);
+  const [dx, dy] = [point[0] - nx, point[1] - ny];
+  const angle = Math.atan2(dy, dx);
+  const size = 10 * px;
+  const [tx, ty] = [ex - Math.cos(angle) * 3 * px, ey - Math.sin(angle) * 3 * px];
+  ctx.beginPath();
+  ctx.moveTo(tx, ty);
+  ctx.lineTo(tx - Math.cos(angle - 0.45) * size, ty - Math.sin(angle - 0.45) * size);
+  ctx.lineTo(tx - Math.cos(angle + 0.45) * size, ty - Math.sin(angle + 0.45) * size);
+  ctx.closePath();
+  ctx.fill();
+  const width = ctx.measureText(label).width;
+  const lx = Math.cos(angle) > 0.3 ? tx - size - width - 2 * px : tx + (Math.cos(angle) < -0.3 ? size + 2 * px : -width / 2);
+  const ly = Math.sin(angle) > 0.3 ? ty - size : ty + (Math.sin(angle) < -0.3 ? size + 12 * px : -2 * px);
+  ctx.fillText(label, lx, ly);
+}
+
 /** Lines from each vanishing point across a panel: this many, spread over the panel's corners. */
 const RAYS = 7;
 
@@ -53,6 +81,7 @@ export function drawBackgroundGuides(ctx: CanvasRenderingContext2D, page: Page, 
     ctx.lineCap = "round";
     ctx.font = `bold ${12 * px}px sans-serif`;
     ctx.textBaseline = "bottom";
+    ctx.textAlign = "left";
     // Lines to the vanishing points, and the eye level, inside the panel.
     ctx.save();
     tracePath(ctx, panel.shape, m, true);
@@ -106,6 +135,8 @@ export function drawBackgroundGuides(ctx: CanvasRenderingContext2D, page: Page, 
       ctx.lineTo(vx, vy + r * 1.8);
       ctx.stroke();
       ctx.fillText(`消失点${i + 1}`, vx + r + 2 * px, vy - r);
+      if (point[0] < x0 || point[0] > x1 || point[1] < y0 || point[1] > y1)
+        edgeMark(ctx, [x0, y0, x1, y1], point, `消失点${i + 1}`, toPx, px);
     });
     // The things, each its outline and name.
     ctx.strokeStyle = GUIDE_ORANGE;

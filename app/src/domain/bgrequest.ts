@@ -6,6 +6,7 @@
 // a camera for each panel matched to the rough, lines and tones rendered and
 // laid together). Pure.
 import { bounds } from "../model/geometry";
+import { cameraFit, cameraWords } from "./bgcamera";
 import type { BoxMm, Page, Panel, Point, Project } from "../model/model";
 import {
   BACKGROUND_BLEED_MM,
@@ -150,10 +151,11 @@ export function requestBrief(project: Project, request: BackgroundRequest, takes
     "## おすすめの作り方（前にうまくいった手順）",
     "",
     "1. 場所ごとに 3D モデルを Python のスクリプトで作る（Blender があれば bpy で）。スクリプトは `3d/scripts/`、モデルは `3d/*.blend` に残して、ほかのコマや次の依頼でも使う。",
-    "2. コマごとのカメラ（位置・注視点・レンズ）を表にして（例 `3d/scripts/shots.py`）、ラフの見え方に合わせる。アイレベルの線はカメラの高さ、消失点は向きの手がかり。合わせたら、ラフと重ねた確認の絵を作って自分で見比べ、ずれていれば直す。",
-    "3. 漫画の背景として描き出す: 線画（黒い線・透明地。Blender なら Freestyle）、トーン（面ごとのグレー。黒いベタの上の線は白抜き）、外なら影。白地に重ねたものを完成にする。",
-    "4. Blender がなければ、Python（PIL など）で透視図法で描いてもよい。",
-    "5. 作り方と、コマとカメラの対応を作業フォルダーの `使い方.md` に書き足しておく（次に直す人のため）。",
+    "2. コマごとのカメラ（位置・注視点・レンズ）を表にして（例 `3d/scripts/shots.py`）、ラフの見え方に合わせる。アイレベル・消失点の指示があるコマは、下の「カメラ（計算済み）」をそのまま使う（レンズ・シフト・見下ろしの角度は指示から計算してある。カメラの高さはアイレベルの高さ、物の向きは「カメラの向きから何°」に合わせる）。",
+    "3. 描き出す前に確かめる: 指示のあるコマは、Blender で水平な方向の無限遠の点（カメラの位置＋水平な向き×10⁶）と物の辺の向きを `bpy_extras.object_utils.world_to_camera_view` で画像に投影し、アイレベルの行と消失点が「画像の中の…」の px と画像の幅の 1% 以内で合うか確かめる。合わなければカメラを直す。合ったら、測った値（例: アイレベル 812px（指示 815）・消失点1 (2410, 812)（指示 (2400, 815)））を背景.json の note に書く。ラフと重ねた確認の絵も作って見比べる。",
+    "4. 漫画の背景として描き出す: 線画（黒い線・透明地。Blender なら Freestyle）、トーン（面ごとのグレー。黒いベタの上の線は白抜き）、外なら影。白地に重ねたものを完成にする。",
+    "5. Blender がなければ、Python（PIL など）で透視図法で描いてもよい。",
+    "6. 作り方と、コマとカメラの対応を作業フォルダーの `使い方.md` に書き足しておく（次に直す人のため）。",
     "",
     `Blender: ${request.blender ? `\`${request.blender}\`（バックグラウンドで動かす: \`"${request.blender}" -b --python スクリプト.py\`）` : "このパソコンでは見つかりませんでした（入っている場所が分かれば使ってよい）"}`,
     "",
@@ -196,6 +198,8 @@ export function requestBrief(project: Project, request: BackgroundRequest, takes
     if (said.length) out.push(`- セリフ: ${said.join(" ")}`);
     if (page.memo.trim()) out.push(`- ページのメモ: ${page.memo.trim().replace(/\s*\n\s*/g, " / ")}`);
     for (const line of instructionWords(panel)) out.push(`- ${line}`);
+    const fit = cameraFit(panel, box, request.dpi);
+    if (fit) for (const line of cameraWords(fit)) out.push(`- ${line}`);
     if (target.revise) {
       const take = before.find((one) => one.take === target.revise!.take);
       out.push(

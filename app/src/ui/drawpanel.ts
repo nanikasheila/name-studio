@@ -285,7 +285,7 @@ export class DrawPanel {
         {
           class: "check drawing-allow",
           title:
-            "Claude Code はコマンド（Bash）を動かせ、ファイルは自分のフォルダーと背景のフォルダーにだけ書けます。Codex は書き込みを背景のフォルダーに限ったサンドボックスでコマンドを動かします。相談の欄は読むだけのままです",
+            "Claude Code: ファイルの書き込みは作画用と背景のフォルダーだけ。コマンド（Blender・Python）はこの PC のあなたの権限で動きます。Codex: コマンドも含めて、書き込みを背景のフォルダーに限ったサンドボックスで動きます。相談の欄は読むだけのままです",
         },
         allowed,
         " AI に背景のフォルダーへの書き込みとコマンド（Blender・Python など）の実行を許す",
