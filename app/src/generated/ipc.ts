@@ -68,6 +68,11 @@ export interface AiTurn {
   endpoint?: string | null;
   /** The whole conversation so far, for a local LLM. */
   messages?: ChatMessage[];
+  /**
+   * 背景を頼む: the background folder, where this turn (and only it) may
+   * write and run commands; none: the turn only reads.
+   */
+  work?: string | null;
 }
 
 export interface AutosaveResult {
@@ -914,6 +919,14 @@ export interface Commands {
   ai_turn: [{ turn: AiTurn }, number];
   /** Stop a turn that is running. */
   ai_stop: [{ run: number }, void];
+  // ai/background.rs
+  bg_folder: [{ name?: string | null; folder?: string | null }, string];
+  /** Write a request's files into the background folder. */
+  bg_write: [{ folder: string; files: SessionFile[] }, void];
+  /** A file of the background folder: its text (`text`) or bytes in base64; none when it is not there. */
+  bg_read: [{ folder: string; path: string; text: boolean }, string | null];
+  /** Blender on this computer, the newest found: on the PATH, or (Windows) in Program Files. */
+  bg_blender: [void, string | null];
   // ai/local.rs
   /** Keep the key for a local LLM's API in the system's credential store (none forgets it). */
   ai_save_key: [{ key?: string | null }, void];

@@ -58,6 +58,28 @@ function fullPage(id: string): Full<Project["pages"][number]> {
         spread: "spread1",
         lineMm: 0.8,
         draft: true,
+        background: {
+          brief: "叔母の家の居間。奥に壁のスクリーン",
+          camera: "low",
+          none: true,
+          horizon: [
+            [12, 60],
+            [98, 58],
+          ],
+          vanishing: [[140, 59]],
+          objects: [
+            {
+              id: `${id}-object1`,
+              label: "ソファ",
+              shape: [
+                [20, 50],
+                [60, 50],
+                [60, 75],
+                [20, 75],
+              ],
+            },
+          ],
+        },
       },
     ],
     lines: [
@@ -137,7 +159,17 @@ function fullPage(id: string): Full<Project["pages"][number]> {
         under: true,
       },
     ],
-    references: [{ id: `${id}-reference1`, image: "image1", box: [10, 20, 110, 95], opacity: 0.35, kind: "name" }],
+    references: [
+      {
+        id: `${id}-reference1`,
+        image: "image1",
+        box: [7, 7, 103, 83],
+        opacity: 1,
+        kind: "background",
+        panel: `${id}-panel1`,
+        source: "panel1/2/完成",
+      },
+    ],
   };
 }
 
@@ -299,6 +331,7 @@ export const FULL_PROJECT: Full<Project> = {
     { id: "rough", name: "ラフ線", hidden: false, opacity: 1, locked: false, marks: false, color: "#e53935" },
     { id: "rough2", name: "人物", hidden: true, opacity: 0.5, locked: true, marks: true, color: "#1e6fd9" },
   ],
+  backgrounds: { brief: "ライト建築風の家と黒い EV バン", folder: "第1話_背景" },
   series: "../作品.nameseries",
   nextId: 42,
 };

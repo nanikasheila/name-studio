@@ -5,11 +5,11 @@ import { MAX_IMAGE_PX } from "../domain/references";
 import type { StoredImage } from "../model/model";
 import type { Gray } from "../domain/minisplit";
 
-/** A picture file (or pasted picture) made into a stored image, no larger than `MAX_IMAGE_PX`. */
+/** A picture file (or pasted picture) made into a stored image, no larger than `maxPx` (`MAX_IMAGE_PX`). */
 /** The image's id is left empty, for the step that lays it on a page to give. */
-export async function readImage(file: Blob, name: string): Promise<StoredImage> {
+export async function readImage(file: Blob, name: string, maxPx = MAX_IMAGE_PX): Promise<StoredImage> {
   const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, MAX_IMAGE_PX / Math.max(bitmap.width, bitmap.height));
+  const scale = Math.min(1, maxPx / Math.max(bitmap.width, bitmap.height));
   const width = Math.max(1, Math.round(bitmap.width * scale));
   const height = Math.max(1, Math.round(bitmap.height * scale));
   const canvas = document.createElement("canvas");

@@ -51,6 +51,7 @@ import type { SnapSettings } from "../domain/snapping";
 import { stickyFolds } from "../domain/stickies";
 import { StrokeCache } from "../render/strokecache";
 import { LINK_HANDLE } from "./toolsticky";
+import { backgroundPen } from "./toolbackground";
 import type { ItemRef } from "../domain/transform";
 
 /** Lines snapped to. */
@@ -401,6 +402,7 @@ export class EditorPainter {
       strokes: this.strokeCache,
       badge: (panel) => panelBadge(slot, panel, project.pageFormat, pageW),
       referenceFrames: this.scene.tool === "reference" ? () => this.drawReferenceFrames(slot) : undefined,
+      backgroundGuides: this.scene.tool === "background" || backgroundPen.alwaysShown,
       line: (line) => this.drawLine(project, slot, line),
     });
   }
@@ -504,12 +506,13 @@ export class EditorPainter {
       if (line && !this.picks.isSelected(hoverSlot.page, "line", line.id)) this.drawTailHandles(hoverSlot, line, true);
     }
     this.drawGrid(this.host.project()!);
-    // The outline being placed snaps its next corner: the guides after it.
-    this.drawPolygon();
+    // 多角形: the corners placed and the side to the pointer; it snaps its next corner, so the guides after it.
+    const polygon = this.scene.polygonPreview(this.scene.drag ? null : this.scene.pointer);
+    if (polygon) drawCorners(ctx, polygon.slot, polygon.placed, polygon.outline, polygon.closing);
     this.drawGuides();
-    if (drag && (drag.kind === "cut" || drag.kind === "frame")) {
+    if (drag && (drag.kind === "cut" || drag.kind === "frame" || drag.kind === "bgDrag")) {
       const b = drag.kind === "cut" && !drag.free ? snapCut(drag.a, drag.b) : drag.b;
-      drawCutOrFrame(ctx, drag.slot, drag.a, b, drag.kind === "cut");
+      drawCutOrFrame(ctx, drag.slot, drag.a, b, drag.kind === "cut" || (drag.kind === "bgDrag" && drag.what === "horizon"));
     }
     if (drag?.kind === "fill") drawFillDrag(ctx, drag.slot, drag.points, drag.way, this.scene.fill);
     if ((drag?.kind === "lasso" || drag?.kind === "pick" || drag?.kind === "eraseLasso") && drag.points.length > 1) {
@@ -580,12 +583,6 @@ export class EditorPainter {
       this.stage.slots.filter((slot) => gridMm * slot.scale >= 4 && !this.stage.small(project, slot)),
       gridMm,
     );
-  }
-
-  /** 多角形: the corners placed, and the side to where the pointer is. */
-  private drawPolygon(): void {
-    const preview = this.scene.polygonPreview(this.scene.drag ? null : this.scene.pointer);
-    if (preview) drawCorners(this.ctx, preview.slot, preview.placed, preview.outline, preview.closing);
   }
 
   private drawFrame(): void {

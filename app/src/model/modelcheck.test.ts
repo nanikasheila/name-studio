@@ -71,6 +71,10 @@ interface Pairs {
   ShapePart: [Rust.ShapePart, App.ShapePart];
   ShapeBeat: [Rust.ShapeBeat, App.ShapeBeat];
   Panel: [Rust.Panel, App.Panel];
+  PanelBackground: [Rust.PanelBackground, App.PanelBackground];
+  BackgroundCamera: [Rust.BackgroundCamera, App.BackgroundCamera];
+  BackgroundObject: [Rust.BackgroundObject, App.BackgroundObject];
+  BackgroundSettings: [Rust.BackgroundSettings, App.BackgroundSettings];
   PanelBorder: [Rust.PanelBorder, App.PanelBorder];
   PanelFill: [Rust.PanelFill, App.PanelFill];
   PanelEffect: [Rust.PanelEffect, App.PanelEffect];
@@ -134,6 +138,10 @@ const agreed: { [K in keyof Pairs]: Agrees<Pairs[K][0], Pairs[K][1]> } = {
   ShapePart: true,
   ShapeBeat: true,
   Panel: true,
+  PanelBackground: true,
+  BackgroundCamera: true,
+  BackgroundObject: true,
+  BackgroundSettings: true,
   PanelBorder: true,
   PanelFill: true,
   PanelEffect: true,

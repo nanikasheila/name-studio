@@ -878,6 +878,7 @@ export class Workbench {
     if (open("subview")) this.subView.render($("side-subview"));
     if (open("series")) this.seriesPanel.render($("side-series"));
     this.lists.assist(open("assist"));
+    if (open("drawing")) this.lists.drawing();
   }
 
   // --- レイヤー（コマ枠フォルダ） ----------------------------------------------------------

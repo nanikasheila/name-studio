@@ -26,6 +26,7 @@ fn turn_in(dir: &Path) -> AiTurn {
         images: Vec::new(),
         endpoint: None,
         messages: Vec::new(),
+        work: None,
     }
 }
 
@@ -83,7 +84,63 @@ fn turn(kind: AiKind) -> AiTurn {
         images: vec!["pages/p001.png".to_owned()],
         endpoint: None,
         messages: Vec::new(),
+        work: None,
     }
+}
+
+#[test]
+fn only_a_turn_drawing_backgrounds_may_write_and_only_in_its_folder() {
+    let claude = turn(AiKind::Claude);
+    let args = claude_args(&claude);
+    assert!(args.windows(2).any(|pair| pair == ["--permission-mode", "default"]));
+    assert!(args.iter().any(|arg| arg.starts_with("Write,Edit")));
+    assert!(!args.iter().any(|arg| arg == "--add-dir"));
+    let mut drawing = turn(AiKind::Claude);
+    drawing.work = Some("C:/ネーム/第4話_背景".to_owned());
+    let args = claude_args(&drawing);
+    assert!(args.windows(2).any(|pair| pair == ["--permission-mode", "acceptEdits"]));
+    assert!(
+        args.windows(2)
+            .any(|pair| pair == ["--add-dir", "C:/ネーム/第4話_背景"])
+    );
+    assert!(args.iter().any(|arg| arg.ends_with(",Bash")));
+    assert!(
+        args.windows(2)
+            .any(|pair| pair == ["--disallowedTools", "NotebookEdit,WebFetch,WebSearch"])
+    );
+    let codex = turn(AiKind::Codex);
+    assert!(
+        codex_args(&codex)
+            .windows(2)
+            .any(|pair| pair == ["--sandbox", "read-only"])
+    );
+    let mut drawing = turn(AiKind::Codex);
+    drawing.work = Some("C:\\ネーム\\背景".to_owned());
+    let args = codex_args(&drawing);
+    assert!(args.windows(2).any(|pair| pair == ["--sandbox", "workspace-write"]));
+    assert!(
+        args.iter()
+            .any(|arg| arg == "sandbox_workspace_write.writable_roots=['C:\\ネーム\\背景']")
+    );
+    drawing.resume = Some("019c".to_owned());
+    assert!(
+        codex_args(&drawing)
+            .iter()
+            .any(|arg| arg == "sandbox_mode=workspace-write")
+    );
+    // A folder that would end the TOML string early is not written to.
+    drawing.work = Some("C:/a' , '/b".to_owned());
+    assert!(codex_args(&drawing).iter().any(|arg| arg == "sandbox_mode=read-only"));
+    let mut local = turn(AiKind::Local);
+    local.work = Some("C:/x".to_owned());
+    let root = std::env::temp_dir().join(format!("ai-work-{}", std::process::id()));
+    let dir = root.join("session-1");
+    std::fs::create_dir_all(&dir).unwrap();
+    local.dir = dir.display().to_string();
+    assert!(check_turn(&root, &local).is_err());
+    local.work = None;
+    assert!(check_turn(&root, &local).is_ok());
+    std::fs::remove_dir_all(&root).unwrap();
 }
 
 #[test]
@@ -473,6 +530,7 @@ fn live() {
             images: Vec::new(),
             endpoint: None,
             messages: Vec::new(),
+            work: None,
         };
         let mut child = start_process(&turn, &Chosen::default()).unwrap();
         let stdout = child.stdout.take().unwrap();

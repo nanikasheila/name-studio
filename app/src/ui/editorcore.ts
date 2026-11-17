@@ -57,6 +57,7 @@ const HOLDS: Record<Tool, readonly Selection["kind"][]> = {
   eraser: [],
   fill: [],
   reference: [],
+  background: [],
 };
 
 /** Whether `tool` keeps a selection of `kind` (else the selection goes when the tool is taken up). */
@@ -207,6 +208,8 @@ export type ToolDrag =
       moved: boolean;
     }
   | { kind: "stickyLink"; slot: Slot; stickyId: string; to: Selection | null }
+  /** 背景の指示: the eye level (a line) or a thing (a box) being drawn in a panel. */
+  | { kind: "bgDrag"; slot: Slot; panelId: string; what: "horizon" | "object"; a: Point; b: Point }
   | {
       kind: "seam";
       slot: Slot;

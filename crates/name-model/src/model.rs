@@ -82,12 +82,29 @@ pub struct Project {
     /// ラフ線のレイヤー, bottom first; none is one layer.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rough_layers: Vec<RoughLayer>,
+    /// 背景: what every background asked for shares (the world, its places)
+    /// and the folder where they are made.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backgrounds: Option<BackgroundSettings>,
     /// シリーズ: the series file this name belongs to, from the name's folder
     /// (`/` between folders). The name keeps its own copy of what is shared.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub series: Option<String>,
     /// Next number used by [`Project::new_id`]; ids are never reused.
     pub next_id: u64,
+}
+
+/// 背景 of a name: what every request shares.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
+#[serde(rename_all = "camelCase")]
+pub struct BackgroundSettings {
+    /// 世界の設定: the places, buildings and things the backgrounds show.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub brief: String,
+    /// The folder the backgrounds are made in; none: beside the name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<String>,
 }
 
 /// 保留コマ: a panel taken off its page with what is in it, where they were
@@ -261,8 +278,16 @@ pub struct ReferenceImage {
     pub opacity: Option<f64>,
     /// "name": the name itself, taken in from a picture of it (a ミニネーム
     /// or a page drawn on paper), written out with the name's own lines.
+    /// "background": the background of one panel ([`Self::panel`]), shown
+    /// inside it only and written out as a layer of its own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
+    /// The panel (on the same page) a background is cut to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub panel: Option<String>,
+    /// Where a background came from: its 案 in the background folder ("panel/take/variant").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }
 
 /// A picture kept in the name (made smaller when it was taken in).
@@ -591,6 +616,59 @@ pub struct Panel {
     /// 整える makes it exact. Exported like any panel.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub draft: bool,
+    /// 背景の指示: what the background drawn for this panel should be (for
+    /// whoever draws it, an AI asked from 相談 among them). Never exported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background: Option<PanelBackground>,
+}
+
+/// 背景の指示 of a panel: in words, the camera, the eye level and vanishing
+/// points, and where things stand (all on the page, in mm).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
+#[serde(rename_all = "camelCase")]
+pub struct PanelBackground {
+    /// What to draw (place, time, what shows).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub brief: String,
+    /// カメラ: eye level, from below (あおり) or from above (俯瞰); none: as the rough says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub camera: Option<BackgroundCamera>,
+    /// 背景なし: the panel has no background (a close-up, an effect).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub none: bool,
+    /// アイレベル: a line through two points (the horizon of the picture).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub horizon: Option<[Point; 2]>,
+    /// 消失点: where lines going away meet (often beyond the panel).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub vanishing: Vec<Point>,
+    /// 物の指示: what stands where, an outline with a name each.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub objects: Vec<BackgroundObject>,
+}
+
+/// カメラ of a panel's background.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum BackgroundCamera {
+    /// 目の高さ
+    Eye,
+    /// あおり
+    Low,
+    /// 俯瞰
+    High,
+}
+
+/// 物の指示: a thing in a panel's background, where it stands.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
+#[serde(rename_all = "camelCase")]
+pub struct BackgroundObject {
+    pub id: String,
+    pub label: String,
+    pub shape: Vec<Point>,
 }
 
 fn is_default<T: Default + PartialEq>(value: &T) -> bool {
@@ -1262,6 +1340,7 @@ impl Project {
             style: None,
             csp_page: None,
             rough_layers: Vec::new(),
+            backgrounds: None,
             series: None,
             next_id: 1,
         }

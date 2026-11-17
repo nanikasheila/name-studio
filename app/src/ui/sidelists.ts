@@ -5,6 +5,7 @@
 import { CastList } from "./castlist";
 import type { Selection } from "./editor";
 import { AssistPanel } from "./assistpanel";
+import { DrawPanel } from "./drawpanel";
 import type { HelpCommand } from "../editing/apphelp";
 import { $ } from "../platform/dom";
 import { HeldList } from "./heldlist";
@@ -53,6 +54,8 @@ export class SideLists {
   readonly heldList: HeldList;
   /** 相談: AI に相談 (assistpanel.ts). */
   readonly assistPanel: AssistPanel;
+  /** 作画: backgrounds drawn by an AI, laid in the panels (drawpanel.ts). */
+  readonly drawPanel: DrawPanel;
 
   constructor(host: SideListsHost) {
     this.pageList = new PageList(host);
@@ -70,6 +73,12 @@ export class SideLists {
     this.noteList = new NoteList(host);
     this.heldList = new HeldList(host);
     this.assistPanel = new AssistPanel(host);
+    this.drawPanel = new DrawPanel(host);
+  }
+
+  /** 作画: ask an AI for backgrounds, and lay its takes in the panels (drawpanel.ts). */
+  drawing(): void {
+    this.drawPanel.render($("side-drawing"));
   }
 
   /** 相談: talk the name over with an AI (assistpanel.ts); a 変更の案 being tried follows every change, open or not. */

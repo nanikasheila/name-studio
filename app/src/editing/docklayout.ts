@@ -19,6 +19,7 @@ export type PaletteId =
   | "subview"
   | "series"
   | "assist"
+  | "drawing"
   | "inspector";
 export type Side = "left" | "right";
 
@@ -92,6 +93,7 @@ export const PALETTE_IDS: PaletteId[] = [
   "subview",
   "series",
   "assist",
+  "drawing",
   "inspector",
 ];
 
@@ -112,8 +114,8 @@ export function defaultLayout(leftCollapsed = false): DockLayout {
   const shownLeft: PaletteId[] = ["subtools", "toolprops", "pages"];
   const palettes = Object.fromEntries(
     PALETTE_IDS.map((id) => {
-      // AI に相談 and 詳細 on the right (相談 its icon until it is asked for).
-      if (id === "assist") return [id, state("right", false, id)];
+      // AI に相談, 作画 and 詳細 on the right (相談 and 作画 their icons until they are asked for).
+      if (id === "assist" || id === "drawing") return [id, state("right", false, id)];
       if (id === "inspector") return [id, state("right", true, id)];
       // サブビュー: the whole spread beside the main view, on the right (its icon until it is opened).
       if (id === "subview") return [id, state("right", false, id)];

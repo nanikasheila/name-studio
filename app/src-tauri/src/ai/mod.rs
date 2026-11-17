@@ -19,6 +19,7 @@
 //! what each offers, [`history`] keeps past conversations. Here: what they
 //! share, and starting and stopping a turn.
 
+pub mod background;
 pub mod cli;
 pub mod history;
 pub mod local;
@@ -143,6 +144,10 @@ pub struct AiTurn {
     /// The whole conversation so far, for a local LLM.
     #[serde(default)]
     pub messages: Vec<ChatMessage>,
+    /// 背景を頼む: the background folder, where this turn (and only it) may
+    /// write and run commands; none: the turn only reads.
+    #[serde(default)]
+    pub work: Option<String>,
 }
 
 /// A turn's folder and pictures as this side made them: the folder one of the
@@ -154,6 +159,9 @@ pub fn check_turn(root: &Path, turn: &AiTurn) -> Result<(), String> {
     }
     for image in &turn.images {
         inside(dir, image)?;
+    }
+    if turn.work.is_some() && turn.kind == AiKind::Local {
+        return Err("背景を描けるのは Claude Code と Codex です（ローカル LLM はファイルを書けません）".to_owned());
     }
     Ok(())
 }
@@ -168,6 +176,9 @@ pub async fn ai_turn(app: AppHandle, turn: AiTurn) -> Result<u64, String> {
         let _ = emitter.emit("ai-event", event);
     };
     check_turn(&sessions_root(&app)?, &turn)?;
+    if let Some(work) = turn.work.as_deref() {
+        background::held_folder(&app.state::<Chosen>(), work)?;
+    }
     if turn.kind == AiKind::Local {
         let stop = Arc::new(AtomicBool::new(false));
         runs.running

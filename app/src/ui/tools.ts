@@ -11,6 +11,7 @@ import { pressMark } from "./toolmark";
 import { REFERENCE_DRAGS, pressReference } from "./toolreference";
 import { SELECT_DRAGS, pressSelect } from "./toolselect";
 import { STICKY_DRAGS, pressSticky } from "./toolsticky";
+import { BACKGROUND_DRAGS, pressBackground } from "./toolbackground";
 import { pressText } from "./tooltext";
 import { TRANSFORM_DRAGS } from "./tooltransform";
 
@@ -25,6 +26,7 @@ export const PRESS: Record<Tool, (editor: EditorCore, press: Press) => void> = {
   breakout: pressBreakout,
   sticky: pressSticky,
   reference: pressReference,
+  background: pressBackground,
 };
 
 const DRAGS: {
@@ -39,6 +41,7 @@ const DRAGS: {
   ...STICKY_DRAGS,
   ...REFERENCE_DRAGS,
   ...ASIDE_DRAGS,
+  ...BACKGROUND_DRAGS,
 };
 
 /** The handler of a drag. */

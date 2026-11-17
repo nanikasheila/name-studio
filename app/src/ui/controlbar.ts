@@ -8,6 +8,7 @@ import { subtoolCommandId, type Command } from "../editing/commands";
 import { $, element } from "../platform/dom";
 import { ERASE_MODE_LABELS, PANEL_MODE_LABELS, type EditorEraseMode, type PageEditor, type PanelMode, type Tool } from "./editor";
 import { FillBar } from "./fillbar";
+import { BackgroundBar } from "./backgroundbar";
 import { FillSource } from "./fillsource";
 import type { Brush, BrushKind, Project } from "../model/model";
 import {
@@ -78,6 +79,7 @@ export class ControlBar {
   private readonly marks: MarkBar;
   /** The fill tool's bar: its sub tools and their settings. */
   readonly fills: FillBar;
+  private readonly backgrounds: BackgroundBar;
 
   /** サブツール: the kinds of the tool in hand, and ツールプロパティ. */
   readonly subtools: SubToolPanel;
@@ -89,6 +91,7 @@ export class ControlBar {
     host.editor.eraserSizeMm = sizeInHand(this.handSizes, "eraser", null);
     $("editor-tools").replaceChildren(...TOOL_IDS.map(toolButton));
     this.marks = new MarkBar({ ...host, setTool: (tool) => this.setTool(tool) });
+    this.backgrounds = new BackgroundBar(host);
     this.subtools = new SubToolPanel(
       { list: $("side-subtools"), props: $("side-toolprops"), sizes: $("side-brushsize") },
       {
@@ -168,6 +171,7 @@ export class ControlBar {
     this.showPickModes();
     this.renderBrushBar();
     this.fills.render();
+    this.backgrounds.render();
   }
 
   /** 選択: what a drag around things picks (設定 › 操作). */
