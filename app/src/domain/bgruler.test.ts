@@ -182,7 +182,9 @@ describe("透視の定規", () => {
     expect(ruler.horizon![0][1]).toBeCloseTo(-30);
     holdsTogether(one);
     expect(rulerPartAt(one, [100, -30], 2)).toEqual({ kind: "horizon" });
-    expect(instructionWords(one)).toContain("アイレベル（地平線・カメラの高さ）: y = -30mm（コマの外・上へ 30mm。コマの中はすべてアイレベルより下）");
+    expect(instructionWords(one)).toContain(
+      "アイレベル（地平線・カメラの高さ）: y = -30mm（コマの外・上へ 30mm。コマの中はすべてアイレベルより下）",
+    );
     // Out beside the panel, towards a point beyond it.
     const x = (ruler.vanishing[1][0] + 200) / 2;
     expect(rulerPartAt(one, [x, -30], 2)).toEqual({ kind: "horizon" });
