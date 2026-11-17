@@ -115,7 +115,10 @@ try {
   await page.click("#tab-drawing");
   await page.waitForSelector(".drawing");
   await settle();
-  check((await page.textContent("#side-drawing .assist-state")).includes("Claude Code に背景を描いてもらいます"), "says which AI will draw");
+  check(
+    (await page.textContent("#side-drawing .assist-state")).includes("Claude Code に背景を描いてもらいます"),
+    "says which AI will draw",
+  );
   await page.selectOption('#side-drawing [data-part="scope"]', "marked");
   await settle();
   check((await page.textContent('#side-drawing [data-part="count"]')) === "1 コマ", "背景の指示があるコマ counts the panel marked");
@@ -150,10 +153,7 @@ try {
   const [turn] = await page.evaluate(() => window.__turns);
   check(turn.kind === "claude" && turn.work === FOLDER && turn.resume === null, "the turn may write in that folder only");
   check(turn.prompt.includes("依頼.md"), "and is pointed at 依頼.md");
-  check(
-    (await page.evaluate(() => document.querySelectorAll("#side-assist .assist-entry").length)) === 0,
-    "相談 has none of it",
-  );
+  check((await page.evaluate(() => document.querySelectorAll("#side-assist .assist-entry").length)) === 0, "相談 has none of it");
 
   // A take drawn: 背景.json lists it, its picture a red square.
   const red = await page.evaluate(() => {
@@ -207,7 +207,10 @@ try {
     "the panel says which take it has",
   );
   await page.keyboard.press("Escape");
-  await page.locator("#editor-canvas").focus().catch(() => {});
+  await page
+    .locator("#editor-canvas")
+    .focus()
+    .catch(() => {});
   await page.keyboard.press("Control+z");
   await settle();
   check(!(await project()).pages[0].references?.some((r) => r.kind === "background"), "Ctrl+Z takes it out again");
