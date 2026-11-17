@@ -22,12 +22,14 @@ import {
   drawHorizon,
   moveGuide,
   moveHorizon,
+  turnHorizon,
   moveVanishing,
   placeVanishing,
   pointOfGuide,
   removeVanishing,
   rulerOf,
   rulerPartAt,
+  setPerspective,
 } from "../domain/bgruler";
 
 export type BackgroundMode = "horizon" | "line" | "vanishing" | "object" | "erase";
@@ -88,6 +90,7 @@ const MOVED_SAYS = {
   vanishing: "消失点を動かしました（アイレベルも一緒に動き、線が消失点へ向きます）",
   guide: "線を動かしました（消失点は線とアイレベルの交わる所へ）",
   horizon: "アイレベルを動かしました（消失点は線に沿って動きます）",
+  horizonEnd: "アイレベルの傾きを変えました（水平の近くでは水平に吸い付きます。Alt で吸い付かない）",
 } as const;
 
 export function pressBackground(editor: EditorCore, press: Press): void {
@@ -100,6 +103,7 @@ function pressOn(editor: EditorCore, { slot, point }: Press): void {
   // The ruler's parts are dragged where they are (a point beyond the panel too).
   if (mode === "horizon" || mode === "line" || mode === "vanishing") {
     const hit = rulerAt(slot.page, point, 9 / slot.scale);
+    // The eye level itself is taken in アイレベル only (線 is drawn across it); its ends always.
     if (hit && (hit.part.kind !== "horizon" || mode === "horizon")) {
       backgroundPen.panel = hit.panel.id;
       editor.startDrag({
@@ -163,8 +167,16 @@ function pressOn(editor: EditorCore, { slot, point }: Press): void {
   }
   // 消す: within a few pixels on screen. A point or a line takes its point off the ruler.
   const hit = rulerAt(slot.page, point, 8 / slot.scale);
-  if (hit && hit.part.kind !== "horizon") {
-    const index = hit.part.kind === "vanishing" ? hit.part.index : pointOfGuide(hit.part.index);
+  if (hit && (hit.part.kind === "horizon" || hit.part.kind === "horizonEnd")) {
+    // The eye level (beyond the panel too): the ruler goes with it.
+    setPerspective(hit.panel, 0);
+    editor.host.commit();
+    editor.host.status("アイレベルを消しました（定規ごと）");
+    return;
+  }
+  if (hit && (hit.part.kind === "vanishing" || hit.part.kind === "guide")) {
+    const { part } = hit;
+    const index = part.kind === "vanishing" ? part.index : pointOfGuide(part.index);
     removeVanishing(hit.panel, index);
     editor.host.commit();
     editor.host.status(`消失点${index + 1}を消しました（${rulerOf(hit.panel).vanishing.length}点透視に）`);
@@ -265,7 +277,7 @@ const bgObject: DragHandler<DragOf<"bgObject">> = {
 
 /** A part of the ruler moved: the model changes as the pointer goes (from the ruler as it was), one undo step. */
 const bgRuler: DragHandler<DragOf<"bgRuler">> = {
-  move(editor, drag, { point }) {
+  move(editor, drag, { point, event }) {
     const panel = drag.slot.page.panels.find((one) => one.id === drag.panelId);
     if (!panel) return false;
     if (!drag.moved) {
@@ -280,6 +292,8 @@ const bgRuler: DragHandler<DragOf<"bgRuler">> = {
     } else if (part.kind === "guide") {
       const from = drag.start.guides[part.index][part.end];
       moveGuide(panel, drag.start, part.index, part.end, [from[0] + point[0] - drag.from[0], from[1] + point[1] - drag.from[1]]);
+    } else if (part.kind === "horizonEnd") {
+      turnHorizon(panel, drag.start, part.end, point, event.altKey);
     } else moveHorizon(panel, drag.start, drag.from, point);
   },
   end(editor, drag) {

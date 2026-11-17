@@ -6,7 +6,7 @@
 import { bounds } from "../model/geometry";
 import type { Page, Panel, ReferenceImage } from "../model/model";
 import { backgroundClip, backgroundOf, boxCorners, horizonAcross, isBackground } from "../domain/background";
-import { AXIS_COLORS, GUIDE_AXES, axisOf, rulerOf } from "../domain/bgruler";
+import { AXIS_COLORS, GUIDE_AXES, axisOf, horizonEnds, horizonReach, horizonTilt, rulerOf, type Ruler } from "../domain/bgruler";
 import { tracePath, type MmToPx } from "./pagedraw";
 
 export const GUIDE_GREEN = "#1f9d55";
@@ -75,6 +75,53 @@ const RAYS = 7;
  * thing's outline and name. `px`: how big one screen pixel is in the target
  * (lines and words keep their size).
  */
+/** The eye level beyond the panel (fainter, on to its points), its ends to turn it by, and its name with how far it leans. */
+function drawHorizonBeyond(
+  ctx: CanvasRenderingContext2D,
+  panel: Panel,
+  ruler: Ruler,
+  toPx: (point: readonly number[]) => [number, number],
+  px: number,
+): void {
+  const horizon = ruler.horizon!;
+  const [a, b] = horizon;
+  ctx.save();
+  ctx.strokeStyle = GUIDE_GREEN;
+  ctx.fillStyle = GUIDE_GREEN;
+  if (Math.abs(b[0] - a[0]) > 1e-6) {
+    const slope = (b[1] - a[1]) / (b[0] - a[0]);
+    const [xa, xb] = horizonReach(panel, ruler);
+    ctx.globalAlpha = 0.4;
+    ctx.lineWidth = 1.5 * px;
+    ctx.setLineDash([10 * px, 5 * px]);
+    ctx.beginPath();
+    ctx.moveTo(...toPx([xa, a[1] + (xa - a[0]) * slope]));
+    ctx.lineTo(...toPx([xb, a[1] + (xb - a[0]) * slope]));
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  // Its ends at the panel's sides: dragged, they turn it.
+  ctx.globalAlpha = 0.95;
+  const ends = horizonEnds(panel, horizon).map(toPx);
+  for (const [hx, hy] of ends) {
+    ctx.beginPath();
+    ctx.arc(hx, hy, 5 * px, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 1.5 * px;
+    ctx.strokeStyle = "#ffffff";
+    ctx.stroke();
+  }
+  // Under the line at the right end: a point beyond the panel's side is marked on it, above.
+  const [lx, ly] = ends[1];
+  const kind = ruler.vanishing.length ? `（${ruler.vanishing.length}点透視）` : "";
+  const tilt = Math.round(horizonTilt(horizon));
+  ctx.font = `bold ${12 * px}px sans-serif`;
+  ctx.textBaseline = "top";
+  ctx.textAlign = "right";
+  ctx.fillText(`アイレベル${kind}${tilt ? ` 傾き ${Math.abs(tilt)}°` : ""}`, lx - 10 * px, ly + 5 * px);
+  ctx.restore();
+}
+
 export function drawBackgroundGuides(ctx: CanvasRenderingContext2D, page: Page, m: MmToPx, px = 1, only?: Panel): void {
   for (const panel of only ? [only] : page.panels) {
     const bg = backgroundOf(panel);
@@ -120,17 +167,9 @@ export function drawBackgroundGuides(ctx: CanvasRenderingContext2D, page: Page, 
       ctx.lineTo(...toPx(b));
       ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = GUIDE_GREEN;
-      // Under the line: a point beyond the panel's side is marked on it, above.
-      const [lx, ly] = toPx(b);
-      const kind = ruler.vanishing.length ? `（${ruler.vanishing.length}点透視）` : "";
-      ctx.textBaseline = "top";
-      ctx.textAlign = "right";
-      ctx.fillText(`アイレベル${kind}`, lx - 4 * px, ly + 3 * px);
-      ctx.textBaseline = "bottom";
-      ctx.textAlign = "left";
     }
     ctx.restore();
+    if (ruler.horizon) drawHorizonBeyond(ctx, panel, ruler, toPx, px);
     // The X・Y・Z lines, each with its ends to drag.
     ruler.guides.forEach((line, k) => {
       const axis = GUIDE_AXES[k];

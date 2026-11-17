@@ -97,9 +97,15 @@ export function instructionWords(panel: Panel): string[] {
     const [a, b] = horizonAcross(panel, ruler.horizon);
     const [, y0, , y1] = bounds(panel.shape);
     const tilt = Math.abs(a[1] - b[1]) > 0.5 ? `、傾き 左 ${mm(a[1])} → 右 ${mm(b[1])}mm` : "";
-    out.push(
-      `アイレベル（地平線・カメラの高さ）: y = ${mm((a[1] + b[1]) / 2)}mm（コマの上から ${percent((a[1] + b[1]) / 2 - y0, y1 - y0)}${tilt}）`,
-    );
+    const mid = (a[1] + b[1]) / 2;
+    // Beyond the panel too: the whole panel then lies below (or above) the eye level.
+    const where =
+      mid < y0
+        ? `コマの外・上へ ${mm(y0 - mid)}mm。コマの中はすべてアイレベルより下`
+        : mid > y1
+          ? `コマの外・下へ ${mm(mid - y1)}mm。コマの中はすべてアイレベルより上`
+          : `コマの上から ${percent(mid - y0, y1 - y0)}`;
+    out.push(`アイレベル（地平線・カメラの高さ）: y = ${mm(mid)}mm（${where}${tilt}）`);
   }
   ruler.vanishing.forEach((point, i) =>
     out.push(`消失点 ${i + 1}${i === 2 ? "（縦の線）" : ""}: ${at(point)}mm、${placeFrom(panel, point)}`),
