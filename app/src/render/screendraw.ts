@@ -29,6 +29,7 @@ import {
 } from "./pagedraw";
 import { pictureOf } from "./pictures";
 import { imageOf, opacityOf } from "../domain/references";
+import { drawBackgroundGuides, drawPicture } from "./backgrounds";
 import { markColor, markLayersOf, opacityOfLayer, roughLayersOf, strokesOn } from "../domain/roughlayers";
 import type { StrokeCache } from "./strokecache";
 
@@ -53,6 +54,8 @@ export interface PageMarks {
   badge(panel: Panel): { x: number; y: number; radius: number };
   /** Under the drawing: the outlines of the 資料 pictures (the 資料 tool). */
   referenceFrames?(): void;
+  /** 背景の指示 over the panels (the 背景 tool). */
+  backgroundGuides?: boolean;
   /** A line of dialogue with its marks (speaker, selection, tail handles). */
   line(line: Line): void;
 }
@@ -92,16 +95,13 @@ export function drawScreenPage(ctx: CanvasRenderingContext2D, project: Project, 
     const [x0, y0, x1, y1] = rough.box;
     ctx.drawImage(image, sx(x0), sy(y0), (x1 - x0) * scale, (y1 - y0) * scale);
   }
-  // 資料画像, faint under the drawing.
+  ctx.globalAlpha = 1;
+  // 資料画像, faint under the drawing; a panel's background inside it.
   for (const reference of page.references ?? []) {
     const stored = imageOf(project, reference);
     const picture = stored && pictureOf(stored, marks.redraw);
-    if (!picture) continue;
-    const [x0, y0, x1, y1] = reference.box;
-    ctx.globalAlpha = opacityOf(reference);
-    ctx.drawImage(picture, sx(x0), sy(y0), (x1 - x0) * scale, (y1 - y0) * scale);
+    if (picture) drawPicture(ctx, page, reference, picture, at(slot), opacityOf(reference));
   }
-  ctx.globalAlpha = 1;
   marks.referenceFrames?.();
 
   const m = at(slot);
@@ -132,6 +132,7 @@ export function drawScreenPage(ctx: CanvasRenderingContext2D, project: Project, 
   }
   drawPanelBorders(ctx, page, m, (panel) => (selectedPanels.includes(panel) ? ACCENT : INK), 1, true);
   drawRoughs(true);
+  if (marks.backgroundGuides && !small) drawBackgroundGuides(ctx, page, m);
 
   // はみ出し: shown by a dashed outline (only here, not in exports).
   for (const breakout of page.breakouts) {

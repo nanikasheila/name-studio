@@ -79,6 +79,42 @@ export interface Panel {
   lineMm?: number;
   /** 仮のコマ: laid out roughly (drawn by hand), not decided yet; 整える makes it exact. */
   draft?: boolean;
+  /** 背景の指示: what the background drawn for this panel should be (never exported). */
+  background?: PanelBackground;
+}
+
+/** カメラ of a panel's background: 目の高さ, あおり, 俯瞰. */
+export type BackgroundCamera = "eye" | "low" | "high";
+
+/** 背景の指示 of a panel: in words, the camera, the eye level, vanishing points and things (mm on the page). */
+export interface PanelBackground {
+  /** What to draw (place, time, what shows). */
+  brief?: string;
+  /** none: as the rough says. */
+  camera?: BackgroundCamera;
+  /** 背景なし: no background (a close-up, an effect). */
+  none?: boolean;
+  /** アイレベル: a line through two points. */
+  horizon?: [Point, Point];
+  /** 消失点 (often beyond the panel). */
+  vanishing?: Point[];
+  /** 物の指示: what stands where. */
+  objects?: BackgroundObject[];
+}
+
+/** 物の指示: a thing in a panel's background, an outline with its name. */
+export interface BackgroundObject {
+  id: string;
+  label: string;
+  shape: Point[];
+}
+
+/** 背景 of a name: what every request shares. */
+export interface BackgroundSettings {
+  /** 世界の設定: the places, buildings and things the backgrounds show. */
+  brief?: string;
+  /** The folder the backgrounds are made in; none: beside the name. */
+  folder?: string;
 }
 
 /** はみ出し: an area over the panels where borders and gutters are blanked. */
@@ -295,7 +331,11 @@ export interface ReferenceImage {
    * name's own lines (読む, PDF, ミニネーム, its own layer in CSP); a 資料
    * picture is only looked at while drawing.
    */
-  kind?: "name";
+  kind?: "name" | "background";
+  /** A background's panel (on the same page): it shows inside it only. */
+  panel?: string;
+  /** Where a background came from: its 案 in the background folder ("panel/take/variant"). */
+  source?: string;
 }
 
 /** A picture kept in the project (resized when it was taken in). */
@@ -478,6 +518,8 @@ export interface Project {
   cspPage?: CspPage;
   /** ラフ線のレイヤー, bottom first; none is one layer (ROUGH_BASE). */
   roughLayers?: RoughLayer[];
+  /** 背景: what every background asked for shares, and the folder they are made in. */
+  backgrounds?: BackgroundSettings;
   /** シリーズ: the series file this name belongs to, from the name's folder ("/" between folders); the name keeps a copy of what is shared. */
   series?: string;
   nextId: number;

@@ -5,7 +5,19 @@
 // it can pick up (HOLDS in editorcore.ts) and its help (TOOL_TOPICS in
 // helptopics.ts).
 
-export const TOOL_IDS = ["select", "cut", "text", "pen", "mark", "eraser", "fill", "breakout", "sticky", "reference"] as const;
+export const TOOL_IDS = [
+  "select",
+  "cut",
+  "text",
+  "pen",
+  "mark",
+  "eraser",
+  "fill",
+  "breakout",
+  "sticky",
+  "reference",
+  "background",
+] as const;
 
 export type ToolId = (typeof TOOL_IDS)[number];
 
@@ -138,5 +150,16 @@ export const TOOLS: Record<ToolId, ToolDefinition> = {
     hint: "写真や背景を薄く敷く。Ctrl+V・ドロップでも貼れる。ドラッグで動かし、角で大きさ（CSP には下描きレイヤーで出ます）",
     overlay: "写真や背景を薄く敷く",
     cursor: "default",
+  },
+  background: {
+    name: "背景",
+    label: "背景の指示（アイレベル・消失点・物）",
+    keys: ["H"],
+    words: "背景 パース アイレベル 消失点 透視 カメラ 構図 物 指示",
+    title: "コマの背景の指示を描く: アイレベル（線）・消失点（点）・物（囲んで名前）。相談から背景を頼むと、AI がこれに合わせて描きます",
+    icon: '<rect x="2.5" y="3.5" width="15" height="13" rx="1"/><path d="M2.5 10h15"/><path d="M14.5 10L4 16.5M14.5 10L10 16.5M14.5 10L17.5 13"/><circle cx="14.5" cy="10" r="1.3" class="fill"/>',
+    hint: "アイレベルはドラッグで線（クリックで水平）、消失点はクリック、物は囲んで名前。コマの外の消失点も置ける。背景の欄から AI に頼む",
+    overlay: "アイレベル・消失点・物の指示",
+    cursor: "crosshair",
   },
 };

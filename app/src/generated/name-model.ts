@@ -64,6 +64,11 @@ cspPage?: CspPage,
  */
 roughLayers: Array<RoughLayer>, 
 /**
+ * 背景: what every background asked for shares (the world, its places)
+ * and the folder where they are made.
+ */
+backgrounds?: BackgroundSettings, 
+/**
  * シリーズ: the series file this name belongs to, from the name's folder
  * (`/` between folders). The name keeps its own copy of what is shared.
  */
@@ -167,8 +172,18 @@ opacity?: number,
 /**
  * "name": the name itself, taken in from a picture of it (a ミニネーム
  * or a page drawn on paper), written out with the name's own lines.
+ * "background": the background of one panel ([`Self::panel`]), shown
+ * inside it only and written out as a layer of its own.
  */
-kind?: string, };
+kind?: string, 
+/**
+ * The panel (on the same page) a background is cut to.
+ */
+panel?: string, 
+/**
+ * Where a background came from: its 案 in the background folder ("panel/take/variant").
+ */
+source?: string, };
 
 export type StoredImage = { id: string, name: string, 
 /**
@@ -339,7 +354,52 @@ lineMm?: number,
  * 仮のコマ: laid out roughly (drawn by hand) and not decided yet;
  * 整える makes it exact. Exported like any panel.
  */
-draft: boolean, };
+draft: boolean, 
+/**
+ * 背景の指示: what the background drawn for this panel should be (for
+ * whoever draws it, an AI asked from 相談 among them). Never exported.
+ */
+background?: PanelBackground, };
+
+export type PanelBackground = { 
+/**
+ * What to draw (place, time, what shows).
+ */
+brief: string, 
+/**
+ * カメラ: eye level, from below (あおり) or from above (俯瞰); none: as the rough says.
+ */
+camera?: BackgroundCamera, 
+/**
+ * 背景なし: the panel has no background (a close-up, an effect).
+ */
+none: boolean, 
+/**
+ * アイレベル: a line through two points (the horizon of the picture).
+ */
+horizon?: [[number, number], [number, number]], 
+/**
+ * 消失点: where lines going away meet (often beyond the panel).
+ */
+vanishing: Array<[number, number]>, 
+/**
+ * 物の指示: what stands where, an outline with a name each.
+ */
+objects: Array<BackgroundObject>, };
+
+export type BackgroundCamera = "eye" | "low" | "high";
+
+export type BackgroundObject = { id: string, label: string, shape: Array<[number, number]>, };
+
+export type BackgroundSettings = { 
+/**
+ * 世界の設定: the places, buildings and things the backgrounds show.
+ */
+brief: string, 
+/**
+ * The folder the backgrounds are made in; none: beside the name.
+ */
+folder?: string, };
 
 export type PanelBorder = "solid" | "thick" | "none" | "dashed" | "wavy";
 

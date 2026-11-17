@@ -20,12 +20,14 @@ import { trimBox } from "../domain/pagebox";
 import { drawMarks, loadTips, type MmToPx } from "../render/pagedraw";
 import { decodePicture } from "../render/pictures";
 import { imageOf, isNamePicture, writtenOpacity } from "../domain/references";
+import { isBackground } from "../domain/background";
+import { drawPicture } from "../render/backgrounds";
 import { shownStrokes, withoutMarks } from "../domain/roughlayers";
 import { useStyle } from "../domain/style";
 
 export type RoughLoader = (rough: RoughImage) => Promise<CanvasImageSource | null>;
 
-/** What pages need from files to be drawn: the name sheet's roughs and the name pictures, decoded. */
+/** What pages need from files to be drawn: the name sheet's roughs and the name pictures (and the panels' backgrounds), decoded. */
 export interface FlatPictures {
   roughs: Map<RoughImage, CanvasImageSource | null>;
   names: Map<string, ImageBitmap>;
@@ -38,7 +40,7 @@ export async function flatPictures(project: Project, pages: readonly Page[], rou
   for (const page of pages) {
     for (const item of page.roughs) roughs.set(item, await rough(item));
     for (const reference of page.references ?? []) {
-      if (!isNamePicture(reference) || names.has(reference.image)) continue;
+      if (!(isNamePicture(reference) || isBackground(reference)) || names.has(reference.image)) continue;
       const stored = imageOf(project, reference);
       const picture = stored && (await decodePicture(stored).catch(() => null));
       if (picture) names.set(reference.image, picture);
@@ -63,14 +65,14 @@ export function drawFlatPage(ctx: CanvasRenderingContext2D, project: Project, so
     const [x0, y0, x1, y1] = mapBox(rough.box, m);
     ctx.drawImage(image, x0, y0, x1 - x0, y1 - y0);
   }
-  for (const reference of page.references ?? []) {
-    const picture = isNamePicture(reference) ? pictures.names.get(reference.image) : undefined;
-    if (!picture) continue;
-    ctx.globalAlpha = writtenOpacity(reference);
-    const [x0, y0, x1, y1] = mapBox(reference.box, m);
-    ctx.drawImage(picture, x0, y0, x1 - x0, y1 - y0);
-  }
   ctx.globalAlpha = 1;
+  // The panels' backgrounds, then the pictures of the name over them.
+  for (const shown of [isBackground, isNamePicture]) {
+    for (const reference of page.references ?? []) {
+      const picture = shown(reference) ? pictures.names.get(reference.image) : undefined;
+      if (picture) drawPicture(ctx, page, reference, picture, m, writtenOpacity(reference));
+    }
+  }
   for (const kind of LAYER_ORDER) drawPart(ctx, page, kind, m, project.brushes);
 }
 

@@ -728,6 +728,7 @@ export function buildCommands(host: CommandHost): Command[] {
     palette("subview", "サブビュー", "画面分割 全体 ナビゲーター 1コマ 寄る"),
     palette("series", "シリーズ", "話 次の話"),
     palette("assist", "相談", "AI 相談 Claude Codex LLM 行き詰まり アシスタント"),
+    palette("drawing", "作画", "AI 背景 作画 Blender 描き起こし 採用 修正"),
     palette("inspector", "詳細", "設定 プロパティ"),
     button("settings", "設定…", "設定", [], "コマ間 フォント 吸着 読む向き"),
     button("shortcuts", "キー設定…", "設定", [], "ショートカット キーボード"),

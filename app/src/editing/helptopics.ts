@@ -249,6 +249,18 @@ export const TOOL_TOPICS: Record<ToolId, HelpTopic> & Record<string, HelpTopic> 
       ...VIEW_STEPS,
     ],
   },
+  background: {
+    name: "背景の指示",
+    what: "コマの背景の描き方の指示。作画の欄で頼むと AI がこれに合わせて描く",
+    steps: [
+      { input: "上の段「アイレベル」でドラッグ", does: "アイレベル（カメラの高さ・地平線）を引く。クリックだけなら水平" },
+      { input: "上の段「消失点」でクリック", does: "消失点を置く（コマの外にも。3 つまで）" },
+      { input: "上の段「物」でドラッグ", does: "物が立つ所を囲む。名前は上の段の欄で（背景の欄でも直せる）" },
+      { input: "上の段「消す」でクリック", does: "近くの指示を消す" },
+      { input: "作画の欄", does: "コマごとの背景の言葉・カメラ・背景なし、AI に頼む、届いた案の採用・修正・頼み直し" },
+      ...VIEW_STEPS,
+    ],
+  },
 };
 
 /** What the select tool would grab under the pointer ("item.panel", "seam", "tail.tip" ...). */
@@ -663,6 +675,20 @@ export const AREA_TOPICS: Record<string, HelpTopic> = {
       { input: "接続…", does: "モデルと effort を相手が返す一覧から選ぶ（↻ で聞き直す）。場所・API キー・スキルは「詳しく」の中" },
     ],
   },
+  "side-drawing": {
+    name: "作画（AI）",
+    what: "AI に背景を描いてもらい、届いた案をコマごとに採用・修正・頼み直し",
+    steps: [
+      { input: "許すのチェック", does: "背景のフォルダーへの書き込みとコマンド（Blender など）の実行を許す。相談は読むだけのまま" },
+      { input: "背景を頼む", does: "選んだコマ・表示中のページ・指示のあるコマの依頼と絵をフォルダーに置き、AI に描いてもらう" },
+      { input: "世界の設定", does: "場所・建物・物の設定。どの依頼にも付く（ネームに保存）" },
+      { input: "案を押す", does: "その案を選ぶ（下に AI のひと言）" },
+      { input: "採用", does: "選んだ案（完成・線画・トーン・影）をコマの形で切り抜いて入れる。Ctrl+Z で戻せる" },
+      { input: "修正… / 頼み直す", does: "直してほしいことを書いて頼む / 構図から描き直してもらう" },
+      { input: "外す", does: "採用した背景をコマから外す（案はフォルダーに残る）" },
+      { input: "読み直す", does: "フォルダーの 背景.json を読み直す（描いている途中でもできた案が出る）" },
+    ],
+  },
   "tool-options": { name: "道具の設定", what: "持っている道具の設定とひと言の説明" },
   "page-nav": {
     name: "ページの見せ方",
@@ -850,8 +876,8 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
   },
   {
     target: "#dock-right",
-    name: "右の欄（詳細・相談）",
-    text: "選んだもの（ページ・コマ・セリフ・付箋・シーン）の設定（複数ならまとめて）と、AI に相談",
+    name: "右の欄（詳細・相談・作画）",
+    text: "選んだもの（ページ・コマ・セリフ・付箋・シーン）の設定（複数ならまとめて）と、AI に相談・背景を頼む",
     side: "inside",
   },
   { target: "#help-bar", name: "ヘルプの帯", text: "ポインターの下の名前と操作。設定 › 表示で隠せる", side: "above" },

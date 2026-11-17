@@ -20,8 +20,17 @@ pub fn claude_allowed_tools() -> String {
     format!("Read,Glob,Grep,Bash(node {SKILL_COMMAND}:*)")
 }
 
+/// 背景を頼む: Claude Code may also run commands (Blender, Python), and
+/// writes files where `--permission-mode acceptEdits` lets it: its folder
+/// and the background folder (`--add-dir`); a write elsewhere would need
+/// asking, which print mode turns away.
+pub fn claude_drawing_tools() -> String {
+    format!("{},Bash", claude_allowed_tools())
+}
+
 /// The arguments for a turn with Claude Code (print mode, events as JSON lines).
 pub fn claude_args(turn: &AiTurn) -> Vec<String> {
+    let work = turn.work.as_deref().filter(|work| !work.is_empty());
     let mut args: Vec<String> = [
         "-p",
         "--output-format",
@@ -29,15 +38,30 @@ pub fn claude_args(turn: &AiTurn) -> Vec<String> {
         "--verbose",
         "--include-partial-messages",
         "--permission-mode",
-        "default",
-        "--allowedTools",
     ]
     .iter()
     .map(|arg| (*arg).to_owned())
     .collect();
-    args.push(claude_allowed_tools());
+    args.push(if work.is_some() { "acceptEdits" } else { "default" }.to_owned());
+    args.push("--allowedTools".to_owned());
+    args.push(if work.is_some() {
+        claude_drawing_tools()
+    } else {
+        claude_allowed_tools()
+    });
     args.push("--disallowedTools".to_owned());
-    args.push("Write,Edit,NotebookEdit,WebFetch,WebSearch".to_owned());
+    args.push(
+        if work.is_some() {
+            "NotebookEdit,WebFetch,WebSearch"
+        } else {
+            "Write,Edit,NotebookEdit,WebFetch,WebSearch"
+        }
+        .to_owned(),
+    );
+    if let Some(work) = work {
+        args.push("--add-dir".to_owned());
+        args.push(work.to_owned());
+    }
     args.push("--append-system-prompt-file".to_owned());
     args.push(Path::new(&turn.dir).join("SYSTEM.md").display().to_string());
     if let Some(id) = turn.resume.as_deref().filter(|id| !id.is_empty()) {
@@ -82,18 +106,38 @@ fn windows_sandbox(turn: &AiTurn) -> Option<&str> {
     }
 }
 
+/// 背景を頼む: Codex writes in its folder and the background folder (and runs commands in its sandbox).
+fn codex_writable(turn: &AiTurn) -> Option<String> {
+    // A TOML literal string: no quote or line break may end it early.
+    let work = turn
+        .work
+        .as_deref()
+        .filter(|work| !work.is_empty() && !work.contains(['\'', '\n', '\r']))?;
+    Some(format!("sandbox_workspace_write.writable_roots=['{work}']"))
+}
+
 pub(super) fn codex_args_on(turn: &AiTurn, windows: bool) -> Vec<String> {
     let mut args: Vec<String> = vec!["exec".to_owned()];
+    let writable = codex_writable(turn);
+    let mode = if writable.is_some() {
+        "workspace-write"
+    } else {
+        "read-only"
+    };
     if let Some(id) = turn.resume.as_deref().filter(|id| !id.is_empty()) {
         args.push("resume".to_owned());
         args.push(id.to_owned());
         args.push("-c".to_owned());
-        args.push("sandbox_mode=read-only".to_owned());
+        args.push(format!("sandbox_mode={mode}"));
     } else {
         args.push("--sandbox".to_owned());
-        args.push("read-only".to_owned());
+        args.push(mode.to_owned());
         args.push("--cd".to_owned());
         args.push(turn.dir.clone());
+    }
+    if let Some(writable) = writable {
+        args.push("-c".to_owned());
+        args.push(writable);
     }
     if let Some(effort) = effort_of(turn) {
         args.push("-c".to_owned());

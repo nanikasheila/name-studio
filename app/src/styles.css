@@ -679,6 +679,9 @@ dialog.brush-editor { width: min(980px, calc(100vw - 32px)); height: min(760px, 
 .mark-bar.off { display: none; }
 .fill-bar { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .fill-bar.off { display: none; }
+.background-bar { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.background-bar.off { display: none; }
+.background-bar input[type="text"] { width: 11em; font: inherit; padding: 3px 4px; }
 .fill-bar .size { display: flex; align-items: center; gap: 3px; color: var(--muted); }
 .fill-bar .size input { width: 4em; font: inherit; padding: 3px 4px; }
 .fill-bar select { font: inherit; padding: 3px 4px; }
@@ -1627,6 +1630,31 @@ dialog.perf-dialog { width: min(720px, 92vw); }
 .assist-ops .problem { margin: 2px 0; color: var(--danger); }
 .assist-ops .assist-row { margin-top: 6px; }
 .assist-ops.trying { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
+/* 作画: asking an AI for backgrounds, its conversation, and each panel's takes. */
+.drawing { flex: 1 1 auto; display: flex; flex-direction: column; gap: 8px; min-height: 0; padding: 8px; box-sizing: border-box; line-height: 1.6; overflow-y: auto; }
+.drawing > * { flex: none; }
+.drawing textarea { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; }
+.drawing-allow { align-items: flex-start; font-size: calc(12 * var(--px)); line-height: 1.5; }
+.drawing-folder { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: calc(12 * var(--px)); color: var(--muted); }
+.drawing-folder > span { flex: 1 1 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drawing > .drawing-log { max-height: calc(260 * var(--px)); }
+.drawing-log[hidden], .drawing-say[hidden] { display: none; }
+.drawing-say textarea { flex: 1 1 10em; width: auto; }
+.drawing-panels { display: flex; flex-direction: column; gap: 6px; }
+.drawing-panel { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.drawing-panel.adopted { border-left: 3px solid var(--accent); }
+.drawing-panel-head { display: flex; align-items: center; gap: 6px; }
+.drawing-panel-name { padding: 0; border: none; background: none; color: inherit; font-weight: 600; cursor: pointer; }
+.drawing-panel-name:hover { text-decoration: underline; }
+.drawing-status { margin-left: auto; color: var(--muted); font-size: calc(11 * var(--px)); }
+.drawing-instructions { display: flex; flex-direction: column; gap: 4px; }
+.drawing-takes { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 2px; }
+.drawing-take { flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--band); color: inherit; cursor: pointer; font-size: calc(11 * var(--px)); }
+.drawing-take img { width: 72px; height: 54px; object-fit: contain; background: #fff; }
+.drawing-take.chosen { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.drawing-take.adopted span::after { content: " ✓"; color: var(--accent); }
+.drawing-note { margin: 0; font-size: calc(11 * var(--px)); }
+.drawing-revise { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
 /* 変更の案を画面で見る: the bar over the pages while a 案 is on the name to look at. */
 .assist-trial {
   position: absolute; top: 10px; left: 12px; right: 12px; margin-inline: auto; width: max-content; z-index: 5; max-width: calc(100% - 24px); box-sizing: border-box;

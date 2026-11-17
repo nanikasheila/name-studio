@@ -50,6 +50,8 @@ import {
 import { decodePicture } from "../render/pictures";
 import { onPageOnly } from "../domain/aside";
 import { imageOf, isNamePicture, writtenOpacity } from "../domain/references";
+import { isBackground } from "../domain/background";
+import { drawPicture } from "../render/backgrounds";
 import { balloonLineMm, linePitch, lineSpacing, useStyle } from "../domain/style";
 import type { ReadUnit } from "../domain/readback";
 
@@ -349,10 +351,14 @@ export const REFERENCE_LAYER_NAME = "資料（ネーム）";
 /** 取り込んだネーム画像: the name drawn elsewhere, taken in from a picture, under the name's own lines. */
 export const NAME_PICTURE_LAYER_NAME = "ネーム画像";
 
-/** The picture layers, bottom first: 資料 under the pictures of the name. */
+/** 背景: the panels' backgrounds, each cut to its panel, one layer (a plain one: it may go to print). */
+export const BACKGROUND_LAYER_NAME = "背景（ネーム）";
+
+/** The picture layers, bottom first: 資料, the backgrounds, the pictures of the name; 資料 and the name 下描き layers. */
 const PICTURE_LAYERS = [
-  { name: REFERENCE_LAYER_NAME, takes: (reference: ReferenceImage) => !isNamePicture(reference) },
-  { name: NAME_PICTURE_LAYER_NAME, takes: isNamePicture },
+  { name: REFERENCE_LAYER_NAME, takes: (reference: ReferenceImage) => !isNamePicture(reference) && !isBackground(reference), draft: true },
+  { name: BACKGROUND_LAYER_NAME, takes: isBackground, draft: false },
+  { name: NAME_PICTURE_LAYER_NAME, takes: isNamePicture, draft: true },
 ];
 const NOTE_TEXT_MM = 3;
 
@@ -680,8 +686,11 @@ export async function exportToCsp(
   const pictureLayers = PICTURE_LAYERS.filter(({ takes }) =>
     project.pages.some((page) => onPageOnly(page, project.pageFormat).references?.some(takes)),
   );
-  if (pictureLayers.length)
-    request = { ...request, draftLayers: [...(request.draftLayers ?? []), ...pictureLayers.map(({ name }) => name)] };
+  if (pictureLayers.some(({ draft }) => draft))
+    request = {
+      ...request,
+      draftLayers: [...(request.draftLayers ?? []), ...pictureLayers.filter(({ draft }) => draft).map(({ name }) => name)],
+    };
   // ラフ線のレイヤー: each its own CSP layer (one layer: ラフ線 and はみ出し（ラフ線）, as always).
   const roughSet = roughLayersOf(project);
   const roughNames = layerNames(project);
@@ -977,12 +986,8 @@ function drawReferences(
 ): void {
   for (const reference of page.references ?? []) {
     const picture = takes(reference) ? pictures.get(reference.image) : undefined;
-    if (!picture) continue;
-    const [x0, y0, x1, y1] = reference.box;
-    ctx.globalAlpha = writtenOpacity(reference);
-    ctx.drawImage(picture, m.x + x0 * m.scale, m.y + y0 * m.scale, (x1 - x0) * m.scale, (y1 - y0) * m.scale);
+    if (picture) drawPicture(ctx, page, reference, picture, m, writtenOpacity(reference));
   }
-  ctx.globalAlpha = 1;
 }
 
 export interface DialogueUpdateSummary {
