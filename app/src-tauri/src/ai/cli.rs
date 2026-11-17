@@ -61,6 +61,10 @@ pub fn claude_args(turn: &AiTurn) -> Vec<String> {
     if let Some(work) = work {
         args.push("--add-dir".to_owned());
         args.push(work.to_owned());
+        if let Some(assets) = assets_of(turn) {
+            args.push("--add-dir".to_owned());
+            args.push(assets.to_owned());
+        }
     }
     args.push("--append-system-prompt-file".to_owned());
     args.push(Path::new(&turn.dir).join("SYSTEM.md").display().to_string());
@@ -106,14 +110,22 @@ fn windows_sandbox(turn: &AiTurn) -> Option<&str> {
     }
 }
 
-/// 背景を頼む: Codex writes in its folder and the background folder (and runs commands in its sandbox).
+/// 背景の素材: the folder of places and things kept for reuse, with a background request only.
+fn assets_of(turn: &AiTurn) -> Option<&str> {
+    turn.work.as_deref().filter(|work| !work.is_empty())?;
+    turn.assets.as_deref().filter(|assets| !assets.is_empty())
+}
+
+/// 背景を頼む: Codex writes in its folder, the background folder and the folder of 素材 (and runs commands in its sandbox).
 fn codex_writable(turn: &AiTurn) -> Option<String> {
     // A TOML literal string: no quote or line break may end it early.
-    let work = turn
-        .work
-        .as_deref()
-        .filter(|work| !work.is_empty() && !work.contains(['\'', '\n', '\r']))?;
-    Some(format!("sandbox_workspace_write.writable_roots=['{work}']"))
+    let fits = |dir: &&str| !dir.is_empty() && !dir.contains(['\'', '\n', '\r']);
+    let work = turn.work.as_deref().filter(fits)?;
+    let roots = match assets_of(turn).filter(fits) {
+        Some(assets) => format!("'{work}','{assets}'"),
+        None => format!("'{work}'"),
+    };
+    Some(format!("sandbox_workspace_write.writable_roots=[{roots}]"))
 }
 
 pub(super) fn codex_args_on(turn: &AiTurn, windows: bool) -> Vec<String> {

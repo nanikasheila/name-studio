@@ -148,6 +148,10 @@ pub struct AiTurn {
     /// write and run commands; none: the turn only reads.
     #[serde(default)]
     pub work: Option<String>,
+    /// 背景の素材: the folder of places and things kept for reuse (the work's
+    /// too: the turn may read them and add what it makes); none: no such folder.
+    #[serde(default)]
+    pub assets: Option<String>,
 }
 
 /// A turn's folder and pictures as this side made them: the folder one of the
@@ -178,6 +182,11 @@ pub async fn ai_turn(app: AppHandle, turn: AiTurn) -> Result<u64, String> {
     check_turn(&sessions_root(&app)?, &turn)?;
     if let Some(work) = turn.work.as_deref() {
         background::held_folder(&app.state::<Chosen>(), work)?;
+        if let Some(assets) = turn.assets.as_deref().filter(|assets| !assets.is_empty()) {
+            background::held_folder(&app.state::<Chosen>(), assets)?;
+        }
+    } else if turn.assets.as_deref().is_some_and(|assets| !assets.is_empty()) {
+        return Err("素材のフォルダーは背景を頼むときだけ使えます".to_owned());
     }
     if turn.kind == AiKind::Local {
         let stop = Arc::new(AtomicBool::new(false));

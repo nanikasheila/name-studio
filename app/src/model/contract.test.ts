@@ -67,10 +67,19 @@ function fullPage(id: string): Full<Project["pages"][number]> {
             [98, 58],
           ],
           vanishing: [[140, 59]],
+          perspective: 1,
+          place: "叔母の家の居間",
+          guides: [
+            [
+              [30, 80],
+              [70, 70],
+            ],
+          ],
           objects: [
             {
               id: `${id}-object1`,
               label: "ソファ",
+              asset: "ソファ（青）",
               shape: [
                 [20, 50],
                 [60, 50],
@@ -331,7 +340,7 @@ export const FULL_PROJECT: Full<Project> = {
     { id: "rough", name: "ラフ線", hidden: false, opacity: 1, locked: false, marks: false, color: "#e53935" },
     { id: "rough2", name: "人物", hidden: true, opacity: 0.5, locked: true, marks: true, color: "#1e6fd9" },
   ],
-  backgrounds: { brief: "ライト建築風の家と黒い EV バン", folder: "第1話_背景" },
+  backgrounds: { brief: "ライト建築風の家と黒い EV バン", folder: "第1話_背景", assets: "../背景素材" },
   series: "../作品.nameseries",
   nextId: 42,
 };

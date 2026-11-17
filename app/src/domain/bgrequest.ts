@@ -6,7 +6,9 @@
 // a camera for each panel matched to the rough, lines and tones rendered and
 // laid together). Pure.
 import { bounds } from "../model/geometry";
+import { ASSETS_FILE, type BackgroundAsset, assetsSection, panelAssetWords } from "./bgassets";
 import { cameraFit, cameraWords } from "./bgcamera";
+import { rulerOf, rulerWords } from "./bgruler";
 import type { BoxMm, Page, Panel, Point, Project } from "../model/model";
 import {
   BACKGROUND_BLEED_MM,
@@ -45,6 +47,8 @@ export interface BackgroundRequest {
   folder: string;
   /** Blender's program, when this computer has it. */
   blender: string | null;
+  /** 素材: the folder of places and things kept for reuse and what it lists (none: no such folder). */
+  assets?: { folder: string; list: BackgroundAsset[] };
 }
 
 /** 20261117-0530 (local time). */
@@ -84,16 +88,22 @@ export function instructionWords(panel: Panel): string[] {
   const out: string[] = [];
   if (bg.none) out.push("背景なし（このコマは描かなくてよい）");
   if (bg.brief?.trim()) out.push(`背景の指示: ${bg.brief.trim().replace(/\s*\n\s*/g, " / ")}`);
-  if (bg.camera) out.push(`カメラ: ${CAMERA_LABELS[bg.camera]}`);
-  if (bg.horizon) {
-    const [a, b] = horizonAcross(panel, bg.horizon);
+  const ruler = rulerOf(panel);
+  // With a ruler the camera comes from its points (below).
+  if (bg.camera && !ruler.vanishing.length) out.push(`カメラ: ${CAMERA_LABELS[bg.camera]}`);
+  const kind = rulerWords(ruler);
+  if (kind) out.push(kind);
+  if (ruler.horizon) {
+    const [a, b] = horizonAcross(panel, ruler.horizon);
     const [, y0, , y1] = bounds(panel.shape);
     const tilt = Math.abs(a[1] - b[1]) > 0.5 ? `、傾き 左 ${mm(a[1])} → 右 ${mm(b[1])}mm` : "";
     out.push(
       `アイレベル（地平線・カメラの高さ）: y = ${mm((a[1] + b[1]) / 2)}mm（コマの上から ${percent((a[1] + b[1]) / 2 - y0, y1 - y0)}${tilt}）`,
     );
   }
-  (bg.vanishing ?? []).forEach((point, i) => out.push(`消失点 ${i + 1}: ${at(point)}mm、${placeFrom(panel, point)}`));
+  ruler.vanishing.forEach((point, i) =>
+    out.push(`消失点 ${i + 1}${i === 2 ? "（縦の線）" : ""}: ${at(point)}mm、${placeFrom(panel, point)}`),
+  );
   for (const object of bg.objects ?? []) {
     out.push(`物「${object.label}」: ${boxWords(bounds(object.shape))}mm の範囲（${placeFrom(panel, centre(object.shape))}）`);
   }
@@ -137,6 +147,8 @@ export function requestBrief(project: Project, request: BackgroundRequest, takes
     "",
     "## 決まり",
     "",
+    "- これはネームの背景の**あたり（モック）**です。短い時間で、構図・パース・場の大きさが分かることを優先する。細かいモデルや仕上げは要らない（作画は作者がする）。",
+    "- 場所や物は箱・板・円柱など簡単な形の組み合わせで作る（車なら車体の箱＋タイヤ、机なら天板＋脚くらい）。窓・ドアなど構図に効く所だけ形を付ける。",
     "- 描くのは背景だけ。人物は描かない（人物が立つ所はそのまま空けてよい）。",
     "- ネームの写し（.namestudio）や作業フォルダーの外のファイルは書き換えない。前に作った案も消さない・上書きしない。",
     "- 構図はコマの絵（ラフ）に合わせる。ラフの人物の大きさ・向き・床や壁の線、アイレベル・消失点の指示があればそれを優先する。",
@@ -145,16 +157,16 @@ export function requestBrief(project: Project, request: BackgroundRequest, takes
     "",
     "## 渡すもの",
     "",
-    `- \`${dir}/<コマの id>.png\`: 描く範囲（下の「紙面の範囲」）そのままの絵。ラフ・セリフ＝黒、コマ枠＝青、背景の指示＝緑（アイレベル・消失点へ向かう線）と橙（物の範囲と名前）。`,
+    `- \`${dir}/<コマの id>.png\`: 描く範囲（下の「紙面の範囲」）そのままの絵。ラフ・セリフ＝黒、コマ枠＝青、背景の指示＝緑の破線（アイレベル）、赤・青・紫（X・Y・Z の線と、それぞれの消失点へ向かう細い線。X と Y はアイレベルの上の消失点 1・2、Z は縦の線が集まる消失点 3）と橙（物の範囲と名前）。`,
     `- \`${dir}/pNNN.png\`: そのコマのあるページ全体（前後の流れを見るため）。`,
     `- 座標は紙面の mm（用紙 ${mm(w)}×${mm(h)}mm の左上が原点、右が x、下が y）。`,
     "",
     "## おすすめの作り方（前にうまくいった手順）",
     "",
-    "1. 場所ごとに 3D モデルを Python のスクリプトで作る（Blender があれば bpy で）。スクリプトは `3d/scripts/`、モデルは `3d/*.blend` に残して、ほかのコマや次の依頼でも使う。",
+    "1. 場所ごとに簡単な 3D モデル（箱・板の組み合わせ）を Python のスクリプトで作る（Blender があれば bpy で）。スクリプトは `3d/scripts/`、モデルは `3d/*.blend` に残して、ほかのコマや次の依頼でも使う。",
     "2. コマごとのカメラ（位置・注視点・レンズ）を表にして（例 `3d/scripts/shots.py`）、ラフの見え方に合わせる。アイレベル・消失点の指示があるコマは、下の「カメラ（計算済み）」をそのまま使う（レンズ・シフト・見下ろしの角度は指示から計算してある。カメラの高さはアイレベルの高さ、物の向きは「カメラの向きから何°」に合わせる）。",
-    "3. 描き出す前に確かめる: 指示のあるコマは、Blender で水平な方向の無限遠の点（カメラの位置＋水平な向き×10⁶）と物の辺の向きを `bpy_extras.object_utils.world_to_camera_view` で画像に投影し、アイレベルの行と消失点が「画像の中の…」の px と画像の幅の 1% 以内で合うか確かめる。合わなければカメラを直す。合ったら、測った値（例: アイレベル 812px（指示 815）・消失点1 (2410, 812)（指示 (2400, 815)））を背景.json の note に書く。ラフと重ねた確認の絵も作って見比べる。",
-    "4. 漫画の背景として描き出す: 線画（黒い線・透明地。Blender なら Freestyle）、トーン（面ごとのグレー。黒いベタの上の線は白抜き）、外なら影。白地に重ねたものを完成にする。",
+    "3. 描き出す前に確かめる: 指示のあるコマは、Blender で水平な方向の無限遠の点（カメラの位置＋水平な向き×10⁶。3点透視なら真下・真上の無限遠の点も）と物の辺の向きを `bpy_extras.object_utils.world_to_camera_view` で画像に投影し、アイレベルの行と消失点が「画像の中の…」の px と画像の幅の 1% 以内で合うか確かめる。合わなければカメラを直す。合ったら、測った値（例: アイレベル 812px（指示 815）・消失点1 (2410, 812)（指示 (2400, 815)））を背景.json の note に書く。ラフと重ねた確認の絵も作って見比べる。",
+    "4. 漫画の背景のあたりとして描き出す: 線画（黒い線・透明地。Blender なら Freestyle）とトーン（面ごとのグレー）くらいで十分。影は外で構図に効くときだけ。白地に重ねたものを完成にする。",
     "5. Blender がなければ、Python（PIL など）で透視図法で描いてもよい。",
     "6. 作り方と、コマとカメラの対応を作業フォルダーの `使い方.md` に書き足しておく（次に直す人のため）。",
     "",
@@ -175,6 +187,7 @@ export function requestBrief(project: Project, request: BackgroundRequest, takes
   ];
   const world = project.backgrounds?.brief?.trim();
   if (world) out.push("", "## 世界の設定", "", world);
+  if (request.assets) out.push("", ...assetsSection(request.assets.folder, request.assets.list));
   if (request.note.trim()) out.push("", "## 今回の注文", "", request.note.trim());
   out.push("", "## コマ");
   for (const target of request.targets) {
@@ -199,6 +212,7 @@ export function requestBrief(project: Project, request: BackgroundRequest, takes
     if (said.length) out.push(`- セリフ: ${said.join(" ")}`);
     if (page.memo.trim()) out.push(`- ページのメモ: ${page.memo.trim().replace(/\s*\n\s*/g, " / ")}`);
     for (const line of instructionWords(panel)) out.push(`- ${line}`);
+    for (const line of panelAssetWords(panel, request.assets?.list ?? [])) out.push(`- ${line}`);
     const fit = cameraFit(panel, box, request.dpi);
     if (fit) for (const line of cameraWords(fit)) out.push(`- ${line}`);
     if (target.revise) {
@@ -225,17 +239,18 @@ export function requestPrompt(project: Project, request: BackgroundRequest): str
   return [
     `背景を描いてください: ${requestSummary(project, request.targets)}。`,
     `作業フォルダー \`${request.folder}\` の \`${requestDir(request.stamp)}/${REQUEST_FILE}\` に、コマごとの範囲・画像の大きさ・指示・描いたものの置き方があります。それを読み、同じフォルダーの絵を見て描いてください。`,
-    `描いたら \`${MANIFEST_FILE}\` に足し、コマごとに何を描いたかを短く答えてください（この相談では作業フォルダーの中にだけ書けます）。`,
+    `描いたら \`${MANIFEST_FILE}\` に足し、コマごとに何を描いたかを短く答えてください（この相談では作業フォルダー${request.assets ? `と素材のフォルダー \`${request.assets.folder}\`` : ""}の中にだけ書けます）。`,
   ].join("\n");
 }
 
 /** What the AI drawing backgrounds is told once (its SYSTEM.md, CLAUDE.md and AGENTS.md). */
-export function drawingInstructions(folder: string): string {
+export function drawingInstructions(folder: string, assets?: string): string {
   return `あなたは漫画の背景を描くアシスタントです。作者は Name Studio というアプリでネーム（絵コンテ）を作っていて、コマの背景を頼んでいます。日本語で、短く答えてください。
 
-- 作業フォルダーは \`${folder}\` です。書いてよいのはこの中だけです（ネームのファイル・ほかのフォルダーは読むだけ）。
+- 作業フォルダーは \`${folder}\` です。書いてよいのはこの中だけです${assets ? `（と、素材のフォルダー \`${assets}\` に新しい素材を足すこと）` : ""}（ネームのファイル・ほかのフォルダーは読むだけ）。${assets ? `\n- 素材のフォルダーの ${ASSETS_FILE} にある場所・物は作り直さずに読み込んで使います。素材のファイルは書き換えません。` : ""}
 - 頼まれるたびに \`${REQUEST_DIR}/<日時>/${REQUEST_FILE}\` を読み、その決まりのとおりに描いて \`${TAKES_DIR}/\` と \`${MANIFEST_FILE}\` に置きます。
 - 前に作った 3D モデル・スクリプト・使い方.md があれば使い回し、作り方を変えたら使い方.md に書き足します。
+- 描くのはネームの背景のあたり（モック）です。細かく作り込まず、簡単な形で短い時間で、構図・パース・場の大きさが分かるものにします。
 - 時間のかかる描き出しは、まず小さく（低い dpi で）試して構図を確かめてから、決まった大きさで描きます。
 - 分からないこと・仮に決めたことは、答えにはっきり書きます。作者はコマごとに採用・修正・頼み直しを選びます。`;
 }

@@ -47,7 +47,18 @@ import {
   variantOf,
   type BackgroundTake,
   type Variant,
+  renameObject,
 } from "../domain/background";
+import {
+  PERSPECTIVES,
+  PERSPECTIVE_LABELS,
+  PERSPECTIVE_TITLES,
+  type Perspective,
+  perspectiveOf,
+  rulerOf,
+  rulerWords,
+  setPerspective,
+} from "../domain/bgruler";
 import {
   REQUEST_FILE,
   drawingInstructions,
@@ -59,6 +70,8 @@ import {
   type BackgroundTarget,
 } from "../domain/bgrequest";
 import { BACKGROUND_DPI } from "../domain/background";
+import { assetNamed, chooseAsset, objectAsset } from "../domain/bgassets";
+import { DrawAssets } from "./drawassets";
 import type { BackgroundCamera, BackgroundSettings, Page, Panel, Project, RoughImage } from "../model/model";
 import { readImage } from "../render/pictures";
 import { requestPictures } from "../service/bgpictures";
@@ -158,9 +171,19 @@ export class DrawPanel {
   private startedAt = 0;
   private ticking: ReturnType<typeof setInterval> | null = null;
   private loadedFor = "";
+  /** The folder of 素材 the conversation was told of (it may write there too). */
+  private assetsFolder: string | null = null;
+  private readonly assets: DrawAssets;
 
   constructor(private readonly host: DrawHost) {
     void onAiEvent((event) => this.hear(event)).catch(() => {});
+    this.assets = new DrawAssets({
+      project: () => host.project(),
+      path: () => host.path(),
+      edit: (change) => host.edit(change),
+      status: (message) => host.status(message),
+      changed: () => this.renderPanels(),
+    });
   }
 
   private save(change: Partial<DrawSettings>): void {
@@ -180,13 +203,17 @@ export class DrawPanel {
     const project = this.host.project();
     // Another name: its own folder and takes.
     const name = this.host.path() ?? "";
-    if (project && this.loadedFor !== `${name}|${project.backgrounds?.folder ?? ""}`) {
-      this.loadedFor = `${name}|${project.backgrounds?.folder ?? ""}`;
+    const key = `${name}|${project?.backgrounds?.folder ?? ""}|${project?.backgrounds?.assets ?? ""}`;
+    if (project && this.loadedFor !== key) {
+      this.loadedFor = key;
       this.folder = null;
       this.takes = [];
       this.thumbs.clear();
       void this.reload(false);
+      this.assets.forget();
+      void this.assets.load(false);
     }
+    this.assets.render();
     this.renderForm();
     this.renderState();
     this.renderLog();
@@ -292,6 +319,8 @@ export class DrawPanel {
       ),
       element("div", { class: "drawing-folder" }, element("span", { "data-part": "folder" }), pick, show, reload),
       world,
+      this.assets.view(),
+      element("datalist", { id: "drawing-places" }),
       element("div", { class: "assist-row" }, scope, element("span", { class: "hint", "data-part": "count" })),
       note,
       element("div", { class: "assist-actions" }, send, stop),
@@ -511,6 +540,8 @@ export class DrawPanel {
     const problems = this.part("problems");
     problems.hidden = !this.problems.length;
     problems.textContent = this.problems.join(" / ");
+    const places = this.built.querySelector<HTMLDataListElement>("#drawing-places");
+    places?.replaceChildren(...this.assets.names("place").map((value) => element("option", { value })));
     const project = this.host.project();
     if (!project) return box.replaceChildren();
     const numbers = this.allPages ? project.pages.map((_, i) => i + 1) : this.host.currentPages().sort((a, b) => a - b);
@@ -637,19 +668,93 @@ export class DrawPanel {
         if (found) setBackground(found.panel, next);
       });
     brief.addEventListener("change", () => change({ brief: brief.value.trim() }));
-    const camera = element("select", { "aria-label": "カメラ", title: "カメラの高さ" });
+    // 場所: a 素材 to take place in, or a name for the AI to make (and add to the 素材).
+    const place = element("input", {
+      type: "text",
+      class: "drawing-place",
+      list: "drawing-places",
+      "aria-label": "場所",
+      placeholder: "場所（素材）",
+      title: "このコマの場所。素材にある場所を選ぶと AI はそれを使い、ない名前なら作って素材に足します（例: 叔母の家 玄関）",
+    });
+    place.value = bg.place ?? "";
+    place.size = Math.max(10, Math.min(16, place.value.length + 2));
+    place.dataset.listed = String(!!assetNamed(this.assets.list, bg.place));
+    place.addEventListener("keydown", (event) => {
+      event.stopPropagation();
+      if (event.key === "Enter") place.blur();
+    });
+    place.addEventListener("change", () => change({ place: place.value.trim() || undefined }));
+    const ruler = rulerOf(panel);
+    const points = element("select", {
+      "aria-label": "透視",
+      title: "透視の定規（背景の道具 H で消失点・線・アイレベルをドラッグして合わせる）",
+    });
+    for (const n of PERSPECTIVES)
+      points.append(element("option", { value: String(n), title: PERSPECTIVE_TITLES[n] }, n ? `${PERSPECTIVE_LABELS[n]}透視` : "透視なし"));
+    points.value = String(ruler.vanishing.length ? perspectiveOf(bg) : 0);
+    points.addEventListener("change", () =>
+      this.host.edit((project) => {
+        const found = findPanel(project, panel.id);
+        if (found) setPerspective(found.panel, Number(points.value) as Perspective);
+      }),
+    );
+    // With a ruler the camera comes from its points; without one, in words.
+    const camera = element("select", { "aria-label": "カメラ", title: "カメラの高さ（透視の定規がないとき）" });
     camera.append(element("option", { value: "" }, "カメラ: ラフのまま"));
     for (const [value, label] of Object.entries(CAMERA_LABELS)) camera.append(element("option", { value }, label));
     camera.value = bg.camera ?? "";
     camera.addEventListener("change", () => change({ camera: (camera.value || undefined) as BackgroundCamera | undefined }));
+    const view =
+      ruler.vanishing.length === 3
+        ? rulerWords(ruler)?.includes("見下ろし")
+          ? "見下ろし"
+          : "見上げ"
+        : ruler.vanishing.length
+          ? "水平のカメラ"
+          : "";
     const none = element("input", { type: "checkbox" });
     none.checked = !!bg.none;
     none.addEventListener("change", () => change({ none: none.checked }));
-    const drawn = [
-      bg.horizon ? "アイレベル" : "",
-      bg.vanishing?.length ? `消失点 ${bg.vanishing.length}` : "",
-      ...(bg.objects ?? []).map((one) => `「${one.label}」`),
-    ].filter(Boolean);
+    const drawn = [ruler.horizon && !ruler.vanishing.length ? "アイレベル" : "", view].filter(Boolean);
+    // The things placed with 物, each named here too.
+    const things = (bg.objects ?? []).map((object) => {
+      const name = element("input", {
+        type: "text",
+        class: "drawing-object",
+        "aria-label": "物の名前",
+        title: "物の名前（背景の道具の「物」で動かす・大きさを変える）",
+      });
+      name.value = object.label;
+      name.size = Math.max(4, Math.min(14, object.label.length + 1));
+      name.addEventListener("keydown", (event) => {
+        event.stopPropagation();
+        if (event.key === "Enter") name.blur();
+      });
+      name.addEventListener("change", () =>
+        this.host.edit((project) => {
+          const found = findPanel(project, panel.id);
+          if (found) renameObject(found.panel, object.id, name.value);
+        }),
+      );
+      const things = this.assets.names("thing");
+      if (!things.length && !object.asset) return name;
+      // Its 素材: chosen, else the one its name begins with.
+      const asset = element("select", { "aria-label": "物の素材", title: "この物に使う素材（素材の一覧から）" });
+      const guessed = objectAsset(this.assets.list, { ...object, asset: undefined });
+      asset.append(element("option", { value: "" }, guessed ? `素材: ${guessed.name}（名前から）` : "素材なし"));
+      for (const thing of things) asset.append(element("option", { value: thing }, thing));
+      if (object.asset && !things.includes(object.asset))
+        asset.append(element("option", { value: object.asset }, `${object.asset}（一覧にない）`));
+      asset.value = object.asset ?? "";
+      asset.addEventListener("change", () =>
+        this.host.edit((project) => {
+          const found = findPanel(project, panel.id);
+          if (found) chooseAsset(found.panel, object.id, asset.value || undefined);
+        }),
+      );
+      return element("span", { class: "drawing-object-asset" }, name, asset);
+    });
     return element(
       "div",
       { class: "drawing-instructions" },
@@ -657,10 +762,15 @@ export class DrawPanel {
       element(
         "div",
         { class: "assist-row" },
-        camera,
+        place,
+        points,
+        ...(ruler.vanishing.length ? [] : [camera]),
         element("label", { class: "check", title: "人物のアップ・効果など、背景を描かないコマ" }, none, " 背景なし"),
         element("span", { class: "hint", title: "背景の道具（H）で描いた指示" }, drawn.length ? drawn.join("・") : ""),
       ),
+      ...(things.length
+        ? [element("div", { class: "assist-row drawing-objects" }, element("span", { class: "hint" }, "物"), ...things)]
+        : []),
     );
   }
 
@@ -755,7 +865,7 @@ export class DrawPanel {
 
   // --- asking ------------------------------------------------------------------------------------
 
-  private turnBase(prompt: string, folder: string) {
+  private turnBase(prompt: string, folder: string, assets: string | null) {
     const assist = readAssistSettings(readJson("namestudio.assist", null));
     const kind = this.settings.kind;
     return {
@@ -771,12 +881,13 @@ export class DrawPanel {
       endpoint: null,
       messages: [],
       work: folder,
+      assets,
     };
   }
 
   /** The conversation's folder, with what the AI is told once. */
-  private async prepare(folder: string): Promise<void> {
-    const text = drawingInstructions(folder);
+  private async prepare(folder: string, assets: string | null): Promise<void> {
+    const text = drawingInstructions(folder, assets ?? undefined);
     const files: SessionFile[] = ["SYSTEM.md", "CLAUDE.md", "AGENTS.md"].map((path) => ({ path, text }));
     this.dir = await call("ai_prepare_session", { dir: this.dir, files }).catch((error) => {
       if (!this.dir) throw error;
@@ -802,9 +913,19 @@ export class DrawPanel {
     try {
       const folder = await this.ensureFolder();
       await this.reload(false);
+      await this.assets.load(false);
+      const assets = this.assets.folder;
       const blender = await call("bg_blender").catch(() => null);
       const stamp = requestStamp(new Date());
-      const request = { stamp, targets, note, dpi: BACKGROUND_DPI, folder, blender };
+      const request = {
+        stamp,
+        targets,
+        note,
+        dpi: BACKGROUND_DPI,
+        folder,
+        blender,
+        ...(assets ? { assets: { folder: assets, list: this.assets.list } } : {}),
+      };
       this.host.status("依頼と絵を背景のフォルダーに書いています…");
       const files: SessionFile[] = [
         { path: `${requestDir(stamp)}/${REQUEST_FILE}`, text: requestBrief(project, request, this.takes) },
@@ -812,8 +933,10 @@ export class DrawPanel {
       ];
       await call("bg_write", { folder, files });
       if (!this.conversation) this.dir = null;
-      await this.prepare(folder);
-      const run = await call("ai_turn", { turn: this.turnBase(requestPrompt(project, request), folder) });
+      // Told again each time (SYSTEM.md and the rest), the folder of 素材 too.
+      this.assetsFolder = assets;
+      await this.prepare(folder, assets);
+      const run = await call("ai_turn", { turn: this.turnBase(requestPrompt(project, request), folder, assets) });
       this.conversation ??= new Conversation(this.settings.kind);
       this.conversation.ask(`${requestSummary(project, targets)}を頼みました${note.trim() ? `\n${note.trim()}` : ""}`, run);
       this.startedAt = Date.now();
@@ -834,7 +957,7 @@ export class DrawPanel {
     if (!words || this.running || !this.conversation?.session || !this.dir) return;
     try {
       const folder = await this.ensureFolder();
-      const run = await call("ai_turn", { turn: this.turnBase(words, folder) });
+      const run = await call("ai_turn", { turn: this.turnBase(words, folder, this.assetsFolder) });
       this.conversation.ask(words, run);
       this.startedAt = Date.now();
       this.part<HTMLTextAreaElement>("say").value = "";

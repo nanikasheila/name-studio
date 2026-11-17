@@ -73,6 +73,11 @@ export interface AiTurn {
    * write and run commands; none: the turn only reads.
    */
   work?: string | null;
+  /**
+   * 背景の素材: the folder of places and things kept for reuse (the work's
+   * too: the turn may read them and add what it makes); none: no such folder.
+   */
+  assets?: string | null;
 }
 
 export interface AutosaveResult {
@@ -921,6 +926,8 @@ export interface Commands {
   ai_stop: [{ run: number }, void];
   // ai/background.rs
   bg_folder: [{ name?: string | null; folder?: string | null }, string];
+  bg_assets: [{ name?: string | null; folder?: string | null }, string];
+  bg_models: [{ folder: string }, string[]];
   /** Write a request's files into the background folder. */
   bg_write: [{ folder: string; files: SessionFile[] }, void];
   /** A file of the background folder: its text (`text`) or bytes in base64; none when it is not there. */

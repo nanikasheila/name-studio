@@ -74,7 +74,9 @@ export function backgroundOf(panel: Panel): PanelBackground {
 /** Whether a panel has instructions for its background (words, camera, lines or things). */
 export function hasInstructions(panel: Panel): boolean {
   const bg = panel.background;
-  return !!bg && (!!bg.brief?.trim() || !!bg.camera || !!bg.horizon || !!bg.vanishing?.length || !!bg.objects?.length);
+  return (
+    !!bg && (!!bg.brief?.trim() || !!bg.place?.trim() || !!bg.camera || !!bg.horizon || !!bg.vanishing?.length || !!bg.objects?.length)
+  );
 }
 
 /** Change a panel's instructions; what is left empty is taken out (and the whole when nothing is left). */
@@ -102,7 +104,7 @@ export function setHorizon(panel: Panel, a: Point, b: Point): void {
   });
 }
 
-/** 消失点: one more (the oldest goes past three). */
+/** 消失点: one more (the oldest goes past three). The 背景 tool places them with the ruler (bgruler.ts). */
 export function addVanishing(panel: Panel, point: Point): void {
   const points = [...(backgroundOf(panel).vanishing ?? []), point];
   setBackground(panel, { vanishing: points.slice(-MAX_VANISHING) });
@@ -115,12 +117,63 @@ export function addObject(project: Project, panel: Panel, label: string, shape: 
   return object;
 }
 
+/** 物 under `point` (the last placed first): a corner within `near` mm (0 top-left, clockwise) to size it, else inside it (−1) to move it. */
+export function objectAt(panel: Panel, point: Point, near: number): { object: BackgroundObject; corner: number } | null {
+  for (const object of [...(backgroundOf(panel).objects ?? [])].reverse()) {
+    const corner = boxCorners(object.shape).findIndex(([x, y]) => Math.hypot(x - point[0], y - point[1]) <= near);
+    if (corner >= 0) return { object, corner };
+    if (insidePolygon(object.shape, point) || edgeDistance(object.shape, point) <= near / 2) return { object, corner: -1 };
+  }
+  return null;
+}
+
+/** The corners of a thing's box: top-left, top-right, bottom-right, bottom-left. */
+export function boxCorners(shape: readonly Point[]): Point[] {
+  const [x0, y0, x1, y1] = bounds(shape as Point[]);
+  return [
+    [x0, y0],
+    [x1, y0],
+    [x1, y1],
+    [x0, y1],
+  ];
+}
+
+/** 物 moved by (`dx`, `dy`) from `start` (its outline when the drag began). */
+export function moveObject(object: BackgroundObject, start: readonly Point[], dx: number, dy: number): void {
+  object.shape = start.map(([x, y]) => [tenth(x + dx), tenth(y + dy)]);
+}
+
+/** 物 sized by dragging its `corner` to `to` (the opposite corner stays); its box from `start`. */
+export function sizeObject(object: BackgroundObject, start: readonly Point[], corner: number, to: Point): void {
+  const corners = boxCorners(start);
+  const [fx, fy] = corners[(corner + 2) % 4];
+  const [x0, x1] = [Math.min(fx, to[0]), Math.max(fx, to[0])];
+  const [y0, y1] = [Math.min(fy, to[1]), Math.max(fy, to[1])];
+  if (x1 - x0 < 1 || y1 - y0 < 1) return;
+  object.shape = [
+    [x0, y0],
+    [x1, y0],
+    [x1, y1],
+    [x0, y1],
+  ].map(([x, y]) => [tenth(x), tenth(y)]);
+}
+
+/** 物 named anew (empty: "物"). */
+export function renameObject(panel: Panel, id: string, label: string): boolean {
+  const object = backgroundOf(panel).objects?.find((one) => one.id === id);
+  if (!object) return false;
+  object.label = label.trim() || "物";
+  return true;
+}
+
 /** Take away the instruction nearest `point` (within `near` mm): a thing, a vanishing point or the eye level; what was taken. */
 export function removeInstructionAt(panel: Panel, point: Point, near: number): "object" | "vanishing" | "horizon" | null {
   const bg = backgroundOf(panel);
   const vanishing = (bg.vanishing ?? []).findIndex(([x, y]) => Math.hypot(x - point[0], y - point[1]) <= near);
   if (vanishing >= 0) {
-    setBackground(panel, { vanishing: bg.vanishing!.filter((_, i) => i !== vanishing) });
+    const rest = bg.vanishing!.filter((_, i) => i !== vanishing);
+    // One point fewer: its lines are laid anew.
+    setBackground(panel, { vanishing: rest, perspective: rest.length || undefined, guides: undefined });
     return "vanishing";
   }
   const objects = bg.objects ?? [];
@@ -130,7 +183,8 @@ export function removeInstructionAt(panel: Panel, point: Point, near: number): "
     return "object";
   }
   if (bg.horizon && horizonDistance(panel, bg.horizon, point) <= near) {
-    setBackground(panel, { horizon: undefined });
+    // The eye level holds the ruler: it goes with its points and lines.
+    setBackground(panel, { horizon: undefined, vanishing: undefined, perspective: undefined, guides: undefined });
     return "horizon";
   }
   return null;
