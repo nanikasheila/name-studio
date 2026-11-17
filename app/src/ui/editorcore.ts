@@ -6,6 +6,7 @@
 // share among themselves.
 import type { TailHit, TailPart } from "../editing/hittest";
 import type { Seam } from "../domain/komaedit";
+import type { Ruler, RulerPart } from "../domain/bgruler";
 import type { Slot } from "../editing/layout";
 import type { FillSettings, FillWay } from "../editing/fillsettings";
 import type { Binding, BoxMm, Brush, EraseMode, Page, Panel, Point, Project, RoughImage, Sticky, StrokePoint } from "../model/model";
@@ -208,8 +209,21 @@ export type ToolDrag =
       moved: boolean;
     }
   | { kind: "stickyLink"; slot: Slot; stickyId: string; to: Selection | null }
-  /** 背景の指示: the eye level (a line) or a thing (a box) being drawn in a panel. */
-  | { kind: "bgDrag"; slot: Slot; panelId: string; what: "horizon" | "object"; a: Point; b: Point }
+  /** 背景の指示: the eye level or an X・Y・Z line (a line), or a thing (a box) being drawn in a panel. */
+  | { kind: "bgDrag"; slot: Slot; panelId: string; what: "horizon" | "object" | "line"; a: Point; b: Point }
+  /** 物: a thing moved (corner −1) or sized by a corner, from its outline as it was. */
+  | {
+      kind: "bgObject";
+      slot: Slot;
+      panelId: string;
+      objectId: string;
+      corner: number;
+      start: Point[];
+      from: Point;
+      moved: boolean;
+    }
+  /** 透視の定規: a point, an end of an X・Y・Z line or the eye level being moved (from the ruler as it was). */
+  | { kind: "bgRuler"; slot: Slot; panelId: string; part: RulerPart; start: Ruler; from: Point; moved: boolean }
   | {
       kind: "seam";
       slot: Slot;

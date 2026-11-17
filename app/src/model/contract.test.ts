@@ -67,6 +67,13 @@ function fullPage(id: string): Full<Project["pages"][number]> {
             [98, 58],
           ],
           vanishing: [[140, 59]],
+          perspective: 1,
+          guides: [
+            [
+              [30, 80],
+              [70, 70],
+            ],
+          ],
           objects: [
             {
               id: `${id}-object1`,

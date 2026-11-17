@@ -512,7 +512,7 @@ export class EditorPainter {
     this.drawGuides();
     if (drag && (drag.kind === "cut" || drag.kind === "frame" || drag.kind === "bgDrag")) {
       const b = drag.kind === "cut" && !drag.free ? snapCut(drag.a, drag.b) : drag.b;
-      drawCutOrFrame(ctx, drag.slot, drag.a, b, drag.kind === "cut" || (drag.kind === "bgDrag" && drag.what === "horizon"));
+      drawCutOrFrame(ctx, drag.slot, drag.a, b, drag.kind === "cut" || (drag.kind === "bgDrag" && drag.what !== "object"));
     }
     if (drag?.kind === "fill") drawFillDrag(ctx, drag.slot, drag.points, drag.way, this.scene.fill);
     if ((drag?.kind === "lasso" || drag?.kind === "pick" || drag?.kind === "eraseLasso") && drag.points.length > 1) {

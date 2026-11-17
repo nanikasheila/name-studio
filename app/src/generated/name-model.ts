@@ -383,6 +383,16 @@ horizon?: [[number, number], [number, number]],
  */
 vanishing: Array<[number, number]>, 
 /**
+ * 透視: how many vanishing points the eye level's ruler has (1, 2 or 3);
+ * none: as many as are placed.
+ */
+perspective?: number, 
+/**
+ * XYZ の線: lines along the edges in the panel, each aimed at its
+ * vanishing point (one each for the first two, two for the third).
+ */
+guides: Array<[[number, number], [number, number]]>, 
+/**
  * 物の指示: what stands where, an outline with a name each.
  */
 objects: Array<BackgroundObject>, };

@@ -10,14 +10,18 @@ import {
   boxPixels,
   folderPath,
   hasInstructions,
+  moveObject,
   nextTake,
+  objectAt,
   panelLabel,
   readManifest,
   readSource,
   removeBackground,
   removeInstructionAt,
+  renameObject,
   setBackground,
   setHorizon,
+  sizeObject,
   sourceOf,
   takesFor,
   variantOf,
@@ -118,10 +122,46 @@ describe("背景の指示", () => {
     expect(placeFrom(panel, [80, 100])).toBe("コマの中（左から 25%・上から 25%）");
     expect(instructionWords(panel)).toEqual([
       "背景の指示: 車寄せ / バンが停まっている",
-      "カメラ: 俯瞰",
+      // With a ruler the camera comes from its points, not the words.
+      "透視: 1点透視（カメラは消失点 1 の方向を正面に向く。奥へ向かう水平の線がそこに集まる）",
       "アイレベル（地平線・カメラの高さ）: y = 100mm（コマの上から 25%）",
       "消失点 1: (180, 100)mm、コマの外（右へ 40mm）",
     ]);
+    setBackground(panel, { vanishing: undefined });
+    expect(instructionWords(panel)).toContain("カメラ: 俯瞰");
+  });
+});
+
+describe("物 placed", () => {
+  it("is found by a corner (to size) or inside (to move), moved, sized from the opposite corner and named anew", () => {
+    const project = withPanels();
+    const panel = project.pages[1].panels[0];
+    const van = addObject(project, panel, "バン", [
+      [70, 120],
+      [100, 120],
+      [100, 140],
+      [70, 140],
+    ]);
+    expect(objectAt(panel, [100.5, 140.5], 2)).toEqual({ object: van, corner: 2 });
+    expect(objectAt(panel, [85, 130], 2)).toEqual({ object: van, corner: -1 });
+    expect(objectAt(panel, [60, 100], 2)).toBeNull();
+    const start = van.shape.map(([x, y]) => [x, y] as [number, number]);
+    moveObject(van, start, 5, -10);
+    expect(van.shape[0]).toEqual([75, 110]);
+    sizeObject(van, start, 2, [120, 150]);
+    expect(van.shape).toEqual([
+      [70, 120],
+      [120, 120],
+      [120, 150],
+      [70, 150],
+    ]);
+    // Past the opposite corner: the box turns over and stays a box.
+    sizeObject(van, start, 2, [60, 110]);
+    expect(van.shape[0]).toEqual([60, 110]);
+    expect(renameObject(panel, van.id, " バン 横向き ")).toBe(true);
+    expect(van.label).toBe("バン 横向き");
+    renameObject(panel, van.id, "");
+    expect(van.label).toBe("物");
   });
 });
 

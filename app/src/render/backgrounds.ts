@@ -1,11 +1,12 @@
 // 背景 on the page: a picture laid on it (資料, ネーム画像, a panel's
 // background cut to the panel), and 背景の指示 over the panels — the eye level
-// and the lines to each vanishing point in green, the things named in
-// orange. The screen, the flat pages (読む, PDF, ミニネーム), the CSP layers
+// in green, the X・Y・Z lines and the lines to each vanishing point in red,
+// blue and purple, the things named in orange. The screen, the flat pages (読む, PDF, ミニネーム), the CSP layers
 // and the pictures sent with a request all draw them here.
 import { bounds } from "../model/geometry";
 import type { Page, Panel, ReferenceImage } from "../model/model";
-import { backgroundClip, backgroundOf, horizonAcross, isBackground } from "../domain/background";
+import { backgroundClip, backgroundOf, boxCorners, horizonAcross, isBackground } from "../domain/background";
+import { AXIS_COLORS, GUIDE_AXES, axisOf, rulerOf } from "../domain/bgruler";
 import { tracePath, type MmToPx } from "./pagedraw";
 
 export const GUIDE_GREEN = "#1f9d55";
@@ -69,27 +70,30 @@ const RAYS = 7;
 
 /**
  * 背景の指示 of the panels on `page` (or only `only`): the eye level across
- * the panel, lines to each vanishing point inside it, each thing's outline
- * and name. `px`: how big one screen pixel is in the target (lines and words keep their size).
+ * the panel, the X・Y・Z lines and faint lines to each vanishing point inside
+ * it, the points (an arrow on the panel's edge for one beyond it), each
+ * thing's outline and name. `px`: how big one screen pixel is in the target
+ * (lines and words keep their size).
  */
 export function drawBackgroundGuides(ctx: CanvasRenderingContext2D, page: Page, m: MmToPx, px = 1, only?: Panel): void {
   for (const panel of only ? [only] : page.panels) {
     const bg = backgroundOf(panel);
-    if (!bg.horizon && !bg.vanishing?.length && !bg.objects?.length) continue;
+    const ruler = rulerOf(panel);
+    if (!ruler.horizon && !bg.objects?.length) continue;
     const toPx = ([x, y]: readonly number[]): [number, number] => [m.x + x * m.scale, m.y + y * m.scale];
     ctx.save();
     ctx.lineCap = "round";
     ctx.font = `bold ${12 * px}px sans-serif`;
     ctx.textBaseline = "bottom";
     ctx.textAlign = "left";
-    // Lines to the vanishing points, and the eye level, inside the panel.
+    // Lines to the vanishing points, the X・Y・Z lines and the eye level, inside the panel.
     ctx.save();
     tracePath(ctx, panel.shape, m, true);
     ctx.clip();
-    ctx.strokeStyle = GUIDE_GREEN;
     const [x0, y0, x1, y1] = bounds(panel.shape);
-    for (const point of bg.vanishing ?? []) {
-      ctx.globalAlpha = 0.45;
+    ruler.vanishing.forEach((point, index) => {
+      ctx.strokeStyle = AXIS_COLORS[axisOf(index)];
+      ctx.globalAlpha = 0.35;
       ctx.lineWidth = 1 * px;
       ctx.beginPath();
       const [vx, vy] = toPx(point);
@@ -104,10 +108,11 @@ export function drawBackgroundGuides(ctx: CanvasRenderingContext2D, page: Page, 
         ctx.lineTo(...toPx(far));
       }
       ctx.stroke();
-    }
+    });
     ctx.globalAlpha = 0.9;
-    if (bg.horizon) {
-      const [a, b] = horizonAcross(panel, bg.horizon);
+    if (ruler.horizon) {
+      const [a, b] = horizonAcross(panel, ruler.horizon);
+      ctx.strokeStyle = GUIDE_GREEN;
       ctx.lineWidth = 2 * px;
       ctx.setLineDash([10 * px, 5 * px]);
       ctx.beginPath();
@@ -116,15 +121,39 @@ export function drawBackgroundGuides(ctx: CanvasRenderingContext2D, page: Page, 
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.fillStyle = GUIDE_GREEN;
-      const [lx, ly] = toPx(a);
-      ctx.fillText("アイレベル", lx + 4 * px, ly - 2 * px);
+      // Under the line: a point beyond the panel's side is marked on it, above.
+      const [lx, ly] = toPx(b);
+      const kind = ruler.vanishing.length ? `（${ruler.vanishing.length}点透視）` : "";
+      ctx.textBaseline = "top";
+      ctx.textAlign = "right";
+      ctx.fillText(`アイレベル${kind}`, lx - 4 * px, ly + 3 * px);
+      ctx.textBaseline = "bottom";
+      ctx.textAlign = "left";
     }
     ctx.restore();
+    // The X・Y・Z lines, each with its ends to drag.
+    ruler.guides.forEach((line, k) => {
+      const axis = GUIDE_AXES[k];
+      ctx.strokeStyle = AXIS_COLORS[axis];
+      ctx.fillStyle = AXIS_COLORS[axis];
+      ctx.globalAlpha = 0.95;
+      ctx.lineWidth = 2.5 * px;
+      const [a, b] = [toPx(line[0]), toPx(line[1])];
+      ctx.beginPath();
+      ctx.moveTo(...a);
+      ctx.lineTo(...b);
+      ctx.stroke();
+      const r = 4 * px;
+      for (const [hx, hy] of [a, b]) ctx.fillRect(hx - r, hy - r, r * 2, r * 2);
+      ctx.fillText(axis, a[0] + 6 * px, a[1] - 4 * px);
+    });
     // The vanishing points themselves (often beyond the panel).
-    ctx.strokeStyle = GUIDE_GREEN;
-    ctx.fillStyle = GUIDE_GREEN;
+    ctx.globalAlpha = 0.9;
     ctx.lineWidth = 2 * px;
-    (bg.vanishing ?? []).forEach((point, i) => {
+    ruler.vanishing.forEach((point, i) => {
+      const color = AXIS_COLORS[axisOf(i)];
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
       const [vx, vy] = toPx(point);
       const r = 6 * px;
       ctx.beginPath();
@@ -134,9 +163,9 @@ export function drawBackgroundGuides(ctx: CanvasRenderingContext2D, page: Page, 
       ctx.moveTo(vx, vy - r * 1.8);
       ctx.lineTo(vx, vy + r * 1.8);
       ctx.stroke();
-      ctx.fillText(`消失点${i + 1}`, vx + r + 2 * px, vy - r);
-      if (point[0] < x0 || point[0] > x1 || point[1] < y0 || point[1] > y1)
-        edgeMark(ctx, [x0, y0, x1, y1], point, `消失点${i + 1}`, toPx, px);
+      const label = `消失点${i + 1}（${axisOf(i)}）`;
+      ctx.fillText(label, vx + r + 2 * px, vy - r);
+      if (point[0] < x0 || point[0] > x1 || point[1] < y0 || point[1] > y1) edgeMark(ctx, [x0, y0, x1, y1], point, label, toPx, px);
     });
     // The things, each its outline and name.
     ctx.strokeStyle = GUIDE_ORANGE;
@@ -146,6 +175,12 @@ export function drawBackgroundGuides(ctx: CanvasRenderingContext2D, page: Page, 
       tracePath(ctx, object.shape, m, true);
       ctx.stroke();
       ctx.setLineDash([]);
+      // Its corners, to size it by.
+      const r = 3 * px;
+      for (const corner of boxCorners(object.shape)) {
+        const [hx, hy] = toPx(corner);
+        ctx.fillRect(hx - r, hy - r, r * 2, r * 2);
+      }
       const [ox, oy] = toPx([bounds(object.shape)[0], bounds(object.shape)[1]]);
       ctx.fillText(object.label, ox + 3 * px, oy + 15 * px);
     }

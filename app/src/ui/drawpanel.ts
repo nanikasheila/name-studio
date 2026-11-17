@@ -47,7 +47,18 @@ import {
   variantOf,
   type BackgroundTake,
   type Variant,
+  renameObject,
 } from "../domain/background";
+import {
+  PERSPECTIVES,
+  PERSPECTIVE_LABELS,
+  PERSPECTIVE_TITLES,
+  type Perspective,
+  perspectiveOf,
+  rulerOf,
+  rulerWords,
+  setPerspective,
+} from "../domain/bgruler";
 import {
   REQUEST_FILE,
   drawingInstructions,
@@ -637,19 +648,60 @@ export class DrawPanel {
         if (found) setBackground(found.panel, next);
       });
     brief.addEventListener("change", () => change({ brief: brief.value.trim() }));
-    const camera = element("select", { "aria-label": "カメラ", title: "カメラの高さ" });
+    const ruler = rulerOf(panel);
+    const points = element("select", {
+      "aria-label": "透視",
+      title: "透視の定規（背景の道具 H で消失点・線・アイレベルをドラッグして合わせる）",
+    });
+    for (const n of PERSPECTIVES)
+      points.append(element("option", { value: String(n), title: PERSPECTIVE_TITLES[n] }, n ? `${PERSPECTIVE_LABELS[n]}透視` : "透視なし"));
+    points.value = String(ruler.vanishing.length ? perspectiveOf(bg) : 0);
+    points.addEventListener("change", () =>
+      this.host.edit((project) => {
+        const found = findPanel(project, panel.id);
+        if (found) setPerspective(found.panel, Number(points.value) as Perspective);
+      }),
+    );
+    // With a ruler the camera comes from its points; without one, in words.
+    const camera = element("select", { "aria-label": "カメラ", title: "カメラの高さ（透視の定規がないとき）" });
     camera.append(element("option", { value: "" }, "カメラ: ラフのまま"));
     for (const [value, label] of Object.entries(CAMERA_LABELS)) camera.append(element("option", { value }, label));
     camera.value = bg.camera ?? "";
     camera.addEventListener("change", () => change({ camera: (camera.value || undefined) as BackgroundCamera | undefined }));
+    const view =
+      ruler.vanishing.length === 3
+        ? rulerWords(ruler)?.includes("見下ろし")
+          ? "見下ろし"
+          : "見上げ"
+        : ruler.vanishing.length
+          ? "水平のカメラ"
+          : "";
     const none = element("input", { type: "checkbox" });
     none.checked = !!bg.none;
     none.addEventListener("change", () => change({ none: none.checked }));
-    const drawn = [
-      bg.horizon ? "アイレベル" : "",
-      bg.vanishing?.length ? `消失点 ${bg.vanishing.length}` : "",
-      ...(bg.objects ?? []).map((one) => `「${one.label}」`),
-    ].filter(Boolean);
+    const drawn = [ruler.horizon && !ruler.vanishing.length ? "アイレベル" : "", view].filter(Boolean);
+    // The things placed with 物, each named here too.
+    const things = (bg.objects ?? []).map((object) => {
+      const name = element("input", {
+        type: "text",
+        class: "drawing-object",
+        "aria-label": "物の名前",
+        title: "物の名前（背景の道具の「物」で動かす・大きさを変える）",
+      });
+      name.value = object.label;
+      name.size = Math.max(4, Math.min(14, object.label.length + 1));
+      name.addEventListener("keydown", (event) => {
+        event.stopPropagation();
+        if (event.key === "Enter") name.blur();
+      });
+      name.addEventListener("change", () =>
+        this.host.edit((project) => {
+          const found = findPanel(project, panel.id);
+          if (found) renameObject(found.panel, object.id, name.value);
+        }),
+      );
+      return name;
+    });
     return element(
       "div",
       { class: "drawing-instructions" },
@@ -657,10 +709,14 @@ export class DrawPanel {
       element(
         "div",
         { class: "assist-row" },
-        camera,
+        points,
+        ...(ruler.vanishing.length ? [] : [camera]),
         element("label", { class: "check", title: "人物のアップ・効果など、背景を描かないコマ" }, none, " 背景なし"),
         element("span", { class: "hint", title: "背景の道具（H）で描いた指示" }, drawn.length ? drawn.join("・") : ""),
       ),
+      ...(things.length
+        ? [element("div", { class: "assist-row drawing-objects" }, element("span", { class: "hint" }, "物"), ...things)]
+        : []),
     );
   }
 

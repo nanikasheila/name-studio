@@ -98,6 +98,10 @@ export interface PanelBackground {
   horizon?: [Point, Point];
   /** 消失点 (often beyond the panel). */
   vanishing?: Point[];
+  /** 透視: how many vanishing points the eye level's ruler has (1, 2 or 3); none: as many as are placed. */
+  perspective?: number;
+  /** XYZ の線: lines along the edges in the panel, each aimed at its vanishing point (one each for the first two, two for the third). */
+  guides?: [Point, Point][];
   /** 物の指示: what stands where. */
   objects?: BackgroundObject[];
 }

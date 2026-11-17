@@ -110,6 +110,79 @@ try {
   await settle();
   const marked = (await panels()).find((panel) => panel.id === first.id);
   check(marked.background?.vanishing?.length === 1, "a click puts a vanishing point in the panel under it");
+  check(
+    (await page.getAttribute("#background-bar [data-perspective='1']", "aria-pressed")) === "true",
+    "the first point makes a 1点 ruler",
+  );
+
+  // 透視の定規: 2点 lays out both points on the eye level and an X and a Y line in the panel.
+  await page.click("#background-bar [data-perspective='2']");
+  await settle();
+  const ruler = async () => (await panels()).find((panel) => panel.id === first.id).background;
+  /** How far `p` is from the line through `a` and `b` (mm). */
+  const away = (p, [a, b]) =>
+    Math.abs((p[0] - a[0]) * (b[1] - a[1]) - (p[1] - a[1]) * (b[0] - a[0])) / Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const together = (bg) =>
+    bg.vanishing.every((p) => away(p, bg.horizon) < 0.1) && bg.guides.every((line, k) => away(bg.vanishing[Math.min(k, 2)], line) < 0.1);
+  let bg = await ruler();
+  check(
+    bg.perspective === 2 && bg.vanishing.length === 2 && bg.guides.length === 2 && together(bg),
+    "2点: both points on the eye level, a line aimed at each",
+  );
+  // The X line's end dragged: its point slides along the eye level (beyond the panel too).
+  const end = bg.guides[0][1];
+  const before = bg.vanishing[0];
+  await page.mouse.move(...(await at(end)));
+  await page.mouse.down();
+  await page.mouse.move(...(await at([end[0], end[1] - 4])), { steps: 4 });
+  await page.mouse.up();
+  await settle();
+  bg = await ruler();
+  check(bg.vanishing[0][0] !== before[0] && together(bg), "dragging a line's end moves its point along the eye level");
+  // The eye level dragged up: the points slide along their lines.
+  await page.click("#background-bar [data-bg-mode=horizon]");
+  const across = [
+    cx,
+    bg.horizon[0][1] + ((bg.horizon[1][1] - bg.horizon[0][1]) * (cx - bg.horizon[0][0])) / (bg.horizon[1][0] - bg.horizon[0][0]),
+  ];
+  const lines = bg.guides;
+  await page.mouse.move(...(await at(across)));
+  await page.mouse.down();
+  await page.mouse.move(...(await at([across[0], across[1] - 6])), { steps: 4 });
+  await page.mouse.up();
+  await settle();
+  bg = await ruler();
+  check(
+    Math.abs(bg.horizon[0][1] - (across[1] - 6)) < 0.6 && JSON.stringify(bg.guides) === JSON.stringify(lines) && together(bg),
+    "dragging the eye level keeps the lines and slides the points along them",
+  );
+  await page.keyboard.press("Control+z");
+  await settle();
+  check(Math.abs((await ruler()).horizon[0][1] - across[1]) < 0.6, "Ctrl+Z puts the eye level back in one step");
+
+  // 物: placed, then moved from inside, sized by a corner and named anew in the bar.
+  await page.click("#background-bar [data-bg-mode=object]");
+  const drag = async (from, to) => {
+    await page.mouse.move(...(await at(from)));
+    await page.mouse.down();
+    await page.mouse.move(...(await at(to)), { steps: 5 });
+    await page.mouse.up();
+    await settle();
+  };
+  const [bx, by] = [cx - 30, cy + 2];
+  await drag([bx, by], [bx + 16, by + 10]);
+  let things = (await ruler()).objects ?? [];
+  check(things.length === 1, "物: a drag places a thing");
+  await drag([bx + 8, by + 5], [bx + 14, by + 3]);
+  things = (await ruler()).objects;
+  check(things.length === 1 && Math.abs(things[0].shape[0][0] - (bx + 6)) < 0.3, "dragging inside it moves it (no new one)");
+  await drag(things[0].shape[2], [things[0].shape[2][0] + 6, things[0].shape[2][1] + 4]);
+  things = (await ruler()).objects;
+  check(Math.abs(things[0].shape[2][0] - things[0].shape[0][0] - 22) < 0.3, "dragging a corner sizes it");
+  await page.fill("#background-label", "バン 横向き");
+  await page.press("#background-label", "Enter");
+  await settle();
+  check((await ruler()).objects[0].label === "バン 横向き", "its name is changed in the bar once picked");
 
   // The 作画 palette.
   await page.click("#tab-drawing");
@@ -192,16 +265,36 @@ try {
   const adopted = (await project()).pages[0].references.find((r) => r.kind === "background");
   check(adopted.source === `${first.id}/1/完成`, `採用 lays the take in the panel (${adopted.source})`);
   await settle();
-  const colour = await page.evaluate(
-    ([x, y]) => {
-      const canvas = document.getElementById("editor-canvas");
-      const box = canvas.getBoundingClientRect();
-      const ratio = canvas.width / box.width;
-      return [...canvas.getContext("2d").getImageData(Math.round((x - box.left) * ratio), Math.round((y - box.top) * ratio), 1, 1).data];
-    },
-    await at([cx + 5, cy + 5]),
+  // A few spots of the panel, the 背景 tool put down (its ruler shows with it only).
+  await page.keyboard.press("v");
+  await settle();
+  const colours = [];
+  for (const [dx, dy] of [
+    [5, 5],
+    [-20, 12],
+    [25, -12],
+    [-40, -15],
+    [40, 15],
+  ]) {
+    colours.push(
+      await page.evaluate(
+        ([x, y]) => {
+          const canvas = document.getElementById("editor-canvas");
+          const box = canvas.getBoundingClientRect();
+          const ratio = canvas.width / box.width;
+          return [
+            ...canvas.getContext("2d").getImageData(Math.round((x - box.left) * ratio), Math.round((y - box.top) * ratio), 1, 1).data,
+          ];
+        },
+        await at([cx + dx, cy + dy]),
+      ),
+    );
+  }
+  const reddish = colours.filter((colour) => colour[0] > 200 && colour[1] < 120 && colour[2] < 120);
+  check(
+    reddish.length === colours.length,
+    `and it shows in the panel (${colours.map((colour) => colour.slice(0, 3).join(",")).join(" / ")})`,
   );
-  check(colour[0] > 200 && colour[1] < 120 && colour[2] < 120, `and it shows in the panel (${colour.slice(0, 3)})`);
   check(
     (await page.textContent(`#side-drawing .drawing-panel[data-panel="${first.id}"] .drawing-status`)).includes("採用中（案1・完成）"),
     "the panel says which take it has",

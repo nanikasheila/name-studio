@@ -83,6 +83,19 @@
                 59
               ]
             ],
+            "perspective": 1,
+            "guides": [
+              [
+                [
+                  30,
+                  80
+                ],
+                [
+                  70,
+                  70
+                ]
+              ]
+            ],
             "objects": [
               {
                 "id": "page1-object1",
@@ -556,6 +569,19 @@
                         59
                       ]
                     ],
+                    "perspective": 1,
+                    "guides": [
+                      [
+                        [
+                          30,
+                          80
+                        ],
+                        [
+                          70,
+                          70
+                        ]
+                      ]
+                    ],
                     "objects": [
                       {
                         "id": "page9-object1",
@@ -887,6 +913,19 @@
               59
             ]
           ],
+          "perspective": 1,
+          "guides": [
+            [
+              [
+                30,
+                80
+              ],
+              [
+                70,
+                70
+              ]
+            ]
+          ],
           "objects": [
             {
               "id": "page1-object1",
@@ -1123,6 +1162,19 @@
                   [
                     140,
                     59
+                  ]
+                ],
+                "perspective": 1,
+                "guides": [
+                  [
+                    [
+                      30,
+                      80
+                    ],
+                    [
+                      70,
+                      70
+                    ]
                   ]
                 ],
                 "objects": [

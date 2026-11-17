@@ -1648,6 +1648,9 @@ dialog.perf-dialog { width: min(720px, 92vw); }
 .drawing-panel-name:hover { text-decoration: underline; }
 .drawing-status { margin-left: auto; color: var(--muted); font-size: calc(11 * var(--px)); }
 .drawing-instructions { display: flex; flex-direction: column; gap: 4px; }
+.drawing-objects { flex-wrap: wrap; gap: 4px; }
+.drawing-object { width: auto; min-width: 4em; border-color: #d9730d; }
+.bg-object-name { display: inline-flex; align-items: center; gap: 4px; }
 .drawing-takes { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 2px; }
 .drawing-take { flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--band); color: inherit; cursor: pointer; font-size: calc(11 * var(--px)); }
 .drawing-take img { width: 72px; height: 54px; object-fit: contain; background: #fff; }
