@@ -708,3 +708,91 @@ fn a_plain_page_without_parts_gets_editable_layers_from_the_built_in_parts() {
     assert_eq!((check.vector_lines, check.texts), (1, 1));
     assert!(check_clip(&page).ok());
 }
+
+/// Rough lines keep their width along them (pen pressure, 入り抜き): the
+/// built-in template's vector style draws every point at the full size, so
+/// they are drawn with a copy whose size follows the points' factors as they
+/// are. Lines of one width (コマ枠) keep the template's style.
+#[test]
+fn rough_lines_keep_their_width_along_them() {
+    let folder = tempfile::tempdir().unwrap();
+    let setup = PageSetup {
+        resolution: 150.0,
+        ..commercial()
+    };
+    let built = write_builtin_template(&setup, &folder.path().join("template")).unwrap();
+    let mut writer = RasterWorkWriter::new(WorkOptions {
+        template: built.page.clone(),
+        out_dir: folder.path().join("out"),
+        name_pattern: DEFAULT_NAME_PATTERN.into(),
+        work: None,
+        story_index: None,
+        inputs: Vec::new(),
+        donor_sources: vec![built.parts.clone()],
+        draft_layers: Vec::new(),
+        layer_looks: Vec::new(),
+        frame_folders: false,
+        right_binding: None,
+    })
+    .unwrap();
+    let rough = |x: f64| NewVectorLine {
+        points: vec![(x, 300.0, 0.1), (x + 200.0, 320.0, 0.35), (x + 400.0, 300.0, 0.2)],
+        closed: false,
+        width_px: 12.0,
+    };
+    let layers = vec![
+        PageLayer::Vector {
+            name: "ラフ線".into(),
+            lines: vec![rough(300.0), rough(400.0)],
+            colors: vec![],
+        },
+        PageLayer::Vector {
+            name: "はみ出し（ラフ線）".into(),
+            lines: vec![rough(500.0)],
+            colors: vec![],
+        },
+        PageLayer::Vector {
+            name: "コマ枠".into(),
+            lines: vec![NewVectorLine {
+                points: vec![(300.0, 300.0, 1.0), (1400.0, 300.0, 1.0), (1400.0, 900.0, 1.0)],
+                closed: true,
+                width_px: 3.0,
+            }],
+            colors: vec![],
+        },
+    ];
+    let page = writer.write_page(&layers, None, false).unwrap();
+    assert!(check_clip(&page).ok());
+    let file = csp_format::ClipFile::open(&page).unwrap();
+    let brushes = csp_format::stroke::brushes(&file).unwrap();
+    let style_of = |name: &str| {
+        let layer = file
+            .layers
+            .flatten()
+            .into_iter()
+            .map(|(layer, _)| layer)
+            .find(|layer| layer.name == name)
+            .unwrap();
+        let data = csp_format::stroke::layer_vectors(&file, layer).unwrap();
+        let styles: Vec<u32> = data
+            .iter()
+            .flat_map(|data| data.objects.iter())
+            .map(|object| object.brush_style().unwrap())
+            .collect();
+        assert!(
+            !styles.is_empty() && styles.iter().all(|&style| style == styles[0]),
+            "{name}: {styles:?}"
+        );
+        styles[0] as i64
+    };
+    let (rough, over, frame) = (style_of("ラフ線"), style_of("はみ出し（ラフ線）"), style_of("コマ枠"));
+    for factor in [0.1, 0.35, 1.0] {
+        assert!(
+            (brushes[&rough].size.factor(factor, 0.0) - factor).abs() < 1e-6,
+            "{factor}"
+        );
+    }
+    assert_eq!(over, rough, "one copy of the style serves every layer");
+    assert_ne!(frame, rough);
+    assert_eq!(brushes[&frame].size.factor(0.1, 0.0), 1.0);
+}

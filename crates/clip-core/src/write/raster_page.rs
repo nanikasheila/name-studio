@@ -423,7 +423,15 @@ pub(crate) fn add_vector_layer(
     let (layer_id, donor_style) = donor
         .vector
         .ok_or_else(|| CspError::format("No vector layer to copy"))?;
-    let brush = csp_format::copy::brush_style_in(file.database(), donor_style)?;
+    let mut brush = csp_format::copy::brush_style_in(file.database(), donor_style)?;
+    // The points keep their width factors (pressure, 入り抜き…): CSP sizes them
+    // by it only with a style whose size follows the pressure as it is.
+    if lines
+        .iter()
+        .any(|line| line.points.iter().any(|&(_, _, width)| width < 1.0))
+    {
+        brush = file.pressure_brush_style(brush)?;
+    }
     let payload_hook = with_vector_data(colored_lines(lines, colors, brush).to_bytes());
     let mut edit = |row: &mut Row| -> Result<()> {
         freshen(row, name);
