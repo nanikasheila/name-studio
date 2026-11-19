@@ -15,6 +15,8 @@ import {
   objectAt,
   panelLabel,
   readManifest,
+  readManifests,
+  requestManifest,
   readSource,
   removeBackground,
   removeInstructionAt,
@@ -223,6 +225,19 @@ describe("背景.json", () => {
     expect(readManifest("{").problems).toHaveLength(1);
     expect(readManifest("[]").takes).toEqual([]);
     expect(folderPath("案//a")).toBeNull();
+  });
+
+  it("reads every request's list of takes with the folder's, the later standing", () => {
+    const one = (panel: string, take: string, note: string) => ({ panel, take, files: { 完成: `案/${panel}/${take}/完成.png` }, note });
+    const { takes, problems } = readManifests([
+      { path: "背景.json", text: JSON.stringify({ takes: [one("a", "1", "古い")] }) },
+      { path: requestManifest("20261119-100000"), text: JSON.stringify({ takes: [one("a", "2", "二つ目"), one("b", "1", "べつ")] }) },
+      { path: requestManifest("20261119-110000"), text: JSON.stringify({ takes: [one("a", "1", "描き直し")] }) },
+      { path: requestManifest("20261119-120000"), text: "{" },
+    ]);
+    expect(takes.map((take) => `${take.panel}/${take.take} ${take.note}`)).toEqual(["a/2 二つ目", "b/1 べつ", "a/1 描き直し"]);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatch(/^依頼\/20261119-120000\/背景\.json: /);
   });
 });
 

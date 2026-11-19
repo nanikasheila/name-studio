@@ -361,6 +361,27 @@ export function readManifest(text: string): { takes: BackgroundTake[]; problems:
   return { takes: [...unique.values()], problems };
 }
 
+/** Where a request lists what it drew: its own file, as requests may be drawn at the same time. */
+export const requestManifest = (stamp: string) => `${REQUEST_DIR}/${stamp}/${MANIFEST_FILE}`;
+
+/**
+ * The takes of every list read (背景.json of the folder, then each request's, oldest first):
+ * the same take listed again, the later one stands; each problem says which file it is in.
+ */
+export function readManifests(files: readonly { path: string; text: string }[]): { takes: BackgroundTake[]; problems: string[] } {
+  const unique = new Map<string, BackgroundTake>();
+  const problems: string[] = [];
+  for (const file of files) {
+    const read = readManifest(file.text);
+    for (const take of read.takes) {
+      unique.delete(`${take.panel}/${take.take}`);
+      unique.set(`${take.panel}/${take.take}`, take);
+    }
+    problems.push(...read.problems.map((problem) => (file.path === MANIFEST_FILE ? problem : `${file.path}: ${problem}`)));
+  }
+  return { takes: [...unique.values()], problems };
+}
+
 /** A panel's takes, newest first. */
 export function takesFor(takes: readonly BackgroundTake[], panelId: string): BackgroundTake[] {
   return takes.filter((take) => take.panel === panelId).reverse();

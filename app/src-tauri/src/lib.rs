@@ -400,6 +400,7 @@ pub fn run() {
             ai::background::bg_models,
             ai::background::bg_write,
             ai::background::bg_read,
+            ai::background::bg_manifests,
             ai::background::bg_blender,
             ai::local::ai_save_key,
             ai::local::ai_has_key,
