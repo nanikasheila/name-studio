@@ -23,6 +23,7 @@ import {
   horizonAcross,
   nextTake,
   panelLabel,
+  requestManifest,
   takesFor,
   type BackgroundTake,
 } from "./background";
@@ -182,7 +183,7 @@ export function requestBrief(project: Project, request: BackgroundRequest, takes
     "",
     `- 1 案ごとに \`${TAKES_DIR}/<コマの id>/<番号>/\` に \`完成.png\`（白地に全部）・\`線画.png\`（透明地）・\`トーン.png\`・\`影.png\`（あるものだけ）を書く。番号は下の各コマに書いた番号から。`,
     `- 画像の大きさは各コマの「画像」の px のとおり（紙面の範囲を ${request.dpi} dpi で描いたもの。コマの外接矩形より ${BACKGROUND_BLEED_MM}mm 大きい）。`,
-    `- 作業フォルダーの \`${MANIFEST_FILE}\` に、1 案 1 件で足す（なければ作る。ほかの行は残す）:`,
+    `- この依頼の \`${requestManifest(request.stamp)}\` に、1 案 1 件で書く（この依頼だけのファイル。ほかの依頼を同時に描いていることがあるので、作業フォルダー直下の \`${MANIFEST_FILE}\` やほかの依頼のファイルには書かない）。案を 1 つ描き終えるたびに足すと、作者はすぐ見られる:`,
     "",
     "```json",
     `{"takes":[{"panel":"<コマの id>","take":"<番号>","box":[x0,y0,x1,y1],"files":{"完成":"${TAKES_DIR}/<コマの id>/<番号>/完成.png","線画":"…","トーン":"…"},"note":"何を描いたか・カメラ・仮に決めたこと","request":"${request.stamp}"}]}`,
@@ -245,7 +246,7 @@ export function requestPrompt(project: Project, request: BackgroundRequest): str
   return [
     `背景を描いてください: ${requestSummary(project, request.targets)}。`,
     `作業フォルダー \`${request.folder}\` の \`${requestDir(request.stamp)}/${REQUEST_FILE}\` に、コマごとの範囲・画像の大きさ・指示・描いたものの置き方があります。それを読み、同じフォルダーの絵を見て描いてください。`,
-    `描いたら \`${MANIFEST_FILE}\` に足し、コマごとに何を描いたかを短く答えてください（この相談では作業フォルダー${request.assets ? `と素材のフォルダー \`${request.assets.folder}\`` : ""}の中にだけ書けます）。`,
+    `描いたら \`${requestManifest(request.stamp)}\` に書き、コマごとに何を描いたかを短く答えてください（この相談では作業フォルダー${request.assets ? `と素材のフォルダー \`${request.assets.folder}\`` : ""}の中にだけ書けます）。`,
   ].join("\n");
 }
 
@@ -254,7 +255,8 @@ export function drawingInstructions(folder: string, assets?: string): string {
   return `あなたは漫画の背景を描くアシスタントです。作者は Name Studio というアプリでネーム（絵コンテ）を作っていて、コマの背景を頼んでいます。日本語で、短く答えてください。
 
 - 作業フォルダーは \`${folder}\` です。書いてよいのはこの中だけです${assets ? `（と、素材のフォルダー \`${assets}\` に新しい素材を足すこと）` : ""}（ネームのファイル・ほかのフォルダーは読むだけ）。${assets ? `\n- 素材のフォルダーの ${ASSETS_FILE} にある場所・物は作り直さずに読み込んで使います。素材のファイルは書き換えません。` : ""}
-- 頼まれるたびに \`${REQUEST_DIR}/<日時>/${REQUEST_FILE}\` を読み、その決まりのとおりに描いて \`${TAKES_DIR}/\` と \`${MANIFEST_FILE}\` に置きます。
+- 頼まれるたびに \`${REQUEST_DIR}/<日時>/${REQUEST_FILE}\` を読み、その決まりのとおりに描いて \`${TAKES_DIR}/\` と、その依頼のフォルダーの \`${MANIFEST_FILE}\` に置きます。
+- ほかの依頼を別の AI が同時に描いていることがあります。共有のもの（\`3d/\` のモデル・スクリプト、使い方.md、素材）は、書き換える直前に読み直し、ほかが使っているファイルを丸ごと作り替えない（新しい物は新しいファイルに）。
 - 前に作った 3D モデル・スクリプト・使い方.md があれば使い回し、作り方を変えたら使い方.md に書き足します。
 - 描くのはネームの背景のあたり（モック）です。細かく作り込まず、簡単な形で短い時間で、構図・パース・場の大きさが分かるものにします。
 - 時間のかかる描き出しは、まず小さく（低い dpi で）試して構図を確かめてから、決まった大きさで描きます。

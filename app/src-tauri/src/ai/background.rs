@@ -222,6 +222,38 @@ pub fn read_file(dir: &Path, path: &str, text: bool) -> Result<Option<String>, S
     }))
 }
 
+/// The takes' lists of each request (`依頼/<日時>/背景.json`), oldest first, as paths inside the folder:
+/// requests drawn at the same time each write their own, never one file together.
+#[tauri::command]
+pub async fn bg_manifests(chosen: tauri::State<'_, Chosen>, folder: String) -> Result<Vec<String>, String> {
+    let dir = held_folder(&chosen, &folder)?;
+    tauri::async_runtime::spawn_blocking(move || manifests_in(&dir))
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// What a request's folder calls its list of takes, and where the requests are.
+const REQUEST_DIR: &str = "依頼";
+const MANIFEST_FILE: &str = "背景.json";
+
+pub fn manifests_in(dir: &Path) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(dir.join(REQUEST_DIR)) else {
+        return Vec::new();
+    };
+    let mut out: Vec<String> = entries
+        .flatten()
+        .filter(|entry| entry.path().join(MANIFEST_FILE).is_file())
+        .filter_map(|entry| {
+            entry
+                .file_name()
+                .to_str()
+                .map(|name| format!("{REQUEST_DIR}/{name}/{MANIFEST_FILE}"))
+        })
+        .collect();
+    out.sort();
+    out
+}
+
 /// Blender on this computer, the newest found: on the PATH, or (Windows) in Program Files.
 #[tauri::command]
 pub async fn bg_blender() -> Option<String> {
@@ -336,6 +368,28 @@ mod tests {
         std::fs::create_dir_all(&other).unwrap();
         assert!(assets_folder(&chosen, None, Some(other.to_str().unwrap())).is_err());
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn each_requests_list_of_takes_is_found() {
+        let dir = std::env::temp_dir().join(format!("bg-manifests-{}", std::process::id()));
+        assert!(manifests_in(&dir).is_empty());
+        for file in [
+            "背景.json",
+            "依頼/20261119-101500/背景.json",
+            "依頼/20261119-101500/依頼.md",
+            "依頼/20261119-093000/背景.json",
+            "依頼/20261119-110000/依頼.md",
+        ] {
+            let path = dir.join(file);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, b"{}").unwrap();
+        }
+        assert_eq!(
+            manifests_in(&dir),
+            vec!["依頼/20261119-093000/背景.json", "依頼/20261119-101500/背景.json"]
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

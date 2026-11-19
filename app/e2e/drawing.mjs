@@ -8,7 +8,10 @@
 // out. 素材: the folder of places and things kept for reuse is listed (3D
 // files added with one button, renamed with the panels that name them), a
 // panel's 場所 and a 物's 素材 are chosen, and the request names them and lets
-// the AI write in that folder too.
+// the AI write in that folder too. The panels are a line each until opened or
+// picked; requests asked while one draws wait in line (1 件ずつ) or draw side
+// by side (N 件同時, each in its own conversation, a panel in turn), each
+// listing its takes in its own 背景.json; 取り消す, 絞り込み and まとめて採用.
 // Run: node e2e/drawing.mjs
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
@@ -73,6 +76,14 @@ try {
           return null;
         }
         if (command === "bg_read") return (args.folder === assets ? window.__assetFiles : window.__files)[args.path] ?? null;
+        if (command === "bg_manifests")
+          return Object.keys(window.__files)
+            .filter((path) => /^依頼\/[^/]+\/背景\.json$/.test(path))
+            .sort();
+        if (command === "timer_notice") {
+          window.__notices = [...(window.__notices ?? []), args.notice];
+          return null;
+        }
         return undefined;
       };
       window.__say = (run, kind, text) => {
@@ -235,8 +246,10 @@ try {
   await page.waitForSelector(".drawing");
   await settle();
   check(
-    (await page.textContent("#side-drawing .assist-state")).includes("Claude Code に背景を描いてもらいます"),
-    "says which AI will draw",
+    (await page.textContent('#side-drawing [data-part="setup-says"]')).startsWith("Claude Code") &&
+      (await page.textContent("#side-drawing .assist-state")).includes("許す") &&
+      (await page.getAttribute('#side-drawing [data-part="setup"]', "open")) !== null,
+    "says which AI will draw, and opens the settings to allow it first",
   );
   // 素材: listed from 素材.json; the 3D files not listed added as 物.
   await page.waitForFunction(() => document.querySelector('#side-drawing [data-part="assets-count"]')?.textContent === "1 件");
@@ -253,8 +266,17 @@ try {
       ]),
     "the 3D file not listed is added as a 物 named after its file",
   );
-  // 場所 of the panel, from the 素材.
+  // Each panel is one line until opened (or picked on the page).
   const row = `#side-drawing .drawing-panel[data-panel="${first.id}"]`;
+  const rowCount = await page.locator("#side-drawing .drawing-panel").count();
+  check(rowCount === 3, `a row for each panel of the page (${rowCount})`);
+  if ((await page.getAttribute(`${row} .drawing-fold`, "aria-expanded")) !== "true") await page.click(`${row} .drawing-fold`);
+  check(await page.isVisible(`${row} .drawing-place`), "▸ opens a panel's row to its instructions");
+  check(
+    (await page.locator("#side-drawing .drawing-panel:not(.open) .drawing-summary").count()) === rowCount - 1,
+    "the others stay folded, with their instructions in a line",
+  );
+  // 場所 of the panel, from the 素材.
   await page.fill(`${row} .drawing-place`, "団地の屋上");
   await page.press(`${row} .drawing-place`, "Enter");
   await settle();
@@ -315,6 +337,7 @@ try {
   check(turn.kind === "claude" && turn.work === FOLDER && turn.resume === null, "the turn may write in that folder only");
   check(turn.assets === ASSETS && session.files[0].text.includes(ASSETS), "and in the folder of 素材 (it is told so)");
   check(turn.prompt.includes("依頼.md"), "and is pointed at 依頼.md");
+  check(/依頼\/[0-9-]+\/背景\.json/.test(brief), "it lists its takes in the request's own 背景.json (requests may be drawn together)");
   check((await page.evaluate(() => document.querySelectorAll("#side-assist .assist-entry").length)) === 0, "相談 has none of it");
 
   // A take drawn: 背景.json lists it, its picture a red square.
@@ -341,7 +364,7 @@ try {
     },
     { panel: first.id, red },
   );
-  await page.waitForSelector(`#side-drawing .drawing-panel[data-panel="${first.id}"] .drawing-take img`);
+  await page.waitForSelector(`#side-drawing .drawing-panel[data-panel="${first.id}"] img.drawing-preview`);
   check(
     (await page.textContent(`#side-drawing .drawing-panel[data-panel="${first.id}"]`)).includes("給水塔を右奥に"),
     "the take shows per panel, with what the AI said of it",
@@ -415,6 +438,109 @@ try {
   await page.click(`#side-drawing .drawing-panel[data-panel="${first.id}"] button:has-text("外す")`);
   await settle();
   check(!(await project()).pages[0].references?.some((r) => r.kind === "background"), "外す takes the background out of the panel");
+
+  // 続けて頼む: one at a time, the next waits in line and goes on in the same conversation.
+  const others = (await panels()).filter((panel) => panel.id !== first.id).map((panel) => panel.id);
+  const rowOf = (id) => `#side-drawing .drawing-panel[data-panel="${id}"]`;
+  const turns = () => page.evaluate(() => window.__turns.length);
+  const askFor = async (id) => {
+    await page.check(`${rowOf(id)} .drawing-pick`);
+    await page.click('#side-drawing [data-part="send"]');
+    await page.uncheck(`${rowOf(id)} .drawing-pick`);
+    await settle();
+  };
+  // The row's name picks the panel on the page; picked there, its row opens.
+  await page.click(`${rowOf(others[1])} .drawing-panel-name`);
+  await settle();
+  check(
+    (await page.evaluate(() => window.nameStudio.workbench.editor.selection?.id)) === others[1] &&
+      (await page.getAttribute(rowOf(others[1]), "class")).includes("open"),
+    "a row's name picks its panel on the page, and the row opens while it is picked",
+  );
+  await page.selectOption('#side-drawing [data-part="lanes"]', "1");
+  await askFor(others[0]);
+  check((await page.inputValue('#side-drawing [data-part="scope"]')) === "checked", "a row checked asks for the panels checked");
+  check((await turns()) === 3, "頼む starts a request");
+  await askFor(others[1]);
+  check((await turns()) === 3, "with 1 件ずつ, a second one asked while it draws waits");
+  check(
+    (await page.textContent('#side-drawing [data-part="line"]')).includes("1 件描いています・1 件待ち") &&
+      (await page.textContent('#side-drawing [data-part="jobs"]')).includes("待ち"),
+    "the list of requests says which draws and which waits",
+  );
+  check((await page.textContent(`${rowOf(others[1])} .drawing-status`)) === "順番待ち", "and so does the panel's row");
+  await page.evaluate(() => window.__say(3, "done", ""));
+  await page.waitForFunction(() => window.__turns.length === 4);
+  check(
+    (await page.evaluate(() => window.__turns[3].resume)) === "draw-sess",
+    "the one waiting starts when it ends, going on with its conversation",
+  );
+  await page.evaluate(() => window.__say(4, "done", ""));
+  await settle();
+
+  // 同時に: two at once, each in a conversation of its own; the same panel in turn.
+  await page.selectOption('#side-drawing [data-part="lanes"]', "2");
+  await askFor(others[0]);
+  await askFor(others[1]);
+  check((await turns()) === 6, "with 2 件同時, two requests draw at once");
+  const [fifth, sixth] = await page.evaluate(() => window.__turns.slice(4));
+  check(fifth.resume === "draw-sess" && sixth.resume === null, "the second in a new conversation of its own");
+  await askFor(others[0]);
+  await page.evaluate(() => window.__say(6, "done", ""));
+  await settle();
+  check((await turns()) === 6, "a panel being drawn is not asked again until that ends, a lane free or not");
+  // What the first draws, listed in its request's own 背景.json, shows as soon as it ends.
+  const fifthStamp = await page.evaluate(() => window.__writes[4].files[0].path.split("/")[1]);
+  await page.evaluate(
+    ({ panel, stamp, red }) => {
+      window.__files[`案/${panel}/1/完成.png`] = red;
+      window.__files[`依頼/${stamp}/背景.json`] = JSON.stringify({
+        takes: [{ panel, take: "1", files: { 完成: `案/${panel}/1/完成.png` } }],
+      });
+      window.__say(5, "done", "");
+    },
+    { panel: others[0], stamp: fifthStamp, red },
+  );
+  await page.waitForFunction(() => window.__turns.length === 7);
+  check(true, "and it starts once the panel is free");
+  await page.waitForFunction((row) => document.querySelector(`${row} .drawing-status`)?.textContent === "描いています", rowOf(others[0]));
+  check(true, "the panel's row says it is being drawn");
+  // 取り消す: one waiting leaves the line.
+  await askFor(others[0]);
+  await page.click('#side-drawing .drawing-job[data-state="waiting"] button:has-text("取り消す")');
+  await settle();
+  check(
+    (await page.locator('#side-drawing .drawing-job[data-state="stopped"]').count()) === 1,
+    "取り消す takes a waiting request out of the line",
+  );
+  await page.evaluate(() => window.__say(7, "done", ""));
+  await settle();
+  check((await page.textContent('#side-drawing [data-part="line"]')) === "", "all ended, nothing draws or waits");
+  check(
+    (await page.textContent(`${rowOf(others[0])} .drawing-status`)) === "案 1 件",
+    "the take listed in a request's own 背景.json shows in its panel",
+  );
+
+  // 絞り込み and まとめて採用.
+  await page.selectOption('#side-drawing [data-part="filter"]', "takes");
+  await settle();
+  const listedRows = await page.locator("#side-drawing .drawing-panel").count();
+  check(listedRows === 2, `「案あり・未採用」 shows only the panels with takes not laid (${listedRows})`);
+  await page.click('#side-drawing [data-part="adopt-all"]');
+  await page.waitForFunction(
+    () => window.nameStudio.workbench.project.pages[0].references?.filter((r) => r.kind === "background").length === 2,
+  );
+  check(true, "まとめて採用 lays a take in each of them");
+  await page.keyboard.press("Escape");
+  await page
+    .locator("#editor-canvas")
+    .focus()
+    .catch(() => {});
+  await page.keyboard.press("Control+z");
+  await settle();
+  check(!(await project()).pages[0].references?.some((r) => r.kind === "background"), "and one Ctrl+Z takes them all out");
+  await page.selectOption('#side-drawing [data-part="filter"]', "all");
+  await settle();
   if (process.env.DRAWING_SHOT) await page.locator("#dock-right").screenshot({ path: process.env.DRAWING_SHOT });
   check(errors.length === 0, `no page errors (${errors.join(" / ")})`);
 } finally {

@@ -932,6 +932,11 @@ export interface Commands {
   bg_write: [{ folder: string; files: SessionFile[] }, void];
   /** A file of the background folder: its text (`text`) or bytes in base64; none when it is not there. */
   bg_read: [{ folder: string; path: string; text: boolean }, string | null];
+  /**
+   * The takes' lists of each request (`依頼/<日時>/背景.json`), oldest first, as paths inside the folder:
+   * requests drawn at the same time each write their own, never one file together.
+   */
+  bg_manifests: [{ folder: string }, string[]];
   /** Blender on this computer, the newest found: on the PATH, or (Windows) in Program Files. */
   bg_blender: [void, string | null];
   // ai/local.rs
