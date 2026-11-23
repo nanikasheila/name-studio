@@ -104,7 +104,12 @@ fn drawn_box(width: usize, height: usize, rgba: &[u8]) -> Option<(usize, usize, 
         let Some(first) = row.as_chunks::<4>().0.iter().position(|pixel| pixel[3] != 0) else {
             continue;
         };
-        let last = row.as_chunks::<4>().0.iter().rposition(|pixel| pixel[3] != 0).unwrap_or(first);
+        let last = row
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .rposition(|pixel| pixel[3] != 0)
+            .unwrap_or(first);
         x0 = x0.min(first);
         x1 = x1.max(last + 1);
         y0 = y0.min(y);
