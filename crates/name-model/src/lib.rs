@@ -8,6 +8,7 @@
 pub mod atomic;
 pub mod model;
 pub mod pdf;
+pub mod psd;
 pub mod series;
 pub mod validate;
 pub mod versions;

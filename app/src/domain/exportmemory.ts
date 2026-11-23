@@ -4,8 +4,9 @@
 // this computer's. The CSP page settings themselves live in the name (cspPage).
 import type { ExportForm, Fit } from "./export";
 import { MINI_DEFAULTS, type MiniFormat, type MiniOptions } from "./mininame";
+import { IMAGE_DEFAULTS, IMAGE_FORMATS, IMAGE_UNITS, type ImageFormat, type ImageOptions } from "./imageexport";
 
-export type ExportKind = "csp" | "pdf" | "mini" | "text";
+export type ExportKind = "csp" | "pdf" | "image" | "mini" | "text";
 export type TemplateMode = "builtin" | "file";
 export type PanelExport = "lines" | "masks" | "frames";
 
@@ -24,8 +25,10 @@ export interface ExportMemory {
   pdf: { area: "trim" | "canvas"; dpi: number };
   /** ミニネーム: every page on one sheet, as a picture or a one-page PDF. */
   mini: MiniOptions & { format: MiniFormat };
-  /** The PDF, ミニネーム and script files written last. */
-  files: { pdf?: string; mini?: string; text?: string };
+  /** 画像・PSD: each page or 見開き a file. */
+  image: ImageOptions;
+  /** The PDF, ミニネーム and script files written last, and the folder of the pictures. */
+  files: { pdf?: string; image?: string; mini?: string; text?: string };
 }
 
 /** How many names' exports are kept (the oldest go first). */
@@ -43,11 +46,12 @@ export function memoryFrom(value: unknown): ExportMemory | null {
   const form = (typeof v.form === "object" && v.form !== null ? v.form : {}) as Record<string, unknown>;
   const pdf = (typeof v.pdf === "object" && v.pdf !== null ? v.pdf : {}) as Record<string, unknown>;
   const mini = (typeof v.mini === "object" && v.mini !== null ? v.mini : {}) as Record<string, unknown>;
+  const image = (typeof v.image === "object" && v.image !== null ? v.image : {}) as Record<string, unknown>;
   const files = (typeof v.files === "object" && v.files !== null ? v.files : {}) as Record<string, unknown>;
   if (!Number.isFinite(v.timeMs)) return null;
   return {
     timeMs: v.timeMs as number,
-    kind: oneOf(v.kind, ["csp", "pdf", "mini", "text"], "csp"),
+    kind: oneOf(v.kind, ["csp", "pdf", "image", "mini", "text"], "csp"),
     form: {
       template: text(form.template),
       outDir: text(form.outDir),
@@ -75,8 +79,16 @@ export function memoryFrom(value: unknown): ExportMemory | null {
       numbers: flag(mini.numbers, MINI_DEFAULTS.numbers),
       title: flag(mini.title, MINI_DEFAULTS.title),
     },
+    image: {
+      format: oneOf<ImageFormat>(image.format, IMAGE_FORMATS, IMAGE_DEFAULTS.format),
+      unit: oneOf(image.unit, IMAGE_UNITS, IMAGE_DEFAULTS.unit),
+      area: oneOf(image.area, ["trim", "canvas"], IMAGE_DEFAULTS.area),
+      dpi: Number.isFinite(image.dpi) && (image.dpi as number) > 0 ? (image.dpi as number) : IMAGE_DEFAULTS.dpi,
+      paper: flag(image.paper, IMAGE_DEFAULTS.paper),
+    },
     files: {
       ...(text(files.pdf) ? { pdf: text(files.pdf) } : {}),
+      ...(text(files.image) ? { image: text(files.image) } : {}),
       ...(text(files.mini) ? { mini: text(files.mini) } : {}),
       ...(text(files.text) ? { text: text(files.text) } : {}),
     },
@@ -100,7 +112,8 @@ export function withMemory(
   return Object.fromEntries(keys.slice(0, max).map((key) => [key, next[key]]));
 }
 
-const KIND_NAMES: Record<Exclude<ExportKind, "csp">, string> = { pdf: "PDF", mini: "ミニネーム", text: "台本" };
+const KIND_NAMES: Record<Exclude<ExportKind, "csp">, string> = { pdf: "PDF", image: "画像", mini: "ミニネーム", text: "台本" };
+const IMAGE_FORMAT_NAMES: Record<ImageFormat, string> = { png: "PNG", jpeg: "JPEG", psd: "PSD" };
 const MINI_FORMATS: Record<MiniFormat, string> = { png: "PNG 画像", jpeg: "JPEG 画像", pdf: "1 ページの PDF" };
 
 /** What 「前回と同じ設定で書き出す」 would do, in a line (null: it needs the dialog first). */
@@ -108,6 +121,7 @@ export function againSummary(memory: ExportMemory | null): string | null {
   if (!memory) return null;
   if (memory.kind === "csp") return memory.form.outDir ? `CSP のページを ${memory.form.outDir} に` : null;
   const file = memory.files[memory.kind];
+  if (memory.kind === "image") return file ? `${IMAGE_FORMAT_NAMES[memory.image.format]} を ${file} に` : null;
   return file ? `${KIND_NAMES[memory.kind]}を ${file} に` : null;
 }
 
@@ -120,6 +134,8 @@ export interface SummaryOf {
   page: { trimMm: [number, number]; resolution: number; preset: string | null } | null;
   /** The name has 指示 (a 指示のレイヤー with lines on it). */
   marks?: boolean;
+  /** 画像・PSD: what it makes (imageSummary) and where. */
+  images?: { summary: string; folder: string };
 }
 
 const PANELS_SHORT: Record<PanelExport, string> = { lines: "コマ枠の線", masks: "コマごとのマスク", frames: "コマ枠フォルダー" };
@@ -135,6 +151,8 @@ export function exportSummary(settings: Omit<ExportMemory, "timeMs" | "files">, 
     return `${pages}を 1 枚のミニネームに（${MINI_FORMATS[settings.mini.format]}・${settings.mini.dpi} dpi・${across}）`;
   }
   if (settings.kind === "text") return `${pages}のセリフを台本（.txt）に`;
+  if (settings.kind === "image")
+    return `${pages}を ${of.images?.summary ?? "画像"} にして ${of.images?.folder || "（書き出し先が未選択）"} に`;
   const builtin = settings.mode === "builtin" && of.page;
   const parts = [
     pages,

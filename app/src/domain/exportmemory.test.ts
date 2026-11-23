@@ -13,6 +13,7 @@ const memory = (timeMs: number, outDir = "C:/out"): ExportMemory => ({
   marks: true,
   pdf: { area: "trim", dpi: 200 },
   mini: { format: "png", area: "trim", dpi: 100, columns: 0, numbers: true, title: true },
+  image: { format: "psd", unit: "spread", area: "canvas", dpi: 600, paper: false },
   files: {},
 });
 
@@ -94,6 +95,7 @@ describe("what 書き出す will make", () => {
     marks: true,
     pdf: { area: "trim" as const, dpi: 200 },
     mini: { format: "pdf" as const, area: "trim" as const, dpi: 100, columns: 0, numbers: true, title: true },
+    image: { format: "png" as const, unit: "page" as const, area: "trim" as const, dpi: 350, paper: true },
   };
   const of = { pages: 21, scroll: false, page: { trimMm: [257, 364] as [number, number], resolution: 600, preset: "商業誌 B4" } };
 
@@ -138,5 +140,27 @@ describe("what 書き出す will make", () => {
     expect(
       exportSummary({ ...settings, kind: "mini", mini: { ...settings.mini, format: "jpeg", columns: 4 } }, { ...of, scroll: true }),
     ).toBe("21 区切りを 1 枚のミニネームに（JPEG 画像・100 dpi・横に 4 列）");
+  });
+
+  it("says the pictures and where they go, and keeps the folder for 前回と同じ設定で", () => {
+    expect(
+      exportSummary(
+        { ...settings, kind: "image" },
+        { ...of, images: { summary: "21 個の PNG（1 ページずつ・350 dpi・仕上がりで切る）", folder: "C:/png" } },
+      ),
+    ).toBe("21 ページを 21 個の PNG（1 ページずつ・350 dpi・仕上がりで切る） にして C:/png に");
+    expect(exportSummary({ ...settings, kind: "image" }, of)).toContain("（書き出し先が未選択） に");
+    const kept = { ...memory(7), kind: "image" as const, files: { image: "D:/絵" } };
+    expect(againSummary(kept)).toBe("PSD を D:/絵 に");
+    expect(againSummary({ ...kept, files: {} })).toBeNull();
+    expect(memoryFrom(JSON.parse(JSON.stringify(kept)))).toEqual(kept);
+    // Older memories (and what cannot be read) take the defaults.
+    expect(memoryFrom({ timeMs: 1, image: { format: "tiff", unit: 3, dpi: -1 } })?.image).toEqual({
+      format: "png",
+      unit: "page",
+      area: "trim",
+      dpi: 350,
+      paper: true,
+    });
   });
 });

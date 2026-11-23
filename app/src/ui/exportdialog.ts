@@ -15,6 +15,8 @@ import {
 } from "../service/nameexport";
 import { scriptText } from "../domain/scripttext";
 import { exportMiniName, exportPdf } from "../service/flatpage";
+import { exportImages, imageFileNames } from "../service/imageexport";
+import { IMAGE_DEFAULTS, fileStem, imageSummary, type ImageOptions } from "../domain/imageexport";
 import { MINI_DEFAULTS, type MiniFormat, type MiniOptions } from "../domain/mininame";
 import { applyTakeBack, planTakeBack, takeBackSummary } from "../domain/readback";
 import { ISSUE_LABELS, checkName, issueSummary } from "../domain/namecheck";
@@ -91,6 +93,8 @@ type Kind = ExportKind;
 const MINI_FIELDS = ["ne-mini-format", "ne-mini-dpi", "ne-mini-columns", "ne-mini-area", "ne-mini-numbers", "ne-mini-title"];
 /** The record of セリフだけ反映 in the export folder (files.rs `UPDATE_RECORD`). */
 const UPDATE_RECORD = "name-studio-反映の記録.txt";
+/** The 指示 check boxes of CSP, the PDF and the pictures: one choice. */
+const MARK_BOXES = ["ne-marks", "ne-pdf-marks", "ne-image-marks"];
 const MINI_EXTENSIONS: Record<MiniFormat, string> = { png: "png", jpeg: "jpg", pdf: "pdf" };
 
 function readMini(): MiniOptions & { format: MiniFormat } {
@@ -117,6 +121,44 @@ function showMini(mini: MiniOptions & { format: MiniFormat }): void {
   choose("ne-mini-area", mini.area);
   $<HTMLInputElement>("ne-mini-numbers").checked = mini.numbers;
   $<HTMLInputElement>("ne-mini-title").checked = mini.title;
+}
+
+/** 画像・PSD's fields (its form, how pages go into files, area, resolution, paper). */
+const IMAGE_FIELDS = ["ne-image-format", "ne-image-unit", "ne-image-area", "ne-image-dpi", "ne-image-paper"];
+const IMAGE_NAMES = { png: "PNG", jpeg: "JPEG", psd: "PSD" } as const;
+
+function readImage(): ImageOptions {
+  const format = $<HTMLSelectElement>("ne-image-format").value;
+  const unit = $<HTMLSelectElement>("ne-image-unit").value;
+  return {
+    format: format === "jpeg" || format === "psd" ? format : "png",
+    unit: unit === "spread" || unit === "joined" ? unit : "page",
+    area: $<HTMLSelectElement>("ne-image-area").value === "canvas" ? "canvas" : "trim",
+    dpi: Number($<HTMLSelectElement>("ne-image-dpi").value) || IMAGE_DEFAULTS.dpi,
+    paper: $<HTMLInputElement>("ne-image-paper").checked,
+  };
+}
+
+function showImage(image: ImageOptions): void {
+  const choose = (id: string, value: string) => {
+    const select = $<HTMLSelectElement>(id);
+    if (![...select.options].some((option) => option.value === value)) select.append(new Option(value, value));
+    select.value = value;
+  };
+  choose("ne-image-format", image.format);
+  choose("ne-image-unit", image.unit);
+  choose("ne-image-area", image.area);
+  choose("ne-image-dpi", String(image.dpi));
+  $<HTMLInputElement>("ne-image-paper").checked = image.paper;
+}
+
+/** The pictures' file names start from the name's own file name (else its title). */
+function imageStem(path: string | null, title: string): string {
+  const file = path
+    ?.split(/[\\/]/)
+    .pop()
+    ?.replace(/\.[^.]+$/, "");
+  return fileStem(file || title || "ネーム");
 }
 
 /** 見本のページ: kept on this computer for the next export. */
@@ -270,6 +312,8 @@ export class ExportDialog {
   private panels: PanelExport = readPanels();
   /** The name's memos as a 下描き layer, to see while inking. */
   private notes = true;
+  /** 画像・PSD: the folder the pictures go to. */
+  private imageDir = "";
   /** 指示 (the 指示のレイヤー): to CSP as 下描き layers, onto the PDF's pages. */
   private marks = true;
   private busy = false;
@@ -286,7 +330,7 @@ export class ExportDialog {
   private settingsFor: number | null = null;
 
   constructor(private readonly host: ExportDialogHost) {
-    for (const kind of ["csp", "pdf", "mini", "text"] as const) {
+    for (const kind of ["csp", "pdf", "image", "mini", "text"] as const) {
       $(`ne-kind-${kind}`).addEventListener("click", () => {
         this.kind = kind;
         this.show();
@@ -310,14 +354,19 @@ export class ExportDialog {
       this.draftRough = (event.target as HTMLInputElement).checked;
       this.showSummary();
     });
-    $<HTMLInputElement>("ne-notes").addEventListener("change", (event) => {
-      this.notes = (event.target as HTMLInputElement).checked;
-      this.showSummary();
-    });
-    for (const id of ["ne-marks", "ne-pdf-marks"]) {
+    for (const id of ["ne-notes", "ne-image-notes"]) {
+      $<HTMLInputElement>(id).addEventListener("change", (event) => {
+        this.notes = (event.target as HTMLInputElement).checked;
+        for (const other of ["ne-notes", "ne-image-notes"]) $<HTMLInputElement>(other).checked = this.notes;
+        this.showSummary();
+      });
+    }
+    for (const id of IMAGE_FIELDS) $(id).addEventListener("change", () => this.show());
+    $("ne-pick-image-dir").addEventListener("click", () => void this.pickImageDir());
+    for (const id of MARK_BOXES) {
       $<HTMLInputElement>(id).addEventListener("change", (event) => {
         this.marks = (event.target as HTMLInputElement).checked;
-        for (const other of ["ne-marks", "ne-pdf-marks"]) $<HTMLInputElement>(other).checked = this.marks;
+        for (const other of MARK_BOXES) $<HTMLInputElement>(other).checked = this.marks;
         this.showSummary();
       });
     }
@@ -443,6 +492,8 @@ export class ExportDialog {
     $<HTMLSelectElement>("ne-pdf-area").value = memory.pdf.area;
     $<HTMLSelectElement>("ne-pdf-dpi").value = String(memory.pdf.dpi);
     showMini(memory.mini);
+    showImage(memory.image);
+    this.imageDir = memory.files.image ?? "";
   }
 
   /** Another name with no export kept: not the last name's folder or work name (one name must not write over another's pages). */
@@ -450,6 +501,7 @@ export class ExportDialog {
     this.form.outDir = "";
     this.form.workName = "";
     this.form.storyIndex = "";
+    this.imageDir = "";
   }
 
   /** Keep how this name was just written out, for the next time. */
@@ -475,6 +527,7 @@ export class ExportDialog {
       marks: this.marks,
       pdf: { area: $<HTMLSelectElement>("ne-pdf-area").value as "trim" | "canvas", dpi: Number($<HTMLSelectElement>("ne-pdf-dpi").value) },
       mini: readMini(),
+      image: readImage(),
     };
   }
 
@@ -489,6 +542,7 @@ export class ExportDialog {
       scroll: !!project.scroll,
       page: page && { trimMm: page.trimMm, resolution: page.resolution, preset: preset ? preset.label.split("（")[0] : null },
       marks: hasMarks(project),
+      images: { summary: imageSummary(project, readImage(), this.host.firstAlone()), folder: this.imageDir },
     });
   }
 
@@ -586,7 +640,7 @@ export class ExportDialog {
   }
 
   private show(): void {
-    for (const kind of ["csp", "pdf", "mini", "text"] as const) {
+    for (const kind of ["csp", "pdf", "image", "mini", "text"] as const) {
       $(`ne-kind-${kind}`).classList.toggle("active", kind === this.kind);
       $(`ne-${kind}`).hidden = kind !== this.kind;
     }
@@ -626,7 +680,9 @@ export class ExportDialog {
     $<HTMLSelectElement>("ne-panels").value = this.panels;
     $("ne-panels-hint").textContent = PANEL_HINTS[this.panels];
     $<HTMLInputElement>("ne-notes").checked = this.notes;
-    for (const id of ["ne-marks", "ne-pdf-marks"]) $<HTMLInputElement>(id).checked = this.marks;
+    for (const id of MARK_BOXES) $<HTMLInputElement>(id).checked = this.marks;
+    for (const id of ["ne-notes", "ne-image-notes"]) $<HTMLInputElement>(id).checked = this.notes;
+    this.showImageFields();
     $<HTMLInputElement>("ne-make-work").checked = this.form.makeWork;
     $("ne-work-fields").hidden = !this.form.makeWork;
     const project = this.host.project();
@@ -648,6 +704,86 @@ export class ExportDialog {
     // A template still to choose: its field in view.
     if (this.kind === "csp" && !builtin && !this.form.template) $<HTMLDetailsElement>("ne-more").open = true;
     this.showSummary();
+  }
+
+  /** 画像・PSD: what fits the form chosen (paper for PNG and PSD, memos for PSD, no 見開き for a 縦スクロール), and the files' names. */
+  private showImageFields(): void {
+    const project = this.host.project();
+    const image = readImage();
+    $<HTMLInputElement>("ne-image-paper").disabled = image.format === "jpeg";
+    $("ne-image-notes-row").hidden = image.format !== "psd";
+    const unit = $<HTMLSelectElement>("ne-image-unit");
+    unit.disabled = !!project?.scroll;
+    $("ne-image-unit-label").textContent = project?.scroll ? "まとめ方（区切りごと）" : "まとめ方";
+    $("ne-image-dir").textContent = this.imageDir || "未選択";
+    $("ne-image-dir").title = this.imageDir;
+    if (!project) return;
+    const names = imageFileNames(project, imageStem(this.host.projectPath(), project.title), image, this.host.firstAlone());
+    $("ne-image-names").textContent = names.length
+      ? `ファイル名: ${names.slice(0, 2).join("、")}${names.length > 2 ? ` … ${names.at(-1)}` : ""}（${names.length} 個）`
+      : "";
+  }
+
+  private async pickImageDir(): Promise<string | null> {
+    const start = this.imageDir || folderOf(this.host.projectPath() ?? "");
+    const path = await open({ directory: true, defaultPath: start || undefined });
+    if (typeof path !== "string") return null;
+    this.imageDir = path;
+    this.show();
+    this.message("");
+    return path;
+  }
+
+  /** 画像・PSD: each page or 見開き a file in the folder chosen. */
+  private async runImages(
+    project: Project,
+    again: boolean,
+    progress: (text: string) => void,
+    seconds: () => string,
+  ): Promise<string | null> {
+    // The pictures of the name show (資料 stay out), and the sheet's roughs under the drawing.
+    if (!(await this.picturesReadable(project, isNamePicture))) return null;
+    const written = await this.roughsReadable();
+    if (!written) return null;
+    const image = readImage();
+    // A folder picked before is written to again; one only remembered (or none) is asked for.
+    let folder = this.imageDir && (await placeChosen(this.imageDir)) ? this.imageDir : null;
+    if (!folder) folder = await this.pickImageDir();
+    if (!folder) return null;
+    const stem = imageStem(this.host.projectPath(), project.title);
+    const names = imageFileNames(written, stem, image, this.host.firstAlone());
+    const there = await call("existing_files", { folder, names });
+    if (there.length) {
+      const sample = there.slice(0, 3).join("、") + (there.length > 3 ? ` ほか ${there.length - 3} 個` : "");
+      const go = await ask(
+        `書き出し先に同じ名前のファイルが ${there.length} 個あります（${sample}）。上書きしますか？\n\nほかのツールで描き進めたファイルなら、別のフォルダーを選んでください。`,
+        { title: "Name Studio", kind: "warning", okLabel: "上書きする", cancelLabel: "やめる" },
+      );
+      if (!go) {
+        this.message("書き出しをやめました（何も書き換えていません）");
+        return null;
+      }
+    }
+    const result = await exportImages(
+      written,
+      folder,
+      stem,
+      { ...image, marks: this.marks, notes: this.notes },
+      this.host.firstAlone(),
+      (rough) => this.host.rough(rough),
+      progress,
+    );
+    const kind = IMAGE_NAMES[image.format];
+    const note = result.reduced ? `。大きすぎるので ${result.dpi} dpi に下げました` : "";
+    const size = `最大 ${result.widthPx}×${result.heightPx} px・${result.dpi} dpi${note}`;
+    this.message(`${result.files.length} 個の ${kind} を書き出しました（${size}・${seconds()} 秒）: ${folder}`, false, [
+      folderStep(result.files[0] ?? folder, "書き出し先を開く"),
+    ]);
+    this.remember(folder);
+    noteUse("export", `image-${image.format}`);
+    this.host.status(`${result.files.length} 個の ${kind} を ${folder} に書き出しました`);
+    void again;
+    return folder;
   }
 
   /** The pages a セリフだけ反映 changed or could not, each a button to that page (none: the list goes). */
@@ -1003,6 +1139,10 @@ export class ExportDialog {
             ? `${report.pages.length} 枚のページを ${this.form.outDir} に書き出しました（自己確認 OK）`
             : `書き出したページに問題があります: ${check.lines[1]}`,
         );
+      } else if (this.kind === "image") {
+        target = this.imageDir || null;
+        const folder = await this.runImages(project, again, progress, seconds);
+        if (folder) target = folder;
       } else {
         // The PDF and the ミニネーム show the pictures of the name (資料 stay out).
         if (this.kind !== "text" && !(await this.picturesReadable(project, isNamePicture))) return;
@@ -1073,8 +1213,9 @@ export class ExportDialog {
       }
     } catch (error) {
       if (error instanceof ExportStopped) {
+        const rest = this.kind === "image" ? "それより後のファイルは前のままです" : "それより後のページと作品ファイルは前のままです";
         const text = error.written
-          ? `${error.written} 枚まで書き出したところでやめました。それより後のページと作品ファイルは前のままです`
+          ? `${error.written} ${this.kind === "image" ? "個" : "枚"}まで書き出したところでやめました。${rest}`
           : "書き出しをやめました（何も書き換えていません）";
         this.message(text);
         this.host.status(text);

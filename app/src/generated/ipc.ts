@@ -847,6 +847,10 @@ export interface Commands {
    * the path, then the bytes).
    */
   write_binary_file: [RawBody, void];
+  /** Write a layered PSD of a page (raw body: JSON, then each layer's PNG, bottom first). */
+  write_psd: [RawBody, void];
+  /** Of `names` in `folder`, those already there (written over by an export of page pictures). */
+  existing_files: [{ folder: string; names: string[] }, string[]];
   /**
    * Write a text file (the script) as UTF-8 with a byte order mark, which
    * Windows' Notepad and Excel read as UTF-8.

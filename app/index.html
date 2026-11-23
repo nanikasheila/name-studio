@@ -45,7 +45,7 @@
         <button id="undo" class="icon-button" data-command="undo" title="元に戻す" disabled><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M7 4L3 8l4 4"/><path d="M3 8h9a5 5 0 0 1 0 10H8"/></svg></button>
         <button id="redo" class="icon-button" data-command="redo" title="やり直す" disabled><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M13 4l4 4-4 4"/><path d="M17 8H8a5 5 0 0 0 0 10h4"/></svg></button>
         <button id="image-import" class="with-icon" title="全ページを 1 枚にまとめたネーム画像（ミニネーム・スキャンしたネーム）をページに分けて取り込む"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 12.5v-10M6 6.5l4-4 4 4"/><path d="M3 13.5v3.5h14v-3.5"/></svg><span>取り込む…</span></button>
-        <button id="name-export" class="with-icon" title="CSP のページと作品、PDF、ミニネーム、台本に書き出す（前回と同じ設定でそのまま書き出すのは Ctrl+Shift+E）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5v10M6 8.5l4 4 4-4"/><path d="M3 13.5v3.5h14v-3.5"/></svg><span>書き出す…</span></button>
+        <button id="name-export" class="with-icon" title="CSP のページと作品、PDF、画像・PSD、ミニネーム、台本に書き出す（前回と同じ設定でそのまま書き出すのは Ctrl+Shift+E）"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5v10M6 8.5l4 4 4-4"/><path d="M3 13.5v3.5h14v-3.5"/></svg><span>書き出す…</span></button>
       </div>
       <button id="help" class="icon-button help-button" data-command="help.overlay" title="画面のヘルプ: 各部の名前と使い方を画面に重ねて出す" aria-label="ヘルプ" aria-pressed="false"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><path d="M7.7 7.6a2.4 2.4 0 1 1 3.4 2.2c-.7.3-1.1.9-1.1 1.6v.6"/><circle cx="10" cy="14.6" r=".6" class="fill"/></svg></button>
     </header>
@@ -228,6 +228,7 @@
         <div class="segmented kinds" role="group" aria-label="書き出す形">
           <button type="button" id="ne-kind-csp" class="active">CSP のページ</button>
           <button type="button" id="ne-kind-pdf">PDF</button>
+          <button type="button" id="ne-kind-image" title="ページごと・見開きごとの画像（PNG・JPEG）か、レイヤー付きの PSD に。CSP 以外のお絵かきツールに取り込むのに">画像・PSD</button>
           <button type="button" id="ne-kind-mini" title="全ページを 1 枚の画像か 1 ページの PDF にまとめる">ミニネーム</button>
           <button type="button" id="ne-kind-text">台本（テキスト）</button>
         </div>
@@ -342,6 +343,43 @@
             </select>
           </div>
           <label class="check"><input type="checkbox" id="ne-pdf-marks" checked /> 指示（指示ツールで描いたもの）を色付きで入れる（指示書として渡せます。隠している指示は入りません）</label>
+        </div>
+        <div id="ne-image" hidden>
+          <p class="hint">ページを 1 枚ずつ（または見開きごとに）画像のファイルにします。CSP 以外のお絵かきツールに取り込んで描き進めるのに。PSD はラフ線・コマ枠・フキダシ・セリフなどを、CSP への書き出しと同じ名前のレイヤーに分けます。</p>
+          <div class="field">
+            <label for="ne-image-format">形式</label>
+            <select id="ne-image-format">
+              <option value="png">PNG 画像</option>
+              <option value="jpeg">JPEG 画像（軽い）</option>
+              <option value="psd">PSD（レイヤー付き）</option>
+            </select>
+            <label for="ne-image-unit" id="ne-image-unit-label">まとめ方</label>
+            <select id="ne-image-unit">
+              <option value="page">1 ページずつ</option>
+              <option value="spread">見開きごと（編集画面の組み方）</option>
+              <option value="joined">見開きにしたページだけつなぐ（CSP と同じ）</option>
+            </select>
+            <label for="ne-image-area">範囲</label>
+            <select id="ne-image-area">
+              <option value="trim">仕上がりで切る</option>
+              <option value="canvas">キャンバス全体（裁ち落としまで）</option>
+            </select>
+            <label for="ne-image-dpi">解像度</label>
+            <select id="ne-image-dpi">
+              <option value="150">150 dpi（軽い）</option>
+              <option value="300">300 dpi</option>
+              <option value="350" selected>350 dpi（カラーの原稿向け）</option>
+              <option value="600">600 dpi（モノクロの原稿向け）</option>
+            </select>
+            <label for="ne-image-dir">書き出し先</label>
+            <output id="ne-image-dir" class="path">未選択</output>
+            <button type="button" id="ne-pick-image-dir" aria-label="画像の書き出し先を選ぶ">選ぶ…</button>
+          </div>
+          <label class="check"><input type="checkbox" id="ne-image-paper" checked /> 紙を白で塗る（外すと透明。PNG と PSD。PSD では「用紙」レイヤーを隠します）</label>
+          <label class="check"><input type="checkbox" id="ne-image-marks" checked /> 指示（指示ツールで描いたもの）を入れる（PSD では色ごとのレイヤー）</label>
+          <label class="check" id="ne-image-notes-row"><input type="checkbox" id="ne-image-notes" checked /> コマのメモとページのメモを、隠したレイヤー「メモ（ネーム）」で PSD に入れる</label>
+          <p class="hint" id="ne-image-names"></p>
+          <p class="hint">付箋・資料画像は入りません（取り込んだネーム画像と背景は入ります）。大きくなりすぎるときは解像度を下げて描きます。</p>
         </div>
         <div id="ne-mini" hidden>
           <p class="hint">全ページを 1 枚にまとめます（ミニネーム）。見開きごとに読む順（<span id="ne-mini-binding">右綴じは右上から左へ</span>）、行は上から下に並べます。全体の流れを見る・印刷する・送るのに。</p>
