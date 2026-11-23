@@ -743,6 +743,16 @@ export const AREA_TOPICS: Record<string, HelpTopic> = {
       { command: "view.fold", does: "たたむ" },
     ],
   },
+  "ne-image": {
+    name: "画像・PSD で書き出す",
+    what: "ページごと・見開きごとの画像のファイル。CSP 以外のお絵かきツールに取り込んで描き進めるのに",
+    steps: [
+      { input: "形式", does: "PNG・JPEG・PSD（ラフ線・コマ枠・フキダシ・セリフなどを CSP への書き出しと同じ名前のレイヤーに）" },
+      { input: "まとめ方", does: "1 ページずつ・見開きごと（編集画面の組み方）・見開きにしたページだけつなぐ" },
+      { input: "紙を白で塗る", does: "外すと透明（PNG・PSD。PSD は「用紙」レイヤーを隠す）" },
+      { command: "exportAgain", does: "前回と同じ設定・同じフォルダーにもう一度" },
+    ],
+  },
   "help-bar": {
     name: "ヘルプの帯",
     what: "ポインターの下にあるものの名前と、マウス・キーでできること",
@@ -867,7 +877,13 @@ export const OVERLAY_SPOTS: OverlaySpot[] = [
     command: "button.image-import",
     side: "below",
   },
-  { target: "#name-export", name: "書き出す", text: "CSP のページと作品・PDF・ミニネーム・台本", command: "exportAgain", side: "below" },
+  {
+    target: "#name-export",
+    name: "書き出す",
+    text: "CSP のページと作品・PDF・画像・PSD・ミニネーム・台本",
+    command: "exportAgain",
+    side: "below",
+  },
   { target: "#help", name: "ヘルプ", text: "この画面。もう一度で閉じる", command: "help.overlay", side: "below" },
   // The tools.
   ...TOOL_IDS.map((id) => tool(id, TOOLS[id].name, TOOLS[id].overlay)),
@@ -1010,7 +1026,7 @@ export const TOUR_STOPS: TourStop[] = [
     target: "#name-export",
     title: "書き出す",
     text: [
-      "CSP のページと作品（.clip/.cmc）・PDF・全ページを 1 枚にまとめたミニネーム・台本に書き出します。2 回目からは {exportAgain} で同じ設定のまま。",
+      "CSP のページと作品（.clip/.cmc）・PDF・画像（PNG・JPEG・レイヤー付き PSD）・1 枚にまとめたミニネーム・台本に書き出します。2 回目からは {exportAgain} で同じ設定のまま。",
       "保存は自動でもされます（{save} でいつでも）。",
     ],
   },

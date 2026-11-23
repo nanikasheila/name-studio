@@ -374,6 +374,8 @@ pub fn run() {
             name_export::prepare_builtin_template,
             files::write_pdf,
             files::write_binary_file,
+            files::write_psd,
+            files::existing_files,
             files::write_text_file,
             files::record_dialogue_update,
             files::csp_tool_locations,

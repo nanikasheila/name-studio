@@ -26,6 +26,7 @@ tauri-plugin-updater = "2"
 # AI に相談: a local LLM's OpenAI-compatible API (the same reqwest the updater uses).
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider"] }
 base64 = "0.23"
+encoding_rs = "0.8"
 
 # The key for an AI's API, in the system's credential store.
 [target.'cfg(windows)'.dependencies.keyring]

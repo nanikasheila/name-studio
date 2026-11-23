@@ -1,4 +1,4 @@
-//! Files outside the name data: CSP's tools, the PDF, the ミニネーム picture and the script.
+//! Files outside the name data: CSP's tools, the PDF, the ミニネーム and page pictures (PNG, JPEG, PSD) and the script.
 
 use std::path::Path;
 
@@ -181,6 +181,88 @@ pub(crate) async fn write_binary_file(
     .map_err(|error| error.to_string())?
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PsdMeta {
+    path: String,
+    width_px: u32,
+    height_px: u32,
+    dpi: f64,
+    /// Bottom first; each a PNG of the whole page (none: an empty layer).
+    layers: Vec<PsdLayerMeta>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PsdLayerMeta {
+    name: String,
+    /// 0–1.
+    opacity: f64,
+    hidden: bool,
+    length: usize,
+}
+
+/// A layer's name for readers that take no Unicode names: Shift_JIS, as a Japanese PC reads it (none when it has other characters).
+fn shift_jis(name: &str) -> Option<Vec<u8>> {
+    let (bytes, _, unmappable) = encoding_rs::SHIFT_JIS.encode(name);
+    (!unmappable).then(|| bytes.into_owned())
+}
+
+/// Write a layered PSD of a page (raw body: JSON, then each layer's PNG, bottom first).
+#[tauri::command]
+pub(crate) async fn write_psd(
+    chosen: tauri::State<'_, Chosen>,
+    request: tauri::ipc::Request<'_>,
+) -> Result<(), String> {
+    let body = raw_body(&request)?;
+    let path = chosen.writable(&split_body::<PsdMeta>(&body)?.0.path, &["psd"])?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let (meta, rest) = split_body::<PsdMeta>(&body)?;
+        let file = psd_file(&meta, rest)?;
+        write_through_temporary(&path, &file)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+/// The PSD of `meta`'s layers, their PNGs one after the other in `rest`.
+fn psd_file(meta: &PsdMeta, mut rest: &[u8]) -> Result<Vec<u8>, String> {
+    let mut builder = name_model::psd::PsdBuilder::new(meta.width_px, meta.height_px, meta.dpi)?;
+    for layer in &meta.layers {
+        let png = rest.get(..layer.length).ok_or("データが壊れています")?;
+        rest = &rest[layer.length..];
+        // One layer decoded at a time: only its packed rows are kept.
+        let image = if png.is_empty() {
+            None
+        } else {
+            Some(clip_core::raster::decode_png(png).map_err(|error| error.to_string())?)
+        };
+        let (width, height, rgba) = image
+            .as_ref()
+            .map_or((0, 0, &[][..]), |image| (image.width, image.height, &image.pixels[..]));
+        builder.add(name_model::psd::PsdLayer {
+            name: &layer.name,
+            legacy_name: shift_jis(&layer.name),
+            width,
+            height,
+            rgba,
+            opacity: (layer.opacity.clamp(0.0, 1.0) * 255.0).round() as u8,
+            hidden: layer.hidden,
+        })?;
+    }
+    if !rest.is_empty() {
+        return Err("データが壊れています".to_owned());
+    }
+    Ok(builder.finish())
+}
+
+/// Of `names` in `folder`, those already there (written over by an export of page pictures).
+#[tauri::command]
+pub(crate) async fn existing_files(folder: String, names: Vec<String>) -> Vec<String> {
+    let folder = Path::new(&folder);
+    names.into_iter().filter(|name| folder.join(name).exists()).collect()
+}
+
 /// Write a text file (the script) as UTF-8 with a byte order mark, which
 /// Windows' Notepad and Excel read as UTF-8.
 #[tauri::command]
@@ -297,6 +379,49 @@ fn write_through_temporary(path: &Path, bytes: &[u8]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_psd_is_made_of_the_layers_png_by_png_with_their_names_in_shift_jis() {
+        let mut ink = clip_core::RgbaImage::new(8, 6);
+        ink.set_pixel(3, 2, [0, 0, 0, 255]);
+        let paper = {
+            let mut paper = clip_core::RgbaImage::new(8, 6);
+            for y in 0..6 {
+                for x in 0..8 {
+                    paper.set_pixel(x, y, [255, 255, 255, 255]);
+                }
+            }
+            paper
+        };
+        let pngs = [paper.to_png().unwrap(), Vec::new(), ink.to_png().unwrap()];
+        let layer = |name: &str, length: usize| PsdLayerMeta {
+            name: name.to_owned(),
+            opacity: 1.0,
+            hidden: false,
+            length,
+        };
+        let meta = PsdMeta {
+            path: String::new(),
+            width_px: 8,
+            height_px: 6,
+            dpi: 600.0,
+            layers: vec![
+                layer("用紙", pngs[0].len()),
+                layer("コマ枠", 0),
+                layer("ラフ線", pngs[2].len()),
+            ],
+        };
+        let file = psd_file(&meta, &pngs.concat()).unwrap();
+        assert_eq!(&file[..4], b"8BPS");
+        // The Shift_JIS name (ラフ線 = 83 89 83 74 90 FC) for readers that take no Unicode names.
+        let legacy = shift_jis("ラフ線").unwrap();
+        assert_eq!(legacy, [0x83, 0x89, 0x83, 0x74, 0x90, 0xFC]);
+        assert!(file.windows(legacy.len()).any(|window| window == legacy));
+        // A name Shift_JIS has no characters for: the ASCII (none here), never broken bytes.
+        assert_eq!(shift_jis("😀"), None);
+        // A body that does not hold what the meta says is refused.
+        assert!(psd_file(&meta, &pngs[0]).is_err());
+    }
 
     #[test]
     fn a_file_is_shown_in_its_folder_and_a_missing_one_by_the_nearest_folder() {
