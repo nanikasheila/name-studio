@@ -118,12 +118,18 @@ fn drawn_box(width: usize, height: usize, rgba: &[u8]) -> Option<(usize, usize, 
     (x1 > x0).then_some((x0, y0, x1, y1))
 }
 
-fn ascii_name(name: &str) -> Vec<u8> {
+/// The name for tools that read only the old (Pascal) name: its ASCII, or
+/// "Layer N" (N from 1, bottom up) so that the layers still differ.
+fn ascii_name(name: &str, number: usize) -> Vec<u8> {
     let ascii: Vec<u8> = name
         .bytes()
         .filter(|byte| byte.is_ascii_graphic() || *byte == b' ')
         .collect();
-    if ascii.is_empty() { b"Layer".to_vec() } else { ascii }
+    if ascii.is_empty() {
+        format!("Layer {number}").into_bytes()
+    } else {
+        ascii
+    }
 }
 
 impl PsdBuilder {
@@ -181,9 +187,10 @@ impl PsdBuilder {
             }
         }
         let bounds = shown.map_or([0; 4], |(x0, y0, x1, y1)| [y0 as i32, x0 as i32, y1 as i32, x1 as i32]);
+        let number = self.layers.len() + 1;
         self.layers.push(Record {
             name: layer.name.to_owned(),
-            legacy_name: layer.legacy_name.unwrap_or_else(|| ascii_name(layer.name)),
+            legacy_name: layer.legacy_name.unwrap_or_else(|| ascii_name(layer.name, number)),
             bounds,
             opacity: layer.opacity,
             hidden: layer.hidden,
@@ -408,6 +415,13 @@ mod tests {
         assert_eq!(&builder.merged[..3], &[255, 255, 255]);
         let records: Vec<[i32; 4]> = builder.layers.iter().map(|layer| layer.bounds).collect();
         assert_eq!(records, [[5, 20, 10, 30], [0, 0, 0, 0]]);
+        // Names with no ASCII still differ in the old name.
+        let legacy: Vec<&[u8]> = builder
+            .layers
+            .iter()
+            .map(|layer| layer.legacy_name.as_slice())
+            .collect();
+        assert_eq!(legacy, [&b"Layer 1"[..], &b"Layer 2"[..]]);
         let file = builder.finish();
         assert_eq!(&file[..4], b"8BPS");
         assert_eq!(read_u32(&file, 14), h);
