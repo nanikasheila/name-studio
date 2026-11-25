@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 
 use csp_format::ClipFile;
 use csp_format::rusqlite::types::Value;
+use csp_format::vector::VectorData;
 use serde::Serialize;
 
 use super::layers::{csp_image, place_above, raster_like, save};
@@ -192,14 +193,35 @@ fn page_blocks(document: &ClipDocument) -> Vec<CspText> {
                 }];
             };
             let (dx, dy) = (layer.offset_x, layer.offset_y);
+            // A block in a balloon sits from the centre of the balloon's box.
+            let balloons: Vec<(i64, i64)> = document
+                .vector_payloads(layer)
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|payload| VectorData::parse(payload).ok())
+                .flat_map(|data| data.objects)
+                .filter(|object| !object.is_balloon_tail())
+                .map(|object| {
+                    let [x0, y0, x1, y1] = object.bbox();
+                    (
+                        (i64::from(x0) + i64::from(x1)).div_euclid(2),
+                        (i64::from(y0) + i64::from(y1)).div_euclid(2),
+                    )
+                })
+                .collect();
             let boxes: Vec<Option<[i64; 4]>> = document
                 .text_blocks(layer)
                 .unwrap_or_default()
                 .into_iter()
                 .map(|block| {
+                    let (ax, ay) = match block.balloon {
+                        Some(number) => *balloons.get(number as usize - 1)?,
+                        None => (0, 0),
+                    };
+                    let (x, y) = (dx + ax, dy + ay);
                     block
                         .bbox
-                        .map(|(x0, y0, x1, y1)| [x0 as i64 + dx, y0 as i64 + dy, x1 as i64 + dx, y1 as i64 + dy])
+                        .map(|(x0, y0, x1, y1)| [x0 as i64 + x, y0 as i64 + y, x1 as i64 + x, y1 as i64 + y])
                 })
                 .collect();
             let strings = document.text_strings(layer);
