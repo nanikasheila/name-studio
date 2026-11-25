@@ -27,6 +27,10 @@ function project(): Project {
         [330, 70],
       ],
       place: "教室",
+      far: [
+        { kind: "panorama", asset: "曇り空", turnDeg: 45 },
+        { kind: "mountains", seed: 12 },
+      ],
       objects: [
         {
           id: "object1",
@@ -63,6 +67,7 @@ interface Shot {
   camera?: { hint: { mode: string; lensFromPoints: boolean } };
   place?: unknown;
   objects: unknown[];
+  far?: unknown[];
   output: unknown;
 }
 
@@ -108,10 +113,15 @@ describe("指示.json for name-blockout", () => {
         [40, 110],
       ],
     });
+    expect(one.far).toEqual([
+      { kind: "panorama", asset: "曇り空", turnDeg: 45 },
+      { kind: "mountains", seed: 12 },
+    ]);
     expect(one.output).toEqual({ take: "3" });
     // A panel without instructions: its picture only (name-blockout asks what is missing).
     expect(two.ruler).toBeUndefined();
     expect(two.camera).toBeUndefined();
+    expect(two.far).toBeUndefined();
     expect(two.output).toEqual({ take: "1" });
   });
 });

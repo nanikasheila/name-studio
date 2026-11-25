@@ -9,8 +9,10 @@
 import { bounds, insidePolygon, segmentDistance } from "../model/geometry";
 import type {
   BackgroundCamera,
+  BackgroundFar,
   BackgroundObject,
   BoxMm,
+  FarKind,
   Page,
   PageFormat,
   Panel,
@@ -41,8 +43,8 @@ export const TAKES_DIR = "案";
 
 export const CAMERA_LABELS: Record<BackgroundCamera, string> = { eye: "目の高さ", low: "あおり", high: "俯瞰" };
 
-/** What a take is drawn as: the whole (on white), the lines alone, the tones, the shadows. */
-export const VARIANTS = ["完成", "線画", "トーン", "影"] as const;
+/** What a take is drawn as: the whole (on white), the lines alone, the tones, the far band alone (遠景), the shadows. */
+export const VARIANTS = ["完成", "線画", "トーン", "遠景", "影"] as const;
 export type Variant = (typeof VARIANTS)[number];
 
 export function isBackground(reference: ReferenceImage): boolean {
@@ -77,8 +79,42 @@ export function backgroundOf(panel: Panel): PanelBackground {
 export function hasInstructions(panel: Panel): boolean {
   const bg = panel.background;
   return (
-    !!bg && (!!bg.brief?.trim() || !!bg.place?.trim() || !!bg.camera || !!bg.horizon || !!bg.vanishing?.length || !!bg.objects?.length)
+    !!bg &&
+    (!!bg.brief?.trim() ||
+      !!bg.place?.trim() ||
+      !!bg.camera ||
+      !!bg.horizon ||
+      !!bg.vanishing?.length ||
+      !!bg.objects?.length ||
+      !!bg.far?.length)
   );
+}
+
+/** 遠景の層, farthest first: a 360° picture (a 素材), then mountains, a skyline and trees made from a seed. */
+export const FAR_KINDS: readonly FarKind[] = ["panorama", "mountains", "skyline", "trees"];
+export const FAR_LABELS: Record<FarKind, string> = { panorama: "空の画像", mountains: "山並み", skyline: "街並み", trees: "木立" };
+/** Seeds of the made layers (name-blockout makes the same shape from the same seed). */
+const SEEDS = 1_000_000;
+
+/** A seed for a made layer, from `random` (0..1). */
+export const farSeed = (random: () => number = Math.random): number => Math.floor(random() * SEEDS);
+
+/** 遠景: the layer `kind` on (with `value`: a made one gets a seed, a picture its 素材) or off. Kept farthest first. */
+export function setFar(panel: Panel, kind: FarKind, value: Partial<BackgroundFar> | null): void {
+  const others = (backgroundOf(panel).far ?? []).filter((layer) => layer.kind !== kind);
+  const layer: BackgroundFar | null = value
+    ? { ...(backgroundOf(panel).far ?? []).find((one) => one.kind === kind), ...value, kind }
+    : null;
+  if (layer && kind !== "panorama" && layer.seed === undefined) layer.seed = farSeed();
+  const far = [...others, ...(layer ? [layer] : [])].sort((a, b) => FAR_KINDS.indexOf(a.kind) - FAR_KINDS.indexOf(b.kind));
+  setBackground(panel, { far });
+}
+
+/** 遠景: new seeds for the made layers (another shape for the mountains, skyline and trees). */
+export function reseedFar(panel: Panel, random: () => number = Math.random): void {
+  const far = backgroundOf(panel).far;
+  if (!far?.length) return;
+  setBackground(panel, { far: far.map((layer) => (layer.kind === "panorama" ? layer : { ...layer, seed: farSeed(random) })) });
 }
 
 /** Change a panel's instructions; what is left empty is taken out (and the whole when nothing is left). */

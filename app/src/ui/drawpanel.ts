@@ -64,6 +64,7 @@ import {
   type BackgroundTarget,
 } from "../domain/bgrequest";
 import { INSTRUCTION_FILE, requestInstruction } from "../domain/bginstruction";
+import { LICENSE_SUGGESTIONS } from "../domain/bgassets";
 import { appVersion } from "./updater";
 import { BACKGROUND_DPI } from "../domain/background";
 import { DrawAssets } from "./drawassets";
@@ -419,6 +420,7 @@ export class DrawPanel {
       element("p", { class: "hint assist-state", "data-part": "state" }),
       setup,
       element("datalist", { id: "drawing-places" }),
+      element("datalist", { id: "drawing-licenses" }, ...LICENSE_SUGGESTIONS.map((value) => element("option", { value }))),
       element(
         "section",
         { class: "drawing-jobs-box", "data-part": "jobs-box", hidden: "" },

@@ -121,6 +121,14 @@
                   ]
                 ]
               }
+            ],
+            "far": [
+              {
+                "kind": "panorama",
+                "asset": "曇り空",
+                "turnDeg": 30,
+                "seed": 7
+              }
             ]
           }
         }
@@ -609,6 +617,14 @@
                           ]
                         ]
                       }
+                    ],
+                    "far": [
+                      {
+                        "kind": "panorama",
+                        "asset": "曇り空",
+                        "turnDeg": 30,
+                        "seed": 7
+                      }
                     ]
                   }
                 }
@@ -955,6 +971,14 @@
                 ]
               ]
             }
+          ],
+          "far": [
+            {
+              "kind": "panorama",
+              "asset": "曇り空",
+              "turnDeg": 30,
+              "seed": 7
+            }
           ]
         }
       },
@@ -1207,6 +1231,14 @@
                         75
                       ]
                     ]
+                  }
+                ],
+                "far": [
+                  {
+                    "kind": "panorama",
+                    "asset": "曇り空",
+                    "turnDeg": 30,
+                    "seed": 7
                   }
                 ]
               }

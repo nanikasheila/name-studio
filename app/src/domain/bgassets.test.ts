@@ -71,6 +71,25 @@ describe("背景の素材", () => {
     ]);
   });
 
+  it("keeps a 素材's license and source, 360° pictures as 全天球の画像, and the file's other fields", () => {
+    const sky: BackgroundAsset = {
+      name: "曇り空",
+      kind: "panorama",
+      file: "空/overcast.hdr",
+      license: "CC0-1.0",
+      source: "https://example.org/sky",
+      author: "作者",
+      attribution: "曇り空 by 作者",
+    };
+    const text = writeAssets([sky], { allowLicenses: ["CC-BY-SA-4.0"] });
+    const read = readAssets(text);
+    expect(read.assets).toEqual([sky]);
+    expect(read.rest).toEqual({ allowLicenses: ["CC-BY-SA-4.0"] });
+    expect(readAssets(writeAssets(read.assets, read.rest)).rest).toEqual(read.rest);
+    expect(readAssets(writeAssets([house])).rest).toBeUndefined();
+    expect(addModels([], ["空/夕焼け.hdr", "空/夜.EXR"]).map((asset) => asset.kind)).toEqual(["panorama", "panorama"]);
+  });
+
   it("finds a 物's 素材 by choice or by the start of its name, and follows a rename", () => {
     const { project, panel } = withPanel();
     const one = addObject(project, panel, "バン 横向き", [

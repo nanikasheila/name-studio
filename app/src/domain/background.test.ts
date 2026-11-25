@@ -21,7 +21,9 @@ import {
   removeBackground,
   removeInstructionAt,
   renameObject,
+  reseedFar,
   setBackground,
+  setFar,
   setHorizon,
   sizeObject,
   sourceOf,
@@ -70,6 +72,29 @@ describe("背景の指示", () => {
     setBackground(panel, { none: true });
     expect(panel.background).toEqual({ none: true });
     expect(hasInstructions(panel)).toBe(false);
+  });
+
+  it("keeps the far layers farthest first, a made one with a seed, and changes their shape on asking", () => {
+    const panel = withPanels().pages[1].panels[0];
+    let n = 0;
+    const random = () => [0.25, 0.5, 0.75][n++ % 3];
+    setFar(panel, "trees", {});
+    setFar(panel, "panorama", { asset: "曇り空" });
+    setFar(panel, "mountains", { seed: 3 });
+    expect(panel.background?.far?.map((layer) => layer.kind)).toEqual(["panorama", "mountains", "trees"]);
+    expect(panel.background?.far?.[0]).toEqual({ kind: "panorama", asset: "曇り空" });
+    expect(panel.background?.far?.[1].seed).toBe(3);
+    expect(typeof panel.background?.far?.[2].seed).toBe("number");
+    expect(hasInstructions(panel)).toBe(true);
+    setFar(panel, "panorama", { turnDeg: 90 });
+    expect(panel.background?.far?.[0]).toEqual({ kind: "panorama", asset: "曇り空", turnDeg: 90 });
+    reseedFar(panel, random);
+    expect(panel.background?.far?.map((layer) => layer.seed)).toEqual([undefined, 250000, 500000]);
+    expect(instructionWords(panel).at(-1)).toContain(
+      "遠景（奥から）: 空の画像「曇り空」（素材の全天球の画像、90° 回す）・山並み（種 250000）・木立",
+    );
+    for (const kind of ["panorama", "mountains", "trees"] as const) setFar(panel, kind, null);
+    expect(panel.background).toBeUndefined();
   });
 
   it("draws the eye level across the panel from a click, and keeps three vanishing points", () => {

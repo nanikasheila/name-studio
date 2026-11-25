@@ -167,11 +167,12 @@ export class DrawAssets {
     const folder = this.folder;
     if (!folder) return;
     const text = await call("bg_read", { folder, path: ASSETS_FILE, text: true }).catch(() => null);
-    const there = text ? readAssets(text).assets : [];
+    const read = text ? readAssets(text) : null;
+    const there = read?.assets ?? [];
     const known = new Set([...this.list, ...next].map((asset) => asset.name));
     // Added there since it was read (by the AI): kept, unless it is the one taken away.
     const merged = [...next, ...there.filter((asset) => !known.has(asset.name) && asset.name !== removed)];
-    await call("bg_write", { folder, files: [{ path: ASSETS_FILE, text: writeAssets(merged) }] });
+    await call("bg_write", { folder, files: [{ path: ASSETS_FILE, text: writeAssets(merged, read?.rest) }] });
     this.list = merged;
     this.render();
     this.host.changed();
@@ -181,7 +182,8 @@ export class DrawAssets {
     const before = this.list[index];
     if (!before) return;
     const next = this.list.map((asset, i) => (i === index ? { ...asset, ...change } : asset));
-    for (const key of ["note", "collection"] as const) if (!next[index][key]?.trim()) delete next[index][key];
+    for (const key of ["note", "collection", "license", "source", "author", "attribution"] as const)
+      if (!next[index][key]?.trim()) delete next[index][key];
     if (change.name !== undefined) {
       const name = change.name.trim();
       if (!name || this.list.some((asset, i) => i !== index && asset.name === name)) {
@@ -239,7 +241,26 @@ export class DrawAssets {
       title: "AI への使い方のメモ（大きさ・正面の向き・どこで使うか）",
     });
     note.value = asset.note ?? "";
-    for (const box of [name, note])
+    // Where it came from: name-blockout uses only 素材 free to use in work that is sold, and credits those that ask.
+    const license = element("input", {
+      type: "text",
+      class: "drawing-asset-license",
+      list: "drawing-licenses",
+      "aria-label": "ライセンス",
+      placeholder: "ライセンス",
+      title: "素材のライセンス（CC0-1.0・CC-BY-4.0 など。自分で作ったものは own）。無料で商用にも使えるものだけ背景に使われます",
+    });
+    license.value = asset.license ?? "";
+    license.size = 10;
+    const source = element("input", {
+      type: "text",
+      class: "drawing-asset-source",
+      "aria-label": "出どころ",
+      placeholder: "出どころ（URL）",
+      title: "素材を取ってきたページ。クレジットに使います",
+    });
+    source.value = asset.source ?? "";
+    for (const box of [name, note, license, source])
       box.addEventListener("keydown", (event) => {
         event.stopPropagation();
         if (event.key === "Enter") box.blur();
@@ -247,6 +268,8 @@ export class DrawAssets {
     name.addEventListener("change", () => this.change(index, { name: name.value }));
     kind.addEventListener("change", () => this.change(index, { kind: kind.value as AssetKind }));
     note.addEventListener("change", () => this.change(index, { note: note.value }));
+    license.addEventListener("change", () => this.change(index, { license: license.value.trim() }));
+    source.addEventListener("change", () => this.change(index, { source: source.value.trim() }));
     const remove = plainButton("外す", () => {
       void this.write(
         this.list.filter((_, i) => i !== index),
@@ -271,6 +294,7 @@ export class DrawAssets {
         { class: "drawing-asset-body" },
         element("div", { class: "assist-row" }, name, kind, remove),
         note,
+        element("div", { class: "assist-row" }, license, source),
         element("div", { class: "assist-row" }, file, ...(meta ? [element("span", { class: "hint" }, meta)] : [])),
       ),
     );

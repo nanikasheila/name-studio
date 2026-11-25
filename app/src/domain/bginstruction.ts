@@ -104,6 +104,13 @@ export function instructionShot(
     ...(object.asset?.trim() ? { asset: object.asset.trim() } : {}),
   }));
   if (objects.length) shot.objects = objects;
+  const far = (bg.far ?? []).map((layer) => ({
+    kind: layer.kind,
+    ...(layer.kind === "panorama" && layer.asset?.trim() ? { asset: layer.asset.trim() } : {}),
+    ...(layer.kind === "panorama" && layer.turnDeg ? { turnDeg: layer.turnDeg } : {}),
+    ...(layer.kind !== "panorama" && layer.seed !== undefined ? { seed: layer.seed } : {}),
+  }));
+  if (far.length) shot.far = far;
   shot.output = { take: String(nextTake(takes, panel.id)) };
   return shot;
 }

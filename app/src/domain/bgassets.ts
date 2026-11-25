@@ -11,8 +11,11 @@ import { backgroundOf } from "./background";
 
 export const ASSETS_FILE = "素材.json";
 
-export type AssetKind = "place" | "thing";
-export const ASSET_KIND_LABELS: Record<AssetKind, string> = { place: "場所", thing: "物" };
+export type AssetKind = "place" | "thing" | "panorama";
+export const ASSET_KIND_LABELS: Record<AssetKind, string> = { place: "場所", thing: "物", panorama: "全天球の画像" };
+const KINDS = Object.keys(ASSET_KIND_LABELS) as AssetKind[];
+/** 360° pictures (equirectangular): a 素材 of kind panorama, the far background of a panel. */
+const PANORAMA_FILE = /\.(hdr|exr)$/i;
 
 /** One 素材, as 素材.json lists it (paths from the folder, "/" between folders). */
 export interface BackgroundAsset {
@@ -28,7 +31,21 @@ export interface BackgroundAsset {
   picture?: string;
   /** Who added it ("AI" when the AI drawing made it). */
   by?: string;
+  /** Its license, as SPDX names it ("CC0-1.0", "CC-BY-4.0"…), or "own" for one's own work. name-blockout uses only free ones that may be sold. */
+  license?: string;
+  /** Where it came from (the page it was taken from). */
+  source?: string;
+  /** Who made it. */
+  author?: string;
+  /** How its license asks to be credited, when it says. */
+  attribution?: string;
 }
+
+/** Licenses name-blockout lets in (free, also for work that is sold), offered when one is written. */
+export const LICENSE_SUGGESTIONS = ["CC0-1.0", "CC-BY-4.0", "own", "MIT", "Apache-2.0", "CC-BY-3.0", "BSD-3-Clause"] as const;
+
+/** The text fields of a 素材 kept as they are read (none when empty). */
+const TEXT_FIELDS = ["collection", "note", "by", "license", "source", "author", "attribution"] as const;
 
 const text = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : undefined);
 
@@ -40,8 +57,9 @@ function inFolder(value: unknown): string | undefined {
   return parts.join("/");
 }
 
-/** 素材.json read: the 素材 it lists (a name once: the later one stands), and what could not be read. */
-export function readAssets(source: string): { assets: BackgroundAsset[]; problems: string[] } {
+/** 素材.json read: the 素材 it lists (a name once: the later one stands), what could not be read, and the file's other
+ * fields (`rest`, such as name-blockout's allowLicenses: kept when it is written again). */
+export function readAssets(source: string): { assets: BackgroundAsset[]; problems: string[]; rest?: Record<string, unknown> } {
   let data: unknown;
   try {
     data = JSON.parse(source.replace(/^﻿/, ""));
@@ -60,24 +78,27 @@ export function readAssets(source: string): { assets: BackgroundAsset[]; problem
       problems.push(`${i + 1} 件目: 名前かファイル（素材のフォルダーの中）がありません`);
       return;
     }
-    const asset: BackgroundAsset = { name, kind: entry.kind === "place" ? "place" : "thing", file };
-    const collection = text(entry.collection);
-    if (collection) asset.collection = collection;
-    const note = text(entry.note);
-    if (note) asset.note = note;
+    const kind = KINDS.find((one) => one === entry.kind) ?? "thing";
+    const asset: BackgroundAsset = { name, kind, file };
+    for (const key of TEXT_FIELDS) {
+      const value = text(entry[key]);
+      if (value) asset[key] = value;
+    }
     const picture = inFolder(entry.picture);
     if (picture) asset.picture = picture;
-    const by = text(entry.by);
-    if (by) asset.by = by;
     named.delete(name);
     named.set(name, asset);
   });
-  return { assets: [...named.values()], problems };
+  const rest =
+    data && typeof data === "object" && !Array.isArray(data)
+      ? Object.fromEntries(Object.entries(data as Record<string, unknown>).filter(([key]) => key !== "assets"))
+      : {};
+  return { assets: [...named.values()], problems, ...(Object.keys(rest).length ? { rest } : {}) };
 }
 
-/** 素材.json written (the same shape it is read in). */
-export function writeAssets(assets: readonly BackgroundAsset[]): string {
-  return `${JSON.stringify({ assets }, null, 2)}\n`;
+/** 素材.json written (the same shape it is read in, with the file's other fields kept). */
+export function writeAssets(assets: readonly BackgroundAsset[], rest?: Record<string, unknown>): string {
+  return `${JSON.stringify({ ...rest, assets }, null, 2)}\n`;
 }
 
 /** The 3D files of the folder not listed yet, added as 物 named after their files (a name taken: its folder's too). */
@@ -94,7 +115,7 @@ export function addModels(assets: readonly BackgroundAsset[], files: readonly st
     for (let n = 2; names.has(name); n++) name = `${stem} ${n}`;
     names.add(name);
     listed.add(file);
-    out.push({ name, kind: "thing", file });
+    out.push({ name, kind: PANORAMA_FILE.test(file) ? "panorama" : "thing", file });
   }
   return out;
 }
@@ -157,12 +178,13 @@ export function assetUses(project: Project, assets: readonly BackgroundAsset[]):
       if (!bg) continue;
       add(assetNamed(assets, bg.place)?.name);
       for (const object of bg.objects ?? []) add(objectAsset(assets, object)?.name);
+      for (const layer of bg.far ?? []) if (layer.kind === "panorama") add(assetNamed(assets, layer.asset)?.name);
     }
   return uses;
 }
 
 const assetLine = (asset: BackgroundAsset) =>
-  `「${asset.name}」（${ASSET_KIND_LABELS[asset.kind]}）: \`${asset.file}\`${asset.collection ? `（コレクション ${asset.collection}）` : ""}${asset.note ? ` — ${asset.note}` : ""}`;
+  `「${asset.name}」（${ASSET_KIND_LABELS[asset.kind]}）: \`${asset.file}\`${asset.collection ? `（コレクション ${asset.collection}）` : ""}${asset.note ? ` — ${asset.note}` : ""}${asset.license ? `（${asset.license}${asset.author ? `、${asset.author}` : ""}）` : ""}`;
 
 /** A panel's 素材 in words for its part of the request (none: nothing). */
 export function panelAssetWords(panel: Panel, assets: readonly BackgroundAsset[]): string[] {
@@ -174,6 +196,11 @@ export function panelAssetWords(panel: Panel, assets: readonly BackgroundAsset[]
   for (const object of bg.objects ?? []) {
     const asset = objectAsset(assets, object);
     if (asset) out.push(`物「${object.label}」の素材: ${assetLine(asset)}`);
+  }
+  for (const layer of bg.far ?? []) {
+    if (layer.kind !== "panorama") continue;
+    const asset = assetNamed(assets, layer.asset);
+    if (asset) out.push(`遠景の空の素材: ${assetLine(asset)}。World に正距円筒で貼る（画像の真ん中の行がアイレベル）`);
   }
   return out;
 }
@@ -192,5 +219,6 @@ export function assetsSection(folder: string, assets: readonly BackgroundAsset[]
     "- 素材はあたり用の簡単な形でよい（細かい作り込みは要らない）。一覧にない物は、箱・板・円柱の組み合わせでその場で作る。",
     "- 何度も出そうな場所・物（世界の設定やコマの指示に名前のあるもの）を新しく作ったら、素材のフォルダーの `<名前>/<名前>.blend` に同じ名前のコレクションにまとめて保存し、小さな見本の絵 `<名前>/見本.png` と一緒に、" +
       `\`${ASSETS_FILE}\` に 1 件足す（ほかの行は残す）: \`{"assets":[{"name":"<名前>","kind":"place か thing","file":"<名前>/<名前>.blend","collection":"<名前>","note":"大きさ・正面の向き・使い方","picture":"<名前>/見本.png","by":"AI"}]}\``,
+    "- ほかから取ってきた素材は、無料で商用にも使えるもの（CC0・CC-BY など）だけにし、`license`（SPDX の名前）・`source`（取ってきたページ）・`author` も書く。ライセンスの分からないもの・非商用のものは使わない。",
   ];
 }

@@ -399,7 +399,12 @@ guides: Array<[[number, number], [number, number]]>,
 /**
  * 物の指示: what stands where, an outline with a name each.
  */
-objects: Array<BackgroundObject>, };
+objects: Array<BackgroundObject>, 
+/**
+ * 遠景: the far layers behind everything (a 360° picture from the 素材,
+ * or skyline, mountains and trees made from a seed), farthest first.
+ */
+far: Array<BackgroundFar>, };
 
 export type BackgroundCamera = "eye" | "low" | "high";
 
@@ -408,6 +413,22 @@ export type BackgroundObject = { id: string, label: string, shape: Array<[number
  * The 素材 (by name) it is made from; none: the one named as it is, if any.
  */
 asset?: string, };
+
+export type BackgroundFar = { kind: FarKind, 
+/**
+ * panorama: the 素材 (by name) of the 360° picture.
+ */
+asset?: string, 
+/**
+ * panorama: turned this much (degrees, counter-clockwise seen from above).
+ */
+turnDeg?: number, 
+/**
+ * Made layers: the seed their shape comes from (another seed, another shape).
+ */
+seed?: number, };
+
+export type FarKind = "panorama" | "mountains" | "skyline" | "trees";
 
 export type BackgroundSettings = { 
 /**

@@ -109,7 +109,7 @@ pub fn bg_assets(
     assets_folder(&chosen, name.as_deref(), folder.as_deref()).map(|dir| dir.display().to_string())
 }
 
-/// The 3D files in a folder (and three levels under it), "/" between folders, sorted.
+/// The 3D files (and 360° pictures) in a folder (and three levels under it), "/" between folders, sorted.
 pub fn models_in(dir: &Path) -> Vec<String> {
     fn walk(dir: &Path, base: &Path, depth: usize, out: &mut Vec<String>) {
         let Ok(entries) = std::fs::read_dir(dir) else { return };
@@ -143,6 +143,8 @@ pub fn models_in(dir: &Path) -> Vec<String> {
 /// What counts as a 3D file in the folder of 素材.
 pub const MODEL_EXTENSIONS: &[&str] = &[
     "blend", "fbx", "glb", "gltf", "obj", "usd", "usda", "usdc", "usdz", "abc", "dae", "stl", "ply",
+    // 360° pictures (全天球の画像) for the far background
+    "hdr", "exr",
 ];
 
 #[tauri::command]

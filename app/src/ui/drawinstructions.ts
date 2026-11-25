@@ -3,7 +3,17 @@
 // things placed with the 背景 tool named (each with its 素材). Folded, a
 // panel shows only `instructionSummary`.
 import { assetNamed, chooseAsset, objectAsset } from "../domain/bgassets";
-import { CAMERA_LABELS, backgroundOf, findPanel, renameObject, setBackground } from "../domain/background";
+import {
+  CAMERA_LABELS,
+  FAR_KINDS,
+  FAR_LABELS,
+  backgroundOf,
+  findPanel,
+  renameObject,
+  reseedFar,
+  setBackground,
+  setFar,
+} from "../domain/background";
 import {
   PERSPECTIVES,
   PERSPECTIVE_LABELS,
@@ -14,7 +24,7 @@ import {
   rulerWords,
   setPerspective,
 } from "../domain/bgruler";
-import type { BackgroundCamera, Panel, Project } from "../model/model";
+import type { BackgroundCamera, BackgroundFar, FarKind, Panel, Project } from "../model/model";
 import type { DrawAssets } from "./drawassets";
 
 /** An element with these attributes and children. */
@@ -45,8 +55,77 @@ export function instructionSummary(panel: Panel): string {
     ruler.vanishing.length ? `${PERSPECTIVE_LABELS[perspectiveOf(bg)]}透視` : ruler.horizon ? "アイレベル" : "",
     !ruler.vanishing.length && bg.camera ? CAMERA_LABELS[bg.camera] : "",
     bg.objects?.length ? `物 ${bg.objects.map((object) => object.label).join("・")}` : "",
+    bg.far?.length ? `遠景 ${bg.far.map(farWord).join("・")}` : "",
   ].filter(Boolean);
   return parts.length ? parts.join(" / ") : "指示なし（ラフのまま）";
+}
+
+const farWord = (layer: BackgroundFar) => (layer.kind === "panorama" ? (layer.asset ?? FAR_LABELS.panorama) : FAR_LABELS[layer.kind]);
+
+/** 遠景: the sky (a 360° picture from the 素材, turned) and the made layers (mountains, skyline, trees), with another shape. */
+function farRow(host: InstructionHost, panel: Panel): HTMLElement {
+  const far = backgroundOf(panel).far ?? [];
+  const layerOf = (kind: FarKind) => far.find((layer) => layer.kind === kind);
+  const edit = (change: (panel: Panel) => void) =>
+    host.edit((project) => {
+      const found = findPanel(project, panel.id);
+      if (found) change(found.panel);
+    });
+  const parts: HTMLElement[] = [
+    tag("span", { class: "hint", title: "遠くの景色。線は細く・トーンは明るく描かれ、遠景だけの絵（遠景）も届きます" }, "遠景"),
+  ];
+  const listed = host.assets.names("panorama");
+  const panorama = layerOf("panorama");
+  if (listed.length || panorama) {
+    const sky = tag("select", {
+      "aria-label": "遠景の空",
+      title: "空に貼る全天球の画像（素材の「全天球の画像」）。画像の地平線がアイレベルに合います",
+    });
+    sky.append(tag("option", { value: "" }, "空の画像なし"));
+    for (const name of listed) sky.append(tag("option", { value: name }, name));
+    if (panorama?.asset && !listed.includes(panorama.asset))
+      sky.append(tag("option", { value: panorama.asset }, `${panorama.asset}（一覧にない）`));
+    sky.value = panorama?.asset ?? "";
+    sky.addEventListener("change", () => edit((one) => setFar(one, "panorama", sky.value ? { asset: sky.value } : null)));
+    parts.push(sky);
+    if (panorama) {
+      const turn = tag("input", {
+        type: "number",
+        step: "15",
+        class: "drawing-far-turn",
+        "aria-label": "空の向き",
+        title: "空の画像を回す角度（度、上から見て左回り）。太陽や山の向きを合わせる",
+      });
+      turn.value = String(panorama.turnDeg ?? 0);
+      turn.addEventListener("keydown", (event) => event.stopPropagation());
+      turn.addEventListener("change", () => {
+        const value = Number(turn.value);
+        edit((one) => setFar(one, "panorama", { turnDeg: Number.isFinite(value) && value ? ((value % 360) + 360) % 360 : undefined }));
+      });
+      parts.push(tag("label", { class: "check" }, turn, "°"));
+    }
+  }
+  for (const kind of FAR_KINDS) {
+    if (kind === "panorama") continue;
+    const box = tag("input", { type: "checkbox" });
+    box.checked = !!layerOf(kind);
+    box.dataset.far = kind;
+    box.addEventListener("change", () => edit((one) => setFar(one, kind, box.checked ? {} : null)));
+    parts.push(
+      tag(
+        "label",
+        { class: "check", title: `${FAR_LABELS[kind]}を遠くに置く（形は種から。同じ種なら同じ形）` },
+        box,
+        ` ${FAR_LABELS[kind]}`,
+      ),
+    );
+  }
+  if (far.some((layer) => layer.kind !== "panorama")) {
+    const again = tag("button", { type: "button", title: "山並み・街並み・木立を別の形にする" }, "別の形");
+    again.addEventListener("click", () => edit((one) => reseedFar(one)));
+    parts.push(again);
+  }
+  return tag("div", { class: "assist-row drawing-far" }, ...parts);
 }
 
 /** A panel's 背景の指示, to write and choose. */
@@ -166,5 +245,6 @@ export function instructionsView(host: InstructionHost, panel: Panel): HTMLEleme
       tag("span", { class: "hint", title: "背景の道具（H）で描いた指示" }, drawn.length ? drawn.join("・") : ""),
     ),
     ...(things.length ? [tag("div", { class: "assist-row drawing-objects" }, tag("span", { class: "hint" }, "物"), ...things)] : []),
+    ...(bg.none ? [] : [farRow(host, panel)]),
   );
 }

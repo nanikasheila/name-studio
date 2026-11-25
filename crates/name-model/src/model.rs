@@ -661,6 +661,42 @@ pub struct PanelBackground {
     /// 物の指示: what stands where, an outline with a name each.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub objects: Vec<BackgroundObject>,
+    /// 遠景: the far layers behind everything (a 360° picture from the 素材,
+    /// or skyline, mountains and trees made from a seed), farthest first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub far: Vec<BackgroundFar>,
+}
+
+/// 遠景の層 of a panel's background.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
+#[serde(rename_all = "camelCase")]
+pub struct BackgroundFar {
+    pub kind: FarKind,
+    /// panorama: the 素材 (by name) of the 360° picture.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asset: Option<String>,
+    /// panorama: turned this much (degrees, counter-clockwise seen from above).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_deg: Option<f64>,
+    /// Made layers: the seed their shape comes from (another seed, another shape).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<u32>,
+}
+
+/// What a 遠景の層 is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum FarKind {
+    /// 全天球の画像
+    Panorama,
+    /// 山並み
+    Mountains,
+    /// 街並み
+    Skyline,
+    /// 木立
+    Trees,
 }
 
 /// カメラ of a panel's background.

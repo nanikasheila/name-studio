@@ -106,6 +106,22 @@ export interface PanelBackground {
   guides?: [Point, Point][];
   /** 物の指示: what stands where. */
   objects?: BackgroundObject[];
+  /** 遠景: the far layers behind everything, farthest first. */
+  far?: BackgroundFar[];
+}
+
+/** 遠景の層: a 360° picture (全天球の画像, a 素材), or mountains, a skyline or trees made from a seed. */
+export type FarKind = "panorama" | "mountains" | "skyline" | "trees";
+
+/** 遠景の層 of a panel's background. */
+export interface BackgroundFar {
+  kind: FarKind;
+  /** panorama: the 素材 (by name) of the 360° picture. */
+  asset?: string;
+  /** panorama: turned this much (degrees, counter-clockwise seen from above). */
+  turnDeg?: number;
+  /** Made layers: the seed their shape comes from. */
+  seed?: number;
 }
 
 /** 物の指示: a thing in a panel's background, an outline with its name. */
