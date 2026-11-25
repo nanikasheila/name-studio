@@ -460,6 +460,28 @@ try {
     (await page.textContent(`#side-drawing .drawing-panel[data-panel="${first.id}"]`)).includes("給水塔を右奥に"),
     "the take shows per panel, with what the AI said of it",
   );
+  // 見比べる: the name's panel beside the take, then the take laid over it.
+  const takeRow = `#side-drawing .drawing-panel[data-panel="${first.id}"]`;
+  await page.click(`${takeRow} [data-part="compare"]`);
+  await page.waitForFunction(
+    (selector) => document.querySelectorAll(`${selector} .drawing-compare[data-mode="side"] figure img`).length === 2,
+    takeRow,
+  );
+  check(
+    (await page.$$eval(`${takeRow} .drawing-compare figcaption`, (all) => all.map((one) => one.textContent)))
+      .join("|")
+      .startsWith("ネーム|案1"),
+    "見比べる puts the name's panel beside the take",
+  );
+  await page.click(`${takeRow} [data-part="compare-over"]`);
+  await page.waitForSelector(`${takeRow} .drawing-overlay img.drawing-overlay-take`);
+  await page.fill(`${takeRow} .drawing-compare input[type="range"]`, "80");
+  check(
+    (await page.$eval(`${takeRow} .drawing-overlay-take`, (img) => img.style.opacity)) === "0.8",
+    "重ねる lays the take over the name, as strong as the slider says",
+  );
+  await page.click(`${takeRow} [data-part="compare"]`);
+  await page.waitForSelector(`${takeRow} img.drawing-preview`);
   await page.click(`#side-drawing .drawing-panel[data-panel="${first.id}"] button:has-text("採用")`);
   await page.waitForFunction(
     (id) => window.nameStudio.workbench.project.pages[0].references?.some((r) => r.kind === "background" && r.panel === id),

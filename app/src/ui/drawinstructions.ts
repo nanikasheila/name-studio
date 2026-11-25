@@ -22,13 +22,18 @@ import {
   OUTDOOR_LIGHTS,
   SETTING_LABELS,
   TIME_LABELS,
+  WALLS,
   WEATHER_LABELS,
+  WINDOW_LABELS,
   lookOf,
   lookWords,
   materialOf,
   setLook,
   setMaterial,
+  setWindow,
   shareLook,
+  windowOf,
+  type RoomWindow,
 } from "../domain/bglook";
 import {
   PERSPECTIVES,
@@ -256,7 +261,25 @@ function lookRow(host: InstructionHost, panel: Panel): HTMLElement {
       (value) => change({ light: value }),
     ),
   ];
+  if (indoor) {
+    parts.push(
+      choice<RoomWindow>(
+        "窓",
+        "部屋の窓の壁（決めないと、光が窓からのとき画面の左に見える壁に 1 つ）",
+        "窓: おまかせ",
+        ["back", "left", "right", "none"],
+        WINDOW_LABELS,
+        windowOf(panel),
+        (value) =>
+          host.edit((project) => {
+            const found = findPanel(project, panel.id);
+            if (found) setWindow(found.panel, value);
+          }),
+      ),
+    );
+  }
   if (look.develop) parts.push(materialChoice(host, panel, GROUND, indoor ? "床" : "地面"));
+  if (look.develop && indoor) parts.push(materialChoice(host, panel, WALLS, "壁"));
   if (look.timeOfDay || look.weather || look.setting || look.light) {
     const share = tag(
       "button",

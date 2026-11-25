@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Panel, Project, StoredImage } from "../model/model";
 import {
+  toggleCompared,
   addObject,
   addVanishing,
   adoptBackground,
@@ -299,5 +300,14 @@ describe("背景の依頼", () => {
     expect(requestPrompt(project, request)).toContain("依頼/20261117-050309/依頼.md");
     expect(requestSummary(project, [{ panel: "a", fresh: true }, { panel: "gone" }])).toBe("p2 コマ2（頼み直し） の背景");
     expect(panelLabel(project, project.pages[1], b)).toBe("p2 コマ1");
+  });
+});
+
+describe("toggleCompared", () => {
+  it("adds and takes out a take, keeps at most three and never none", () => {
+    expect(toggleCompared(["1"], "2")).toEqual(["1", "2"]);
+    expect(toggleCompared(["1", "2"], "1")).toEqual(["2"]);
+    expect(toggleCompared(["2"], "2")).toEqual(["2"]);
+    expect(toggleCompared(["1", "2", "3"], "4")).toEqual(["2", "3", "4"]);
   });
 });
