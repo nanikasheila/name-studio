@@ -1712,7 +1712,7 @@ fn brings_changed_dialogue_into_a_page_drawn_on_in_csp() {
         texts: Some(vec!["こんばんは".into(), "またね".into()]),
         ..Default::default()
     };
-    write_manifest(out, &[(page_path.clone(), typed)]).unwrap();
+    write_manifest(out, &[(page_path.clone(), typed)], None).unwrap();
     let read = read_dialogue(&page_path).unwrap();
     let texts: Vec<&str> = read.texts.iter().map(|text| text.text.as_str()).collect();
     assert_eq!(texts, ["こんばんは", "さようなら"]);

@@ -1,7 +1,16 @@
 // The dialog that writes the name data out (CSP pages and work, PDF, script).
 import { call } from "../platform/backend";
 import { ask, message, open, placeChosen, save } from "../platform/dialogs";
-import { buildRequest, folderOf, overwriteWarning, type ExportForm, type OverwriteCheck } from "../domain/export";
+import {
+  buildRequest,
+  folderOf,
+  overwriteWarning,
+  writtenWarning,
+  type ExportForm,
+  type ExportSource,
+  type OverwriteCheck,
+} from "../domain/export";
+import { askOverwrite, freshCspFolder, freshStem, writtenCheck } from "./overwriteask";
 import {
   checkSummary,
   dialogueUpdateSummary,
@@ -15,7 +24,7 @@ import {
 } from "../service/nameexport";
 import { scriptText } from "../domain/scripttext";
 import { exportMiniName, exportPdf } from "../service/flatpage";
-import { exportImages, imageFileNames } from "../service/imageexport";
+import { exportImages, imageFileNames, inFolder } from "../service/imageexport";
 import { IMAGE_DEFAULTS, fileStem, imageSummary, type ImageOptions } from "../domain/imageexport";
 import { MINI_DEFAULTS, type MiniFormat, type MiniOptions } from "../domain/mininame";
 import { applyTakeBack, planTakeBack, takeBackSummary } from "../domain/readback";
@@ -750,18 +759,28 @@ export class ExportDialog {
     let folder = this.imageDir && (await placeChosen(this.imageDir)) ? this.imageDir : null;
     if (!folder) folder = await this.pickImageDir();
     if (!folder) return null;
-    const stem = imageStem(this.host.projectPath(), project.title);
-    const names = imageFileNames(written, stem, image, this.host.firstAlone());
-    const there = await call("existing_files", { folder, names });
-    if (there.length) {
-      const sample = there.slice(0, 3).join("、") + (there.length > 3 ? ` ほか ${there.length - 3} 個` : "");
-      const go = await ask(
-        `書き出し先に同じ名前のファイルが ${there.length} 個あります（${sample}）。上書きしますか？\n\nほかのツールで描き進めたファイルなら、別のフォルダーを選んでください。`,
-        { title: "Name Studio", kind: "warning", okLabel: "上書きする", cancelLabel: "やめる" },
-      );
-      if (!go) {
+    // Asked only about files there that are not this app's as it wrote them (drawn on elsewhere, or another's).
+    let stem = imageStem(this.host.projectPath(), project.title);
+    const namesOf = (of: string) => imageFileNames(written, of, image, this.host.firstAlone());
+    const renameLabel = "別の名前で書き出す";
+    const warning = writtenWarning(
+      await writtenCheck(namesOf(stem).map((name) => inFolder(folder, name))),
+      IMAGE_NAMES[image.format],
+      renameLabel,
+    );
+    if (warning) {
+      const choice = await askOverwrite(`${warning}\n（「${renameLabel}」はファイル名の終わりに「_2」などの番号を付けます）`, renameLabel);
+      if (choice === "stop") {
         this.message("書き出しをやめました（何も書き換えていません）");
         return null;
+      }
+      if (choice === "rename") {
+        const fresh = await freshStem(folder, stem, namesOf);
+        if (!fresh) {
+          this.message("空いているファイル名が見つかりませんでした。別のフォルダーを選んでください。", true);
+          return null;
+        }
+        stem = fresh;
       }
     }
     const result = await exportImages(
@@ -981,9 +1000,40 @@ export class ExportDialog {
    * folder cannot be looked into: what would be overwritten is not known then,
    * so nothing goes on.
    */
+  /** The name being written, kept with the CSP pages to tell a folder another name was written to. */
+  private exportSource(): ExportSource {
+    return { path: this.host.projectPath(), title: this.host.project()?.title ?? "" };
+  }
+
+  /**
+   * Asks before writing over CSP files in `outDir` that are not this name's
+   * own as written; the folder to write to (`outDir`, or a new one beside
+   * it), or null to stop (said in the dialog).
+   */
+  private async cspTarget(outDir: string): Promise<string | null> {
+    const target = await this.exportTarget(outDir);
+    if (target === false) return null;
+    const warning = target && overwriteWarning(target);
+    if (!warning) return outDir;
+    const choice = await askOverwrite(warning, "新しいフォルダーに書き出す");
+    if (choice === "overwrite") return outDir;
+    if (choice === "rename") {
+      const fresh = await freshCspFolder(outDir, this.exportSource());
+      if (fresh) {
+        this.form.outDir = fresh;
+        this.show();
+        return fresh;
+      }
+      this.message("新しいフォルダーの名前が見つかりませんでした。別のフォルダーを選んでください。", true);
+      return null;
+    }
+    this.message("書き出しをやめました（何も書き換えていません）。CSP の作業を残すには、別のフォルダーを選んでください。");
+    return null;
+  }
+
   private async exportTarget(outDir: string): Promise<OverwriteCheck | null | false> {
     try {
-      return await call("check_export_target", { outDir });
+      return await call("check_export_target", { outDir, source: this.exportSource() });
     } catch (error) {
       this.message(
         `${failureText("書き出し先を確かめられませんでした", error)}\n何も書き換えていません。フォルダーがあるか、開けるかを確かめるか、別のフォルダーを選んでください。`,
@@ -1075,14 +1125,10 @@ export class ExportDialog {
           this.message(String(request), true);
           return;
         }
-        // 上書きの知らせ: pages there may have been drawn on in CSP since.
-        const target = await this.exportTarget(request.outDir);
-        if (target === false) return;
-        const warning = target && overwriteWarning(target);
-        if (warning && !(await ask(warning, { title: "Name Studio", kind: "warning", okLabel: "上書きする", cancelLabel: "やめる" }))) {
-          this.message("書き出しをやめました。CSP の作業を残すには、別のフォルダーを選んでください。");
-          return;
-        }
+        // 上書きの知らせ: pages there may have been drawn on in CSP since, or be another name's.
+        const outDir = await this.cspTarget(request.outDir);
+        if (!outDir) return;
+        request.outDir = outDir;
         // 資料画像 and the pictures of the name each go to a layer.
         if (!(await this.picturesReadable(project, () => true))) return;
         // The sheet's roughs go to the ラフ（ネーム用紙） layer.
@@ -1097,6 +1143,7 @@ export class ExportDialog {
             workName: request.workName,
             storyIndex: request.storyIndex,
             inputs: this.sources(),
+            source: this.exportSource(),
             donors: [this.donor, written.source?.path, ...templates.donors].filter((path): path is string => !!path),
             draftLayers: this.draftRough ? ROUGH_LAYERS : [],
             frameFolders: this.panels === "frames",
@@ -1157,14 +1204,25 @@ export class ExportDialog {
         const last = kept?.replace(/\.[^.\\/]+$/, `.${extension}`);
         const suffix = this.kind === "text" ? "_台本" : this.kind === "mini" ? "_ミニネーム" : "";
         const filter = this.kind === "pdf" || extension === "pdf" ? "PDF" : this.kind === "mini" ? "画像" : "テキスト";
+        const pick = () =>
+          save({
+            defaultPath: last ?? `${base}${suffix}.${extension}`,
+            filters: [{ name: filter, extensions: extension === "jpg" ? ["jpg", "jpeg"] : [extension] }],
+          });
         // Written again without asking only where it was picked before (the Rust side takes no other place).
-        const path =
-          again && last && (await placeChosen(last))
-            ? last
-            : await save({
-                defaultPath: last ?? `${base}${suffix}.${extension}`,
-                filters: [{ name: filter, extensions: extension === "jpg" ? ["jpg", "jpeg"] : [extension] }],
-              });
+        let path = again && last && (await placeChosen(last)) ? last : await pick();
+        // Picked in the dialog, the system asked about a file there; written again without it, it is asked here
+        // when that file is not this app's as it wrote it (an editor's notes in the PDF since, say).
+        if (path && path === last && again) {
+          const renameLabel = "別の名前で保存…";
+          const warning = writtenWarning(await writtenCheck([path]), filter === "画像" ? "画像" : filter, renameLabel);
+          const choice = warning ? await askOverwrite(warning, renameLabel) : "overwrite";
+          if (choice === "stop") {
+            this.message("書き出しをやめました（何も書き換えていません）");
+            return;
+          }
+          if (choice === "rename") path = await pick();
+        }
         if (!path) return;
         target = path;
         if (this.sources().some((source) => source.toLowerCase() === path.toLowerCase())) {

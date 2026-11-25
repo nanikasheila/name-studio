@@ -48,6 +48,9 @@ pub(crate) struct NameExportRequest {
     /// The name's binding (true: right-bound), written over the template's.
     #[serde(default)]
     right_binding: Option<bool>,
+    /// The name written: kept with the pages, to tell a folder another name was written to.
+    #[serde(default)]
+    source: Option<manifest::ExportSource>,
 }
 
 /// The template's canvas and which parts can be written as editable layers.
@@ -73,6 +76,7 @@ pub(crate) async fn begin_name_export(
     request: NameExportRequest,
     state: tauri::State<'_, AppState>,
 ) -> Result<NameExportStart, String> {
+    *state.export_source.lock().map_err(lock_error)? = request.source.clone();
     let work = match (request.work_template, request.work_name) {
         (Some(template), Some(name)) if !name.trim().is_empty() => {
             Some((name.trim().to_owned(), PathBuf::from(template)))
@@ -568,6 +572,7 @@ pub(crate) async fn finish_name_export(state: tauri::State<'_, AppState>) -> Res
         .map_err(lock_error)?
         .take()
         .ok_or("書き出しが始まっていません")?;
+    let source = state.export_source.lock().map_err(lock_error)?.take();
     tauri::async_runtime::spawn_blocking(move || {
         let report = writer.finish().map_err(|error| error.to_string())?;
         // What was written, so the next export here can tell pages changed in CSP.
@@ -579,7 +584,7 @@ pub(crate) async fn finish_name_export(state: tauri::State<'_, AppState>) -> Res
                 .zip(report.records.iter().cloned())
                 .chain(report.work.iter().map(|work| (work.clone(), Default::default())))
                 .collect();
-            let _ = manifest::write_manifest(dir, &written);
+            let _ = manifest::write_manifest(dir, &written, source.as_ref());
         }
         let work_check = report
             .work
@@ -591,16 +596,22 @@ pub(crate) async fn finish_name_export(state: tauri::State<'_, AppState>) -> Res
     .map_err(|error| error.to_string())?
 }
 
-/// CSP files an export into `out_dir` would overwrite, and which of them were changed after the last export.
+/// CSP files an export into `out_dir` would overwrite, which of them were
+/// changed after the last export, and whether another name was written there
+/// (`source`: the name about to be written).
 #[tauri::command]
-pub(crate) async fn check_export_target(out_dir: String) -> Result<manifest::OverwriteCheck, String> {
-    manifest::check_overwrite(Path::new(&out_dir))
+pub(crate) async fn check_export_target(
+    out_dir: String,
+    source: Option<manifest::ExportSource>,
+) -> Result<manifest::OverwriteCheck, String> {
+    manifest::check_overwrite(Path::new(&out_dir), source.as_ref())
         .map_err(|error| format!("書き出し先 {out_dir} の中を確かめられません: {error}"))
 }
 
 #[tauri::command]
 pub(crate) async fn cancel_name_export(state: tauri::State<'_, AppState>) -> Result<u32, String> {
     let writer = state.name_export.lock().map_err(lock_error)?.take();
+    let source = state.export_source.lock().map_err(lock_error)?.take();
     let Some(writer) = writer else {
         return Ok(0);
     };
@@ -610,7 +621,7 @@ pub(crate) async fn cancel_name_export(state: tauri::State<'_, AppState>) -> Res
     let count = pages.len() as u32;
     if let Some(dir) = pages.first().and_then(|page| page.parent()).map(Path::to_path_buf) {
         let written: Vec<(PathBuf, manifest::PageRecord)> = pages.into_iter().zip(records).collect();
-        let _ = manifest::merge_manifest(&dir, &written);
+        let _ = manifest::merge_manifest(&dir, &written, source.as_ref());
     }
     Ok(count)
 }

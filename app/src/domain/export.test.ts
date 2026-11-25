@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRequest, folderOf, overwriteWarning, summarize, type ExportForm } from "./export";
+import { buildRequest, folderOf, numbered, overwriteWarning, summarize, writtenWarning, type ExportForm } from "./export";
 
 const form: ExportForm = {
   template: "C:\\work\\template\\page.clip",
@@ -69,11 +69,12 @@ describe("上書きの知らせ", () => {
     changed,
     unknown,
     lastExportMs: 1,
+    otherSource: null,
   });
 
   it("says nothing when only the last export's own files are there", () => {
     expect(overwriteWarning(check([], []))).toBeNull();
-    expect(overwriteWarning({ existing: [], changed: [], unknown: [], lastExportMs: null })).toBeNull();
+    expect(overwriteWarning({ existing: [], changed: [], unknown: [], lastExportMs: null, otherSource: null })).toBeNull();
   });
 
   it("names pages changed in CSP since the last export", () => {
@@ -87,5 +88,50 @@ describe("上書きの知らせ", () => {
       ),
     )!;
     expect(many).toContain("ほか 3 件");
+  });
+});
+
+describe("overwriteWarning of a folder another name was written to", () => {
+  it("tells it even when its pages were not drawn on", () => {
+    const text = overwriteWarning({
+      existing: ["page0001.clip", "第3話.cmc"],
+      changed: [],
+      unknown: [],
+      lastExportMs: 1,
+      otherSource: { path: "C:\\ネーム\\第3話.namestudio", title: "第3話" },
+    })!;
+    expect(text).toContain("別のネーム「第3話」（第3話.namestudio）");
+    expect(text).toContain("新しいフォルダーに書き出す");
+    // Nothing there to write over: nothing to tell.
+    expect(
+      overwriteWarning({ existing: [], changed: [], unknown: [], lastExportMs: 1, otherSource: { path: null, title: "第3話" } }),
+    ).toBeNull();
+  });
+});
+
+describe("writtenWarning", () => {
+  const written = (existing: string[], changed: string[], unknown: string[]) => ({ existing, changed, unknown });
+
+  it("says nothing of the app's own files as it wrote them", () => {
+    expect(writtenWarning(written(["a_001.png", "a_002.png"], [], []), "画像", "別の名前で書き出す")).toBeNull();
+    expect(writtenWarning(written([], [], []), "PDF", "別の名前で保存…")).toBeNull();
+  });
+
+  it("names a file written on since, and one from elsewhere", () => {
+    const pdf = writtenWarning(written(["第4話.pdf"], ["第4話.pdf"], []), "PDF", "別の名前で保存…")!;
+    expect(pdf).toContain("「第4話.pdf」");
+    expect(pdf).toContain("変更されています");
+    expect(pdf).toContain("「別の名前で保存…」");
+    const pictures = writtenWarning(written(["a_001.png", "a_002.png", "a_003.png"], ["a_002.png"], ["a_003.png"]), "画像", "x")!;
+    expect(pictures).toContain("3 個");
+    expect(pictures).toContain("変更されたもの（ほかのツールで描き込んだ可能性があります）: a_002.png");
+    expect(pictures).toContain("書き出したものではないもの: a_003.png");
+  });
+});
+
+describe("numbered", () => {
+  it("puts the number after the folder or the stem", () => {
+    expect(numbered("C:\\書き出し\\第4話\\", 2)).toBe("C:\\書き出し\\第4話_2");
+    expect(numbered("第4話", 3)).toBe("第4話_3");
   });
 });

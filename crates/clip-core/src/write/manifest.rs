@@ -19,6 +19,35 @@ pub const MANIFEST_NAME: &str = ".name-studio-export.json";
 pub struct Manifest {
     pub written_ms: u64,
     pub files: Vec<ManifestFile>,
+    /// The name the pages were written from (none from older versions).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<ExportSource>,
+}
+
+/// The name an export was written from: its file (none while it is not
+/// saved yet) and its title, to tell a folder another name was written to.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportSource {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub title: String,
+}
+
+impl ExportSource {
+    /// Whether `other` is the same name: the same file when both have one
+    /// (`C:\a` and `c:/A` are one on Windows), else the same title.
+    pub fn same(&self, other: &ExportSource) -> bool {
+        let key = |path: &str| {
+            let path = path.replace('\\', "/");
+            if cfg!(windows) { path.to_lowercase() } else { path }
+        };
+        match (&self.path, &other.path) {
+            (Some(a), Some(b)) => key(a) == key(b),
+            _ => self.title.trim() == other.title.trim(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -79,7 +108,11 @@ fn now_ms() -> u64 {
 
 /// Record the files just written into `dir` (files elsewhere are left out),
 /// each with what was written into it when known.
-pub fn write_manifest(dir: &Path, files: &[(PathBuf, PageRecord)]) -> std::io::Result<()> {
+pub fn write_manifest(
+    dir: &Path,
+    files: &[(PathBuf, PageRecord)],
+    source: Option<&ExportSource>,
+) -> std::io::Result<()> {
     let files = files
         .iter()
         .filter(|(path, _)| path.parent() == Some(dir))
@@ -98,17 +131,27 @@ pub fn write_manifest(dir: &Path, files: &[(PathBuf, PageRecord)]) -> std::io::R
         &Manifest {
             written_ms: now_ms(),
             files,
+            source: source.cloned(),
         },
     )
 }
 
 /// Record `files` as this tool's, keeping what the manifest says of the
-/// others: an export stopped part way through rewrote only these pages.
-pub fn merge_manifest(dir: &Path, files: &[(PathBuf, PageRecord)]) -> std::io::Result<()> {
+/// others: an export stopped part way through rewrote only these pages
+/// (from `source`, which the folder is taken to hold from now on).
+pub fn merge_manifest(
+    dir: &Path,
+    files: &[(PathBuf, PageRecord)],
+    source: Option<&ExportSource>,
+) -> std::io::Result<()> {
     let mut manifest = load(dir).unwrap_or(Manifest {
         written_ms: now_ms(),
         files: Vec::new(),
+        source: None,
     });
+    if let Some(source) = source {
+        manifest.source = Some(source.clone());
+    }
     for (path, record) in files.iter().filter(|(path, _)| path.parent() == Some(dir)) {
         let (Some((size, modified_ms)), Some(name)) = (stamp(path), path.file_name()) else {
             continue;
@@ -178,13 +221,17 @@ pub struct OverwriteCheck {
     pub unknown: Vec<String>,
     /// When the last export there was written.
     pub last_export_ms: Option<u64>,
+    /// The name the last export there was written from, when it is not the
+    /// one about to be written (its pages are written over even unchanged).
+    pub other_source: Option<ExportSource>,
 }
 
 /// What exporting into `dir` would overwrite: nothing when the folder is not
 /// there yet (the export makes it), an error when it cannot be looked into
 /// (no permission, not a folder, a drive gone), which is not the same as
-/// finding nothing there.
-pub fn check_overwrite(dir: &Path) -> std::io::Result<OverwriteCheck> {
+/// finding nothing there. `source`: the name about to be written, to tell a
+/// folder written from another one.
+pub fn check_overwrite(dir: &Path, source: Option<&ExportSource>) -> std::io::Result<OverwriteCheck> {
     let mut check = OverwriteCheck::default();
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
@@ -193,6 +240,10 @@ pub fn check_overwrite(dir: &Path) -> std::io::Result<OverwriteCheck> {
     };
     let manifest = load(dir);
     check.last_export_ms = manifest.as_ref().map(|m| m.written_ms);
+    check.other_source = match (manifest.as_ref().and_then(|m| m.source.as_ref()), source) {
+        (Some(before), Some(now)) if !before.same(now) => Some(before.clone()),
+        _ => None,
+    };
     let paths = entries
         .map(|entry| entry.map(|entry| entry.path()))
         .collect::<std::io::Result<Vec<_>>>()?;
@@ -218,6 +269,9 @@ pub fn check_overwrite(dir: &Path) -> std::io::Result<OverwriteCheck> {
         }
         check.existing.push(name);
     }
+    if check.existing.is_empty() {
+        check.other_source = None;
+    }
     Ok(check)
 }
 
@@ -229,7 +283,7 @@ mod tests {
     fn tells_changed_pages_from_its_own() {
         let dir = std::env::temp_dir().join(format!("manifest-test-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&dir).unwrap();
-        assert_eq!(check_overwrite(&dir).unwrap(), OverwriteCheck::default());
+        assert_eq!(check_overwrite(&dir, None).unwrap(), OverwriteCheck::default());
         let pages: Vec<PathBuf> = ["page0001.clip", "page0002.clip", "作品.cmc"]
             .iter()
             .map(|name| dir.join(name))
@@ -244,11 +298,11 @@ mod tests {
         };
         let written_pages: Vec<(PathBuf, PageRecord)> =
             pages.iter().map(|page| (page.clone(), record("セリフ"))).collect();
-        write_manifest(&dir, &written_pages).unwrap();
+        write_manifest(&dir, &written_pages, None).unwrap();
         assert_eq!(written(&pages[0]), Some(record("セリフ")));
         record_page(&pages[0], record("直したセリフ")).unwrap();
         assert_eq!(written(&pages[0]), Some(record("直したセリフ")));
-        let check = check_overwrite(&dir).unwrap();
+        let check = check_overwrite(&dir, None).unwrap();
         assert_eq!(check.existing.len(), 3);
         assert!(check.changed.is_empty() && check.unknown.is_empty());
         assert!(check.last_export_ms.is_some());
@@ -256,17 +310,60 @@ mod tests {
         std::fs::write(&pages[1], b"drawn over in CSP").unwrap();
         std::fs::write(dir.join("page0003.clip"), b"?").unwrap();
         std::fs::write(dir.join("notes.txt"), b"not a page").unwrap();
-        let check = check_overwrite(&dir).unwrap();
+        let check = check_overwrite(&dir, None).unwrap();
         assert_eq!(check.changed, ["page0002.clip"]);
         assert_eq!(check.unknown, ["page0003.clip"]);
         assert_eq!(check.existing.len(), 4);
         // An export stopped after page 1: page 1 is this tool's again, page 2 is still CSP's.
         std::fs::write(&pages[0], b"written again").unwrap();
-        merge_manifest(&dir, &[(pages[0].clone(), record("また"))]).unwrap();
+        merge_manifest(&dir, &[(pages[0].clone(), record("また"))], None).unwrap();
         assert_eq!(written(&pages[0]), Some(record("また")));
-        let check = check_overwrite(&dir).unwrap();
+        let check = check_overwrite(&dir, None).unwrap();
         assert_eq!(check.changed, ["page0002.clip"]);
         assert_eq!(check.unknown, ["page0003.clip"]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_folder_another_name_was_written_to_is_told_even_unchanged() {
+        let dir = std::env::temp_dir().join(format!("manifest-test-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let page = dir.join("page0001.clip");
+        std::fs::write(&page, b"written").unwrap();
+        let name = |path: Option<&str>, title: &str| ExportSource {
+            path: path.map(str::to_owned),
+            title: title.to_owned(),
+        };
+        let third = name(Some("/作品/第3話.namestudio"), "第3話");
+        write_manifest(&dir, &[(page.clone(), PageRecord::default())], Some(&third)).unwrap();
+        // The same name again (its title changed since): nothing to tell.
+        let check = check_overwrite(&dir, Some(&name(Some("/作品/第3話.namestudio"), "第三話"))).unwrap();
+        assert!(check.changed.is_empty() && check.unknown.is_empty() && check.other_source.is_none());
+        // Another name: told, with the one written there before.
+        let check = check_overwrite(&dir, Some(&name(Some("/作品/第4話.namestudio"), "第4話"))).unwrap();
+        assert_eq!(check.other_source, Some(third.clone()));
+        // Not saved yet: told apart by the title.
+        assert!(
+            check_overwrite(&dir, Some(&name(None, "第3話")))
+                .unwrap()
+                .other_source
+                .is_none()
+        );
+        assert!(
+            check_overwrite(&dir, Some(&name(None, "新しいネーム")))
+                .unwrap()
+                .other_source
+                .is_some()
+        );
+        // Not asked about the name (the command line of old): nothing to tell.
+        assert!(check_overwrite(&dir, None).unwrap().other_source.is_none());
+        // An export stopped part way through: the folder is the new name's from then on.
+        let fourth = name(Some("/作品/第4話.namestudio"), "第4話");
+        merge_manifest(&dir, &[(page.clone(), PageRecord::default())], Some(&fourth)).unwrap();
+        assert!(check_overwrite(&dir, Some(&fourth)).unwrap().other_source.is_none());
+        // Nothing left there to write over: nothing to tell.
+        std::fs::remove_file(&page).unwrap();
+        assert!(check_overwrite(&dir, Some(&third)).unwrap().other_source.is_none());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -275,14 +372,14 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("manifest-test-{}", uuid::Uuid::new_v4().simple()));
         // Not made yet: the export makes it, nothing to overwrite.
         assert_eq!(
-            check_overwrite(&dir.join("新しいフォルダー")).unwrap(),
+            check_overwrite(&dir.join("新しいフォルダー"), None).unwrap(),
             OverwriteCheck::default()
         );
         // A file where the folder should be: cannot be looked into, so not "nothing there".
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("page0001.clip");
         std::fs::write(&file, b"written").unwrap();
-        assert!(check_overwrite(&file).is_err());
+        assert!(check_overwrite(&file, None).is_err());
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -292,7 +389,7 @@ mod tests {
             std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
             // Root reads it anyway; anyone else is refused, and told so.
             if std::fs::read_dir(&locked).is_err() {
-                assert!(check_overwrite(&locked).is_err());
+                assert!(check_overwrite(&locked, None).is_err());
             }
             std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
         }

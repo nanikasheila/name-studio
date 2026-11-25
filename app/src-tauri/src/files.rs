@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::ipc::{raw_body, split_body};
 use crate::paths::Chosen;
+use crate::written::Written;
 
 /// The kinds of file each command writes: a picture of the name, and the script or a report.
 const PICTURES: &[&str] = &["png", "jpg", "jpeg"];
@@ -84,6 +85,7 @@ pub(crate) struct WrittenSubTool {
 #[tauri::command]
 pub(crate) async fn write_csp_sub_tool(
     chosen: tauri::State<'_, Chosen>,
+    written: tauri::State<'_, Written>,
     path: String,
     tool: name_model::CspToolData,
     name: String,
@@ -93,6 +95,7 @@ pub(crate) async fn write_csp_sub_tool(
     let file = clip_core::subtool::sub_tool_file(&tool, &name, materials.as_deref().map(Path::new))
         .map_err(|error| error.to_string())?;
     name_model::atomic::write(&path, &file.bytes).map_err(|error| error.to_string())?;
+    written.record(&path);
     Ok(WrittenSubTool {
         missing_materials: file.missing_materials,
     })
@@ -124,10 +127,12 @@ pub(crate) struct PdfPageMeta {
 #[tauri::command]
 pub(crate) async fn write_pdf(
     chosen: tauri::State<'_, Chosen>,
+    written: tauri::State<'_, Written>,
     request: tauri::ipc::Request<'_>,
 ) -> Result<(), String> {
     let body = raw_body(&request)?;
     let path = chosen.writable(&split_body::<PdfMeta>(&body)?.0.path, &["pdf"])?;
+    let target = path.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let (meta, mut rest) = split_body::<PdfMeta>(&body)?;
         let mut pages = Vec::new();
@@ -153,7 +158,9 @@ pub(crate) async fn write_pdf(
         write_through_temporary(&path, &pdf)
     })
     .await
-    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())??;
+    written.record(&target);
+    Ok(())
 }
 
 #[derive(Deserialize)]
@@ -166,10 +173,12 @@ pub(crate) struct BinaryMeta {
 #[tauri::command]
 pub(crate) async fn write_binary_file(
     chosen: tauri::State<'_, Chosen>,
+    written: tauri::State<'_, Written>,
     request: tauri::ipc::Request<'_>,
 ) -> Result<(), String> {
     let body = raw_body(&request)?;
     let path = chosen.writable(&split_body::<BinaryMeta>(&body)?.0.path, PICTURES)?;
+    let target = path.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let (_, bytes) = split_body::<BinaryMeta>(&body)?;
         if bytes.is_empty() {
@@ -178,7 +187,9 @@ pub(crate) async fn write_binary_file(
         write_through_temporary(&path, bytes)
     })
     .await
-    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())??;
+    written.record(&target);
+    Ok(())
 }
 
 #[derive(Deserialize)]
@@ -212,17 +223,21 @@ fn shift_jis(name: &str) -> Option<Vec<u8>> {
 #[tauri::command]
 pub(crate) async fn write_psd(
     chosen: tauri::State<'_, Chosen>,
+    written: tauri::State<'_, Written>,
     request: tauri::ipc::Request<'_>,
 ) -> Result<(), String> {
     let body = raw_body(&request)?;
     let path = chosen.writable(&split_body::<PsdMeta>(&body)?.0.path, &["psd"])?;
+    let target = path.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let (meta, rest) = split_body::<PsdMeta>(&body)?;
         let file = psd_file(&meta, rest)?;
         write_through_temporary(&path, &file)
     })
     .await
-    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())??;
+    written.record(&target);
+    Ok(())
 }
 
 /// The PSD of `meta`'s layers, their PNGs one after the other in `rest`.
@@ -256,25 +271,21 @@ fn psd_file(meta: &PsdMeta, mut rest: &[u8]) -> Result<Vec<u8>, String> {
     Ok(builder.finish())
 }
 
-/// Of `names` in `folder`, those already there (written over by an export of page pictures).
-#[tauri::command]
-pub(crate) async fn existing_files(folder: String, names: Vec<String>) -> Vec<String> {
-    let folder = Path::new(&folder);
-    names.into_iter().filter(|name| folder.join(name).exists()).collect()
-}
-
 /// Write a text file (the script) as UTF-8 with a byte order mark, which
 /// Windows' Notepad and Excel read as UTF-8.
 #[tauri::command]
 pub(crate) async fn write_text_file(
     chosen: tauri::State<'_, Chosen>,
+    written: tauri::State<'_, Written>,
     path: String,
     text: String,
 ) -> Result<(), String> {
     let path = chosen.writable(&path, TEXTS)?;
     let mut bytes = "\u{FEFF}".as_bytes().to_vec();
     bytes.extend_from_slice(text.replace('\n', "\r\n").as_bytes());
-    write_through_temporary(&path, &bytes)
+    write_through_temporary(&path, &bytes)?;
+    written.record(&path);
+    Ok(())
 }
 
 /// The record of セリフだけ反映 kept with the CSP pages, one entry per run.

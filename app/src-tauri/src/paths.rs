@@ -50,7 +50,7 @@ pub struct Chosen {
 
 /// A path as compared: its parts joined one way, and without case on Windows
 /// (where `C:\Out` and `c:/out` are one place).
-fn key(path: &Path) -> String {
+pub(crate) fn key(path: &Path) -> String {
     let parts: PathBuf = path.components().collect();
     let text = parts.to_string_lossy().replace('\\', "/");
     if cfg!(windows) { text.to_lowercase() } else { text }

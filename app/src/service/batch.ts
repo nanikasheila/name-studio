@@ -75,11 +75,12 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
   let ok = false;
   try {
     status(`${task.project} を書き出し中…`);
-    // Not asked here (no one to ask): what was overwritten goes in the report.
-    // A folder that cannot be looked into stops it, as in the dialog.
-    const overwrite = await call("check_export_target", { outDir: task.outDir });
     // As when the window opens a file: empty lists are left out of the saved JSON.
     const project = normalize(await call("load_project", { path: task.project }));
+    // Not asked here (no one to ask): what was overwritten goes in the report (another name's pages too).
+    // A folder that cannot be looked into stops it, as in the dialog.
+    const source = { path: task.project, title: project.title };
+    const overwrite = await call("check_export_target", { outDir: task.outDir, source });
     // Parts a newer version added are not written out: said first in the report.
     const unknown = unknownFieldsNote((await call("unknown_project_fields", { path: task.project }).catch(() => null)) ?? []);
     const notes = unknown ? [`注意: ${unknown}`] : [];
@@ -147,6 +148,7 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
           workName: task.workName,
           storyIndex: task.storyIndex,
           inputs: [task.project, project.source?.path].filter((path): path is string => !!path),
+          source,
           donors: [...(task.donors ?? []), project.source?.path, ...templates.donors].filter((path): path is string => !!path),
           draftLayers: task.draftRough === false ? [] : ROUGH_LAYERS,
           frameFolders: task.frameFolders === true,

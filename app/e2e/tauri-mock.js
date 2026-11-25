@@ -27,6 +27,9 @@ window.__TAURI_INTERNALS__ = {
         return { savedToFile: false, version: null, problems: [] };
       case "log_error":
         return null;
+      case "check_written_files":
+        // No file of the app's there (a test answers it itself to have some).
+        return { existing: [], changed: [], unknown: [] };
       default:
         throw new Error(`no app: ${command}`);
     }

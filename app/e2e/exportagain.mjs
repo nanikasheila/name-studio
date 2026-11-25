@@ -41,6 +41,16 @@ try {
         }
         case "place_chosen":
           return window.__picked.includes(args.path);
+        case "check_written_files": {
+          // __changed: files written on since this app wrote them.
+          const changed = args.paths.filter((path) => (window.__changed ?? []).includes(path)).map((path) => path.split("\\").pop());
+          return { existing: changed, changed, unknown: [] };
+        }
+        case "plugin:dialog|message": {
+          window.__asked = [...(window.__asked ?? []), args.message];
+          const three = args.buttons?.YesNoCancelCustom;
+          return three ? three[window.__choice ?? 0] : "Ok";
+        }
         default:
           return undefined;
       }
@@ -93,6 +103,38 @@ try {
   check((await page.locator("#status").textContent()).includes("書き出しました"), "and so does the status");
   await page.keyboard.press("Escape");
 
+  // Written on since (an editor's notes, say): asked before it is written over; やめる writes nothing,
+  // 別の名前で保存… asks where, 上書きする writes it.
+  await page.evaluate(() => {
+    window.__changed = ["C:\\out\\第4話_台本.txt"];
+    window.__choice = 2;
+  });
+  await page.keyboard.press("Control+Shift+E");
+  await settle();
+  const warned = await page.evaluate(() => window.__asked?.at(-1) ?? "");
+  check(
+    warned.includes("「第4話_台本.txt」") && warned.includes("変更されています"),
+    `a file changed since is asked about (${warned.slice(0, 40)})`,
+  );
+  check((await calls("write_text_file")).length === 2 && (await message()).includes("やめました"), "やめる writes nothing");
+  await page.keyboard.press("Escape");
+  await page.evaluate(() => {
+    window.__choice = 1;
+    window.__dialogs.push("C:\\out\\第4話_台本_2.txt");
+  });
+  await page.keyboard.press("Control+Shift+E");
+  await settle();
+  check(
+    (await calls("choose_save")).length === asked + 1 && (await calls("write_text_file")).at(-1)?.path === "C:\\out\\第4話_台本_2.txt",
+    "別の名前で保存… asks where and writes there",
+  );
+  await page.keyboard.press("Escape");
+  // The new file is the one written last now; the changed one asked about again only when chosen again.
+  await page.evaluate(() => {
+    window.__changed = [];
+    window.__choice = 0;
+  });
+
   // A place only remembered (never picked in a dialog: kept by an older version, or
   // the list of picked places was lost) is asked for again, not written to unasked.
   await page.evaluate(() => {
@@ -101,8 +143,11 @@ try {
   });
   await page.keyboard.press("Control+Shift+E");
   await settle();
-  check((await calls("choose_save")).length === asked + 1, "a place not picked in a dialog is asked for again");
-  check((await calls("choose_save")).at(-1)?.options.defaultPath === "C:\\out\\第4話_台本.txt", "starting from where it was written last");
+  check((await calls("choose_save")).length === asked + 2, "a place not picked in a dialog is asked for again");
+  check(
+    (await calls("choose_save")).at(-1)?.options.defaultPath === "C:\\out\\第4話_台本_2.txt",
+    "starting from where it was written last",
+  );
   check((await calls("write_text_file")).at(-1)?.path === "C:\\out\\選び直した_台本.txt", "and written where it was picked");
   await page.keyboard.press("Escape");
 
