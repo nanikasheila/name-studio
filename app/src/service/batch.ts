@@ -18,7 +18,6 @@ import { normalize, unknownFieldsNote } from "../domain/project";
 import { projectBody } from "../domain/projectjson";
 import { applyTakeBack, planTakeBack, takeBackSummary } from "../domain/readback";
 import {
-  adoptions,
   allRefs,
   applyCspTakeBack,
   changeCount,
@@ -27,7 +26,7 @@ import {
   startsUnticked,
   type Made,
 } from "../domain/csptakeback";
-import { adoptCspPages, readCspBack } from "./csptakeback";
+import { adoptCspTakeBack, readCspBack } from "./csptakeback";
 import { cspPageOf, pageSetup, piecesPerPage, setupProblem } from "../domain/csppage";
 import { installedFont } from "../domain/fonts";
 import type { Project } from "../model/model";
@@ -121,8 +120,7 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
         applyTakeBack(project, plan);
         made = applyCspTakeBack(project, picked);
         await call("save_project", projectBody({ path: task.project, previousPath: task.project }, project));
-        await call("adopt_name_dialogue", { paths: plan.paths });
-        await adoptCspPages(adoptions(csp, made));
+        await adoptCspTakeBack(task.outDir, plan.paths, csp, made);
       }
       ok = !plan.missing.length;
       const summary = [
@@ -131,6 +129,11 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
         ...(found.removed.length
           ? [
               `CSP で消したセリフ ${found.removed.length} はネームに残しました（消すのは書き出し画面の「CSP から読み戻す…」で選んだときだけ。残したセリフは次の「セリフだけ反映」で CSP にも戻ります）`,
+            ]
+          : []),
+        ...(csp.pages.held.length
+          ? [
+              `CSP で消したページ ${csp.pages.held.length} はネームに残しました（保留にするのは書き出し画面の「CSP から読み戻す…」で選んだときだけ）`,
             ]
           : []),
         ...cspTakeBackSummary(picked),

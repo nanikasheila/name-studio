@@ -27,8 +27,8 @@ import { exportImages, imageFileNames, inFolder } from "../service/imageexport";
 import { IMAGE_DEFAULTS, fileStem, imageSummary, type ImageOptions } from "../domain/imageexport";
 import { MINI_DEFAULTS, type MiniFormat, type MiniOptions } from "../domain/mininame";
 import { applyTakeBack, planTakeBack, takeBackSummary } from "../domain/readback";
-import { adoptions, applyCspTakeBack, changeCount, cspTakeBackSummary, type Made } from "../domain/csptakeback";
-import { adoptCspPages, readCspBack } from "../service/csptakeback";
+import { applyCspTakeBack, changeCount, cspTakeBackSummary, type Made } from "../domain/csptakeback";
+import { adoptCspTakeBack, readCspBack } from "../service/csptakeback";
 import { ISSUE_LABELS, checkName, issueSummary } from "../domain/namecheck";
 import { tidyPanels } from "../domain/tidy";
 import { $, element } from "../platform/dom";
@@ -1320,7 +1320,7 @@ export class ExportDialog {
         "・CSP で直したセリフや足したテキストはそのままです\n" +
         "・「メモ（ネーム）」レイヤーは、メモが変わっていれば描き直します\n" +
         "・変える前のページは name-studio-backup フォルダーに控えます\n\n" +
-        "CSP でページを開いていたら、保存して閉じてから続けてください。書き出したときと同じひな形・ページ数で反映します。",
+        "CSP でページを開いていたら、保存して閉じてから続けてください。書き出したときと同じひな形で反映します。",
       { title: "Name Studio", kind: "info", okLabel: "反映する", cancelLabel: "やめる" },
     );
     if (!go) return;
@@ -1437,7 +1437,7 @@ export class ExportDialog {
         made = applyCspTakeBack(p, picked.csp);
       });
       // From now on these count as the name's: セリフだけ反映 and the next reading leave them be.
-      const recorded = await Promise.all([call("adopt_name_dialogue", { paths: plan.paths }), adoptCspPages(adoptions(csp, made))]).then(
+      const recorded = await adoptCspTakeBack(request.outDir, plan.paths, csp, made).then(
         () => null,
         (error) => `ただし書き出し先に記録できませんでした（${explain(error).text}）。次に読み戻すと、同じものがまた出ることがあります`,
       );
@@ -1466,5 +1466,7 @@ function readBackParts({ dialogue, csp }: ReadBackPick): string {
   const panels = csp.panelsChanged.length + csp.panelsAdded.length + csp.panelSketches.length + csp.panelsRemoved.length;
   if (panels) parts.push(`コマ ${panels}`);
   if (csp.pictures.length) parts.push(`絵 ${csp.pictures.length}`);
+  const pages = csp.pages.added.length + csp.pages.held.length + (csp.pages.move ? 1 : 0);
+  if (pages) parts.push(`ページ ${pages}`);
   return parts.join("・");
 }

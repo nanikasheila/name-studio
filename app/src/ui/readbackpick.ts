@@ -3,7 +3,7 @@
 // panel and layers hidden in CSP). What is left unticked stays as the name has it.
 import { element } from "../platform/dom";
 import { pickTakeBack, type TakeBack } from "../domain/readback";
-import { pickCspTakeBack, panelLabel, startsUnticked, type CspTakeBack } from "../domain/csptakeback";
+import { onAddedPage, pickCspTakeBack, panelLabel, startsUnticked, type CspTakeBack } from "../domain/csptakeback";
 import type { Project } from "../model/model";
 
 const flat = (text: string) => text.replace(/\n/g, " ");
@@ -36,6 +36,24 @@ export function chooseReadBack(project: Project, dialogue: TakeBack, csp: CspTak
   };
   const section = (title: string, rows: HTMLElement[], count = rows.length) =>
     rows.length ? [element("h4", { textContent: `${title}（${count}）` }), ...rows] : [];
+  // What is on a page added in CSP goes with the page: listed in its row, not on its own.
+  const named = project.pages.length;
+  const own = <T extends { page: number }>(list: T[]) => list.filter((item) => item.page < named);
+  const pageOf = (id: string) => {
+    const index = project.pages.findIndex((page) => page.id === id);
+    return index < 0 ? "?" : `${index + 1}p`;
+  };
+  const addRows = csp.pages.added.map((add) => {
+    const refs = onAddedPage(csp, add.page);
+    const what = [
+      ...(csp.strokesAdded.some((s) => s.page === add.page) ? [`線 ${csp.strokesAdded.filter((s) => s.page === add.page).length}`] : []),
+      ...(csp.panelSketches.some((s) => s.page === add.page) || csp.panelsAdded.some((s) => s.page === add.page) ? ["コマ"] : []),
+      ...(csp.pictures.some((d) => d.page === add.page) ? [`絵 ${csp.pictures.filter((d) => d.page === add.page).length}`] : []),
+      ...(add.texts.length ? [`セリフ ${add.texts.length}`] : []),
+    ];
+    const at = add.after ? `${pageOf(add.after)} の後に` : "最初に";
+    return cspRow([add.ref, ...refs], `「${add.file}」を${at}${what.length ? `（${what.join("・")}）` : "（白紙）"}`);
+  });
   /** The lines of each layer of a page, in one row. */
   const lineRows = (list: { ref: string; page: number; cspLayer: string; newLayer?: string }[]) => {
     const groups = new Map<string, typeof list>();
@@ -72,6 +90,7 @@ export function chooseReadBack(project: Project, dialogue: TakeBack, csp: CspTak
       : []),
     ...csp.conflicts,
     ...csp.notes,
+    ...csp.pages.notes,
   ];
   const p = (page: number) => `${page + 1}p`;
   const layerOf = (name: string) => `「${name}」`;
@@ -96,26 +115,36 @@ export function chooseReadBack(project: Project, dialogue: TakeBack, csp: CspTak
         "CSP で消したセリフ（はじめは外してあります）",
         dialogue.removed.map((r) => row(boxes.removed, `${p(r.page)}「${flat(r.text)}」`, false)),
       ),
-      ...section("CSP で描いた線（ラフ線に）", lineRows(csp.strokesAdded), csp.strokesAdded.length),
-      ...section("CSP で直した線", lineRows(csp.strokesChanged), csp.strokesChanged.length),
-      ...section("CSP で消した線", lineRows(csp.strokesRemoved), csp.strokesRemoved.length),
+      ...section("CSP で描いた線（ラフ線に）", lineRows(own(csp.strokesAdded)), own(csp.strokesAdded).length),
+      ...section("CSP で直した線", lineRows(own(csp.strokesChanged)), own(csp.strokesChanged).length),
+      ...section("CSP で消した線", lineRows(own(csp.strokesRemoved)), own(csp.strokesRemoved).length),
       ...section(
         "CSP で形を変えたコマ",
-        csp.panelsChanged.map((c) =>
+        own(csp.panelsChanged).map((c) =>
           cspRow(c.ref, `${p(c.page)} ${panelLabel(project, c.page, c.panel)}${c.frame ? "（コマ枠フォルダー）" : ""}`),
         ),
       ),
       ...section("CSP で足したコマ・コマ枠に描いた線（囲む＝コマ、横切る＝割る）", [
-        ...csp.panelsAdded.map((a) => cspRow(a.ref, `${p(a.page)} コマ枠フォルダーのコマ`)),
-        ...csp.panelSketches.map((s) => cspRow(s.ref, `${p(s.page)} コマ枠の線`)),
+        ...own(csp.panelsAdded).map((a) => cspRow(a.ref, `${p(a.page)} コマ枠フォルダーのコマ`)),
+        ...own(csp.panelSketches).map((s) => cspRow(s.ref, `${p(s.page)} コマ枠の線`)),
       ]),
       ...section(
         "CSP で消したコマ（はじめは外してあります）",
-        csp.panelsRemoved.map((r) => cspRow(r.ref, `${p(r.page)} ${panelLabel(project, r.page, r.panel)}`)),
+        own(csp.panelsRemoved).map((r) => cspRow(r.ref, `${p(r.page)} ${panelLabel(project, r.page, r.panel)}`)),
+      ),
+      ...section("CSP で足したページ（描いたもの・セリフごと）", addRows),
+      ...(csp.pages.move
+        ? section("ページの並び", [
+            cspRow(csp.pages.move.ref, `CSP の並びにする（${csp.pages.move.moved.map(pageOf).join("・")} が動きます）`),
+          ])
+        : []),
+      ...section(
+        "CSP で消したページ（保留にします。はじめは外してあります）",
+        csp.pages.held.map((h) => cspRow(h.ref, `${h.pages.map(pageOf).join("–")}（「${h.file}」）`)),
       ),
       ...section(
         "CSP で描いた絵（「CSP の絵」として、同じ名前のレイヤーに）",
-        csp.pictures.map((d) =>
+        own(csp.pictures).map((d) =>
           cspRow(
             d.ref,
             `${p(d.page)} ${layerOf(d.cspLayer)}${d.layer !== d.cspLayer ? ` → ${layerOf(d.layer)}` : ""}${d.hidden ? "（CSP で隠したレイヤー）" : ""}`,

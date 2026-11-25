@@ -1139,7 +1139,8 @@ export async function updateCspDialogue(
         marks.push({ kind: "raster", name: names.get(layer.id)!.under, length: png.length });
         pngs.push(png);
       }
-      const meta = { texts, balloons, notes: memos, marks, spread: spread !== null, backup };
+      const pageIds = unit.map((index) => project.pages[index].id);
+      const meta = { texts, balloons, notes: memos, marks, spread: spread !== null, pageIds, backup };
       const report = await call("update_name_dialogue", packBody(meta, pngs));
       pages.push({ ...report, pages: unit.map((index) => index + 1) });
     }
@@ -1171,7 +1172,7 @@ export async function readCspDialogue(
         const right = (position === 0) === (project.binding === "right");
         return { index, m: shifted(full, spread ? (right ? spread.rightDx : spread.leftDx) : 0), right };
       });
-      const page = await call("read_name_dialogue", { spread: spread !== null });
+      const page = await call("read_name_dialogue", { spread: spread !== null, pageIds: unit.map((index) => project.pages[index].id) });
       const texts = (page.dialogue?.texts ?? []).map(({ text, bbox }) => {
         // On a 見開き page, the page whose side of the gutter it is on.
         const x = bbox ? (bbox[0] + bbox[2]) / 2 : 0;

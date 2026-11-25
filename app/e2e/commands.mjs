@@ -152,25 +152,55 @@ try {
     // A second line on the same layer of the page: one row for both.
     csp.strokesAdded.push({ ...csp.strokesAdded[0], ref: "c2" });
     csp.panelsRemoved.push({ ref: "c1", page: 0, panel: "p1" });
-    const project = { pages: [{ panels: [{ id: "p1", order: 1 }] }, { panels: [] }, { panels: [] }] };
+    // The work's pages: one added in CSP (a line on it goes with it), the order, one deleted there (unticked).
+    csp.strokesAdded.push({ ...csp.strokesAdded[0], ref: "c3", page: 3 });
+    csp.pages.added.push({
+      ref: "g0",
+      file: "page0004.clip",
+      path: "out/page0004.clip",
+      page: 3,
+      key: "csp:page0004.clip",
+      after: "pa",
+      texts: [],
+    });
+    csp.pages.move = { ref: "g1", order: ["pa", "csp:page0004.clip", "pc", "pb"], moved: ["pc", "pb"] };
+    csp.pages.held.push({ ref: "g2", file: "page0003.clip", pages: ["pc"] });
+    const project = {
+      pages: [
+        { id: "pa", panels: [{ id: "p1", order: 1 }] },
+        { id: "pb", panels: [] },
+        { id: "pc", panels: [] },
+      ],
+    };
     window.__picked = chooseReadBack(project, plan, csp, "out");
   });
   const go = page.locator("#readback-go");
   check(
-    (await page.locator("#readback-pick .readback-item input:checked").count()) === 3 &&
-      (await page.locator("#readback-pick .readback-item").count()) === 5 &&
-      (await go.textContent()) === "4 件を読み戻す",
-    "every change is listed, ticked but removing dialogue or a panel, the lines of a layer in one row",
+    (await page.locator("#readback-pick .readback-item input:checked").count()) === 5 &&
+      (await page.locator("#readback-pick .readback-item").count()) === 8 &&
+      (await go.textContent()) === "7 件を読み戻す",
+    "every change is listed, ticked but removing dialogue, a panel or a page, the lines of a layer in one row",
   );
+  const added = await page.locator("#readback-pick .readback-item").filter({ hasText: "page0004.clip" }).textContent();
+  check(added === "「page0004.clip」を1p の後に（線 1）", `a page added in CSP is one row, with what is on it (${added})`);
   await page.locator("#readback-pick .readback-item").filter({ hasText: "今夜も" }).locator("input").uncheck();
-  check((await go.textContent()) === "3 件を読み戻す", "the button counts what is ticked");
+  check((await go.textContent()) === "6 件を読み戻す", "the button counts what is ticked");
   await go.click();
   const picked = await wb(async () => {
     const { dialogue, csp } = await window.__picked;
-    return [dialogue.retyped.length, dialogue.added.length, dialogue.removed.length, csp.strokesAdded.length, csp.panelsRemoved.length];
+    return [
+      dialogue.retyped.length,
+      dialogue.added.length,
+      dialogue.removed.length,
+      csp.strokesAdded.length,
+      csp.panelsRemoved.length,
+      csp.pages.added.length,
+      csp.pages.move ? 1 : 0,
+      csp.pages.held.length,
+    ];
   });
   check(
-    JSON.stringify(picked) === "[0,1,0,2,0]" && (await page.locator("#readback-pick").count()) === 0,
+    JSON.stringify(picked) === "[0,1,0,3,0,1,1,0]" && (await page.locator("#readback-pick").count()) === 0,
     `only the ticked are taken back (${picked})`,
   );
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(" / ")}` : ""}`);

@@ -849,6 +849,9 @@ pub struct RasterWorkWriter {
     pub first_page_left: Option<bool>,
     /// The spread template made from the template, or why there is none.
     pub spread: std::result::Result<(PathBuf, SpreadLayout), String>,
+    /// The page files the last export recorded, and the name's pages each
+    /// holds (read once, by [`Self::page_path_for`]).
+    recorded: Option<Vec<(String, Vec<String>)>>,
 }
 
 impl Drop for RasterWorkWriter {
@@ -947,6 +950,7 @@ impl RasterWorkWriter {
             donors,
             first_page_left,
             spread,
+            recorded: None,
         })
     }
 
@@ -1017,6 +1021,32 @@ impl RasterWorkWriter {
             .join(page_file_name(&self.options.name_pattern, self.next_index + 1));
         self.next_index += if spread { 2 } else { 1 };
         path
+    }
+
+    /// The file the last export wrote the name's pages `page_ids` into (the
+    /// next page, or 見開き page with `spread`), moving on as
+    /// [`Self::next_page_path`] does. Found by the pages it holds, not by
+    /// its place: pages moved in the name, or added in CSP and taken back,
+    /// are in files of other numbers. None when the file of that number
+    /// holds other pages and none holds these.
+    pub fn page_path_for(&mut self, spread: bool, page_ids: &[String]) -> Option<PathBuf> {
+        let by_place = self.next_page_path(spread);
+        let dir = self.options.out_dir.clone();
+        let recorded = self.recorded.get_or_insert_with(|| {
+            super::manifest::load(&dir)
+                .map(|manifest| super::manifest::page_files(&manifest))
+                .unwrap_or_default()
+        });
+        if !page_ids.is_empty()
+            && let Some((name, _)) = recorded.iter().find(|(_, ids)| ids.as_slice() == page_ids)
+        {
+            return Some(dir.join(name));
+        }
+        let name = by_place.file_name().map(|name| name.to_string_lossy().into_owned());
+        let taken = recorded
+            .iter()
+            .any(|(file, ids)| Some(file) == name.as_ref() && !ids.is_empty());
+        (!taken || page_ids.is_empty()).then_some(by_place)
     }
 
     /// Stopped before the end: the pages written so far and what each holds

@@ -264,6 +264,38 @@ export interface CspVectorLayer {
   lines: CspLine[];
 }
 
+/** The pages of the work as CSP has them now, and as last recorded. */
+export interface CspWork {
+  cmc: string;
+  /** As the .cmc lists them now. */
+  pages: CspWorkPage[];
+  /**
+   * As the export wrote them, or as last taken back; none from a version
+   * that recorded none of the pages (nothing to tell CSP's changes by).
+   */
+  recorded: CspWorkPage[] | null;
+  /** The pages before the last take-back, and the name's pages it made. */
+  taken: CspWorkTaken | null;
+}
+
+/** A page file of the work (.cmc). */
+export interface CspWorkPage {
+  file: string;
+  path: string;
+  /** A 見開き page (as the .cmc says; for a recorded page, it holds two of the name's). */
+  spread: boolean;
+  /**
+   * The name's pages it holds, as recorded (none: a page made in CSP, or
+   * written by a version that recorded none).
+   */
+  pageIds: string[];
+}
+
+export interface CspWorkTaken {
+  pageIds: string[];
+  pages: CspWorkPage[];
+}
+
 export interface DialogueUpdateReport {
   path: string;
   /** The page as it was, when it was changed. */
@@ -533,6 +565,16 @@ export interface OverwriteCheck {
    * one about to be written (its pages are written over even unchanged).
    */
   otherSource: ExportSource | null;
+  /**
+   * Pages of the work added in CSP since, not taken into the name: the
+   * export writes the work again without them.
+   */
+  addedInCsp: string[];
+  /**
+   * The work's pages were put in another order in CSP since: the export
+   * puts them back in the name's.
+   */
+  movedInCsp: boolean;
 }
 
 /** One page of the sheet, in reading order (index from 1). */
@@ -985,16 +1027,30 @@ export interface Commands {
   update_name_dialogue: [RawBody, DialogueUpdateReport];
   /**
    * Read the dialogue of the next page the export wrote (a 見開き page when
-   * `spread`), to take what was changed in CSP back into the name.
+   * `spread`; the file of the name's pages `page_ids`), to take what was
+   * changed in CSP back into the name.
    */
-  read_name_dialogue: [{ spread: boolean }, CspPageDialogue];
+  read_name_dialogue: [{ spread: boolean; pageIds: string[] }, CspPageDialogue];
   /** Record the dialogue of these pages as CSP has it now as the name's (taken back into it). */
   adopt_name_dialogue: [{ paths: string[] }, void];
   /**
    * Read everything of the next page the export wrote (a 見開き page when
-   * `spread`): to take what was drawn in CSP back into the name.
+   * `spread`; the file of the name's pages `page_ids`): to take what was
+   * drawn in CSP back into the name.
    */
-  read_name_page: [{ spread: boolean }, CspPageRead];
+  read_name_page: [{ spread: boolean; pageIds: string[] }, CspPageRead];
+  /** Everything of a page file of the work (one added in CSP): see [`read_name_page`]. */
+  read_csp_page: [{ path: string }, CspPageContent];
+  /**
+   * The pages of the work (.cmc) the export into `out_dir` wrote, as CSP
+   * has them now and as last recorded (none: no work there).
+   */
+  read_csp_work: [{ outDir: string }, CspWork | null];
+  /**
+   * Record the work's pages as CSP has them now as the name's (`made`: the
+   * name's pages the take-back made), see `readback::adopt_work`.
+   */
+  adopt_csp_work: [{ outDir: string; made: string[] }, void];
   /**
    * The pixels of image layer `id` of the page `path` inside `bbox` (canvas
    * px), no larger than `max_side` on their long side, as a PNG.

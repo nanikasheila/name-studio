@@ -6,8 +6,11 @@
 import { call, type CspExportRequest } from "../platform/backend";
 import type { Adoption, CspRaster } from "../generated/ipc";
 import {
+  adoptions,
   type CspLayerNames,
   type CspTakeBack,
+  type Made,
+  madePages,
   type PageRead,
   type PictureAdd,
   type Place,
@@ -17,6 +20,8 @@ import {
   type Unrecorded,
 } from "../domain/csptakeback";
 import { base64Of } from "../domain/cspsettings";
+import { noPages, planCspPages } from "../domain/csppages";
+import { emptyPage } from "../domain/project";
 import { shapeSignature } from "../domain/linesig";
 import type { ReadUnit } from "../domain/readback";
 import { markLayersOf, roughLayersOf, strokesOn } from "../domain/roughlayers";
@@ -71,6 +76,7 @@ export function cspLayerNames(project: Project): CspLayerNames {
  */
 function unrecordedLines(names: CspLayerNames): Unrecorded {
   return (read: PageRead, layer: string) => {
+    if (read.added) return null;
     const record = read.content.record;
     const csp = read.content.vectors.find((vector) => vector.name === layer);
     const before = record.vectors?.[layer];
@@ -304,6 +310,12 @@ export async function readCspBack(project: Project, request: CspExportRequest, p
   const start = await call("begin_name_export", { request: { ...request, frameFolders: false } });
   const reads: PageRead[] = [];
   const units: ReadUnit[] = [];
+  const notes: string[] = [];
+  let refs = 0;
+  const pageRef = () => `g${refs++}`;
+  let pagesPlan = noPages();
+  // The name with the pages added in CSP at its end, where what is on them is planned.
+  let planned = project;
   try {
     const full = projectToTemplate(project, start);
     const { units: pages } = exportUnits(project, start.firstPageLeft, start.spread ? null : start.spreadProblem);
@@ -314,7 +326,12 @@ export async function readCspBack(project: Project, request: CspExportRequest, p
         const right = (position === 0) === (project.binding === "right");
         return { page, m: shifted(full, spread ? (right ? spread.rightDx : spread.leftDx) : 0) as Place, right };
       });
-      const page = await call("read_name_page", { spread: spread !== null });
+      const pageIds = unit.map((page) => project.pages[page].id);
+      const page = await call("read_name_page", { spread: spread !== null, pageIds });
+      // A page CSP made a 見開き of, or back: its lines and pictures lie elsewhere.
+      const resized = !!page.content && page.content.widthPx !== (spread ? spread.widthPx : start.widthPx);
+      if (resized)
+        notes.push(`${unit.map((p) => p + 1).join("–")}p: CSP で見開き・単ページを変えたページなので、線・コマ・絵は読み戻しません`);
       const dialogue = page.content?.dialogue;
       units.push({
         pages: unit,
@@ -329,25 +346,52 @@ export async function readCspBack(project: Project, request: CspExportRequest, p
           return { text, page: on.page, box };
         }),
       });
-      if (page.content) reads.push({ path: page.path, places, gutterPx: spread ? spread.gutterPx : null, content: page.content });
+      if (page.content && !resized)
+        reads.push({ path: page.path, places, gutterPx: spread ? spread.gutterPx : null, content: page.content });
+    }
+    // The work's pages: added, deleted or moved in CSP.
+    const work = await call("read_csp_work", { outDir: request.outDir });
+    if (work) {
+      pagesPlan = planCspPages(project, work, pageRef);
+      planned = { ...project, pages: [...project.pages, ...pagesPlan.added.map((add) => emptyPage(add.key))] };
+      for (const add of pagesPlan.added) {
+        progress(`CSP で足したページ「${add.file}」を読み中…`);
+        const content = await call("read_csp_page", { path: add.path });
+        const m = shifted(full, 0) as Place;
+        add.texts = content.dialogue.texts.map(({ text, bbox }) => ({
+          text,
+          page: add.page,
+          box: bbox ? (bbox.map((v, i) => (v - (i % 2 ? m.y : m.x)) / m.scale) as BoxMm) : null,
+        }));
+        reads.push({ path: add.path, places: [{ page: add.page, m, right: true }], gutterPx: null, content, added: true });
+      }
     }
   } finally {
     await call("cancel_name_export").catch(() => undefined);
   }
   const names = cspLayerNames(project);
-  const plan = planCspTakeBack(project, reads, names, unrecordedLines(names));
+  const plan = planCspTakeBack(planned, reads, names, unrecordedLines(names));
+  plan.pages = pagesPlan;
+  plan.notes.push(...notes);
   const own = ownLayerNames(project);
   const pictures = new Map<string, ImageBitmap>();
-  let refs = 0;
   for (const [index, read] of reads.entries()) {
     progress(`${index + 1} / ${reads.length} ページの絵を確かめ中…`);
-    for (const picture of await picturesOf(project, read, own, pictures, plan.notes)) plan.pictures.push({ ...picture, ref: `d${refs++}` });
+    for (const picture of await picturesOf(planned, read, own, pictures, plan.notes)) plan.pictures.push({ ...picture, ref: `d${refs++}` });
   }
   for (const picture of pictures.values()) picture.close();
   return { units, plan };
 }
 
-/** Record what was taken back, so the next reading starts from there. */
-export async function adoptCspPages(pages: { path: string; adoption: Adoption }[]): Promise<void> {
-  await call("adopt_csp_pages", { pages: pages.map(({ path, adoption }) => [path, adoption]) });
+/**
+ * Record what was taken back, so the next reading starts from there: the
+ * dialogue of `dialogue` (page files), the lines and pictures, and the work's pages.
+ */
+export async function adoptCspTakeBack(outDir: string, dialogue: string[], plan: CspTakeBack, made: Made): Promise<void> {
+  const added = new Set(madePages(plan, made));
+  const addedFiles = plan.pages.added.filter((add) => made.has(add.ref)).map((add) => add.path);
+  await call("adopt_name_dialogue", { paths: [...dialogue, ...addedFiles] });
+  const pages = adoptions(plan, made);
+  await call("adopt_csp_pages", { pages: pages.map(({ path, adoption }) => [path, adoption as Adoption]) });
+  await call("adopt_csp_work", { outDir, made: [...added] });
 }

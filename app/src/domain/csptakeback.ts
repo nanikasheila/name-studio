@@ -13,11 +13,13 @@ import { bounds, centroid } from "../model/geometry";
 import type { BoxMm, Brush, Panel, Point, Project, ReferenceImage, RoughLayer, StoredImage, Stroke, StrokePoint } from "../model/model";
 import { cspSettingsFor, newBrush } from "./cspsettings";
 import { lineSignature, valueHash } from "./linesig";
-import { newId } from "./project";
+import { emptyPage, newId } from "./project";
 import { addPanel, removePanel } from "./panels";
 import { orderPanels, assignPanels } from "./readingorder";
 import { ownRoughLayers, freeLayerName } from "./roughlayers";
 import { applySketch, fitOutline } from "./sketchpanels";
+import { applyCspPages, cspPagesSummary, type CspPages, noPages } from "./csppages";
+import { applyTakeBack } from "./readback";
 
 /** Canvas px = mm × scale + offset. */
 export interface Place {
@@ -34,6 +36,8 @@ export interface PageRead {
   /** The gutter of a 見開き page (canvas px); null on a single page. */
   gutterPx: number | null;
   content: CspPageContent;
+  /** A page added in CSP (nothing of it was recorded: every line on it is new). */
+  added?: boolean;
 }
 
 /** What the name's layers are called in CSP (see nameexport.ts). */
@@ -65,15 +69,21 @@ export function pictureKey(reference: ReferenceImage): string {
   return `d:${reference.id}`;
 }
 
-type Key = { kind: "s" | "p" | "d"; id: string; hash: string };
+/** A page's key (one added in CSP). */
+export function pageKey(id: string): string {
+  return `g:${id}`;
+}
+
+type Key = { kind: "s" | "p" | "d" | "g"; id: string; hash: string };
 
 function parseKey(key: string | null | undefined): Key | null {
-  const match = key ? /^([spd]):([^:]+)(?::(.*))?$/.exec(key) : null;
+  const match = key ? /^([spdg]):([^:]+)(?::(.*))?$/.exec(key) : null;
   return match ? { kind: match[1] as Key["kind"], id: match[2], hash: match[3] ?? "" } : null;
 }
 
 /** Whether what `key` names is in the name still, as it was then. */
 function keyState(project: Project, pages: readonly number[], key: Key): "same" | "changed" | "gone" {
+  if (key.kind === "g") return project.pages.some((page) => page.id === key.id) ? "same" : "gone";
   for (const index of pages) {
     const page = project.pages[index];
     if (key.kind === "s") {
@@ -198,6 +208,8 @@ export interface CspTakeBack {
   /** Changes not taken back, to say. */
   notes: string[];
   pending: PagePending[];
+  /** The work's pages added, deleted and moved in CSP (domain/csppages.ts). */
+  pages: CspPages;
 }
 
 export function emptyTakeBack(): CspTakeBack {
@@ -213,6 +225,7 @@ export function emptyTakeBack(): CspTakeBack {
     conflicts: [],
     notes: [],
     pending: [],
+    pages: noPages(),
   };
 }
 
@@ -226,7 +239,10 @@ export function changeCount(plan: CspTakeBack): number {
     plan.panelSketches.length +
     plan.panelsAdded.length +
     plan.panelsRemoved.length +
-    plan.pictures.length
+    plan.pictures.length +
+    plan.pages.added.length +
+    plan.pages.held.length +
+    (plan.pages.move ? 1 : 0)
   );
 }
 
@@ -498,7 +514,10 @@ export function planCspTakeBack(project: Project, reads: readonly PageRead[], na
 
 /** The changes whose `ref` `keep` says to take back. */
 export function pickCspTakeBack(plan: CspTakeBack, keep: ReadonlySet<string>): CspTakeBack {
-  const only = <T extends { ref: string }>(list: T[]) => list.filter((item) => keep.has(item.ref));
+  // What is on a page added in CSP goes with it.
+  const dropped = new Set(plan.pages.added.filter((add) => !keep.has(add.ref)).map((add) => add.page));
+  const only = <T extends { ref: string; page?: number | string }>(list: T[]) =>
+    list.filter((item) => keep.has(item.ref) && !(typeof item.page === "number" && dropped.has(item.page)));
   return {
     ...plan,
     strokesAdded: only(plan.strokesAdded),
@@ -509,6 +528,12 @@ export function pickCspTakeBack(plan: CspTakeBack, keep: ReadonlySet<string>): C
     panelsAdded: only(plan.panelsAdded),
     panelsRemoved: only(plan.panelsRemoved),
     pictures: only(plan.pictures),
+    pages: {
+      ...plan.pages,
+      added: only(plan.pages.added),
+      held: only(plan.pages.held),
+      move: plan.pages.move && keep.has(plan.pages.move.ref) ? plan.pages.move : null,
+    },
   };
 }
 
@@ -523,12 +548,35 @@ export function allRefs(plan: CspTakeBack): string[] {
     ...plan.panelsAdded,
     ...plan.panelsRemoved,
     ...plan.pictures,
+    ...plan.pages.added,
+    ...plan.pages.held,
+    ...(plan.pages.move ? [plan.pages.move] : []),
   ].map((item) => item.ref);
 }
 
-/** Changes not ticked to start with: removing panels, and layers hidden in CSP. */
+/** Changes not ticked to start with: removing panels and pages, and layers hidden in CSP. */
 export function startsUnticked(plan: CspTakeBack): Set<string> {
-  return new Set([...plan.panelsRemoved.map((item) => item.ref), ...plan.pictures.filter((item) => item.hidden).map((item) => item.ref)]);
+  return new Set([
+    ...plan.panelsRemoved.map((item) => item.ref),
+    ...plan.pictures.filter((item) => item.hidden).map((item) => item.ref),
+    ...plan.pages.held.map((item) => item.ref),
+  ]);
+}
+
+/** The changes on a page added in CSP (they go with it). */
+export function onAddedPage(plan: CspTakeBack, page: number): string[] {
+  return [
+    ...plan.strokesAdded,
+    ...plan.strokesChanged,
+    ...plan.strokesRemoved,
+    ...plan.panelsChanged,
+    ...plan.panelSketches,
+    ...plan.panelsAdded,
+    ...plan.panelsRemoved,
+    ...plan.pictures,
+  ]
+    .filter((item) => item.page === page)
+    .map((item) => item.ref);
 }
 
 /** The pen CSP's lines are taken back with: their width follows the pressure kept in the points as it is. */
@@ -564,6 +612,19 @@ export type Made = Map<string, string>;
  */
 export function applyCspTakeBack(project: Project, plan: CspTakeBack): Made {
   const made: Made = new Map();
+  // Pages added in CSP: made at the end of the name, where their changes were planned, and moved to their place last.
+  const ids = new Map<string, string>();
+  const placeholders = new Set<string>();
+  const last = Math.max(-1, ...plan.pages.added.map((add) => add.page));
+  for (let index = project.pages.length; index <= last; index++) {
+    const page = emptyPage(newId(project, "page"));
+    project.pages.push(page);
+    const add = plan.pages.added.find((a) => a.page === index);
+    if (add) {
+      ids.set(add.key, page.id);
+      made.set(add.ref, pageKey(page.id));
+    } else placeholders.add(page.id);
+  }
   const findStroke = (page: number, id: string) => project.pages[page]?.strokes.find((stroke) => stroke.id === id);
   const findPanel = (page: number, id: string) => project.pages[page]?.panels.find((panel) => panel.id === id);
   const brush = () => readBackBrush(project);
@@ -624,7 +685,26 @@ export function applyCspTakeBack(project: Project, plan: CspTakeBack): Made {
     page.references = [...(page.references ?? []), reference];
     made.set(change.ref, pictureKey(reference));
   }
+  const texts = plan.pages.added.flatMap((add) => add.texts);
+  if (texts.length)
+    applyTakeBack(project, { retyped: [], added: texts, removed: [], conflicts: [], unrecorded: [], missing: [], paths: [] });
+  if (ids.size || placeholders.size || plan.pages.held.length || plan.pages.move) applyCspPages(project, plan.pages, ids, placeholders);
   return made;
+}
+
+/** The pages added in CSP that `made` made: each one's key in the plan → its page's id. */
+function addedPageIds(plan: CspTakeBack, made: Made): Map<string, string> {
+  const ids = new Map<string, string>();
+  for (const add of plan.pages.added) {
+    const key = parseKey(made.get(add.ref));
+    if (key) ids.set(add.key, key.id);
+  }
+  return ids;
+}
+
+/** The pages added in CSP that `made` made (their ids), for the record of the work. */
+export function madePages(plan: CspTakeBack, made: Made): string[] {
+  return [...addedPageIds(plan, made).values()];
 }
 
 /** What to record of each page once `made` is in the name (see `Adoption` on the Rust side). */
@@ -636,6 +716,9 @@ export function adoptions(
   adoption: { lines: Record<string, LineRecord[]>; pixels: Record<string, string>; pageIds: string[]; made: string[] };
 }[] {
   const keys = [...made.values()];
+  const pageIds = addedPageIds(plan, made);
+  // A page added in CSP and not taken: none of the name's pages are in it.
+  const added = new Set(plan.pages.added.map((add) => add.key));
   return plan.pending.map((page) => ({
     path: page.path,
     adoption: {
@@ -649,7 +732,7 @@ export function adoptions(
         ]),
       ),
       pixels: page.pixels,
-      pageIds: page.pageIds,
+      pageIds: page.pageIds.flatMap((id) => (pageIds.has(id) ? [pageIds.get(id)!] : added.has(id) ? [] : [id])),
       made: keys,
     },
   }));
@@ -669,7 +752,7 @@ export function cspTakeBackSummary(plan: CspTakeBack): string[] {
     ...count(plan.pictures.length, "CSP で描いた絵"),
   ];
   if (parts.length) lines.push(parts.join("・"));
-  lines.push(...plan.conflicts, ...plan.notes);
+  lines.push(...cspPagesSummary(plan.pages), ...plan.conflicts, ...plan.notes, ...plan.pages.notes);
   return lines;
 }
 

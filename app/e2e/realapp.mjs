@@ -7,7 +7,8 @@
 // ラフ線のレイヤー, with 指示 (and --no-marks, then added by セリフだけ反映), a name saved by
 // a newer version (its report says what this one leaves out), and a 縦スクロール
 // whose pieces are joined into one tall page, and a page drawn on as in CSP
-// (examples/csp_drawn.rs) read back with --read-back. The exports run side by side
+// (examples/csp_drawn.rs) read back with --read-back, and a work whose pages were
+// added, deleted and moved as in CSP (examples/csp_pages.rs). The exports run side by side
 // (one after another on Windows), each the app started on its own. Needs the
 // release build and a template page:
 //   npx tauri build --no-bundle
@@ -112,6 +113,18 @@ for (const [i, y] of [40, 60, 80].entries())
     widthMm: 0.5,
     closed: false,
   });
+// A work of four pages whose pages are changed in CSP after the export (examples/csp_pages.rs).
+const pagesOn = P.newProject("ページの読み戻し", 4);
+for (const [i, page] of pagesOn.pages.entries())
+  page.strokes.push({
+    id: `line${i + 1}`,
+    points: [
+      [30, 40 + i * 20, 0.5],
+      [90, 50 + i * 20, 0.5],
+    ],
+    widthMm: 0.5,
+    closed: false,
+  });
 await server.close();
 // As a newer version would save it: a field this version does not know, on a stroke.
 const newer = JSON.parse(projectJson(project));
@@ -135,6 +148,8 @@ const spoiltName = join(dir, "spoilt.namestudio");
 writeFileSync(spoiltName, projectJson(spoilt));
 const drawnName = join(dir, "drawn.namestudio");
 writeFileSync(drawnName, projectJson(drawnOn));
+const pagesName = join(dir, "pages.namestudio");
+writeFileSync(pagesName, projectJson(pagesOn));
 const failures = [];
 const check = (ok, what) => {
   console.log(`${ok ? "ok  " : "FAIL"} ${what}`);
@@ -243,6 +258,31 @@ async function drawnThenReadBack() {
   const again = await exportTo("drawn-again", ["--builtin"], drawnName);
   return { exported, before: JSON.parse(before), drawing, back, again };
 }
+/** Run an example of clip-core on `path`: its exit code. */
+const example = (name, path) =>
+  path
+    ? new Promise((resolve) => {
+        const child = spawn("cargo", ["run", "-q", "-p", "clip-core", "--example", name, "--", path], {
+          cwd: join(root, ".."),
+          stdio: ["ignore", "ignore", "inherit"],
+        });
+        child.on("error", () => resolve(null));
+        child.on("close", resolve);
+      })
+    : null;
+// The work's pages changed in CSP (added, deleted, moved; examples/csp_pages.rs), read back twice, then セリフだけ反映.
+async function pagesThenReadBack() {
+  const exported = await exportTo("pages", ["--builtin", "--work-name", "ページ"], pagesName);
+  const before = JSON.parse(readFileSync(pagesName, "utf8"));
+  const changed = await example("csp_pages", exported.report?.work);
+  const back = [];
+  for (const round of ["first", "again"]) {
+    const run = await runApp(`pages-${round}`, ["--export-csp", pagesName, "--builtin", "--read-back", "--out", join(dir, "pages")]);
+    back.push({ run, report: readReport(join(dir, "pages")), name: JSON.parse(readFileSync(pagesName, "utf8")) });
+  }
+  const run = await runApp("pages-update", ["--export-csp", pagesName, "--builtin", "--update-dialogue", "--out", join(dir, "pages")]);
+  return { exported, before, changed, back, update: { run, report: readReport(join(dir, "pages")) } };
+}
 // 指示 drawn after the export: セリフだけ反映 adds them to those pages as a layer,
 // and leaves them be the next time. Two runs on that folder, one after the other.
 async function unmarkedThenUpdated() {
@@ -267,7 +307,7 @@ async function unmarkedThenUpdated() {
   }
   return { unmarked, updates };
 }
-const [out, builtinRun, masksRun, layeredRun, markedRun, unmarkedRuns, picturedRun, spoiltRun, newerRun, tallRun, drawn] =
+const [out, builtinRun, masksRun, layeredRun, markedRun, unmarkedRuns, picturedRun, spoiltRun, newerRun, tallRun, drawn, paged] =
   await Promise.all([
     exportTo("out", ["--template", join(dir, "page.clip")]),
     exportTo("builtin", ["--builtin", "--work-name", "通しテスト", "--story-index", "1"]),
@@ -280,6 +320,7 @@ const [out, builtinRun, masksRun, layeredRun, markedRun, unmarkedRuns, picturedR
     exportTo("newer", ["--builtin"], newerName),
     exportTo("tall", ["--builtin", "--work-name", "縦スクロール"], scrollName),
     drawnThenReadBack(),
+    pagesThenReadBack(),
   ]);
 console.log(`     all exports: ${((Date.now() - started) / 1000).toFixed(1)} s, ${parallel} at once`);
 
@@ -381,6 +422,44 @@ check(drawn.drawing === 0, `drawn: the page was drawn on as in CSP (${drawn.draw
   check(
     (written?.checks?.[0]?.layers ?? 0) === (drawn.exported.report?.checks?.[0]?.layers ?? 0) + 1,
     "drawn-again: the CSP の絵 is a layer of its own",
+  );
+}
+checked("pages", paged.exported, 4);
+check(paged.changed === 0, `pages: the work's pages were changed as in CSP (${paged.changed})`);
+{
+  const [first, again] = paged.back;
+  check(
+    first.run.status === 0 && first.report?.ok === true,
+    `pages readback: it reads back (${first.report?.summary?.join(" / ") ?? first.run.stderr})`,
+  );
+  const [p1, p2, p3, p4] = paged.before.pages.map((page) => page.id);
+  const order = first.name.pages.map((page) => page.id);
+  const added = order.find((id) => !paged.before.pages.some((page) => page.id === id));
+  // CSP: 1, new, 4, 2 (3 deleted there: left in the name, after the page it follows, until 保留 is picked).
+  check(
+    JSON.stringify(order) === JSON.stringify([p1, added, p4, p2, p3]),
+    `pages readback: the page added in CSP is in its place and the pages in CSP's order (${order.join(", ")})`,
+  );
+  const page = first.name.pages.find((p) => p.id === added);
+  const pictures = (page?.references ?? []).filter((r) => r.kind === "drawing");
+  check(
+    pictures.length === 1 && pictures[0].layer === "下描き" && (page?.strokes.length ?? -1) === 0,
+    `pages readback: what was drawn on the new page comes with it (${JSON.stringify(pictures.map((r) => r.layer))}, ${page?.strokes.length} lines)`,
+  );
+  check(
+    (first.report?.summary ?? []).some((line) => line.includes("CSP で消したページ 1 はネームに残しました")),
+    "pages readback: the page deleted in CSP is said to be left in the name",
+  );
+  check(
+    again.run.status === 0 && again.report?.summary?.[0] === "CSP で変えたものはありませんでした",
+    `pages readback: reading back again takes nothing twice (${again.report?.summary?.[0]})`,
+  );
+  check(JSON.stringify(again.name) === JSON.stringify(first.name), "pages readback: the name is as the first read-back left it");
+  // セリフだけ反映 finds each page's file by the pages it holds (the new page is in the file CSP made).
+  const update = paged.update.report;
+  check(
+    paged.update.run.status === 0 && update?.ok === true,
+    `pages update: every page's file is found (${update?.summary?.join(" / ") ?? paged.update.run.stderr})`,
   );
 }
 if (failures.length) process.exit(1);
