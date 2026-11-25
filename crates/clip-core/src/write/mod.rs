@@ -12,6 +12,7 @@ pub(crate) mod layers;
 pub mod manifest;
 pub mod page;
 pub mod raster_page;
+pub mod readback;
 pub mod split;
 pub mod spread;
 pub mod update;

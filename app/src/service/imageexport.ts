@@ -24,6 +24,7 @@ import {
   ROUGH_LAYERS,
   drawNotes,
   drawPart,
+  drawingLayers,
   encode,
   hasNotes,
   layerForm,
@@ -188,9 +189,10 @@ async function psdLayers(
     { opacity: SHEET_ROUGH_OPACITY },
   );
   for (const [name, takes] of [
-    [BACKGROUND_LAYER_NAME, isBackground],
-    [NAME_PICTURE_LAYER_NAME, isNamePicture],
-  ] as const) {
+    [BACKGROUND_LAYER_NAME, isBackground] as const,
+    [NAME_PICTURE_LAYER_NAME, isNamePicture] as const,
+    ...drawingLayers(project).map((layer) => [layer.name, layer.takes] as const),
+  ]) {
     await layer(
       name,
       pages.some(({ page }) => page.references?.some((reference) => takes(reference) && pictures.names.has(reference.image))),

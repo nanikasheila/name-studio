@@ -19,7 +19,7 @@ import { LAYER_ORDER, drawPart, encode, mapBox, packBody } from "./nameexport";
 import { trimBox } from "../domain/pagebox";
 import { drawMarks, loadTips, type MmToPx } from "../render/pagedraw";
 import { decodePicture } from "../render/pictures";
-import { imageOf, isNamePicture, writtenOpacity } from "../domain/references";
+import { imageOf, isDrawing, isNamePicture, writtenOpacity } from "../domain/references";
 import { isBackground } from "../domain/background";
 import { drawPicture } from "../render/backgrounds";
 import { shownStrokes, withoutMarks } from "../domain/roughlayers";
@@ -40,7 +40,7 @@ export async function flatPictures(project: Project, pages: readonly Page[], rou
   for (const page of pages) {
     for (const item of page.roughs) roughs.set(item, await rough(item));
     for (const reference of page.references ?? []) {
-      if (!(isNamePicture(reference) || isBackground(reference)) || names.has(reference.image)) continue;
+      if (!(isNamePicture(reference) || isBackground(reference) || isDrawing(reference)) || names.has(reference.image)) continue;
       const stored = imageOf(project, reference);
       const picture = stored && (await decodePicture(stored).catch(() => null));
       if (picture) names.set(reference.image, picture);
@@ -66,8 +66,8 @@ export function drawFlatPage(ctx: CanvasRenderingContext2D, project: Project, so
     ctx.drawImage(image, x0, y0, x1 - x0, y1 - y0);
   }
   ctx.globalAlpha = 1;
-  // The panels' backgrounds, then the pictures of the name over them.
-  for (const shown of [isBackground, isNamePicture]) {
+  // The panels' backgrounds, then the pictures of the name and CSP's over them.
+  for (const shown of [isBackground, isNamePicture, isDrawing]) {
     for (const reference of page.references ?? []) {
       const picture = shown(reference) ? pictures.names.get(reference.image) : undefined;
       if (picture) drawPicture(ctx, page, reference, picture, m, writtenOpacity(reference));

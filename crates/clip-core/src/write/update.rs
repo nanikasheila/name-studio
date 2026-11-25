@@ -334,11 +334,32 @@ pub fn update_dialogue(
             }
         })
         .collect();
+    // What the take-back knows of the page stays; the balloons swapped are the name's lines.
+    let before = update.written.clone().unwrap_or_default();
+    let mut lines = before.lines;
+    for layer in &swaps {
+        if let PageLayer::Vector { name, lines: drawn, .. } = layer {
+            lines.insert(
+                name.clone(),
+                drawn
+                    .iter()
+                    .map(|line| super::manifest::LineRecord {
+                        sig: super::manifest::line_signature(&line.xy()),
+                        key: None,
+                    })
+                    .collect(),
+            );
+        }
+    }
     report.record = PageRecord {
         texts: Some(update.texts.iter().map(|text| text.text.clone()).collect()),
         adopted_from: None,
         vectors,
         rasters,
+        lines,
+        pixels: before.pixels,
+        page_ids: before.page_ids,
+        taken: before.taken,
     };
     if !texts_changed && swaps.is_empty() && redrawn.is_empty() {
         return Ok(report);

@@ -49,11 +49,12 @@ import {
 } from "../domain/roughlayers";
 import { decodePicture } from "../render/pictures";
 import { onPageOnly } from "../domain/aside";
-import { imageOf, isNamePicture, writtenOpacity } from "../domain/references";
+import { drawingLayer, imageOf, isDrawing, isNamePicture, writtenOpacity } from "../domain/references";
 import { isBackground } from "../domain/background";
 import { drawPicture } from "../render/backgrounds";
 import { balloonLineMm, linePitch, lineSpacing, useStyle } from "../domain/style";
 import type { ReadUnit } from "../domain/readback";
+import { panelKey, strokeKey } from "../domain/csptakeback";
 
 /**
  * The CSP pages to write, each one name page or two (a 見開き, right page
@@ -99,7 +100,7 @@ export function exportUnits(
   return { units, warnings };
 }
 
-function shifted(m: MmToPx, dx: number): MmToPx {
+export function shifted(m: MmToPx, dx: number): MmToPx {
   return { ...m, x: m.x + dx };
 }
 
@@ -172,7 +173,7 @@ const NO_FRAME_FOLDER =
 /** The rough's layers (the name sheet's rough image too): what is inked over in CSP. */
 export const ROUGH_LAYERS = [LAYER_NAMES.strokes, LAYER_NAMES.overStrokes, "ラフ（ネーム用紙）"];
 /** The rough image of the name sheet (Rust side). */
-const SHEET_ROUGH_NAME = ROUGH_LAYERS[2];
+export const SHEET_ROUGH_NAME = ROUGH_LAYERS[2];
 
 export function partCount(page: Page, kind: LayerKind): number {
   switch (kind) {
@@ -239,12 +240,15 @@ export interface VectorLineMeta {
   widthPx: number;
   /** 8-bit RGB; none: black. */
   color?: [number, number, number];
+  /** What of the name it is (domain/csptakeback.ts), recorded to tell CSP's changes later. */
+  key?: string;
 }
 
 /** One panel of a コマ枠フォルダー in template px. */
 export interface FrameMeta {
   points: [number, number][];
   widthPx: number;
+  key?: string;
 }
 
 /** One layer of a page as `export_name_page` takes it, bottom first. */
@@ -300,6 +304,7 @@ export function vectorLines(
             closed: stroke.closed,
             widthPx: stroke.widthMm * m.scale,
             ...(color ? { color } : {}),
+            key: strokeKey(stroke),
           };
         });
     case "panels":
@@ -312,6 +317,7 @@ export function vectorLines(
             points: map(part.points, () => 1),
             closed: part.closed,
             widthPx: borderWidthMm(line.panel) * m.scale,
+            key: panelKey(line.panel),
           }));
         });
     case "balloons":
@@ -336,6 +342,7 @@ export function frameMetas(project: Project, page: Page, m: MmToPx, gutter: Side
     frames: framed.map(({ panel, outline }) => ({
       points: outline.map(([x, y]): [number, number] => [x * m.scale + m.x, y * m.scale + m.y]),
       widthPx: borderWidthMm(panel) * m.scale,
+      key: panelKey(panel),
     })),
   };
 }
@@ -355,11 +362,28 @@ export const NAME_PICTURE_LAYER_NAME = "ネーム画像";
 export const BACKGROUND_LAYER_NAME = "背景（ネーム）";
 
 /** The picture layers, bottom first: 資料, the backgrounds, the pictures of the name; 資料 and the name 下描き layers. */
-const PICTURE_LAYERS = [
-  { name: REFERENCE_LAYER_NAME, takes: (reference: ReferenceImage) => !isNamePicture(reference) && !isBackground(reference), draft: true },
+export const PICTURE_LAYERS = [
+  {
+    name: REFERENCE_LAYER_NAME,
+    takes: (reference: ReferenceImage) => !isNamePicture(reference) && !isBackground(reference) && !isDrawing(reference),
+    draft: true,
+  },
   { name: BACKGROUND_LAYER_NAME, takes: isBackground, draft: false },
   { name: NAME_PICTURE_LAYER_NAME, takes: isNamePicture, draft: true },
 ];
+
+/** CSP の絵: a layer each (named as the CSP layer it was drawn on), over the other pictures. */
+export function drawingLayers(project: Project): { name: string; takes: (reference: ReferenceImage) => boolean; draft: boolean }[] {
+  const names: string[] = [];
+  for (const page of project.pages)
+    for (const reference of page.references ?? [])
+      if (isDrawing(reference) && !names.includes(drawingLayer(reference))) names.push(drawingLayer(reference));
+  return names.map((name) => ({
+    name,
+    takes: (reference: ReferenceImage) => isDrawing(reference) && drawingLayer(reference) === name,
+    draft: false,
+  }));
+}
 const NOTE_TEXT_MM = 3;
 
 /** Whether a page has any memo to write. */
@@ -623,7 +647,7 @@ export function layerForm(kind: LayerKind, vector: boolean, text: boolean): "vec
 }
 
 /** The CSP names of the ラフ線のレイヤー and 指示のレイヤー, apart from the page's other layers. */
-function layerNames(project: Project): Map<string, { under: string; over: string }> {
+export function layerNames(project: Project): Map<string, { under: string; over: string }> {
   return roughExportNames(project, [
     ...LAYER_ORDER.filter((kind) => kind !== "strokes" && kind !== "overStrokes").map((kind) => LAYER_NAMES[kind]),
     FRAME_FOLDER_NAME,
@@ -636,7 +660,7 @@ function layerNames(project: Project): Map<string, { under: string; over: string
 }
 
 /** Each 指示のレイヤー of `placed` in its colour on `ctx` (cleared first), `clip` keeping each page to its side of a spread. */
-function drawMarkLayer(
+export function drawMarkLayer(
   ctx: CanvasRenderingContext2D,
   project: Project,
   layer: RoughLayer,
@@ -683,7 +707,7 @@ export async function exportToCsp(
       ? []
       : markLayersOf(project).filter((layer) => project.pages.some((page) => strokesOn(project, page.strokes, layer).length));
   // 資料画像 and the pictures of the name: a 下描き layer each, on every page when any page has one.
-  const pictureLayers = PICTURE_LAYERS.filter(({ takes }) =>
+  const pictureLayers = [...PICTURE_LAYERS, ...drawingLayers(project)].filter(({ takes }) =>
     project.pages.some((page) => onPageOnly(page, project.pageFormat).references?.some(takes)),
   );
   if (pictureLayers.some(({ draft }) => draft))
@@ -915,6 +939,7 @@ export async function exportToCsp(
       );
       const meta = {
         layers,
+        pageIds: unit.map((index) => project.pages[index].id),
         sheet: project.source?.path ?? null,
         roughs: project.source ? roughs : [],
         overlayLength: overlayPng.length,
@@ -953,7 +978,7 @@ export function unreadWarning(project: Project, unread: ReadonlySet<string>): st
 }
 
 /** The pictures `takes` picks on `placed` pages, decoded (by image id); one that cannot be read is left out, its id put in `unread`. */
-async function decodePictures(
+export async function decodePictures(
   project: Project,
   placed: readonly PlacedPage[],
   takes: (reference: ReferenceImage) => boolean,

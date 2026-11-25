@@ -15,13 +15,23 @@ export function isNamePicture(reference: ReferenceImage): boolean {
   return reference.kind === "name";
 }
 
-/** How strongly a picture is written out where the reader sees it (PDF, ミニネーム, 読む): twice the screen's faintness. */
+/** CSP の絵: drawn in CSP and taken back, part of the name as it is (on its CSP layer, `layer`). */
+export function isDrawing(reference: ReferenceImage): boolean {
+  return reference.kind === "drawing";
+}
+
+/** The CSP layer a CSP の絵 goes back to. */
+export function drawingLayer(reference: ReferenceImage): string {
+  return reference.layer || "CSP の絵";
+}
+
+/** How strongly a picture is written out where the reader sees it (PDF, ミニネーム, 読む): twice the screen's faintness (a CSP の絵 as it is). */
 export function writtenOpacity(reference: ReferenceImage): number {
-  return Math.min(1, opacityOf(reference) * 2);
+  return isDrawing(reference) ? opacityOf(reference) : Math.min(1, opacityOf(reference) * 2);
 }
 
 export function opacityOf(reference: ReferenceImage): number {
-  return reference.opacity ?? DEFAULT_OPACITY;
+  return reference.opacity ?? (isDrawing(reference) ? 1 : DEFAULT_OPACITY);
 }
 
 export function imageOf(project: Project, reference: ReferenceImage): StoredImage | undefined {

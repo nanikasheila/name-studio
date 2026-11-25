@@ -78,6 +78,82 @@ pub struct PageRecord {
     /// [`image_signature`] of the 下描き image layers (the memos), by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub rasters: BTreeMap<String, String>,
+    /// Each vector layer's lines (and a コマ枠フォルダー's frames), by layer
+    /// name, as written or as last taken back into the name: to tell the
+    /// lines drawn, changed or deleted in CSP since.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub lines: BTreeMap<String, Vec<LineRecord>>,
+    /// [`pixel_signature`] of every image layer of the page, by name, as
+    /// written or as last taken back: to tell the ones drawn on in CSP.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub pixels: BTreeMap<String, String>,
+    /// The name's pages (`Page.id`) the file holds (two for a 見開き page).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub page_ids: Vec<String>,
+    /// What the last take-back of the page made in the name and what was
+    /// recorded before it: a name that undid it has none of those, and
+    /// reading back again starts from before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub taken: Option<Taken>,
+}
+
+/// See [`PageRecord::taken`].
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Taken {
+    /// Keys of what it made (strokes, panels, pictures).
+    pub keys: Vec<String>,
+    #[serde(default)]
+    pub lines: BTreeMap<String, Vec<LineRecord>>,
+    #[serde(default)]
+    pub pixels: BTreeMap<String, String>,
+}
+
+/// One line of a vector layer: its shape ([`line_signature`]) and what of
+/// the name it is (the name's own key, such as a stroke's id); no key for a
+/// line the name does not have (drawn in CSP and left there).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LineRecord {
+    pub sig: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+}
+
+/// A line's shape fingerprint (its points rounded to the pixel).
+pub fn line_signature(points: &[(f64, f64)]) -> String {
+    crate::vector::shape_signature([points])
+}
+
+/// A fingerprint of what an image layer shows: its visible pixels where
+/// they are on the canvas, whatever blocks CSP keeps them in (the order of
+/// the blocks and blank ones do not count).
+pub fn pixel_signature<'a>(tiles: impl IntoIterator<Item = ((i64, i64), &'a crate::RgbaImage)>) -> String {
+    let mut sum: u64 = 0;
+    let mut count: u64 = 0;
+    for ((x0, y0), tile) in tiles {
+        for (index, pixel) in tile.pixels.as_chunks::<4>().0.iter().enumerate() {
+            if pixel[3] == 0 {
+                continue;
+            }
+            let x = x0 + (index as i64 % i64::from(tile.width.max(1)));
+            let y = y0 + (index as i64 / i64::from(tile.width.max(1)));
+            // Each pixel hashed alone (FNV-1a), the hashes summed: any order gives the same.
+            let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+            for byte in x
+                .to_le_bytes()
+                .into_iter()
+                .chain(y.to_le_bytes())
+                .chain(pixel.iter().copied())
+            {
+                hash ^= u64::from(byte);
+                hash = hash.wrapping_mul(0x0100_0000_01b3);
+            }
+            sum = sum.wrapping_add(hash);
+            count += 1;
+        }
+    }
+    format!("{count}:{sum:016x}")
 }
 
 /// A short fingerprint of an image's pixels, to tell whether it changed.
@@ -278,6 +354,25 @@ pub fn check_overwrite(dir: &Path, source: Option<&ExportSource>) -> std::io::Re
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_line_signature_is_the_apps() {
+        // app/src/domain/csptakeback.test.ts computes the same (domain/linesig.ts).
+        assert_eq!(line_signature(&[(10.4, 20.5), (-3.5, 7.0)]), "1:beb2c96895f00314");
+    }
+
+    #[test]
+    fn the_pixel_signature_is_what_shows_where() {
+        let mut dot = crate::RgbaImage::new(2, 1);
+        dot.pixels[..4].copy_from_slice(&[1, 2, 3, 255]);
+        let blank = crate::RgbaImage::new(4, 4);
+        let one = pixel_signature([((10, 10), &dot), ((0, 0), &blank)]);
+        // Blank blocks and the order of the blocks do not count; where the pixel is does.
+        assert_eq!(one, pixel_signature([((0, 0), &blank), ((10, 10), &dot)]));
+        assert_eq!(one, pixel_signature([((10, 10), &dot)]));
+        assert_ne!(one, pixel_signature([((11, 10), &dot)]));
+        assert!(one.starts_with("1:"));
+    }
 
     #[test]
     fn tells_changed_pages_from_its_own() {

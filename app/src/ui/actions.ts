@@ -52,7 +52,7 @@ export interface CommandHost {
   holdSelected(): boolean;
   /** 整える: the selected panels, else the 仮のコマ, else all panels of the page worked on; false when there are none. */
   tidyPanels(): boolean;
-  /** CSP のセリフを読み戻す, from the folder of this name's last CSP export. */
+  /** CSP から読み戻す (dialogue, lines, panels, pictures), from the folder of this name's last CSP export. */
   readBack(): void;
   /** 次の話を作る in the open name's series; false when it is in none. */
   nextStory(): boolean;
@@ -197,10 +197,10 @@ export function buildCommands(host: CommandHost): Command[] {
     ),
     {
       id: "export.readBack",
-      label: "CSP のセリフを読み戻す…",
+      label: "CSP から読み戻す…（セリフ・線・コマ・絵）",
       group: "ファイル",
       keys: [],
-      words: "読み戻し 取り込む CSP 直した セリフ",
+      words: "読み戻し 取り込む CSP 直した セリフ 加筆 描いた 線 コマ 絵 ラスター",
       available: named,
       run: always(() => host.readBack()),
     },

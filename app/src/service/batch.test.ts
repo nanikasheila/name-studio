@@ -68,6 +68,7 @@ const task = (
   marks: true,
   updateDialogue: false,
   readDialogue: false,
+  readBack: false,
   ...asked,
 });
 

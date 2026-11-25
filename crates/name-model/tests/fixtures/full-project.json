@@ -318,7 +318,8 @@
           "opacity": 1,
           "kind": "background",
           "panel": "page1-panel1",
-          "source": "panel1/2/完成"
+          "source": "panel1/2/完成",
+          "layer": "レイヤー 1"
         }
       ]
     }
@@ -806,7 +807,8 @@
                   "opacity": 1,
                   "kind": "background",
                   "panel": "page9-panel1",
-                  "source": "panel1/2/完成"
+                  "source": "panel1/2/完成",
+                  "layer": "レイヤー 1"
                 }
               ]
             }
@@ -1405,7 +1407,8 @@
               "opacity": 1,
               "kind": "background",
               "panel": "page8-panel1",
-              "source": "panel1/2/完成"
+              "source": "panel1/2/完成",
+              "layer": "レイヤー 1"
             }
           ]
         }

@@ -17,6 +17,17 @@ import {
 import { normalize, unknownFieldsNote } from "../domain/project";
 import { projectBody } from "../domain/projectjson";
 import { applyTakeBack, planTakeBack, takeBackSummary } from "../domain/readback";
+import {
+  adoptions,
+  allRefs,
+  applyCspTakeBack,
+  changeCount,
+  cspTakeBackSummary,
+  pickCspTakeBack,
+  startsUnticked,
+  type Made,
+} from "../domain/csptakeback";
+import { adoptCspPages, readCspBack } from "./csptakeback";
 import { cspPageOf, pageSetup, piecesPerPage, setupProblem } from "../domain/csppage";
 import { installedFont } from "../domain/fonts";
 import type { Project } from "../model/model";
@@ -85,7 +96,50 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
     const unknown = unknownFieldsNote((await call("unknown_project_fields", { path: task.project }).catch(() => null)) ?? []);
     const notes = unknown ? [`注意: ${unknown}`] : [];
     const templates = await templatesFor(task, project);
-    if (task.readDialogue) {
+    if (task.readBack) {
+      const { units, plan: csp } = await readCspBack(
+        project,
+        {
+          template: templates.template,
+          outDir: task.outDir,
+          workTemplate: null,
+          workName: null,
+          storyIndex: null,
+          inputs: [task.project, project.source?.path].filter((path): path is string => !!path),
+          donors: [...(task.donors ?? []), project.source?.path, ...templates.donors].filter((path): path is string => !!path),
+        },
+        status,
+      );
+      const plan = planTakeBack(project, units);
+      // Everything found, but what the dialog leaves unticked (removing panels, layers hidden in CSP).
+      const off = startsUnticked(csp);
+      const picked = pickCspTakeBack(csp, new Set(allRefs(csp).filter((ref) => !off.has(ref))));
+      const changes = plan.retyped.length + plan.added.length + plan.removed.length + changeCount(picked);
+      let made: Made = new Map();
+      if (changes) {
+        applyTakeBack(project, plan);
+        made = applyCspTakeBack(project, picked);
+        await call("save_project", projectBody({ path: task.project, previousPath: task.project }, project));
+        await call("adopt_name_dialogue", { paths: plan.paths });
+        await adoptCspPages(adoptions(csp, made));
+      }
+      ok = !plan.missing.length;
+      const summary = [
+        changes ? `CSP から ${changes} 件を読み戻して ${task.project} に保存しました` : "CSP で変えたものはありませんでした",
+        ...takeBackSummary(plan),
+        ...cspTakeBackSummary(picked),
+      ];
+      result = {
+        ok,
+        seconds: (Date.now() - started) / 1000,
+        summary,
+        ...plan,
+        csp: {
+          ...picked,
+          pictures: picked.pictures.map(({ image, ...rest }) => ({ ...rest, widthPx: image.widthPx, heightPx: image.heightPx })),
+        },
+      };
+    } else if (task.readDialogue) {
       const units = await readCspDialogue(
         project,
         {
