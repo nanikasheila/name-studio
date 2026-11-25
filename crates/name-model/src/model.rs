@@ -675,6 +675,23 @@ pub struct PanelBackground {
     /// the light and materials in words (name-blockout's look).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub look: Option<BackgroundLook>,
+    /// 要求の答え: the author's answers to name-blockout's questions that
+    /// have no field of their own here (by name-blockout's path), and the
+    /// questions left to its guess (おまかせ: no value).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub answers: Vec<BackgroundAnswer>,
+}
+
+/// An answer to one of name-blockout's questions.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
+#[serde(rename_all = "camelCase")]
+pub struct BackgroundAnswer {
+    /// Where in the instruction's shot (camera.heightM, objects/<id>/onGround…).
+    pub path: String,
+    /// The value as JSON text; none: おまかせ (name-blockout's guess stands).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
 }
 
 /// 見た目 of a panel's background: name-blockout's development (light and

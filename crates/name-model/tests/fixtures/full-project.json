@@ -142,7 +142,13 @@
                   "material": "布"
                 }
               ]
-            }
+            },
+            "answers": [
+              {
+                "path": "camera.heightM",
+                "value": "1.5"
+              }
+            ]
           }
         }
       ],
@@ -652,7 +658,13 @@
                           "material": "布"
                         }
                       ]
-                    }
+                    },
+                    "answers": [
+                      {
+                        "path": "camera.heightM",
+                        "value": "1.5"
+                      }
+                    ]
                   }
                 }
               ],
@@ -1020,7 +1032,13 @@
                 "material": "布"
               }
             ]
-          }
+          },
+          "answers": [
+            {
+              "path": "camera.heightM",
+              "value": "1.5"
+            }
+          ]
         }
       },
       "lines": [
@@ -1294,7 +1312,13 @@
                       "material": "布"
                     }
                   ]
-                }
+                },
+                "answers": [
+                  {
+                    "path": "camera.heightM",
+                    "value": "1.5"
+                  }
+                ]
               }
             }
           ],

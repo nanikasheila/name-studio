@@ -20,6 +20,7 @@
 //! share, and starting and stopping a turn.
 
 pub mod background;
+pub mod blockout;
 pub mod cli;
 pub mod history;
 pub mod local;

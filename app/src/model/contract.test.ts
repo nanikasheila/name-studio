@@ -97,6 +97,7 @@ function fullPage(id: string): Full<Project["pages"][number]> {
             light: "window",
             materials: [{ target: `${id}-object1`, material: "布" }],
           },
+          answers: [{ path: "camera.heightM", value: "1.5" }],
         },
       },
     ],
