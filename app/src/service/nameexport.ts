@@ -121,6 +121,14 @@ export function clipLines(lines: VectorLineMeta[], x: number, right: boolean): V
 
 /** Bigger page images are drawn smaller and scaled up on the Rust side. */
 const MAX_LAYER_PIXELS = 40_000_000;
+/**
+ * The scale page images are drawn at: by the page's own size, so a single
+ * page is drawn the same whether or not the name has 見開き (a memo drawn
+ * the same is not written again).
+ */
+export function layerFactor(widthPx: number, heightPx: number): number {
+  return Math.min(1, Math.sqrt(MAX_LAYER_PIXELS / (widthPx * heightPx)));
+}
 /** Width of the image drawn over the page thumbnail. */
 const OVERLAY_WIDTH = 1200;
 
@@ -773,12 +781,6 @@ export async function exportToCsp(
     // Pictures that could not be read (the dialog asked first; the batch export says so here).
     const unread = new Set<string>();
     const checks: PageCheck[] = [];
-    // One drawing canvas for the widest page; each page is drawn at its own size.
-    const widest = Math.max(
-      start.widthPx,
-      ...(units.some((unit) => unit.length > 1) && start.spread && pieces === 1 ? [start.spread.widthPx] : []),
-    );
-    const factor = Math.min(1, Math.sqrt(MAX_LAYER_PIXELS / (widest * start.heightPx)));
     const drawing = document.createElement("canvas");
     const ctx = drawing.getContext("2d")!;
     const overlay = document.createElement("canvas");
@@ -787,6 +789,7 @@ export async function exportToCsp(
       progress(`${unitIndex + 1} / ${units.length} ページを書き出し中…`);
       const spread = unit.length > 1 && start.spread && pieces === 1 ? start.spread : null;
       const pageWidth = spread ? spread.widthPx : start.widthPx;
+      const factor = layerFactor(pageWidth, start.heightPx);
       const placed = pieces > 1 ? placeStacked(project, unit, start, pieces) : placeUnit(project, unit, full, spread);
       // On a spread each page shows up to the gutter (template px, `scale` of drawing).
       const clipped = (target: CanvasRenderingContext2D, scale: number, right: boolean, draw: () => void) => {
@@ -846,7 +849,15 @@ export async function exportToCsp(
         pngs.push(png);
         return { kind: "raster", name, length: png.length };
       };
+      // CSP の絵 over the name's lines and panels, under the balloons and dialogue (as inked pages have them).
+      let drawn = false;
+      const drawingsHere = async () => {
+        if (drawn) return;
+        drawn = true;
+        for (const layer of pictureLayers) if (drawings.has(layer.name)) await pictureLayer(layer);
+      };
       for (const kind of LAYER_ORDER) {
+        if (kind === "balloonFills") await drawingsHere();
         const form = layerForm(kind, vector, text);
         if (form === "none") continue;
         if (form !== "raster") {
@@ -916,8 +927,7 @@ export async function exportToCsp(
         if (kind === "underFills" && !placed.some(({ page }) => partCount(page, kind))) continue;
         layers.push(await part(kind, placed, LAYER_NAMES[kind]));
       }
-      // CSP の絵 over the name's parts, as drawn in CSP (under the memos and 指示).
-      for (const layer of pictureLayers) if (drawings.has(layer.name)) await pictureLayer(layer);
+      await drawingsHere();
       if (notes) {
         let png: Uint8Array = new Uint8Array();
         if (placed.some(({ page }) => hasNotes(page))) {
@@ -1059,8 +1069,6 @@ export async function updateCspDialogue(
     const vector = start.vectorLayers;
     const full = projectToTemplate(project, start);
     const { units, warnings } = exportUnits(project, start.firstPageLeft, start.spread ? null : start.spreadProblem);
-    const widest = Math.max(start.widthPx, ...(units.some((unit) => unit.length > 1) && start.spread ? [start.spread.widthPx] : []));
-    const factor = Math.min(1, Math.sqrt(MAX_LAYER_PIXELS / (widest * start.heightPx)));
     const drawing = document.createElement("canvas");
     const ctx = drawing.getContext("2d")!;
     const backup = backupName(new Date());
@@ -1069,6 +1077,7 @@ export async function updateCspDialogue(
       progress(`${unitIndex + 1} / ${units.length} ページのセリフを確かめ中…`);
       const spread = unit.length > 1 && start.spread ? start.spread : null;
       const pageWidth = spread ? spread.widthPx : start.widthPx;
+      const factor = layerFactor(pageWidth, start.heightPx);
       const placed = unit.map((index, position) => {
         const right = (position === 0) === (project.binding === "right");
         const dx = spread ? (right ? spread.rightDx : spread.leftDx) : 0;
@@ -1139,7 +1148,8 @@ export async function updateCspDialogue(
         marks.push({ kind: "raster", name: names.get(layer.id)!.under, length: png.length });
         pngs.push(png);
       }
-      const meta = { texts, balloons, notes: memos, marks, spread: spread !== null, backup };
+      const pageIds = unit.map((index) => project.pages[index].id);
+      const meta = { texts, balloons, notes: memos, marks, spread: spread !== null, pageIds, backup };
       const report = await call("update_name_dialogue", packBody(meta, pngs));
       pages.push({ ...report, pages: unit.map((index) => index + 1) });
     }
@@ -1171,7 +1181,7 @@ export async function readCspDialogue(
         const right = (position === 0) === (project.binding === "right");
         return { index, m: shifted(full, spread ? (right ? spread.rightDx : spread.leftDx) : 0), right };
       });
-      const page = await call("read_name_dialogue", { spread: spread !== null });
+      const page = await call("read_name_dialogue", { spread: spread !== null, pageIds: unit.map((index) => project.pages[index].id) });
       const texts = (page.dialogue?.texts ?? []).map(({ text, bbox }) => {
         // On a 見開き page, the page whose side of the gutter it is on.
         const x = bbox ? (bbox[0] + bbox[2]) / 2 : 0;

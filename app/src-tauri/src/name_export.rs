@@ -477,6 +477,9 @@ pub(crate) struct DialogueMeta {
     marks: Vec<LayerMeta>,
     #[serde(default)]
     spread: bool,
+    /// The name's pages it is (`Page.id`): their file is found by them.
+    #[serde(default)]
+    page_ids: Vec<String>,
     /// Folder name under `name-studio-backup` for the pages as they were.
     backup: String,
 }
@@ -505,14 +508,14 @@ pub(crate) async fn update_name_dialogue(
                 writer.canvas
             };
             let (width, height) = (canvas.width_px, canvas.height_px);
-            let path = writer.next_page_path(meta.spread);
-            if !path.exists() {
+            let found = writer.page_path_for(meta.spread, &meta.page_ids);
+            let Some(path) = found.filter(|path| path.exists()) else {
                 return Ok(update::DialogueUpdateReport {
-                    path,
+                    path: writer.out_dir().to_path_buf(),
                     not_found: vec!["ページのファイル".to_owned()],
                     ..Default::default()
                 });
-            }
+            };
             let mut take = |length: usize| -> Result<&[u8], String> {
                 let png = rest.get(..length).ok_or("データが壊れています")?;
                 rest = &rest[length..];
@@ -572,18 +575,23 @@ pub(crate) struct CspPageDialogue {
 }
 
 /// Read the dialogue of the next page the export wrote (a 見開き page when
-/// `spread`), to take what was changed in CSP back into the name.
+/// `spread`; the file of the name's pages `page_ids`), to take what was
+/// changed in CSP back into the name.
 #[tauri::command]
-pub(crate) async fn read_name_dialogue(app: tauri::AppHandle, spread: bool) -> Result<CspPageDialogue, String> {
+pub(crate) async fn read_name_dialogue(
+    app: tauri::AppHandle,
+    spread: bool,
+    page_ids: Vec<String>,
+) -> Result<CspPageDialogue, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let mut guard = state.name_export.lock().map_err(lock_error)?;
         let writer = guard.as_mut().ok_or("書き出しが始まっていません")?;
-        let path = writer.next_page_path(spread);
-        let dialogue = if path.exists() {
-            Some(update::read_dialogue(&path).map_err(|error| format!("{}: {error}", path.display()))?)
-        } else {
-            None
+        let found = writer.page_path_for(spread, &page_ids);
+        let path = found.clone().unwrap_or_else(|| writer.out_dir().to_path_buf());
+        let dialogue = match found.filter(|path| path.exists()) {
+            Some(path) => Some(update::read_dialogue(&path).map_err(|error| format!("{}: {error}", path.display()))?),
+            None => None,
         };
         Ok(CspPageDialogue { path, dialogue })
     })
@@ -614,21 +622,58 @@ pub(crate) struct CspPageRead {
 }
 
 /// Read everything of the next page the export wrote (a 見開き page when
-/// `spread`): to take what was drawn in CSP back into the name.
+/// `spread`; the file of the name's pages `page_ids`): to take what was
+/// drawn in CSP back into the name.
 #[tauri::command]
-pub(crate) async fn read_name_page(app: tauri::AppHandle, spread: bool) -> Result<CspPageRead, String> {
+pub(crate) async fn read_name_page(
+    app: tauri::AppHandle,
+    spread: bool,
+    page_ids: Vec<String>,
+) -> Result<CspPageRead, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let mut guard = state.name_export.lock().map_err(lock_error)?;
         let writer = guard.as_mut().ok_or("書き出しが始まっていません")?;
-        let path = writer.next_page_path(spread);
+        let found = writer.page_path_for(spread, &page_ids);
+        let path = found.clone().unwrap_or_else(|| writer.out_dir().to_path_buf());
         drop(guard);
-        let content = if path.exists() {
-            Some(readback::read_page(&path).map_err(|error| format!("{}: {error}", path.display()))?)
-        } else {
-            None
+        let content = match found.filter(|path| path.exists()) {
+            Some(path) => Some(readback::read_page(&path).map_err(|error| format!("{}: {error}", path.display()))?),
+            None => None,
         };
         Ok(CspPageRead { path, content })
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+/// Everything of a page file of the work (one added in CSP): see [`read_name_page`].
+#[tauri::command]
+pub(crate) async fn read_csp_page(path: PathBuf) -> Result<readback::CspPageContent, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        readback::read_page(&path).map_err(|error| format!("{}: {error}", path.display()))
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+/// The pages of the work (.cmc) the export into `out_dir` wrote, as CSP
+/// has them now and as last recorded (none: no work there).
+#[tauri::command]
+pub(crate) async fn read_csp_work(out_dir: PathBuf) -> Result<Option<readback::CspWork>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        readback::read_work(&out_dir).map_err(|error| format!("{}: {error}", out_dir.display()))
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+/// Record the work's pages as CSP has them now as the name's (`made`: the
+/// name's pages the take-back made), see `readback::adopt_work`.
+#[tauri::command]
+pub(crate) async fn adopt_csp_work(out_dir: PathBuf, made: Vec<String>) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        readback::adopt_work(&out_dir, made).map_err(|error| format!("{}: {error}", out_dir.display()))
     })
     .await
     .map_err(|error| error.to_string())?

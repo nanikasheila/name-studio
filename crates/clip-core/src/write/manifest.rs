@@ -22,6 +22,35 @@ pub struct Manifest {
     /// The name the pages were written from (none from older versions).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<ExportSource>,
+    /// The work (.cmc) and its pages in order, as written or as last taken
+    /// back: to tell the pages added, deleted and moved in CSP since.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work: Option<WorkRecord>,
+}
+
+/// The pages of the work as last known (see [`Manifest::work`]).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkRecord {
+    /// The .cmc's file name.
+    pub cmc: String,
+    /// Its page files, in order (which of the name's pages each holds is
+    /// in the file's own [`PageRecord::page_ids`]).
+    pub pages: Vec<String>,
+    /// What the last take-back of the pages made in the name and the pages
+    /// before it: a name that undid it has none of those pages, and reading
+    /// back again starts from before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub taken: Option<WorkTaken>,
+}
+
+/// See [`WorkRecord::taken`].
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkTaken {
+    /// The name's pages (`Page.id`) it made.
+    pub page_ids: Vec<String>,
+    pub pages: Vec<String>,
 }
 
 /// The name an export was written from: its file (none while it is not
@@ -189,9 +218,24 @@ pub fn write_manifest(
     files: &[(PathBuf, PageRecord)],
     source: Option<&ExportSource>,
 ) -> std::io::Result<()> {
-    let files = files
+    let in_dir: Vec<&(PathBuf, PageRecord)> = files.iter().filter(|(path, _)| path.parent() == Some(dir)).collect();
+    let name_of = |path: &Path| path.file_name().map(|name| name.to_string_lossy().into_owned());
+    let has_ext = |path: &Path, ext: &str| path.extension().is_some_and(|e| e.eq_ignore_ascii_case(ext));
+    let work = in_dir
         .iter()
-        .filter(|(path, _)| path.parent() == Some(dir))
+        .find(|(path, _)| has_ext(path, "cmc"))
+        .and_then(|(cmc, _)| name_of(cmc))
+        .map(|cmc| WorkRecord {
+            cmc,
+            pages: in_dir
+                .iter()
+                .filter(|(path, _)| has_ext(path, "clip"))
+                .filter_map(|(path, _)| name_of(path))
+                .collect(),
+            taken: None,
+        });
+    let files = in_dir
+        .into_iter()
         .filter_map(|(path, record)| {
             let (size, modified_ms) = stamp(path)?;
             Some(ManifestFile {
@@ -208,6 +252,7 @@ pub fn write_manifest(
             written_ms: now_ms(),
             files,
             source: source.cloned(),
+            work,
         },
     )
 }
@@ -224,6 +269,7 @@ pub fn merge_manifest(
         written_ms: now_ms(),
         files: Vec::new(),
         source: None,
+        work: None,
     });
     if let Some(source) = source {
         manifest.source = Some(source.clone());
@@ -250,7 +296,8 @@ fn save(dir: &Path, manifest: &Manifest) -> std::io::Result<()> {
     name_model::atomic::write(&dir.join(MANIFEST_NAME), text.as_bytes())
 }
 
-fn load(dir: &Path) -> Option<Manifest> {
+/// The record of the export in `dir`, if there is one.
+pub fn load(dir: &Path) -> Option<Manifest> {
     std::fs::read_to_string(dir.join(MANIFEST_NAME))
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
@@ -269,7 +316,9 @@ pub fn written(page: &Path) -> Option<PageRecord> {
 }
 
 /// Record that `page` now holds `record` from this tool, leaving its size and
-/// time as they were: the page still counts as changed in CSP.
+/// time as they were: the page still counts as changed in CSP. A page the
+/// export did not write (one added in CSP, taken into the name) is recorded
+/// as changed too.
 pub fn record_page(page: &Path, record: PageRecord) -> std::io::Result<()> {
     let (Some(dir), Some(name)) = (page.parent(), page.file_name()) else {
         return Ok(());
@@ -278,11 +327,48 @@ pub fn record_page(page: &Path, record: PageRecord) -> std::io::Result<()> {
         return Ok(());
     };
     let name = name.to_string_lossy();
-    if let Some(file) = manifest.files.iter_mut().find(|file| file.name == name) {
-        file.record = record;
-        save(dir, &manifest)?;
+    match manifest.files.iter_mut().find(|file| file.name == name) {
+        Some(file) => file.record = record,
+        None => {
+            manifest.files.push(ManifestFile {
+                name: name.into_owned(),
+                size: 0,
+                modified_ms: 0,
+                record,
+            });
+            manifest.files.sort_by(|a, b| a.name.cmp(&b.name));
+        }
     }
-    Ok(())
+    save(dir, &manifest)
+}
+
+/// Record the work's pages as `pages` (file names, in order), and with
+/// `made` (the name's pages the take-back made) the pages before.
+pub fn record_work(dir: &Path, cmc: &str, pages: Vec<String>, made: Vec<String>) -> std::io::Result<()> {
+    let Some(mut manifest) = load(dir) else {
+        return Ok(());
+    };
+    let work = manifest.work.get_or_insert_with(|| WorkRecord {
+        cmc: cmc.to_owned(),
+        ..Default::default()
+    });
+    work.taken = (!made.is_empty()).then(|| WorkTaken {
+        page_ids: made,
+        pages: std::mem::take(&mut work.pages),
+    });
+    work.pages = pages;
+    save(dir, &manifest)
+}
+
+/// Each recorded page file and the name's pages it holds (none recorded:
+/// written by an older version, or a page of CSP's).
+pub fn page_files(manifest: &Manifest) -> Vec<(String, Vec<String>)> {
+    manifest
+        .files
+        .iter()
+        .filter(|file| file.name.to_lowercase().ends_with(".clip"))
+        .map(|file| (file.name.clone(), file.record.page_ids.clone()))
+        .collect()
 }
 
 /// CSP files already in a folder an export would write into.
@@ -300,6 +386,14 @@ pub struct OverwriteCheck {
     /// The name the last export there was written from, when it is not the
     /// one about to be written (its pages are written over even unchanged).
     pub other_source: Option<ExportSource>,
+    /// Pages of the work added in CSP since, not taken into the name: the
+    /// export writes the work again without them.
+    #[serde(default)]
+    pub added_in_csp: Vec<String>,
+    /// The work's pages were put in another order in CSP since: the export
+    /// puts them back in the name's.
+    #[serde(default)]
+    pub moved_in_csp: bool,
 }
 
 /// What exporting into `dir` would overwrite: nothing when the folder is not
@@ -348,6 +442,25 @@ pub fn check_overwrite(dir: &Path, source: Option<&ExportSource>) -> std::io::Re
     if check.existing.is_empty() {
         check.other_source = None;
     }
+    if let Ok(Some(work)) = super::readback::read_work(dir)
+        && let Some(recorded) = &work.recorded
+    {
+        let known: Vec<&str> = recorded.iter().map(|page| page.file.as_str()).collect();
+        check.added_in_csp = work
+            .pages
+            .iter()
+            .filter(|page| !known.contains(&page.file.as_str()))
+            .map(|page| page.file.clone())
+            .collect();
+        let now: Vec<&str> = work.pages.iter().map(|page| page.file.as_str()).collect();
+        let common = |list: &[&str], other: &[&str]| -> Vec<String> {
+            list.iter()
+                .filter(|name| other.contains(name))
+                .map(|name| name.to_string())
+                .collect()
+        };
+        check.moved_in_csp = common(&now, &known) != common(&known, &now);
+    }
     Ok(check)
 }
 
@@ -372,6 +485,46 @@ mod tests {
         assert_eq!(one, pixel_signature([((10, 10), &dot)]));
         assert_ne!(one, pixel_signature([((11, 10), &dot)]));
         assert!(one.starts_with("1:"));
+    }
+
+    #[test]
+    fn records_the_work_and_pages_added_in_csp() {
+        let dir = std::env::temp_dir().join(format!("manifest-work-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let names = ["page0001.clip", "page0002.clip", "作品.cmc"];
+        for name in names {
+            std::fs::write(dir.join(name), b"written").unwrap();
+        }
+        let record = |id: &str| PageRecord {
+            page_ids: vec![id.to_owned()],
+            ..Default::default()
+        };
+        let files: Vec<(PathBuf, PageRecord)> = vec![
+            (dir.join(names[0]), record("page1")),
+            (dir.join(names[1]), record("page2")),
+            (dir.join(names[2]), PageRecord::default()),
+        ];
+        write_manifest(&dir, &files, None).unwrap();
+        let work = load(&dir).unwrap().work.unwrap();
+        assert_eq!(
+            (work.cmc.as_str(), work.pages.clone()),
+            ("作品.cmc", vec![names[0].to_owned(), names[1].to_owned()])
+        );
+        // A page CSP added, taken into the name: recorded, and counted as changed (not this tool's as written).
+        let added = dir.join("page0003.clip");
+        std::fs::write(&added, b"made in CSP").unwrap();
+        record_page(&added, record("page9")).unwrap();
+        assert_eq!(written(&added), Some(record("page9")));
+        assert_eq!(check_overwrite(&dir, None).unwrap().changed, ["page0003.clip"]);
+        let order = vec![names[0].to_owned(), "page0003.clip".to_owned(), names[1].to_owned()];
+        record_work(&dir, "作品.cmc", order.clone(), vec!["page9".to_owned()]).unwrap();
+        let work = load(&dir).unwrap().work.unwrap();
+        assert_eq!(work.pages, order);
+        assert_eq!(work.taken.unwrap().pages, [names[0], names[1]]);
+        // Each file and the name's pages it holds.
+        let files = page_files(&load(&dir).unwrap());
+        assert!(files.contains(&("page0003.clip".to_owned(), vec!["page9".to_owned()])));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

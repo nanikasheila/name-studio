@@ -204,7 +204,7 @@ jobs:
       - name: A template page (and the drawing in CSP that 読み戻す reads back)
         run: |
           cargo run -p clip-core --features fixtures --example fixture_page -- "${{ runner.temp }}/app-check/page.clip"
-          cargo build -p clip-core --example csp_drawn
+          cargo build -p clip-core --example csp_drawn --example csp_pages
 
       # The real window (WebView, Content-Security-Policy, calls to Rust) writes the pages.
       - name: Export a name for CSP with the built app

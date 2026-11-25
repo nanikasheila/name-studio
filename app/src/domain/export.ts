@@ -95,6 +95,12 @@ export function overwriteWarning(check: OverwriteCheck): string | null {
   if (check.unknown.length) {
     lines.push("", `この書き出しで作ったものではないファイル:`, listed(check.unknown));
   }
+  const pages = [
+    // (Older backends, and tests standing in for them, say nothing of the work's pages.)
+    ...(check.addedInCsp?.length ? [`CSP で足したページ（${listed(check.addedInCsp)}）は作品から外れます`] : []),
+    ...(check.movedInCsp ? ["CSP で並べ替えたページはネームの並びに戻ります"] : []),
+  ];
+  if (pages.length) lines.push("", `${pages.join("。")}。先に「CSP から読み戻す…」でネームに取り込めます。`);
   lines.push(
     "",
     check.changed.length

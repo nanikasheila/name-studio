@@ -295,3 +295,141 @@ pub fn adopt_page(path: &Path, adoption: &Adoption) -> Result<()> {
     super::manifest::record_page(path, record)?;
     Ok(())
 }
+
+/// A page file of the work (.cmc).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CspWorkPage {
+    pub file: String,
+    pub path: std::path::PathBuf,
+    /// A 見開き page (as the .cmc says; for a recorded page, it holds two of the name's).
+    pub spread: bool,
+    /// The name's pages it holds, as recorded (none: a page made in CSP, or
+    /// written by a version that recorded none).
+    pub page_ids: Vec<String>,
+}
+
+/// The pages of the work as CSP has them now, and as last recorded.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CspWork {
+    pub cmc: std::path::PathBuf,
+    /// As the .cmc lists them now.
+    pub pages: Vec<CspWorkPage>,
+    /// As the export wrote them, or as last taken back; none from a version
+    /// that recorded none of the pages (nothing to tell CSP's changes by).
+    pub recorded: Option<Vec<CspWorkPage>>,
+    /// The pages before the last take-back, and the name's pages it made.
+    pub taken: Option<CspWorkTaken>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CspWorkTaken {
+    pub page_ids: Vec<String>,
+    pub pages: Vec<CspWorkPage>,
+}
+
+/// File names in the order an export numbers them (page2 before page10).
+fn by_number(names: &mut [String]) {
+    let number = |name: &str| -> u64 {
+        let digits: String = name.chars().filter(char::is_ascii_digit).collect();
+        digits.parse().unwrap_or(u64::MAX)
+    };
+    names.sort_by(|a, b| number(a).cmp(&number(b)).then_with(|| a.cmp(b)));
+}
+
+/// The work (.cmc) the export in `dir` wrote, as CSP has it now; none when
+/// there is no work there, or nothing recorded of it.
+pub fn read_work(dir: &Path) -> Result<Option<CspWork>> {
+    let Some(manifest) = super::manifest::load(dir) else {
+        return Ok(None);
+    };
+    let cmc = manifest.work.as_ref().map(|work| work.cmc.clone()).or_else(|| {
+        manifest
+            .files
+            .iter()
+            .find(|file| file.name.to_lowercase().ends_with(".cmc"))
+            .map(|file| file.name.clone())
+    });
+    let Some(cmc) = cmc.map(|name| dir.join(name)).filter(|path| path.is_file()) else {
+        return Ok(None);
+    };
+    let files = super::manifest::page_files(&manifest);
+    let ids_of = |name: &str| {
+        files
+            .iter()
+            .find(|(file, _)| file == name)
+            .map(|(_, ids)| ids.clone())
+            .unwrap_or_default()
+    };
+    let recorded_page = |file: String| CspWorkPage {
+        path: dir.join(&file),
+        spread: ids_of(&file).len() > 1,
+        page_ids: ids_of(&file),
+        file,
+    };
+    let work = csp_format::CmcFile::open(&cmc)?;
+    let pages = work
+        .pages()?
+        .into_iter()
+        .filter_map(|node| {
+            let relative = node.relative_path()?;
+            let file = relative.file_name()?.to_string_lossy().into_owned();
+            let path = dir.join(&relative);
+            // A page kept elsewhere is no file this tool wrote.
+            let page_ids = if path.parent() == Some(dir) {
+                ids_of(&file)
+            } else {
+                Vec::new()
+            };
+            Some(CspWorkPage {
+                file,
+                path,
+                spread: node.spread,
+                page_ids,
+            })
+        })
+        .collect();
+    let recorded = match &manifest.work {
+        Some(work) => Some(work.pages.iter().cloned().map(recorded_page).collect()),
+        // Written before the work was recorded: its pages in the order the export numbered them.
+        None => {
+            let mut names: Vec<String> = files
+                .iter()
+                .filter(|(_, ids)| !ids.is_empty())
+                .map(|(name, _)| name.clone())
+                .collect();
+            by_number(&mut names);
+            (!names.is_empty()).then(|| names.into_iter().map(recorded_page).collect())
+        }
+    };
+    let taken = manifest
+        .work
+        .as_ref()
+        .and_then(|work| work.taken.as_ref())
+        .map(|taken| CspWorkTaken {
+            page_ids: taken.page_ids.clone(),
+            pages: taken.pages.iter().cloned().map(recorded_page).collect(),
+        });
+    Ok(Some(CspWork {
+        cmc,
+        pages,
+        recorded,
+        taken,
+    }))
+}
+
+/// Record the work's pages as CSP has them now as known to the name (the
+/// pages of `made` made by the take-back): the next take-back starts there.
+pub fn adopt_work(dir: &Path, made: Vec<String>) -> Result<()> {
+    let Some(work) = read_work(dir)? else { return Ok(()) };
+    let cmc = work
+        .cmc
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let pages = work.pages.into_iter().map(|page| page.file).collect();
+    super::manifest::record_work(dir, &cmc, pages, made)?;
+    Ok(())
+}

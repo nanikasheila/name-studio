@@ -70,11 +70,23 @@ describe("上書きの知らせ", () => {
     unknown,
     lastExportMs: 1,
     otherSource: null,
+    addedInCsp: [],
+    movedInCsp: false,
   });
 
   it("says nothing when only the last export's own files are there", () => {
     expect(overwriteWarning(check([], []))).toBeNull();
-    expect(overwriteWarning({ existing: [], changed: [], unknown: [], lastExportMs: null, otherSource: null })).toBeNull();
+    expect(
+      overwriteWarning({
+        existing: [],
+        changed: [],
+        unknown: [],
+        lastExportMs: null,
+        otherSource: null,
+        addedInCsp: [],
+        movedInCsp: false,
+      }),
+    ).toBeNull();
   });
 
   it("names pages changed in CSP since the last export", () => {
@@ -89,6 +101,13 @@ describe("上書きの知らせ", () => {
     )!;
     expect(many).toContain("ほか 3 件");
   });
+
+  it("says the export leaves out pages added in CSP and puts moved ones back", () => {
+    const text = overwriteWarning({ ...check(["作品.cmc"], ["page0005.clip"]), addedInCsp: ["page0005.clip"], movedInCsp: true })!;
+    expect(text).toContain("CSP で足したページ（page0005.clip）");
+    expect(text).toContain("ネームの並びに戻ります");
+    expect(text).toContain("CSP から読み戻す");
+  });
 });
 
 describe("overwriteWarning of a folder another name was written to", () => {
@@ -99,12 +118,22 @@ describe("overwriteWarning of a folder another name was written to", () => {
       unknown: [],
       lastExportMs: 1,
       otherSource: { path: "C:\\ネーム\\第3話.namestudio", title: "第3話" },
+      addedInCsp: [],
+      movedInCsp: false,
     })!;
     expect(text).toContain("別のネーム「第3話」（第3話.namestudio）");
     expect(text).toContain("新しいフォルダーに書き出す");
     // Nothing there to write over: nothing to tell.
     expect(
-      overwriteWarning({ existing: [], changed: [], unknown: [], lastExportMs: 1, otherSource: { path: null, title: "第3話" } }),
+      overwriteWarning({
+        existing: [],
+        changed: [],
+        unknown: [],
+        lastExportMs: 1,
+        otherSource: { path: null, title: "第3話" },
+        addedInCsp: [],
+        movedInCsp: false,
+      }),
     ).toBeNull();
   });
 });
