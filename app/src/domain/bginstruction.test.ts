@@ -31,6 +31,17 @@ function project(): Project {
         { kind: "panorama", asset: "曇り空", turnDeg: 45 },
         { kind: "mountains", seed: 12 },
       ],
+      look: {
+        develop: true,
+        timeOfDay: "evening",
+        weather: "clear",
+        setting: "outdoor",
+        light: "side-right",
+        materials: [
+          { target: "object1", material: "トタン" },
+          { target: "gone", material: "木" },
+        ],
+      },
       objects: [
         {
           id: "object1",
@@ -68,6 +79,8 @@ interface Shot {
   place?: unknown;
   objects: unknown[];
   far?: unknown[];
+  stage: string;
+  look?: unknown;
   output: unknown;
 }
 
@@ -117,6 +130,17 @@ describe("指示.json for name-blockout", () => {
       { kind: "panorama", asset: "曇り空", turnDeg: 45 },
       { kind: "mountains", seed: 12 },
     ]);
+    // 作画まで: the development, its look in name-blockout's words (a material of a 物 gone is left out).
+    expect(one.stage).toBe("develop");
+    expect(one.look).toEqual({
+      timeOfDay: "evening",
+      setting: "outdoor",
+      weather: "clear",
+      light: { key: "side-right" },
+      materials: [{ target: "object1", material: "トタン" }],
+    });
+    expect(two.stage).toBe("blockout");
+    expect(two.look).toBeUndefined();
     expect(one.output).toEqual({ take: "3" });
     // A panel without instructions: its picture only (name-blockout asks what is missing).
     expect(two.ruler).toBeUndefined();

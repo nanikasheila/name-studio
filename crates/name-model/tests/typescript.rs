@@ -46,6 +46,8 @@ fn declarations() -> String {
         BackgroundObject::decl(&cfg),
         BackgroundFar::decl(&cfg),
         FarKind::decl(&cfg),
+        BackgroundLook::decl(&cfg),
+        BackgroundMaterial::decl(&cfg),
         BackgroundSettings::decl(&cfg),
         PanelBorder::decl(&cfg),
         PanelFill::decl(&cfg),

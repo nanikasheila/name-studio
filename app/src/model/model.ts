@@ -108,6 +108,31 @@ export interface PanelBackground {
   objects?: BackgroundObject[];
   /** 遠景: the far layers behind everything, farthest first. */
   far?: BackgroundFar[];
+  /** 見た目: how far to draw (to the development) and its light and materials in words. */
+  look?: BackgroundLook;
+}
+
+export type TimeOfDay = "dawn" | "morning" | "noon" | "afternoon" | "evening" | "dusk" | "night";
+export type Weather = "clear" | "cloudy" | "haze" | "overcast" | "rain" | "snow" | "fog";
+export type LookSetting = "outdoor" | "indoor";
+export type LightKey = "front" | "back" | "side-left" | "side-right" | "top" | "window" | "interior" | "street";
+
+/** 見た目 of a panel's background: name-blockout's development (light and materials), in its words. */
+export interface BackgroundLook {
+  /** 作画まで: drawn to the development (light, shadows, tones by material), not only the blockout. */
+  develop?: boolean;
+  timeOfDay?: TimeOfDay;
+  weather?: Weather;
+  setting?: LookSetting;
+  light?: LightKey;
+  /** 材質 of the 物 (by id) and the ground ("ground"), by the name in name-blockout's library. */
+  materials?: BackgroundMaterial[];
+}
+
+/** One 物's 材質 (the ground's: target "ground"). */
+export interface BackgroundMaterial {
+  target: string;
+  material: string;
 }
 
 /** 遠景の層: a 360° picture (全天球の画像, a 素材), or mountains, a skyline or trees made from a seed. */

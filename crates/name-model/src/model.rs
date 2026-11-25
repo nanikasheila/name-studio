@@ -671,6 +671,46 @@ pub struct PanelBackground {
     /// or skyline, mountains and trees made from a seed), farthest first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub far: Vec<BackgroundFar>,
+    /// 見た目: how far to draw (to the development: light and materials) and
+    /// the light and materials in words (name-blockout's look).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub look: Option<BackgroundLook>,
+}
+
+/// 見た目 of a panel's background: name-blockout's development (light and
+/// materials), in its words. The words are kept as they are (name-blockout
+/// gives them their meaning; the app offers its choices).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(optional_fields))]
+#[serde(rename_all = "camelCase")]
+pub struct BackgroundLook {
+    /// 作画まで: drawn to the development (light, shadows, tones by material), not only the blockout.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub develop: bool,
+    /// 時間帯: dawn, morning, noon, afternoon, evening, dusk, night.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time_of_day: Option<String>,
+    /// 天気: clear, cloudy, haze, overcast, rain, snow, fog.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weather: Option<String>,
+    /// 屋外 outdoor / 屋内 indoor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub setting: Option<String>,
+    /// 光: front, back, side-left, side-right, top, window, interior, street.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub light: Option<String>,
+    /// 材質 of the 物 (by id) and the ground ("ground"), by the name in name-blockout's library.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub materials: Vec<BackgroundMaterial>,
+}
+
+/// One 物's 材質 (the ground's: target "ground").
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct BackgroundMaterial {
+    pub target: String,
+    pub material: String,
 }
 
 /// 遠景の層 of a panel's background.

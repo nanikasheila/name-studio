@@ -129,7 +129,20 @@
                 "turnDeg": 30,
                 "seed": 7
               }
-            ]
+            ],
+            "look": {
+              "develop": true,
+              "timeOfDay": "evening",
+              "weather": "clear",
+              "setting": "indoor",
+              "light": "window",
+              "materials": [
+                {
+                  "target": "page1-object1",
+                  "material": "布"
+                }
+              ]
+            }
           }
         }
       ],
@@ -626,7 +639,20 @@
                         "turnDeg": 30,
                         "seed": 7
                       }
-                    ]
+                    ],
+                    "look": {
+                      "develop": true,
+                      "timeOfDay": "evening",
+                      "weather": "clear",
+                      "setting": "indoor",
+                      "light": "window",
+                      "materials": [
+                        {
+                          "target": "page9-object1",
+                          "material": "布"
+                        }
+                      ]
+                    }
                   }
                 }
               ],
@@ -981,7 +1007,20 @@
               "turnDeg": 30,
               "seed": 7
             }
-          ]
+          ],
+          "look": {
+            "develop": true,
+            "timeOfDay": "evening",
+            "weather": "clear",
+            "setting": "indoor",
+            "light": "window",
+            "materials": [
+              {
+                "target": "page1-object1",
+                "material": "布"
+              }
+            ]
+          }
         }
       },
       "lines": [
@@ -1242,7 +1281,20 @@
                     "turnDeg": 30,
                     "seed": 7
                   }
-                ]
+                ],
+                "look": {
+                  "develop": true,
+                  "timeOfDay": "evening",
+                  "weather": "clear",
+                  "setting": "indoor",
+                  "light": "window",
+                  "materials": [
+                    {
+                      "target": "page8-object1",
+                      "material": "布"
+                    }
+                  ]
+                }
               }
             }
           ],

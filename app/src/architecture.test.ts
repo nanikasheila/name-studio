@@ -180,9 +180,11 @@ describe("module structure", () => {
   it("keeps the browser, its storage and the Rust side out of the types and the computation", () => {
     const browser =
       /\b(?:document|window|localStorage|sessionStorage|createImageBitmap|requestAnimationFrame)\b|\bnew Image\b|"@tauri-apps\//;
+    // Words that are only words (a value "window", a key window: of a table) are not the browser's.
+    const words = /"[\w-]+"|^\s*[\w-]+(?=: )/gm;
     const found = Object.entries(sources)
       .filter(([file]) => rankOf(file) <= ORDER.indexOf("editing"))
-      .filter(([, source]) => browser.test(source.replace(/\/\/.*$|\/\*[\s\S]*?\*\//gm, "")))
+      .filter(([, source]) => browser.test(source.replace(/\/\/.*$|\/\*[\s\S]*?\*\//gm, "").replace(words, "")))
       .map(([file]) => file);
     expect(found).toEqual([]);
   });
