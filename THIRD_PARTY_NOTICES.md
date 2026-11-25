@@ -50,7 +50,7 @@ SQLite（rusqlite に同梱）はパブリックドメインです。SQLite (bun
 | cfg-if | 1.0.5 | MIT OR Apache-2.0 | https://github.com/rust-lang/cfg-if |
 | chacha20 | 0.10.2 | MIT OR Apache-2.0 | https://github.com/RustCrypto/stream-ciphers |
 | chrono | 0.4.45 | MIT OR Apache-2.0 | https://github.com/chronotope/chrono |
-| cookie | 0.18.2 | MIT OR Apache-2.0 | https://github.com/SergioBenitez/cookie-rs |
+| cookie | 0.18.3 | MIT OR Apache-2.0 | https://github.com/SergioBenitez/cookie-rs |
 | core_detect | 1.0.0 | MIT/Apache-2.0 | https://github.com/thomcc/core_detect |
 | cpufeatures | 0.2.17 | MIT OR Apache-2.0 | https://github.com/RustCrypto/utils |
 | cpufeatures | 0.3.1 | MIT OR Apache-2.0 | https://github.com/RustCrypto/utils |
