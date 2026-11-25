@@ -4,7 +4,7 @@
 // A picture drawn over one of the name's own image layers keeps only what
 // the name does not draw there itself.
 import { call, type CspExportRequest } from "../platform/backend";
-import type { Adoption, CspRaster } from "../generated/ipc";
+import type { Adoption, CspPageContent, CspRaster } from "../generated/ipc";
 import {
   adoptions,
   type CspLayerNames,
@@ -20,7 +20,7 @@ import {
   type Unrecorded,
 } from "../domain/csptakeback";
 import { base64Of } from "../domain/cspsettings";
-import { noPages, planCspPages } from "../domain/csppages";
+import { addedPages, noPages, planCspPages, plannedIds, settleAdded } from "../domain/csppages";
 import { emptyPage } from "../domain/project";
 import { shapeSignature } from "../domain/linesig";
 import type { ReadUnit } from "../domain/readback";
@@ -193,6 +193,8 @@ async function picturesOf(
     // As recorded (written, or taken back last time): not drawn on since.
     if (!raster.bbox || baseline.pixels[raster.name] === raster.sig) continue;
     const base = baseName(raster.name);
+    // The memos of a page another export wrote (one added in CSP): the name's own, not drawn.
+    if (read.added && base === NOTES_LAYER_NAME) continue;
     if (base === SHEET_ROUGH_NAME) {
       notes.push(`${at}: 「${base}」に CSP で描いたものは読み戻しません（ネーム用紙のラフです）`);
       continue;
@@ -353,17 +355,39 @@ export async function readCspBack(project: Project, request: CspExportRequest, p
     const work = await call("read_csp_work", { outDir: request.outDir });
     if (work) {
       pagesPlan = planCspPages(project, work, pageRef);
-      planned = { ...project, pages: [...project.pages, ...pagesPlan.added.map((add) => emptyPage(add.key))] };
+      // Each page added in CSP as read: a single page or a 見開き by its size (another size is left out).
+      const contents = new Map<string, CspPageContent>();
+      const kinds = new Map<string, "single" | "spread" | null>();
+      const near = (a: number, b: number) => Math.abs(a - b) <= 2;
       for (const add of pagesPlan.added) {
         progress(`CSP で足したページ「${add.file}」を読み中…`);
         const content = await call("read_csp_page", { path: add.path });
-        const m = shifted(full, 0) as Place;
-        add.texts = content.dialogue.texts.map(({ text, bbox }) => ({
-          text,
-          page: add.page,
-          box: bbox ? (bbox.map((v, i) => (v - (i % 2 ? m.y : m.x)) / m.scale) as BoxMm) : null,
-        }));
-        reads.push({ path: add.path, places: [{ page: add.page, m, right: true }], gutterPx: null, content, added: true });
+        contents.set(add.file, content);
+        const high = near(content.heightPx, start.heightPx);
+        kinds.set(
+          add.file,
+          high && near(content.widthPx, start.widthPx)
+            ? "single"
+            : high && start.spread && near(content.widthPx, start.spread.widthPx)
+              ? "spread"
+              : null,
+        );
+      }
+      settleAdded(pagesPlan, project.pages.length, kinds);
+      planned = { ...project, pages: [...project.pages, ...pagesPlan.added.flatMap(plannedIds).map((id) => emptyPage(id))] };
+      for (const add of pagesPlan.added) {
+        const content = contents.get(add.file)!;
+        const spread = add.spread ? start.spread : null;
+        const places = addedPages(add).map((page, position) => {
+          const right = (position === 0) === (project.binding === "right");
+          return { page, m: shifted(full, spread ? (right ? spread.rightDx : spread.leftDx) : 0) as Place, right };
+        });
+        add.texts = content.dialogue.texts.map(({ text, bbox }) => {
+          const x = bbox ? (bbox[0] + bbox[2]) / 2 : 0;
+          const on = (spread && places.find(({ right }) => x >= spread.gutterPx === right)) || places[0];
+          return { text, page: on.page, box: bbox ? (bbox.map((v, i) => (v - (i % 2 ? on.m.y : on.m.x)) / on.m.scale) as BoxMm) : null };
+        });
+        reads.push({ path: add.path, places, gutterPx: spread ? spread.gutterPx : null, content, added: true });
       }
     }
   } finally {

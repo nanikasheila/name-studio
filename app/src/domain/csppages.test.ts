@@ -14,7 +14,7 @@ import {
 } from "./csptakeback";
 import { lineSignature } from "./linesig";
 import { emptyPage } from "./project";
-import { planCspPages } from "./csppages";
+import { planCspPages, settleAdded } from "./csppages";
 import { newProject } from "./project";
 
 /** A name of `count` pages exported as page0001.clip… (one page each). */
@@ -178,15 +178,102 @@ describe("CSP の作品のページ（足す・消す・並べ替え）", () => 
     );
     plan.pages = pages;
     add.texts = [{ text: "足したセリフ", page: add.page, box: [10, 10, 20, 40] }];
-    expect(onAddedPage(plan, add.page)).toHaveLength(1);
+    expect(onAddedPage(plan, add)).toHaveLength(1);
     // Not ticked: nothing of it comes.
     const none = pickCspTakeBack(plan, new Set());
     expect([none.strokesAdded.length, none.pages.added.length]).toEqual([0, 0]);
-    const made = applyCspTakeBack(project, pickCspTakeBack(plan, new Set([add.ref, ...onAddedPage(plan, add.page)])));
+    const made = applyCspTakeBack(project, pickCspTakeBack(plan, new Set([add.ref, ...onAddedPage(plan, add)])));
     const [id] = madePages(plan, made);
     expect(project.pages.map((page) => page.id)).toEqual([p1, id, p2]);
     expect(project.pages[1].strokes).toHaveLength(1);
     expect(project.pages[1].lines.map((line) => line.text)).toEqual(["足したセリフ"]);
     expect(adoptions(plan, made)[0].adoption.pageIds).toEqual([id]);
+  });
+
+  it("takes a 見開き added in CSP as two pages joined, and leaves out a page of another size", () => {
+    const { project, files } = exported(2);
+    const [p1, p2] = project.pages.map((page) => page.id);
+    const pages = planCspPages(project, work([files[0], blank("page0003.clip"), blank("page0004.clip"), files[1]], files), counter());
+    settleAdded(
+      pages,
+      2,
+      new Map([
+        ["page0003.clip", "spread" as const],
+        ["page0004.clip", null],
+      ]),
+    );
+    expect(pages.added.map((add) => [add.file, add.page, add.spread])).toEqual([["page0003.clip", 2, true]]);
+    expect(pages.notes).toHaveLength(1);
+    const plan = { ...emptyTakeBack(), pages };
+    const made = applyCspTakeBack(project, plan);
+    const ids = madePages(plan, made);
+    expect(ids).toHaveLength(2);
+    expect(project.pages.map((page) => page.id)).toEqual([p1, ...ids, p2]);
+    expect(project.pages[1].joinNext).toBe(true);
+    const records = adoptions(
+      {
+        ...plan,
+        pending: [
+          { path: "out/page0003.clip", pages: [2, 3], lines: {}, pixels: {}, pageIds: ["csp:page0003.clip", "csp:page0003.clip#2"] },
+        ],
+      },
+      made,
+    );
+    expect(records[0].adoption.pageIds).toEqual(ids);
+  });
+
+  it("makes each closed frame on a page added in CSP a panel", () => {
+    const { project, files } = exported(1);
+    const pages = planCspPages(project, work([...files, blank("page0002.clip")], files), counter());
+    const [add] = pages.added;
+    const planned = { ...project, pages: [...project.pages, emptyPage(add.key)] };
+    const frame = (x0: number, y0: number, x1: number, y1: number) => {
+      const points = [
+        [x0, y0, 1],
+        [x1, y0, 1],
+        [x1, y1, 1],
+        [x0, y1, 1],
+      ];
+      return {
+        sig: lineSignature(points),
+        points: points as [number, number, number][],
+        widthPx: 5,
+        color: [0, 0, 0] as [number, number, number],
+        closed: true,
+      };
+    };
+    const names: CspLayerNames = { rough: new Map(), panels: "コマ枠", frames: "コマ枠フォルダー", own: new Set() };
+    const plan = planCspTakeBack(
+      planned,
+      [
+        {
+          path: add.path,
+          places: [{ page: add.page, m: { scale: 10, x: 0, y: 0 }, right: true }],
+          gutterPx: null,
+          added: true,
+          content: {
+            dialogue: { texts: [], written: null, adoptedFrom: null },
+            record: {},
+            vectors: [
+              {
+                name: "コマ枠",
+                visible: true,
+                lines: [frame(200, 200, 1600, 1000), frame(200, 1050, 900, 2000), frame(950, 1050, 1600, 2000)],
+              },
+            ],
+            frames: [],
+            rasters: [],
+            widthPx: 2000,
+            heightPx: 3000,
+          },
+        },
+      ],
+      names,
+      () => null,
+    );
+    plan.pages = pages;
+    expect([plan.panelsAdded.length, plan.panelSketches.length]).toEqual([3, 0]);
+    applyCspTakeBack(project, plan);
+    expect(project.pages[1].panels).toHaveLength(3);
   });
 });

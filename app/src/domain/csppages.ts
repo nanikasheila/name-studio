@@ -18,9 +18,11 @@ export interface PageAdd {
   /** Its file in the work, and where it is. */
   file: string;
   path: string;
-  /** The page it is while taken back: past the name's pages (see `applyCspPages`). */
+  /** The page it is while taken back: past the name's pages (see `applyCspPages`); a 見開き is it and the next. */
   page: number;
-  /** What stands for it in `CspPages.order` (and its page's id in the plan). */
+  /** A 見開き page: two pages of the name, the first joined to the next. */
+  spread: boolean;
+  /** What stands for it in `CspPages.order` (and its pages' ids in the plan, see `plannedIds`). */
   key: string;
   /** The name's page CSP has it after (null: first). */
   after: string | null;
@@ -56,6 +58,44 @@ export function noPages(): CspPages {
   return { added: [], held: [], order: [], move: null, notes: [] };
 }
 
+/** The ids an added page's pages have in the plan (two for a 見開き). */
+export function plannedIds(add: PageAdd): string[] {
+  return add.spread ? [add.key, `${add.key}#2`] : [add.key];
+}
+
+/** The pages of the plan an added page takes. */
+export function addedPages(add: PageAdd): number[] {
+  return add.spread ? [add.page, add.page + 1] : [add.page];
+}
+
+/** Number the added pages from `first` on, in CSP's order. */
+function numberAdded(plan: CspPages, first: number): void {
+  for (const add of plan.added) {
+    add.page = first;
+    first += add.spread ? 2 : 1;
+  }
+}
+
+/**
+ * Settle the added pages by their size as read (`kinds`: by file, a single
+ * page, a 見開き, or null for neither: left out, said in a note), numbered
+ * from `first` on.
+ */
+export function settleAdded(plan: CspPages, first: number, kinds: ReadonlyMap<string, "single" | "spread" | null>): void {
+  plan.added = plan.added.filter((add) => {
+    const kind = kinds.get(add.file);
+    if (kind === undefined) return true;
+    if (kind === null) {
+      plan.notes.push(`「${add.file}」: CSP で足したページの大きさがほかのページと違うので読み戻しません`);
+      plan.order = plan.order.filter((key) => key !== add.key);
+      return false;
+    }
+    add.spread = kind === "spread";
+    return true;
+  });
+  numberAdded(plan, first);
+}
+
 const same = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((value, index) => value === b[index]);
 
 /**
@@ -88,15 +128,20 @@ export function planCspPages(project: Project, work: CspWork, ref: () => string)
     for (const near of [baseline[at - 1], baseline[at + 1]]) if (near) unsure.add(near.file);
   }
   // Added: in the work now, not before (and not the name's: its pages, if it has any, are gone from the name).
-  let first = project.pages.length;
   for (const page of work.pages) {
     if (before.has(page.file) || page.pageIds.some((id) => inName.has(id))) continue;
-    if (page.spread) {
-      plan.notes.push(`「${page.file}」: CSP で足した見開きのページは読み戻しません`);
-      continue;
-    }
-    plan.added.push({ ref: ref(), file: page.file, path: page.path, page: first++, key: `csp:${page.file}`, after: null, texts: [] });
+    plan.added.push({
+      ref: ref(),
+      file: page.file,
+      path: page.path,
+      page: 0,
+      spread: page.spread,
+      key: `csp:${page.file}`,
+      after: null,
+      texts: [],
+    });
   }
+  numberAdded(plan, project.pages.length);
   // Deleted: recorded before, gone from the work, still in the name.
   for (const page of baseline) {
     if (now.has(page.file) || unsure.has(page.file) || !ours(page)) continue;
@@ -131,19 +176,19 @@ export function planCspPages(project: Project, work: CspWork, ref: () => string)
  * Make the page changes `pages` lists (picked), once the content of the
  * added pages is on the pages at the end of the name: the ones not taken go,
  * the others move to their place, the pages deleted in CSP go on hold, and
- * with `move` the pages take CSP's order. `ids`: each added page's key → its page's id.
+ * with `move` the pages take CSP's order. `ids`: each added page's key → its pages' ids.
  */
 export function applyCspPages(
   project: Project,
   pages: CspPages,
-  ids: ReadonlyMap<string, string>,
+  ids: ReadonlyMap<string, readonly string[]>,
   placeholders: ReadonlySet<string>,
 ): void {
   project.pages = project.pages.filter((page) => !placeholders.has(page.id));
   const held = pages.held.flatMap((hold) => hold.pages).filter((id) => project.pages.some((page) => page.id === id));
   if (held.length) holdPages(project, held);
-  const order = pages.order.map((key) => ids.get(key) ?? key).filter((id) => project.pages.some((page) => page.id === id));
-  const added = new Set(pages.added.map((add) => ids.get(add.key)).filter((id): id is string => !!id));
+  const order = pages.order.flatMap((key) => ids.get(key) ?? [key]).filter((id) => project.pages.some((page) => page.id === id));
+  const added = new Set([...ids.values()].flat());
   const byId = new Map(project.pages.map((page) => [page.id, page]));
   let result: string[];
   if (pages.move) {

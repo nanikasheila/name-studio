@@ -39,8 +39,10 @@ fn main() {
         blank_with_square(&pages[0].1, &path);
     }
     work.remove_page(pages[2].0).expect("the third page out");
-    work.reorder(&[pages[0].0, added, pages[3].0, pages[1].0])
-        .expect("reordered");
+    // The fourth before the second; the rest as they were.
+    let mut order = vec![pages[0].0, added, pages[3].0, pages[1].0];
+    order.extend(pages.iter().skip(4).map(|(id, _)| *id));
+    work.reorder(&order).expect("reordered");
     work.save(&cmc).expect("save the work");
     println!("pages changed in {}: added {name}", cmc.display());
 }

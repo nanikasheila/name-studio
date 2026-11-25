@@ -18,7 +18,7 @@ import { addPanel, removePanel } from "./panels";
 import { orderPanels, assignPanels } from "./readingorder";
 import { ownRoughLayers, freeLayerName } from "./roughlayers";
 import { applySketch, fitOutline } from "./sketchpanels";
-import { applyCspPages, cspPagesSummary, type CspPages, noPages } from "./csppages";
+import { addedPages, applyCspPages, cspPagesSummary, type CspPages, noPages, type PageAdd, plannedIds } from "./csppages";
 import { applyTakeBack } from "./readback";
 
 /** Canvas px = mm × scale + offset. */
@@ -486,6 +486,11 @@ export function planCspTakeBack(project: Project, reads: readonly PageRead[], na
         }
         if (isPanels) {
           const points = line.points.map((point) => toMm(place.m, point));
+          // On a page added in CSP each closed frame is a panel of its own (as drawn, not read as 描く over the others).
+          if (read.added && line.line?.closed && points.length >= 3) {
+            plan.panelsAdded.push({ ref: r, page: place.page, shape: points.length > 12 ? fitOutline(points) : points });
+            return;
+          }
           plan.panelSketches.push({ ref: r, page: place.page, points: line.line?.closed ? [...points, points[0]] : points });
           return;
         }
@@ -515,7 +520,7 @@ export function planCspTakeBack(project: Project, reads: readonly PageRead[], na
 /** The changes whose `ref` `keep` says to take back. */
 export function pickCspTakeBack(plan: CspTakeBack, keep: ReadonlySet<string>): CspTakeBack {
   // What is on a page added in CSP goes with it.
-  const dropped = new Set(plan.pages.added.filter((add) => !keep.has(add.ref)).map((add) => add.page));
+  const dropped = new Set(plan.pages.added.filter((add) => !keep.has(add.ref)).flatMap(addedPages));
   const only = <T extends { ref: string; page?: number | string }>(list: T[]) =>
     list.filter((item) => keep.has(item.ref) && !(typeof item.page === "number" && dropped.has(item.page)));
   return {
@@ -564,7 +569,8 @@ export function startsUnticked(plan: CspTakeBack): Set<string> {
 }
 
 /** The changes on a page added in CSP (they go with it). */
-export function onAddedPage(plan: CspTakeBack, page: number): string[] {
+export function onAddedPage(plan: CspTakeBack, add: PageAdd): string[] {
+  const pages = addedPages(add);
   return [
     ...plan.strokesAdded,
     ...plan.strokesChanged,
@@ -575,7 +581,7 @@ export function onAddedPage(plan: CspTakeBack, page: number): string[] {
     ...plan.panelsRemoved,
     ...plan.pictures,
   ]
-    .filter((item) => item.page === page)
+    .filter((item) => pages.includes(item.page))
     .map((item) => item.ref);
 }
 
@@ -613,17 +619,22 @@ export type Made = Map<string, string>;
 export function applyCspTakeBack(project: Project, plan: CspTakeBack): Made {
   const made: Made = new Map();
   // Pages added in CSP: made at the end of the name, where their changes were planned, and moved to their place last.
-  const ids = new Map<string, string>();
+  const ids = new Map<string, string[]>();
   const placeholders = new Set<string>();
-  const last = Math.max(-1, ...plan.pages.added.map((add) => add.page));
+  const last = Math.max(-1, ...plan.pages.added.flatMap(addedPages));
   for (let index = project.pages.length; index <= last; index++) {
     const page = emptyPage(newId(project, "page"));
     project.pages.push(page);
-    const add = plan.pages.added.find((a) => a.page === index);
-    if (add) {
-      ids.set(add.key, page.id);
-      made.set(add.ref, pageKey(page.id));
-    } else placeholders.add(page.id);
+    const add = plan.pages.added.find((a) => addedPages(a).includes(index));
+    if (!add) {
+      placeholders.add(page.id);
+      continue;
+    }
+    const pages = ids.get(add.key) ?? [];
+    ids.set(add.key, [...pages, page.id]);
+    made.set(pages.length ? `${add.ref}:2` : add.ref, pageKey(page.id));
+    // A 見開き added in CSP: its two pages joined.
+    if (add.spread && !pages.length) page.joinNext = true;
   }
   const findStroke = (page: number, id: string) => project.pages[page]?.strokes.find((stroke) => stroke.id === id);
   const findPanel = (page: number, id: string) => project.pages[page]?.panels.find((panel) => panel.id === id);
@@ -692,12 +703,14 @@ export function applyCspTakeBack(project: Project, plan: CspTakeBack): Made {
   return made;
 }
 
-/** The pages added in CSP that `made` made: each one's key in the plan → its page's id. */
+/** The pages added in CSP that `made` made: each one's id in the plan → its page's id. */
 function addedPageIds(plan: CspTakeBack, made: Made): Map<string, string> {
   const ids = new Map<string, string>();
   for (const add of plan.pages.added) {
-    const key = parseKey(made.get(add.ref));
-    if (key) ids.set(add.key, key.id);
+    plannedIds(add).forEach((planned, index) => {
+      const key = parseKey(made.get(index ? `${add.ref}:2` : add.ref));
+      if (key) ids.set(planned, key.id);
+    });
   }
   return ids;
 }
@@ -718,7 +731,7 @@ export function adoptions(
   const keys = [...made.values()];
   const pageIds = addedPageIds(plan, made);
   // A page added in CSP and not taken: none of the name's pages are in it.
-  const added = new Set(plan.pages.added.map((add) => add.key));
+  const added = new Set(plan.pages.added.flatMap(plannedIds));
   return plan.pending.map((page) => ({
     path: page.path,
     adoption: {

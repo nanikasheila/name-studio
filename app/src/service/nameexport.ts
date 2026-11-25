@@ -846,7 +846,15 @@ export async function exportToCsp(
         pngs.push(png);
         return { kind: "raster", name, length: png.length };
       };
+      // CSP の絵 over the name's lines and panels, under the balloons and dialogue (as inked pages have them).
+      let drawn = false;
+      const drawingsHere = async () => {
+        if (drawn) return;
+        drawn = true;
+        for (const layer of pictureLayers) if (drawings.has(layer.name)) await pictureLayer(layer);
+      };
       for (const kind of LAYER_ORDER) {
+        if (kind === "balloonFills") await drawingsHere();
         const form = layerForm(kind, vector, text);
         if (form === "none") continue;
         if (form !== "raster") {
@@ -916,8 +924,7 @@ export async function exportToCsp(
         if (kind === "underFills" && !placed.some(({ page }) => partCount(page, kind))) continue;
         layers.push(await part(kind, placed, LAYER_NAMES[kind]));
       }
-      // CSP の絵 over the name's parts, as drawn in CSP (under the memos and 指示).
-      for (const layer of pictureLayers) if (drawings.has(layer.name)) await pictureLayer(layer);
+      await drawingsHere();
       if (notes) {
         let png: Uint8Array = new Uint8Array();
         if (placed.some(({ page }) => hasNotes(page))) {

@@ -44,15 +44,20 @@ export function chooseReadBack(project: Project, dialogue: TakeBack, csp: CspTak
     return index < 0 ? "?" : `${index + 1}p`;
   };
   const addRows = csp.pages.added.map((add) => {
-    const refs = onAddedPage(csp, add.page);
+    const refs = onAddedPage(csp, add);
+    const on = (item: { page: number }) => item.page === add.page || (add.spread && item.page === add.page + 1);
+    const lines = csp.strokesAdded.filter(on).length;
+    const panels = csp.panelSketches.filter(on).length + csp.panelsAdded.filter(on).length;
+    const pictures = csp.pictures.filter(on).length;
     const what = [
-      ...(csp.strokesAdded.some((s) => s.page === add.page) ? [`線 ${csp.strokesAdded.filter((s) => s.page === add.page).length}`] : []),
-      ...(csp.panelSketches.some((s) => s.page === add.page) || csp.panelsAdded.some((s) => s.page === add.page) ? ["コマ"] : []),
-      ...(csp.pictures.some((d) => d.page === add.page) ? [`絵 ${csp.pictures.filter((d) => d.page === add.page).length}`] : []),
+      ...(lines ? [`線 ${lines}`] : []),
+      ...(panels ? [`コマ ${panels}`] : []),
+      ...(pictures ? [`絵 ${pictures}`] : []),
       ...(add.texts.length ? [`セリフ ${add.texts.length}`] : []),
     ];
     const at = add.after ? `${pageOf(add.after)} の後に` : "最初に";
-    return cspRow([add.ref, ...refs], `「${add.file}」を${at}${what.length ? `（${what.join("・")}）` : "（白紙）"}`);
+    const kind = add.spread ? "見開き 2 ページで" : "";
+    return cspRow([add.ref, ...refs], `「${add.file}」を${at}${kind}${what.length ? `（${what.join("・")}）` : "（白紙）"}`);
   });
   /** The lines of each layer of a page, in one row. */
   const lineRows = (list: { ref: string; page: number; cspLayer: string; newLayer?: string }[]) => {
