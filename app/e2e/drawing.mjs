@@ -62,6 +62,42 @@ try {
           return window.__turns.length;
         }
         if (command === "ai_stop") return null;
+        if (command === "blockout_detect") return { python: "C:\\Python313\\python.exe", version: "name-blockout 0.1.0" };
+        if (command === "blockout_check") {
+          window.__checks = [...(window.__checks ?? []), args];
+          const shot = JSON.parse(args.instruction).shots[0];
+          const asked = shot.camera?.heightM === undefined;
+          return JSON.stringify({
+            findings: asked
+              ? [
+                  {
+                    code: "camera.height",
+                    level: "warn",
+                    shot: shot.id,
+                    label: shot.label,
+                    path: "camera.heightM",
+                    message: "カメラの高さが決まっていません",
+                  },
+                ]
+              : [{ code: "look.date", level: "info", shot: shot.id, label: shot.label, path: "look.date", message: "日付は春分" }],
+            questions: asked
+              ? [
+                  {
+                    shot: shot.id,
+                    label: shot.label,
+                    path: "camera.heightM",
+                    code: "camera.height",
+                    text: "カメラの高さは？",
+                    options: [
+                      { label: "2 階の窓 4m", set: { "camera.heightM": 4 } },
+                      { label: "おまかせ", set: null },
+                    ],
+                    recommended: 0,
+                  },
+                ]
+              : [],
+          });
+        }
         if (command === "bg_folder") return folder;
         if (command === "bg_blender") return "C:\\Program Files\\Blender Foundation\\Blender 5.2\\blender.exe";
         if (command === "bg_assets") return assets;
@@ -314,7 +350,25 @@ try {
     "見た目 takes 作画まで, the time of day and a 物's material",
   );
 
+  // 要求の点検: name-blockout asks with choices; the choice goes into the name and the check runs again.
   await page.selectOption('#side-drawing [data-part="scope"]', "marked");
+  await settle();
+  await page.click('#side-drawing [data-part="review-go"]');
+  await page.waitForSelector("#side-drawing .drawing-question");
+  check(
+    (await page.textContent("#side-drawing .drawing-question")).includes("カメラの高さは？") &&
+      (await page.textContent("#side-drawing .drawing-question button.primary")).includes("（おすすめ）"),
+    "点検 puts name-blockout's question with its choices, one recommended",
+  );
+  await page.click("#side-drawing .drawing-question button.primary");
+  await page.waitForFunction(() => window.__checks?.length === 2);
+  await page.waitForFunction(() => !document.querySelector("#side-drawing .drawing-question"));
+  check(
+    JSON.stringify((await ruler()).answers) === JSON.stringify([{ path: "camera.heightM", value: "4" }]) &&
+      (await page.textContent('#side-drawing [data-part="review-state"]')).includes("ありません"),
+    "a choice is kept in the name and the next check asks nothing more",
+  );
+
   await settle();
   check((await page.textContent('#side-drawing [data-part="count"]')) === "1 コマ", "背景の指示があるコマ counts the panel marked");
   check(await page.locator('#side-drawing [data-part="send"]').isDisabled(), "nothing is asked until writing and commands are allowed");
@@ -359,7 +413,10 @@ try {
       shot?.far?.[0]?.kind === "mountains" &&
       shot?.stage === "develop" &&
       shot?.look?.timeOfDay === "evening" &&
-      shot?.look?.materials?.[0]?.material === "黒い塗装",
+      shot?.look?.materials?.[0]?.material === "黒い塗装" &&
+      shot?.camera?.heightM === 4 &&
+      shot?.requirement?.answered?.includes("camera.heightM") &&
+      brief.includes("name-blockout がこの PC にある"),
     "指示.json (name-blockout's instruction) goes with 依頼.md: the panel's picture, place and things as data",
   );
   const [session] = await page.evaluate(() => window.__sessions);

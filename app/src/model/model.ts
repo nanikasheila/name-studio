@@ -110,6 +110,16 @@ export interface PanelBackground {
   far?: BackgroundFar[];
   /** 見た目: how far to draw (to the development) and its light and materials in words. */
   look?: BackgroundLook;
+  /** 要求の答え: answers to name-blockout's questions with no field of their own here, and those left to its guess. */
+  answers?: BackgroundAnswer[];
+}
+
+/** An answer to one of name-blockout's questions. */
+export interface BackgroundAnswer {
+  /** Where in the instruction's shot (camera.heightM, objects/<id>/onGround…). */
+  path: string;
+  /** The value as JSON text; none: おまかせ (name-blockout's guess stands). */
+  value?: string;
 }
 
 export type TimeOfDay = "dawn" | "morning" | "noon" | "afternoon" | "evening" | "dusk" | "night";

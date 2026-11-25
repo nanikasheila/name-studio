@@ -21,6 +21,7 @@ import {
 } from "./background";
 import { cameraFit } from "./bgcamera";
 import { lookInstruction } from "./bglook";
+import { applyAnswers } from "./bgreview";
 import type { BackgroundRequest } from "./bgrequest";
 import { rulerOf } from "./bgruler";
 
@@ -114,6 +115,8 @@ export function instructionShot(
   if (far.length) shot.far = far;
   const { look } = lookInstruction(panel);
   if (look) shot.look = look;
+  // The author's answers to name-blockout's questions that have no field here, and those left to its guess.
+  applyAnswers(shot, bg.answers);
   shot.output = { take: String(nextTake(takes, panel.id)) };
   return shot;
 }

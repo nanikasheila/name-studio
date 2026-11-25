@@ -53,6 +53,20 @@ export interface BackgroundRequest {
   blender: string | null;
   /** 素材: the folder of places and things kept for reuse and what it lists (none: no such folder). */
   assets?: { folder: string; list: BackgroundAsset[] };
+  /** name-blockout on this computer: the Python it runs with, and its source folder (none: installed for that Python). */
+  blockout?: { python: string; source: string | null };
+}
+
+/** How to run name-blockout on this computer, for the AI (none: not found). */
+function blockoutWords(request: BackgroundRequest, dir: string): string[] {
+  const found = request.blockout;
+  if (!found) return [];
+  const run = `\`"${found.python}" -X utf8 -m name_blockout\``;
+  return [
+    `- name-blockout がこの PC にある: ${run}${found.source ? `（\`PYTHONPATH\` に \`${found.source}/src\` を入れて）` : ""}。` +
+      ` まず \`check ${dir}/${INSTRUCTION_FILE}\` で点検し、\`blockout ${dir}/${INSTRUCTION_FILE}\` で箱のあたりを組んで照合する（Blender は自分で探す。\`--blender\` でも渡せる）。` +
+      " stage が develop のコマ（作画まで）は、あたりのあとに `develop` で光・影・材質のトーンとベタまで描く。案と背景.json は name-blockout が書く。足りない所は自分で作り込んでよい。",
+  ];
 }
 
 /** 20261117-0530 (local time). */
@@ -183,6 +197,7 @@ export function requestBrief(project: Project, request: BackgroundRequest, takes
     `- \`${dir}/<コマの id>.png\`: 描く範囲（下の「紙面の範囲」）そのままの絵。ラフ・セリフ＝黒、コマ枠＝青、背景の指示＝緑の破線（アイレベル）、赤・青・紫（X・Y・Z の線と、それぞれの消失点へ向かう細い線。X と Y はアイレベルの上の消失点 1・2、Z は縦の線が集まる消失点 3）と橙（物の範囲と名前）。`,
     `- \`${dir}/pNNN.png\`: そのコマのあるページ全体（前後の流れを見るため）。`,
     `- \`${dir}/${INSTRUCTION_FILE}\`: この依頼を道具が読む形にしたもの（name-blockout の指示書 v1。座標は紙面の mm、カメラは下の「カメラ（計算済み）」と同じ値）。name-blockout があれば \`name-blockout blockout\` でこのファイルから箱のあたりを組み、数値で確かめられる。`,
+    ...blockoutWords(request, dir),
     `- 座標は紙面の mm（用紙 ${mm(w)}×${mm(h)}mm の左上が原点、右が x、下が y）。`,
     "",
     "## おすすめの作り方（前にうまくいった手順）",

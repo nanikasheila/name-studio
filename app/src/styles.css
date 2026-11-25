@@ -1638,6 +1638,18 @@ dialog.perf-dialog { width: min(720px, 92vw); }
 .drawing-allow { align-items: flex-start; font-size: calc(12 * var(--px)); line-height: 1.5; }
 .drawing-folder { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: calc(12 * var(--px)); color: var(--muted); }
 .drawing-folder > span { flex: 1 1 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drawing-blockout > span:first-child { flex: none; }
+.drawing-blockout > span + span { flex: 1 1 0; }
+/* 要求の点検: one or two questions with choices, then what is still open. */
+.drawing-review { display: flex; flex-direction: column; gap: 6px; }
+.drawing-review-state { flex: 1 1 auto; min-width: 0; }
+.drawing-review-state[data-tone="warn"] { color: var(--warn-text); }
+.drawing-question { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border: 1px solid var(--accent); border-radius: 8px; background: var(--panel); }
+.drawing-question-panel { flex: none; }
+.drawing-question-options button { white-space: normal; text-align: left; }
+.drawing-findings { font-size: calc(12 * var(--px)); }
+.drawing-findings ul { margin: 2px 0 0; padding-left: 1.2em; list-style: none; }
+.drawing-findings li[data-level="error"] { color: var(--warn-text); }
 .drawing > .drawing-log { max-height: calc(260 * var(--px)); }
 .drawing-log[hidden], .drawing-say[hidden] { display: none; }
 .drawing-say textarea { flex: 1 1 10em; width: auto; }

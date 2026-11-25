@@ -68,6 +68,7 @@ import { LICENSE_SUGGESTIONS } from "../domain/bgassets";
 import { appVersion } from "./updater";
 import { BACKGROUND_DPI } from "../domain/background";
 import { DrawAssets } from "./drawassets";
+import { DrawReview } from "./drawreview";
 import { instructionSummary, instructionsView, tag as element } from "./drawinstructions";
 import type { BackgroundSettings, Page, Panel, Project, RoughImage, StoredImage } from "../model/model";
 import { readImage } from "../render/pictures";
@@ -219,6 +220,7 @@ export class DrawPanel {
   private loadedFor = "";
   private readonly stamps = new Set<string>();
   private readonly assets: DrawAssets;
+  private readonly review: DrawReview;
 
   constructor(private readonly host: DrawHost) {
     void onAiEvent((event) => this.hear(event)).catch(() => {});
@@ -228,6 +230,20 @@ export class DrawPanel {
       edit: (change) => host.edit(change),
       status: (message) => host.status(message),
       changed: () => this.renderPanels(),
+    });
+    this.review = new DrawReview({
+      project: () => host.project(),
+      edit: (change) => host.edit(change),
+      status: (message) => host.status(message),
+      folder: () => this.ensureFolder(),
+      targets: (project) => this.targets(project),
+      takes: () => this.takes,
+      assets: () => (this.assets.folder ? { folder: this.assets.folder, list: this.assets.list } : undefined),
+      reveal: (panelId) => {
+        const project = host.project();
+        const found = project && findPanel(project, panelId);
+        if (found) host.goTo(found.page.id, "panel", panelId);
+      },
     });
   }
 
@@ -244,6 +260,7 @@ export class DrawPanel {
     if (this.built?.parentElement !== container) {
       container.replaceChildren(this.build());
       void this.detect();
+      void this.review.detect();
     }
     const project = this.host.project();
     // Another name: its own folder and takes.
@@ -392,6 +409,7 @@ export class DrawPanel {
         " AI に背景のフォルダーへの書き込みとコマンド（Blender・Python など）の実行を許す",
       ),
       element("div", { class: "drawing-folder" }, element("span", { "data-part": "folder" }), pick, show, reload),
+      this.review.setupView(),
       world,
       this.assets.view(),
     ) as HTMLDetailsElement;
@@ -418,6 +436,7 @@ export class DrawPanel {
         element("div", { class: "assist-row drawing-ask-go" }, send, lanes, stop),
       ),
       element("p", { class: "hint assist-state", "data-part": "state" }),
+      this.review.view(),
       setup,
       element("datalist", { id: "drawing-places" }),
       element("datalist", { id: "drawing-licenses" }, ...LICENSE_SUGGESTIONS.map((value) => element("option", { value }))),
@@ -1247,6 +1266,7 @@ export class DrawPanel {
           folder,
           blender,
           ...(assets ? { assets: { folder: assets, list: this.assets.list } } : {}),
+          ...(this.review.command ? { blockout: this.review.command } : {}),
         };
         this.host.status("依頼と絵を背景のフォルダーに書いています…");
         const files: SessionFile[] = [

@@ -135,6 +135,13 @@ export interface BatchExport {
   report: string;
 }
 
+/** Python and name-blockout as found. */
+export interface BlockoutFound {
+  python: string;
+  /** What `name-blockout --version` says. */
+  version: string;
+}
+
 /** Where [`write_builtin_template`] put its files. */
 export interface BuiltTemplate {
   page: string;
@@ -1126,6 +1133,15 @@ export interface Commands {
   bg_manifests: [{ folder: string }, string[]];
   /** Blender on this computer, the newest found: on the PATH, or (Windows) in Program Files. */
   bg_blender: [void, string | null];
+  // ai/blockout.rs
+  /** Python and name-blockout on this computer (name-blockout from `folder`, a picked folder of its source, if given). */
+  blockout_detect: [{ folder?: string | null }, BlockoutFound];
+  /**
+   * name-blockout's check of a request (指示.json as text): its findings and the next `questions` questions, as the
+   * JSON it prints. The request is written into the background folder `background` (a picked one, or the one beside
+   * the name) first.
+   */
+  blockout_check: [{ background: string; folder?: string | null; instruction: string; questions: number }, string];
   // ai/local.rs
   /** Keep the key for a local LLM's API in the system's credential store (none forgets it). */
   ai_save_key: [{ key?: string | null }, void];

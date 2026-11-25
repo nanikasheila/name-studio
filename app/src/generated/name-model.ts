@@ -416,7 +416,13 @@ far: Array<BackgroundFar>,
  * 見た目: how far to draw (to the development: light and materials) and
  * the light and materials in words (name-blockout's look).
  */
-look?: BackgroundLook, };
+look?: BackgroundLook, 
+/**
+ * 要求の答え: the author's answers to name-blockout's questions that
+ * have no field of their own here (by name-blockout's path), and the
+ * questions left to its guess (おまかせ: no value).
+ */
+answers: Array<BackgroundAnswer>, };
 
 export type BackgroundCamera = "eye" | "low" | "high";
 
@@ -469,6 +475,16 @@ light?: string,
 materials: Array<BackgroundMaterial>, };
 
 export type BackgroundMaterial = { target: string, material: string, };
+
+export type BackgroundAnswer = { 
+/**
+ * Where in the instruction's shot (camera.heightM, objects/<id>/onGround…).
+ */
+path: string, 
+/**
+ * The value as JSON text; none: おまかせ (name-blockout's guess stands).
+ */
+value?: string, };
 
 export type BackgroundSettings = { 
 /**
