@@ -58,6 +58,34 @@ export const MATERIALS: readonly { name: string; note: string }[] = [
 ];
 /** The ground's target among the materials (a floor indoors). */
 export const GROUND = "ground";
+/** A room's walls and ceiling among the materials (indoors, name-blockout builds the room). */
+export const WALLS = "walls";
+
+/** Where a room's window is (name-blockout's room.windows, kept among the answers by that path). */
+export type RoomWindow = "none" | "back" | "left" | "right";
+export const WINDOW_LABELS: Record<RoomWindow, string> = { none: "なし", back: "奥", left: "左", right: "右" };
+const WINDOWS_PATH = "room.windows";
+
+/** The window chosen for a panel's room (none chosen: name-blockout puts one where the light comes through, if it does). */
+export function windowOf(panel: Panel): RoomWindow | undefined {
+  const kept = backgroundOf(panel).answers?.find((one) => one.path === WINDOWS_PATH);
+  if (!kept?.value) return undefined;
+  try {
+    const value = JSON.parse(kept.value) as { wall?: string }[];
+    if (!Array.isArray(value)) return undefined;
+    const wall = value[0]?.wall;
+    return !value.length ? "none" : wall === "back" || wall === "left" || wall === "right" ? wall : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Choose a panel's window (undefined: leave it to name-blockout). */
+export function setWindow(panel: Panel, wall: RoomWindow | undefined): void {
+  const others = (backgroundOf(panel).answers ?? []).filter((one) => one.path !== WINDOWS_PATH);
+  const value = wall === undefined ? null : JSON.stringify(wall === "none" ? [] : [{ wall }]);
+  setBackground(panel, { answers: value === null ? others : [...others, { path: WINDOWS_PATH, value }] });
+}
 
 /** A panel's 見た目 (empty when it has none). */
 export function lookOf(panel: Panel): BackgroundLook {
@@ -96,7 +124,7 @@ export const materialOf = (panel: Panel, target: string): string | undefined =>
 
 /** The materials that still name something: a 物 of the panel, or the ground. */
 function liveMaterials(bg: PanelBackground) {
-  const ids = new Set([GROUND, ...(bg.objects ?? []).map((object) => object.id)]);
+  const ids = new Set([GROUND, WALLS, ...(bg.objects ?? []).map((object) => object.id)]);
   return (bg.look?.materials ?? []).filter((one) => ids.has(one.target) && one.material.trim());
 }
 
@@ -106,13 +134,21 @@ export function lookWords(panel: Panel): string {
   const look = bg.look;
   if (!look) return "";
   const label = (target: string) =>
-    target === GROUND ? (look.setting === "indoor" ? "床" : "地面") : (bg.objects?.find((object) => object.id === target)?.label ?? target);
+    target === GROUND
+      ? look.setting === "indoor"
+        ? "床"
+        : "地面"
+      : target === WALLS
+        ? "壁"
+        : (bg.objects?.find((object) => object.id === target)?.label ?? target);
+  const wall = windowOf(panel);
   return [
     look.develop ? "作画まで" : "",
     look.timeOfDay ? TIME_LABELS[look.timeOfDay] : "",
     look.weather ? WEATHER_LABELS[look.weather] : "",
     look.setting ? SETTING_LABELS[look.setting] : "",
     look.light ? LIGHT_LABELS[look.light] : "",
+    wall ? (wall === "none" ? "窓なし" : `窓は${WINDOW_LABELS[wall]}`) : "",
     ...liveMaterials(bg).map((one) => `${label(one.target)}=${one.material}`),
   ]
     .filter(Boolean)

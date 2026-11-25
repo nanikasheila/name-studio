@@ -436,3 +436,9 @@ export function variantOf(take: BackgroundTake, wanted: Variant = "完成"): Var
 export function nextTake(takes: readonly BackgroundTake[], panelId: string): number {
   return Math.max(0, ...takes.filter((take) => take.panel === panelId).map((take) => Number(take.take) || 0)) + 1;
 }
+
+/** The takes compared, with `take` added or taken out (at most three, the oldest let go; never none). */
+export function toggleCompared(compared: readonly string[], take: string): string[] {
+  if (compared.includes(take)) return compared.length > 1 ? compared.filter((one) => one !== take) : [...compared];
+  return [...compared, take].slice(-3);
+}

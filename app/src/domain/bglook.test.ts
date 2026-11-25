@@ -1,6 +1,20 @@
 import { describe, expect, it } from "vitest";
 import type { Panel, Project } from "../model/model";
-import { GROUND, MATERIALS, lookInstruction, lookOf, lookWords, setLook, setMaterial, shareLook } from "./bglook";
+import {
+  GROUND,
+  MATERIALS,
+  WALLS,
+  lookInstruction,
+  lookOf,
+  lookWords,
+  setLook,
+  setMaterial,
+  setWindow,
+  shareLook,
+  windowOf,
+} from "./bglook";
+import { applyAnswers } from "./bgreview";
+import { backgroundOf } from "./background";
 import { newProject } from "./project";
 
 const square = (y: number): [number, number][] => [
@@ -77,5 +91,27 @@ describe("見た目（光と材質）", () => {
     expect(lookOf(p1.panels[1])).toEqual({ timeOfDay: "evening", weather: "rain", setting: "indoor", light: "interior" });
     expect(p2.panels[0].background).toEqual({ none: true });
     expect(p3.panels[0].background).toBeUndefined();
+  });
+});
+
+describe("the room indoors", () => {
+  it("keeps the window as name-blockout's room.windows, and the walls' material", () => {
+    const one = panel("a", 0);
+    setLook(one, { setting: "indoor", develop: true });
+    expect(windowOf(one)).toBeUndefined();
+    setWindow(one, "right");
+    expect(windowOf(one)).toBe("right");
+    setMaterial(one, WALLS, "コンクリート");
+    expect(lookWords(one)).toBe("作画まで・屋内・窓は右・壁=コンクリート");
+    expect(lookInstruction(one).look?.materials).toEqual([{ target: WALLS, material: "コンクリート" }]);
+    const shot: Record<string, unknown> = {};
+    applyAnswers(shot, backgroundOf(one).answers);
+    expect(shot.room).toEqual({ windows: [{ wall: "right" }] });
+    setWindow(one, "none");
+    expect(windowOf(one)).toBe("none");
+    expect(lookWords(one)).toContain("窓なし");
+    setWindow(one, undefined);
+    expect(windowOf(one)).toBeUndefined();
+    expect(backgroundOf(one).answers ?? []).toEqual([]);
   });
 });

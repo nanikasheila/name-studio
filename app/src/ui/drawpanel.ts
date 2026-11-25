@@ -49,6 +49,7 @@ import {
   removeBackground,
   sourceOf,
   takesFor,
+  toggleCompared,
   variantOf,
   type BackgroundTake,
   type Variant,
@@ -72,7 +73,7 @@ import { DrawReview } from "./drawreview";
 import { instructionSummary, instructionsView, tag as element } from "./drawinstructions";
 import type { BackgroundSettings, Page, Panel, Project, RoughImage, StoredImage } from "../model/model";
 import { readImage } from "../render/pictures";
-import { requestPictures } from "../service/bgpictures";
+import { panelPreview, requestPictures } from "../service/bgpictures";
 import { markdownView } from "./mdview";
 import type { Selection } from "./editor";
 
@@ -211,6 +212,13 @@ export class DrawPanel {
   private readonly checked = new Set<string>();
   /** The panel whose 修正 box is open. */
   private revising: string | null = null;
+  /** Panels being compared (見比べる): the takes side by side with the name's picture, or one laid over it. */
+  private readonly comparing = new Map<string, string[]>();
+  private compareMode: "side" | "over" = "side";
+  /** How much the take shows over the name's picture (重ねる), 0–1. */
+  private overlay = 0.5;
+  /** Each panel's picture as the name shows it (""): being drawn). */
+  private readonly namePictures = new Map<string, string>();
   private allPages = false;
   /** The settings opened or folded by hand. */
   private setupTouched = false;
@@ -929,18 +937,26 @@ export class DrawPanel {
         if (url) thumb.append(element("img", { src: url, alt: `案${one.take}` }));
         else if (file) void this.thumb(file);
         thumb.append(element("span", {}, `案${one.take}`));
+        const compared = this.comparing.get(panel.id);
+        if (compared?.includes(one.take)) thumb.classList.add("compared");
         thumb.addEventListener("click", () => {
           this.chosen.set(panel.id, one.take);
+          if (compared) this.comparing.set(panel.id, toggleCompared(compared, one.take));
           this.renderPanels();
         });
         strip.append(thumb);
       }
-      if (takes.length > 1) row.append(strip);
-      // The take chosen, as large as the palette.
-      const file = this.fileOf(take);
-      const url = file && this.thumbs.get(file);
-      if (url) row.append(element("img", { class: "drawing-preview", src: url, alt: `案${take.take}` }));
-      if (take.note) row.append(element("p", { class: "hint drawing-note" }, `案${take.take}: ${take.note}`));
+      if (takes.length > 1 || this.comparing.has(panel.id)) row.append(strip);
+      row.append(this.compareBar(panel.id, take, source?.take));
+      const compared = this.comparing.get(panel.id);
+      if (compared) row.append(this.compareView(panel.id, takes, take, compared));
+      else {
+        // The take chosen, as large as the palette.
+        const file = this.fileOf(take);
+        const url = file && this.thumbs.get(file);
+        if (url) row.append(element("img", { class: "drawing-preview", src: url, alt: `案${take.take}` }));
+        if (take.note) row.append(element("p", { class: "hint drawing-note" }, `案${take.take}: ${take.note}`));
+      }
       const variant = element("select", { "aria-label": "採用する絵" });
       for (const one of VARIANTS) if (take.files[one]) variant.append(element("option", { value: one }, one));
       variant.value = variantOf(take, this.settings.variant) ?? "";
@@ -971,6 +987,103 @@ export class DrawPanel {
       row.append(actions);
     }
     return row;
+  }
+
+  /** 見比べる: on and off, and side by side or laid over the name. */
+  private compareBar(panelId: string, take: BackgroundTake, adopted: string | undefined): HTMLElement {
+    const on = this.comparing.has(panelId);
+    const toggle = plainButton(on ? "見比べをやめる" : "見比べる", () => {
+      if (on) this.comparing.delete(panelId);
+      else {
+        this.namePictures.delete(panelId); // drawn afresh: the name may have changed since
+        this.comparing.set(panelId, [...new Set([take.take, ...(adopted ? [adopted] : [])])]);
+      }
+      this.renderPanels();
+    });
+    toggle.dataset.part = "compare";
+    toggle.title = "ネームのコマと案を並べて、または重ねて見比べる（案の小さな絵を押して足す・外す、3 つまで）";
+    const bar = element("div", { class: "assist-row drawing-compare-bar" }, toggle);
+    if (on) {
+      for (const [mode, label, hint] of [
+        ["side", "並べる", "ネームと案を横に並べる"],
+        ["over", "重ねる", "ネームの上に案を重ね、濃さを変えて合っているかを見る"],
+      ] as const) {
+        const button = plainButton(label, () => {
+          this.compareMode = mode;
+          this.renderPanels();
+        });
+        button.title = hint;
+        button.setAttribute("aria-pressed", String(this.compareMode === mode));
+        button.dataset.part = `compare-${mode}`;
+        bar.append(button);
+      }
+    }
+    return bar;
+  }
+
+  /** The name's picture and the takes compared: side by side, or the chosen take laid over the name. */
+  private compareView(panelId: string, takes: readonly BackgroundTake[], take: BackgroundTake, compared: readonly string[]): HTMLElement {
+    const name = this.namePicture(panelId);
+    const picture = (one: BackgroundTake) => {
+      const file = this.fileOf(one);
+      const url = file && this.thumbs.get(file);
+      if (!url && file) void this.thumb(file);
+      return url || "";
+    };
+    const tile = (url: string, label: string, note: string) =>
+      element(
+        "figure",
+        {},
+        url ? element("img", { src: url, alt: label }) : element("div", { class: "drawing-compare-wait" }, "読み込み中…"),
+        element("figcaption", { title: note }, note ? `${label}: ${note}` : label),
+      );
+    if (this.compareMode === "over") {
+      const top = picture(take);
+      const stack = element("div", { class: "drawing-overlay" });
+      if (name) stack.append(element("img", { src: name, alt: "ネーム" }));
+      else stack.append(element("div", { class: "drawing-compare-wait" }, "ネームを描いています…"));
+      if (top) {
+        const over = element("img", { src: top, alt: `案${take.take}`, class: "drawing-overlay-take" });
+        over.style.opacity = String(this.overlay);
+        stack.append(over);
+      }
+      const slider = element("input", { type: "range", min: "0", max: "100", step: "5", "aria-label": "案の濃さ" });
+      slider.value = String(Math.round(this.overlay * 100));
+      slider.addEventListener("input", () => {
+        this.overlay = Number(slider.value) / 100;
+        const over = stack.querySelector<HTMLElement>(".drawing-overlay-take");
+        if (over) over.style.opacity = String(this.overlay);
+      });
+      return element(
+        "div",
+        { class: "drawing-compare", "data-mode": "over" },
+        stack,
+        element("label", { class: "assist-row hint" }, `ネーム`, slider, `案${take.take}`),
+      );
+    }
+    const shown = takes.filter((one) => compared.includes(one.take));
+    return element(
+      "div",
+      { class: "drawing-compare", "data-mode": "side" },
+      tile(name, "ネーム", ""),
+      ...shown.map((one) => tile(picture(one), `案${one.take}`, one.note ?? "")),
+    );
+  }
+
+  /** A panel's picture as the name shows it now (drawn once per 見比べる; "" while it is drawn). */
+  private namePicture(panelId: string): string {
+    const known = this.namePictures.get(panelId);
+    if (known !== undefined) return known;
+    const project = this.host.project();
+    if (!project) return "";
+    this.namePictures.set(panelId, "");
+    void panelPreview(project, panelId, (rough) => this.host.rough(rough))
+      .then((url) => {
+        this.namePictures.set(panelId, url ?? "");
+        this.renderPanels();
+      })
+      .catch(() => this.namePictures.delete(panelId));
+    return "";
   }
 
   private fileOf(take: BackgroundTake): string | undefined {
