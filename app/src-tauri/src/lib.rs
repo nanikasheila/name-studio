@@ -29,6 +29,7 @@ mod project_io;
 pub mod sheet;
 mod updates;
 mod viewer;
+mod written;
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -41,6 +42,8 @@ struct AppState {
     document: Mutex<Option<ClipDocument>>,
     /// Pages of the name data being written for CSP, one call per page.
     name_export: Mutex<Option<RasterWorkWriter>>,
+    /// The name being written by `name_export`, for the list kept with its pages.
+    export_source: Mutex<Option<clip_core::write::manifest::ExportSource>>,
     /// A command-line export to run instead of the usual start (see [`batch`]).
     batch: Result<Option<batch::BatchExport>, String>,
 }
@@ -50,6 +53,7 @@ impl Default for AppState {
         Self {
             document: Mutex::default(),
             name_export: Mutex::default(),
+            export_source: Mutex::default(),
             batch: batch::from_args(std::env::args()),
         }
     }
@@ -339,6 +343,11 @@ pub fn run() {
                 chosen.file_once(Path::new(&task.report));
             }
             app.manage(chosen);
+            // The files written in earlier runs: an export asks only about files changed since, or not its own.
+            app.manage(match app.path().app_local_data_dir() {
+                Ok(root) => written::Written::load(root.join("written-files.json")),
+                Err(_) => written::Written::default(),
+            });
             open_window(app)?;
             Ok(())
         })
@@ -375,7 +384,7 @@ pub fn run() {
             files::write_pdf,
             files::write_binary_file,
             files::write_psd,
-            files::existing_files,
+            written::check_written_files,
             files::write_text_file,
             files::record_dialogue_update,
             files::csp_tool_locations,

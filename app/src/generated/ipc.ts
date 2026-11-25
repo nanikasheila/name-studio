@@ -248,6 +248,15 @@ export interface ExportRequest {
   storyIndex?: number | null;
 }
 
+/**
+ * The name an export was written from: its file (none while it is not
+ * saved yet) and its title, to tell a folder another name was written to.
+ */
+export interface ExportSource {
+  path?: string | null;
+  title?: string;
+}
+
 /** The result of checking one file. */
 export interface FileCheck {
   path: string;
@@ -382,6 +391,8 @@ export interface NameExportRequest {
   frameFolders?: boolean;
   /** The name's binding (true: right-bound), written over the template's. */
   rightBinding?: boolean | null;
+  /** The name written: kept with the pages, to tell a folder another name was written to. */
+  source?: ExportSource | null;
 }
 
 /** The template's canvas and which parts can be written as editable layers. */
@@ -423,6 +434,11 @@ export interface OverwriteCheck {
   unknown: string[];
   /** When the last export there was written. */
   lastExportMs: number | null;
+  /**
+   * The name the last export there was written from, when it is not the
+   * one about to be written (its pages are written over even unchanged).
+   */
+  otherSource: ExportSource | null;
 }
 
 /** One page of the sheet, in reading order (index from 1). */
@@ -740,6 +756,16 @@ export interface WorkReport {
   work: string | null;
 }
 
+/** Of the files about to be written, those already there, by file name. */
+export interface WrittenCheck {
+  /** Every one there (written over by the export). */
+  existing: string[];
+  /** Written by this app and changed since (drawn on, annotated, replaced). */
+  changed: string[];
+  /** Not written by this app (or before it kept this list). */
+  unknown: string[];
+}
+
 export interface WrittenPage {
   number: number;
   path: string;
@@ -831,8 +857,12 @@ export interface Commands {
   /** Finish: write the work (.cmc) around the pages written so far, and check it. */
   finish_name_export: [void, NameExportReport];
   cancel_name_export: [void, number];
-  /** CSP files an export into `out_dir` would overwrite, and which of them were changed after the last export. */
-  check_export_target: [{ outDir: string }, OverwriteCheck];
+  /**
+   * CSP files an export into `out_dir` would overwrite, which of them were
+   * changed after the last export, and whether another name was written there
+   * (`source`: the name about to be written).
+   */
+  check_export_target: [{ outDir: string; source?: ExportSource | null }, OverwriteCheck];
   /**
    * Make the built-in template for `setup` (a page, its parts to copy and a
    * work) in the app's data folder: exports set up in the tool, without a
@@ -849,8 +879,13 @@ export interface Commands {
   write_binary_file: [RawBody, void];
   /** Write a layered PSD of a page (raw body: JSON, then each layer's PNG, bottom first). */
   write_psd: [RawBody, void];
-  /** Of `names` in `folder`, those already there (written over by an export of page pictures). */
-  existing_files: [{ folder: string; names: string[] }, string[]];
+  // written.rs
+  /**
+   * Of `paths` (files an export is about to write), those already there, and
+   * which of them this app did not write as they are now.
+   */
+  check_written_files: [{ paths: string[] }, WrittenCheck];
+  // files.rs
   /**
    * Write a text file (the script) as UTF-8 with a byte order mark, which
    * Windows' Notepad and Excel read as UTF-8.

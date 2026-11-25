@@ -32,7 +32,21 @@ try {
       if (command === "check_export_target") {
         // A folder that cannot be looked into (no permission, a drive gone).
         if (window.__targetFails) throw "書き出し先 C:\\out の中を確かめられません: アクセスが拒否されました。 (os error 5)";
+        // Another name's pages there (unchanged since): told even so; the folder beside it is free.
+        if (window.__otherName && args.outDir === "C:\\out")
+          return {
+            existing: ["page0001.clip", "第3話.cmc"],
+            changed: [],
+            unknown: [],
+            lastExportMs: 1,
+            otherSource: { path: "C:\\ネーム\\第3話.namestudio", title: "第3話" },
+          };
         return null;
+      }
+      if (command === "plugin:dialog|message") {
+        window.__asked = [...(window.__asked ?? []), args.message];
+        const three = args.buttons?.YesNoCancelCustom;
+        return three ? three[window.__choice ?? 2] : "Ok";
       }
       return undefined;
     };
@@ -111,6 +125,28 @@ try {
     `a folder that cannot be looked into stops the export, saying why (${said.split("\n")[0].slice(0, 50)})`,
   );
   check((await begun()) === before, "nothing is written");
+
+  // A folder another name was written to: asked even with nothing drawn there; やめる writes nothing,
+  // 新しいフォルダーに書き出す writes beside it and shows the new folder.
+  await page.evaluate(() => {
+    window.__targetFails = false;
+    window.__otherName = true;
+    window.__choice = 2;
+  });
+  await page.click("#ne-run");
+  await settle();
+  const warned = await page.evaluate(() => window.__asked?.at(-1) ?? "");
+  check(warned.includes("別のネーム「第3話」（第3話.namestudio）"), `another name's folder is told (${warned.split("\n")[2] ?? warned})`);
+  check((await begun()) === before, "やめる writes nothing");
+  await page.evaluate(() => {
+    window.__choice = 1;
+  });
+  await page.click("#ne-run");
+  await settle();
+  const request = await page.evaluate(() => window.__calls.filter((c) => c.command === "begin_name_export").at(-1)?.args.request);
+  check(request?.outDir === "C:\\out_2", `新しいフォルダーに書き出す writes to the folder beside it (${request?.outDir})`);
+  check(request?.source?.title === "第1話", "with the name it comes from, kept with the pages");
+  check((await page.locator("#ne-out-dir").textContent()) === "C:\\out_2", "and the dialog shows the new folder");
 
   check(errors.length === 0, `no page errors (${errors.join(" / ")})`);
 } finally {

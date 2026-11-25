@@ -156,11 +156,42 @@ pub(crate) async fn choose_save(
     let file = dialog(&window, options.title, options.filters.clone(), options.default_path)
         .blocking_save_file()
         .and_then(|file| file.into_path().ok())
-        .map(|file| with_extension(file, &options.filters));
+        .and_then(|picked| {
+            let file = with_extension(picked.clone(), &options.filters);
+            // The dialog asked about the name typed; the one with the extension added is asked about here.
+            if file != picked && file.exists() && !overwrite_asked(&window, &file) {
+                return None;
+            }
+            Some(file)
+        });
     if let Some(file) = &file {
         chosen.file(file);
     }
     Ok(file.map(|file| file.display().to_string()))
+}
+
+/// Asks whether to write over `file`, a file of the name picked with its extension added.
+fn overwrite_asked(window: &Window, file: &std::path::Path) -> bool {
+    use tauri_plugin_dialog::{MessageDialogButtons, MessageDialogKind};
+    let name = file.file_name().map_or_else(
+        || file.display().to_string(),
+        |name| name.to_string_lossy().into_owned(),
+    );
+    window
+        .app_handle()
+        .dialog()
+        .message(format!(
+            "「{name}」はもうあります。上書きしますか？\n\n{}",
+            file.display()
+        ))
+        .title("Name Studio")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "上書きする".to_owned(),
+            "やめる".to_owned(),
+        ))
+        .parent(window)
+        .blocking_show()
 }
 
 /// Whether a place was picked in a dialog (now or in an earlier run): what

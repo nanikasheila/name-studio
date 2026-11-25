@@ -33,6 +33,9 @@ try {
       switch (command) {
         case "plugin:dialog|message": {
           window.__asked.push(args.message);
+          // 上書きする / 別の名前で書き出す / やめる.
+          const three = args.buttons?.YesNoCancelCustom;
+          if (three) return three[window.__decline ? 2 : window.__rename ? 1 : 0];
           const custom = args.buttons?.OkCancelCustom;
           return custom ? custom[window.__decline ? 1 : 0] : "Ok";
         }
@@ -41,8 +44,12 @@ try {
           return window.__picked.shift() ?? null;
         case "place_chosen":
           return window.__chosen ?? false;
-        case "existing_files":
-          return args.names.filter((name) => window.__there.includes(name));
+        case "check_written_files": {
+          // __there: files from elsewhere; __ours: this app's as it wrote them.
+          const name = (path) => path.split("\\").pop();
+          const there = args.paths.map(name).filter((n) => window.__there.includes(n) || (window.__ours ?? []).includes(n));
+          return { existing: there, changed: [], unknown: there.filter((n) => window.__there.includes(n)) };
+        }
         case "write_binary_file":
         case "write_psd":
           return null;
@@ -194,16 +201,42 @@ try {
   const asked = await page.evaluate(() => window.__asked.at(-1));
   check(asked.includes("2 個") && asked.includes("_004-005.psd"), `the files there are named before writing over (${asked.slice(0, 60)})`);
   check((await calls("write_psd")) === before, "nothing is written when it is declined");
+  // This app's own files as it wrote them: written again without a question.
+  const ownBefore = await calls("write_psd");
+  const askedBefore = await page.evaluate(() => window.__asked.length);
   await page.evaluate(() => {
     window.__decline = false;
+    window.__ours = window.__there;
+    window.__there = [];
+  });
+  await page.locator("#ne-run").click();
+  await page.waitForFunction((k) => window.__calls.filter((c) => c.command === "write_psd").length >= k + 5, ownBefore);
+  check((await page.evaluate(() => window.__asked.length)) === askedBefore, "its own files as written are not asked about");
+  // 別の名前で書き出す: the files there stay, the new ones end in _2.
+  const renameBefore = await calls("write_psd");
+  await page.evaluate(() => {
+    window.__ours = [];
+    window.__there = ["サンプル 部室の片付け_001.psd"];
+    window.__rename = true;
+  });
+  await page.locator("#ne-run").click();
+  await page.waitForFunction((k) => window.__calls.filter((c) => c.command === "write_psd").length >= k + 5, renameBefore);
+  const renamed = (await bodies("write_psd", renameBefore)).map((psd) => psd.meta.path.split("\\").pop());
+  check(
+    renamed[0] === "サンプル 部室の片付け_2_001.psd" && renamed.every((name) => name.includes("_2_")),
+    `別の名前で: numbered, the files there kept (${renamed[0]})`,
+  );
+  await page.evaluate(() => {
+    window.__rename = false;
     window.__there = [];
   });
 
   // --- transparent paper -------------------------------------------------------------------------
+  const paperBefore = await calls("write_psd");
   await page.locator("#ne-image-paper").uncheck();
   await page.locator("#ne-run").click();
-  await page.waitForFunction((n) => window.__calls.filter((c) => c.command === "write_psd").length >= n + 5, before);
-  const hidden = await bodies("write_psd", before);
+  await page.waitForFunction((n) => window.__calls.filter((c) => c.command === "write_psd").length >= n + 5, paperBefore);
+  const hidden = await bodies("write_psd", paperBefore);
   check(hidden[0].meta.layers[0].name === "用紙" && hidden[0].meta.layers[0].hidden, "the paper hidden in a PSD on no paper");
   await page.locator("#ne-image-format").selectOption("jpeg");
   check(await page.locator("#ne-image-paper").isDisabled(), "a JPEG is always on white");
