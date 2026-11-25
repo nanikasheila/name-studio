@@ -13,6 +13,7 @@ import type { BoxMm, Page, Panel, Point, Project } from "../model/model";
 import {
   BACKGROUND_BLEED_MM,
   CAMERA_LABELS,
+  FAR_LABELS,
   INSTRUCTION_FILE,
   MANIFEST_FILE,
   REQUEST_DIR,
@@ -115,6 +116,14 @@ export function instructionWords(panel: Panel): string[] {
   for (const object of bg.objects ?? []) {
     out.push(`物「${object.label}」: ${boxWords(bounds(object.shape))}mm の範囲（${placeFrom(panel, centre(object.shape))}）`);
   }
+  if (bg.far?.length) {
+    const words = bg.far.map((layer) =>
+      layer.kind === "panorama"
+        ? `空の画像「${layer.asset ?? ""}」（素材の全天球の画像${layer.turnDeg ? `、${layer.turnDeg}° 回す` : ""}）`
+        : `${FAR_LABELS[layer.kind]}（種 ${layer.seed ?? 0}）`,
+    );
+    out.push(`遠景（奥から）: ${words.join("・")}。線は細く、トーンは明るく。遠景だけの絵（遠景.png）も別に`);
+  }
   return out;
 }
 
@@ -183,7 +192,7 @@ export function requestBrief(project: Project, request: BackgroundRequest, takes
     "",
     "## 描いたものの置き方",
     "",
-    `- 1 案ごとに \`${TAKES_DIR}/<コマの id>/<番号>/\` に \`完成.png\`（白地に全部）・\`線画.png\`（透明地）・\`トーン.png\`・\`影.png\`（あるものだけ）を書く。番号は下の各コマに書いた番号から。`,
+    `- 1 案ごとに \`${TAKES_DIR}/<コマの id>/<番号>/\` に \`完成.png\`（白地に全部）・\`線画.png\`（透明地）・\`トーン.png\`・\`遠景.png\`（遠景の指示があるとき、遠景だけ）・\`影.png\`（あるものだけ）を書く。番号は下の各コマに書いた番号から。`,
     `- 画像の大きさは各コマの「画像」の px のとおり（紙面の範囲を ${request.dpi} dpi で描いたもの。コマの外接矩形より ${BACKGROUND_BLEED_MM}mm 大きい）。`,
     `- この依頼の \`${requestManifest(request.stamp)}\` に、1 案 1 件で書く（この依頼だけのファイル。ほかの依頼を同時に描いていることがあるので、作業フォルダー直下の \`${MANIFEST_FILE}\` やほかの依頼のファイルには書かない）。案を 1 つ描き終えるたびに足すと、作者はすぐ見られる:`,
     "",

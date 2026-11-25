@@ -295,6 +295,12 @@ try {
     "a 素材 renamed is renamed where it is used",
   );
 
+  // 遠景: mountains made from a seed.
+  await page.check(`${row} .drawing-far input[data-far="mountains"]`);
+  await settle();
+  const far = (await ruler()).far ?? [];
+  check(far.length === 1 && far[0].kind === "mountains" && Number.isInteger(far[0].seed), "遠景 takes mountains made from a seed");
+
   await page.selectOption('#side-drawing [data-part="scope"]', "marked");
   await settle();
   check((await page.textContent('#side-drawing [data-part="count"]')) === "1 コマ", "背景の指示があるコマ counts the panel marked");
@@ -336,7 +342,8 @@ try {
       instruction.request?.note === "夜。線は細めに" &&
       instruction.folders?.background === FOLDER &&
       shot?.frame?.dpi > 0 &&
-      shot?.place?.asset === "団地の屋上",
+      shot?.place?.asset === "団地の屋上" &&
+      shot?.far?.[0]?.kind === "mountains",
     "指示.json (name-blockout's instruction) goes with 依頼.md: the panel's picture, place and things as data",
   );
   const [session] = await page.evaluate(() => window.__sessions);

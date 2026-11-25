@@ -74,6 +74,8 @@ interface Pairs {
   PanelBackground: [Rust.PanelBackground, App.PanelBackground];
   BackgroundCamera: [Rust.BackgroundCamera, App.BackgroundCamera];
   BackgroundObject: [Rust.BackgroundObject, App.BackgroundObject];
+  BackgroundFar: [Rust.BackgroundFar, App.BackgroundFar];
+  FarKind: [Rust.FarKind, App.FarKind];
   BackgroundSettings: [Rust.BackgroundSettings, App.BackgroundSettings];
   PanelBorder: [Rust.PanelBorder, App.PanelBorder];
   PanelFill: [Rust.PanelFill, App.PanelFill];
@@ -141,6 +143,8 @@ const agreed: { [K in keyof Pairs]: Agrees<Pairs[K][0], Pairs[K][1]> } = {
   PanelBackground: true,
   BackgroundCamera: true,
   BackgroundObject: true,
+  BackgroundFar: true,
+  FarKind: true,
   BackgroundSettings: true,
   PanelBorder: true,
   PanelFill: true,

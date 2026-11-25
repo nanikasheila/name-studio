@@ -88,6 +88,7 @@ function fullPage(id: string): Full<Project["pages"][number]> {
               ],
             },
           ],
+          far: [{ kind: "panorama", asset: "曇り空", turnDeg: 30, seed: 7 }],
         },
       },
     ],
