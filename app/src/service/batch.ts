@@ -110,8 +110,9 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
         },
         status,
       );
-      const plan = planTakeBack(project, units);
-      // Everything found, but what the dialog leaves unticked (removing panels, layers hidden in CSP).
+      const found = planTakeBack(project, units);
+      // Everything found, but what the dialog leaves unticked (removing dialogue or panels, layers hidden in CSP).
+      const plan = { ...found, removed: [] };
       const off = startsUnticked(csp);
       const picked = pickCspTakeBack(csp, new Set(allRefs(csp).filter((ref) => !off.has(ref))));
       const changes = plan.retyped.length + plan.added.length + plan.removed.length + changeCount(picked);
@@ -127,6 +128,11 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
       const summary = [
         changes ? `CSP から ${changes} 件を読み戻して ${task.project} に保存しました` : "CSP で変えたものはありませんでした",
         ...takeBackSummary(plan),
+        ...(found.removed.length
+          ? [
+              `CSP で消したセリフ ${found.removed.length} はネームに残しました（消すのは書き出し画面の「CSP から読み戻す…」で選んだときだけ。残したセリフは次の「セリフだけ反映」で CSP にも戻ります）`,
+            ]
+          : []),
         ...cspTakeBackSummary(picked),
       ];
       result = {

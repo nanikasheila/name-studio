@@ -1,6 +1,6 @@
 // CSP から読み戻す, one change at a time: every change found in CSP is listed
-// with a box to tick (all ticked to start with, but removing a panel and
-// layers hidden in CSP). What is left unticked stays as the name has it.
+// with a box to tick (all ticked to start with, but removing dialogue or a
+// panel and layers hidden in CSP). What is left unticked stays as the name has it.
 import { element } from "../platform/dom";
 import { pickTakeBack, type TakeBack } from "../domain/readback";
 import { pickCspTakeBack, panelLabel, startsUnticked, type CspTakeBack } from "../domain/csptakeback";
@@ -18,26 +18,45 @@ export interface ReadBackPick {
 export function chooseReadBack(project: Project, dialogue: TakeBack, csp: CspTakeBack, where: string): Promise<ReadBackPick | null> {
   const dialog = element("dialog", { className: "export readback-pick", id: "readback-pick" });
   const boxes = { retyped: [] as HTMLInputElement[], added: [] as HTMLInputElement[], removed: [] as HTMLInputElement[] };
-  const cspBoxes = new Map<string, HTMLInputElement>();
+  // Each box and the changes it stands for (the lines of a layer of a page go in one).
+  const cspBoxes = new Map<HTMLInputElement, string[]>();
   const unticked = startsUnticked(csp);
-  const row = (list: HTMLInputElement[], text: string) => {
-    const box = element("input", { type: "checkbox", checked: true });
+  const row = (list: HTMLInputElement[], text: string, checked = true) => {
+    const box = element("input", { type: "checkbox", checked });
     list.push(box);
     return element("label", { className: "check readback-item" }, box, text);
   };
-  const cspRow = (ref: string, text: string, picture?: string) => {
-    const box = element("input", { type: "checkbox", checked: !unticked.has(ref) });
-    cspBoxes.set(ref, box);
+  const cspRow = (ref: string | string[], text: string, picture?: string) => {
+    const refs = typeof ref === "string" ? [ref] : ref;
+    const box = element("input", { type: "checkbox", checked: !refs.some((r) => unticked.has(r)) });
+    cspBoxes.set(box, refs);
     const label = element("label", { className: "check readback-item" }, box, text);
     if (picture) label.append(element("img", { className: "readback-thumb", src: picture, alt: "" }));
     return label;
   };
-  const section = (title: string, rows: HTMLElement[]) =>
-    rows.length ? [element("h4", { textContent: `${title}（${rows.length}）` }), ...rows] : [];
+  const section = (title: string, rows: HTMLElement[], count = rows.length) =>
+    rows.length ? [element("h4", { textContent: `${title}（${count}）` }), ...rows] : [];
+  /** The lines of each layer of a page, in one row. */
+  const lineRows = (list: { ref: string; page: number; cspLayer: string; newLayer?: string }[]) => {
+    const groups = new Map<string, typeof list>();
+    for (const item of list) {
+      const key = `${item.page}\u0000${item.cspLayer}`;
+      groups.set(key, [...(groups.get(key) ?? []), item]);
+    }
+    return [...groups.values()].map((items) => {
+      const [first] = items;
+      const many = items.length > 1 ? ` ${items.length} 本` : "";
+      const made = first.newLayer ? `（新しいラフ線のレイヤー「${first.newLayer}」）` : "";
+      return cspRow(
+        items.map((item) => item.ref),
+        `${p(first.page)} ${layerOf(first.cspLayer)}の線${many}${made}`,
+      );
+    });
+  };
   const go = element("button", { type: "button", className: "primary", id: "readback-go" });
   const count = () =>
     Object.values(boxes).reduce((sum, list) => sum + list.filter((box) => box.checked).length, 0) +
-    [...cspBoxes.values()].filter((box) => box.checked).length;
+    [...cspBoxes].reduce((sum, [box, refs]) => sum + (box.checked ? refs.length : 0), 0);
   const update = () => {
     go.textContent = `${count()} 件を読み戻す`;
     go.disabled = count() === 0;
@@ -74,23 +93,12 @@ export function chooseReadBack(project: Project, dialogue: TakeBack, csp: CspTak
         dialogue.added.map((a) => row(boxes.added, `${p(a.page)}「${flat(a.text)}」`)),
       ),
       ...section(
-        "CSP で消したセリフ",
-        dialogue.removed.map((r) => row(boxes.removed, `${p(r.page)}「${flat(r.text)}」`)),
+        "CSP で消したセリフ（はじめは外してあります）",
+        dialogue.removed.map((r) => row(boxes.removed, `${p(r.page)}「${flat(r.text)}」`, false)),
       ),
-      ...section(
-        "CSP で描いた線（ラフ線に）",
-        csp.strokesAdded.map((a) =>
-          cspRow(a.ref, `${p(a.page)} ${layerOf(a.cspLayer)}の線${a.newLayer ? `（新しいレイヤー「${a.newLayer}」）` : ""}`),
-        ),
-      ),
-      ...section(
-        "CSP で直した線",
-        csp.strokesChanged.map((c) => cspRow(c.ref, `${p(c.page)} ${layerOf(c.cspLayer)}の線`)),
-      ),
-      ...section(
-        "CSP で消した線",
-        csp.strokesRemoved.map((r) => cspRow(r.ref, `${p(r.page)} ${layerOf(r.cspLayer)}の線`)),
-      ),
+      ...section("CSP で描いた線（ラフ線に）", lineRows(csp.strokesAdded), csp.strokesAdded.length),
+      ...section("CSP で直した線", lineRows(csp.strokesChanged), csp.strokesChanged.length),
+      ...section("CSP で消した線", lineRows(csp.strokesRemoved), csp.strokesRemoved.length),
       ...section(
         "CSP で形を変えたコマ",
         csp.panelsChanged.map((c) =>
@@ -123,7 +131,7 @@ export function chooseReadBack(project: Project, dialogue: TakeBack, csp: CspTak
   dialog.addEventListener("change", update);
   const tick = (on: boolean) => {
     for (const list of Object.values(boxes)) for (const box of list) box.checked = on;
-    for (const box of cspBoxes.values()) box.checked = on;
+    for (const box of cspBoxes.keys()) box.checked = on;
     update();
   };
   all.addEventListener("click", () => tick(true));
@@ -148,7 +156,7 @@ export function chooseReadBack(project: Project, dialogue: TakeBack, csp: CspTak
           added: boxes.added.map((b) => b.checked),
           removed: boxes.removed.map((b) => b.checked),
         }),
-        csp: pickCspTakeBack(csp, new Set([...cspBoxes].filter(([, box]) => box.checked).map(([ref]) => ref))),
+        csp: pickCspTakeBack(csp, new Set([...cspBoxes].flatMap(([box, refs]) => (box.checked ? refs : [])))),
       }),
     );
   });

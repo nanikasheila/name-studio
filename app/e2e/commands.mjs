@@ -149,16 +149,20 @@ try {
         closed: false,
       },
     });
+    // A second line on the same layer of the page: one row for both.
+    csp.strokesAdded.push({ ...csp.strokesAdded[0], ref: "c2" });
     csp.panelsRemoved.push({ ref: "c1", page: 0, panel: "p1" });
     const project = { pages: [{ panels: [{ id: "p1", order: 1 }] }, { panels: [] }, { panels: [] }] };
     window.__picked = chooseReadBack(project, plan, csp, "out");
   });
   const go = page.locator("#readback-go");
   check(
-    (await page.locator("#readback-pick .readback-item input:checked").count()) === 4 && (await go.textContent()) === "4 件を読み戻す",
-    "every change is listed, ticked but removing a panel",
+    (await page.locator("#readback-pick .readback-item input:checked").count()) === 3 &&
+      (await page.locator("#readback-pick .readback-item").count()) === 5 &&
+      (await go.textContent()) === "4 件を読み戻す",
+    "every change is listed, ticked but removing dialogue or a panel, the lines of a layer in one row",
   );
-  await page.locator("#readback-pick .readback-item").filter({ hasText: "ねえ" }).locator("input").uncheck();
+  await page.locator("#readback-pick .readback-item").filter({ hasText: "今夜も" }).locator("input").uncheck();
   check((await go.textContent()) === "3 件を読み戻す", "the button counts what is ticked");
   await go.click();
   const picked = await wb(async () => {
@@ -166,7 +170,7 @@ try {
     return [dialogue.retyped.length, dialogue.added.length, dialogue.removed.length, csp.strokesAdded.length, csp.panelsRemoved.length];
   });
   check(
-    JSON.stringify(picked) === "[1,1,0,1,0]" && (await page.locator("#readback-pick").count()) === 0,
+    JSON.stringify(picked) === "[0,1,0,2,0]" && (await page.locator("#readback-pick").count()) === 0,
     `only the ticked are taken back (${picked})`,
   );
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(" / ")}` : ""}`);

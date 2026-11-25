@@ -11,6 +11,7 @@ import {
   type CspLayerNames,
   CSP_LINE_SOURCE,
   type PageRead,
+  type Unrecorded,
   panelKey,
   pickCspTakeBack,
   planCspTakeBack,
@@ -187,6 +188,41 @@ describe("CSP から読み戻す（線・コマ）", () => {
     expect(removed.panelsRemoved.map((r) => r.panel)).toEqual([other.pages[0].panels[1].id]);
     expect([...startsUnticked(removed)]).toEqual(allRefs(removed));
     expect(changeCount(pickCspTakeBack(removed, new Set()))).toBe(0);
+  });
+
+  it("leaves the name's own layers of a page written before lines were recorded, and takes layers made in CSP", () => {
+    const { project, rough, frames } = exported();
+    const skip: Unrecorded = (_read, layer) => (layer === "ラフ線" || layer === "コマ枠" ? "skip" : null);
+    const ink = cspLine(
+      px([
+        [40, 40],
+        [50, 50],
+      ]),
+    );
+    const moved = cspLine(rough[1].points.map(([x, y, p]) => [x + 40, y, p]));
+    const plan = planCspTakeBack(project, [read(project, { ラフ線: [moved], コマ枠: frames.slice(1), ペン入れ: [ink] }, {})], names, skip);
+    expect([plan.strokesRemoved.length, plan.strokesChanged.length, plan.panelsRemoved.length]).toEqual([0, 0, 0]);
+    expect(plan.strokesAdded.map((a) => a.newLayer)).toEqual(["ペン入れ"]);
+    expect(plan.notes).toHaveLength(2);
+    // Nothing recorded of the layers left be: they are left be next time too.
+    expect(Object.keys(plan.pending[0].lines)).toEqual(["ペン入れ"]);
+  });
+
+  it("does not take part of a panel's outline moved in CSP as its shape", () => {
+    const { project, rough, frames, record } = exported();
+    // The first panel drawn as its bottom edge only (as a 裁ち切り panel is), then moved in CSP.
+    const edge = cspLine(
+      px([
+        [20, 100],
+        [160, 100],
+      ]),
+    );
+    const lines = { ...record, コマ枠: [{ sig: edge.sig, key: panelKey(project.pages[0].panels[0]) }, record.コマ枠[1]] };
+    const moved = cspLine(edge.points.map(([x, y, p]) => [x + 30, y, p]));
+    const plan = planCspTakeBack(project, [read(project, { ラフ線: rough, コマ枠: [moved, frames[1]] }, lines)], names, none);
+    expect(changeCount(plan)).toBe(0);
+    expect(plan.notes).toHaveLength(1);
+    expect(plan.pending[0].lines.コマ枠.map((line) => line.key)).toEqual(lines.コマ枠.map((line) => line.key).reverse());
   });
 
   it("starts from before the last take-back once the name undid it", () => {

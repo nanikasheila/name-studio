@@ -372,7 +372,7 @@ export const PICTURE_LAYERS = [
   { name: NAME_PICTURE_LAYER_NAME, takes: isNamePicture, draft: true },
 ];
 
-/** CSP の絵: a layer each (named as the CSP layer it was drawn on), over the other pictures. */
+/** CSP の絵: a layer each (named as the CSP layer it was drawn on), over the name's parts. */
 export function drawingLayers(project: Project): { name: string; takes: (reference: ReferenceImage) => boolean; draft: boolean }[] {
   const names: string[] = [];
   for (const page of project.pages)
@@ -710,6 +710,7 @@ export async function exportToCsp(
   const pictureLayers = [...PICTURE_LAYERS, ...drawingLayers(project)].filter(({ takes }) =>
     project.pages.some((page) => onPageOnly(page, project.pageFormat).references?.some(takes)),
   );
+  const drawings = new Set(drawingLayers(project).map(({ name }) => name));
   if (pictureLayers.some(({ draft }) => draft))
     request = {
       ...request,
@@ -807,7 +808,8 @@ export async function exportToCsp(
       const layers: LayerMeta[] = [];
       const pngs: Uint8Array[] = [];
       overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
-      for (const { name, takes } of pictureLayers) {
+      // A picture layer: what of the pages' pictures `takes` takes.
+      const pictureLayer = async ({ name, takes }: (typeof pictureLayers)[number]) => {
         let png: Uint8Array = new Uint8Array();
         const shown = placed.filter(({ page }) => page.references?.some(takes));
         if (shown.length) {
@@ -820,7 +822,9 @@ export async function exportToCsp(
         }
         layers.push({ kind: "raster", name, length: png.length });
         pngs.push(png);
-      }
+      };
+      // 資料, 背景 and the pictures of the name at the bottom; CSP の絵 over the name's parts (see below).
+      for (const layer of pictureLayers) if (!drawings.has(layer.name)) await pictureLayer(layer);
       // One kind of part of `pages` as a layer named `name`: vector lines, or a picture (its PNG goes to `pngs`).
       const part = async (kind: LayerKind, pages: readonly PlacedPage[], name: string): Promise<LayerMeta> => {
         if (layerForm(kind, vector, text) === "vector" && canBeVector(kind)) {
@@ -912,6 +916,8 @@ export async function exportToCsp(
         if (kind === "underFills" && !placed.some(({ page }) => partCount(page, kind))) continue;
         layers.push(await part(kind, placed, LAYER_NAMES[kind]));
       }
+      // CSP の絵 over the name's parts, as drawn in CSP (under the memos and 指示).
+      for (const layer of pictureLayers) if (drawings.has(layer.name)) await pictureLayer(layer);
       if (notes) {
         let png: Uint8Array = new Uint8Array();
         if (placed.some(({ page }) => hasNotes(page))) {

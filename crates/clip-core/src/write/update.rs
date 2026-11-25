@@ -94,8 +94,10 @@ pub fn text_key(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\r', "\n").trim().to_owned()
 }
 
-/// A dialogue text layer of the page: visible, plain (not the work info or
-/// the page number), not one this tool already hid.
+/// A dialogue text layer of the page: visible, `TextLayerType` 0 or 1 (1 is
+/// what the author's dialogue became in CSP on the real pages of 第4話;
+/// they still read as dialogue) and not the work info or the page number,
+/// not one this tool already hid.
 struct PageText {
     id: i64,
     name: String,
@@ -110,7 +112,7 @@ fn page_texts(document: &ClipDocument) -> Vec<PageText> {
         .filter(|layer| {
             document
                 .layer_row(layer.main_id)
-                .is_some_and(|row| row.int("TextLayerType") == 0 && row.int("ComicStoryInfoType") == 0)
+                .is_some_and(|row| matches!(row.int("TextLayerType"), 0 | 1) && row.int("ComicStoryInfoType") == 0)
         })
         .map(|layer| PageText {
             id: layer.main_id,

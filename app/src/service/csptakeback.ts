@@ -13,15 +13,13 @@ import {
   type Place,
   baseName,
   baselineOf,
-  panelKey,
   planCspTakeBack,
-  strokeKey,
+  type Unrecorded,
 } from "../domain/csptakeback";
 import { base64Of } from "../domain/cspsettings";
-import { lineSignature, shapeSignature } from "../domain/linesig";
+import { shapeSignature } from "../domain/linesig";
 import type { ReadUnit } from "../domain/readback";
 import { markLayersOf, roughLayersOf, strokesOn } from "../domain/roughlayers";
-import { borderLines } from "../domain/koma";
 import type { BoxMm, Page, Project, ReferenceImage } from "../model/model";
 import { drawMarks, type MmToPx } from "../render/pagedraw";
 import { drawPicture } from "../render/backgrounds";
@@ -42,8 +40,6 @@ import {
   layerNames,
   projectToTemplate,
   shifted,
-  vectorLines,
-  type LayerKind,
 } from "./nameexport";
 
 /** Pictures taken back are made no larger than this on their long side. */
@@ -65,37 +61,23 @@ export function cspLayerNames(project: Project): CspLayerNames {
   return { rough, panels: LAYER_NAMES.panels, frames: FRAME_FOLDER_NAME, own: new Set([LAYER_NAMES.balloons]) };
 }
 
-/** The name's own lines of a CSP layer as an export would record them (for pages written before lines were recorded). */
-function unrecordedLines(project: Project, names: CspLayerNames) {
+/**
+ * For pages written before lines were recorded: the lines of a CSP layer
+ * as written, when the layer is as it was then. A layer of the name's own
+ * (ラフ線, コマ枠) changed since is skipped: the name may have changed too,
+ * and which change is whose cannot be told. Layers made in CSP: none (all
+ * their lines were drawn there).
+ */
+function unrecordedLines(names: CspLayerNames): Unrecorded {
   return (read: PageRead, layer: string) => {
     const record = read.content.record;
     if (record.lines && Object.keys(record.lines).length) return null;
     const csp = read.content.vectors.find((vector) => vector.name === layer);
     const before = record.vectors?.[layer];
-    // Unchanged since: every line as it is there is what was written (whose, unknown).
     if (csp && before && before === shapeSignature(csp.lines.map((line) => line.points)))
       return csp.lines.map((line) => ({ sig: line.sig }));
-    // A single page: the name's lines now, as written then (the name may have changed since).
-    if (read.places.length !== 1 || !csp) return null;
-    const { page: index, m } = read.places[0];
-    const page = project.pages[index];
     const base = baseName(layer);
-    const rough = names.rough.get(base);
-    if (rough) {
-      const kind: LayerKind = rough.over ? "overStrokes" : "strokes";
-      const strokes = strokesOn(project, page.strokes, roughLayersOf(project).find((l) => l.id === rough.layer)!).filter(
-        (s) => !!s.over === rough.over,
-      );
-      const lines = vectorLines({ ...page, strokes }, kind, m, project.brushes);
-      return lines.map((line, i) => ({ sig: lineSignature(line.points), key: strokeKey(strokes[i]) }));
-    }
-    if (base === names.panels) {
-      return borderLines(page).map((line) => ({
-        sig: lineSignature(line.points.map(([x, y]) => [x * m.scale + m.x, y * m.scale + m.y])),
-        key: panelKey(line.panel),
-      }));
-    }
-    return null;
+    return names.rough.has(base) || base === names.panels || base === names.frames ? "skip" : null;
   };
 }
 
@@ -353,7 +335,7 @@ export async function readCspBack(project: Project, request: CspExportRequest, p
     await call("cancel_name_export").catch(() => undefined);
   }
   const names = cspLayerNames(project);
-  const plan = planCspTakeBack(project, reads, names, unrecordedLines(project, names));
+  const plan = planCspTakeBack(project, reads, names, unrecordedLines(names));
   const own = ownLayerNames(project);
   const pictures = new Map<string, ImageBitmap>();
   let refs = 0;

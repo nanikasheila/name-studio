@@ -268,10 +268,15 @@ function lineToStroke(line: CspLine, m: Place): Omit<Stroke, "id" | "layer" | "b
   return { points, widthMm: line.widthPx / m.scale, closed: line.closed, ...(color ? { color } : {}) };
 }
 
-/** How alike two shapes are where they lie (0..1): the share of the smaller box both cover. */
+/**
+ * How alike two shapes are where they lie (0..1): the share of the smaller
+ * box both cover. The boxes are taken a unit larger all round, so a straight
+ * line (a box of no height) still overlaps what it lies along.
+ */
 function overlapOf(a: readonly (readonly number[])[], b: readonly (readonly number[])[]): number {
-  const [ax0, ay0, ax1, ay1] = bounds(a);
-  const [bx0, by0, bx1, by1] = bounds(b);
+  const grow = ([x0, y0, x1, y1]: readonly number[]) => [x0 - 1, y0 - 1, x1 + 1, y1 + 1];
+  const [ax0, ay0, ax1, ay1] = grow(bounds(a));
+  const [bx0, by0, bx1, by1] = grow(bounds(b));
   const w = Math.min(ax1, bx1) - Math.max(ax0, bx0);
   const h = Math.min(ay1, by1) - Math.max(ay0, by0);
   const smaller = Math.max(
@@ -281,8 +286,11 @@ function overlapOf(a: readonly (readonly number[])[], b: readonly (readonly numb
   return w <= 0 || h <= 0 ? 0 : (Math.max(w, 1) * Math.max(h, 1)) / smaller;
 }
 
-/** What the name's current lines of a layer would be recorded as, for a page written before lines were recorded. */
-export type Unrecorded = (read: PageRead, layer: string) => LineRecord[] | null;
+/**
+ * For a page written before lines were recorded: what to compare a layer
+ * with (null: nothing, every line is new), or "skip" to leave the layer be.
+ */
+export type Unrecorded = (read: PageRead, layer: string) => LineRecord[] | null | "skip";
 
 /**
  * Compare each page file `reads` with what was recorded of it, into the
@@ -294,6 +302,8 @@ export function planCspTakeBack(project: Project, reads: readonly PageRead[], na
   let refs = 0;
   const ref = () => `c${refs++}`;
   const where = (page: number) => `${page + 1}p`;
+  // The name's own layers left be on pages written before lines were recorded: their pages, by layer.
+  const unread = new Map<string, number[]>();
   for (const read of reads) {
     const pages = read.places.map((place) => place.page);
     const baseline = baselineOf(project, read.content);
@@ -305,6 +315,8 @@ export function planCspTakeBack(project: Project, reads: readonly PageRead[], na
       pageIds: pages.map((index) => project.pages[index].id),
     };
     plan.pending.push(pending);
+    // Layers of the name's own on a page written before lines were recorded, changed since.
+    const skipped = new Set<string>();
     const lineLayers: { name: string; lines: { sig: string; points: number[][]; line?: CspLine }[]; frames?: boolean }[] = [
       ...read.content.vectors.map((layer) => ({
         name: layer.name,
@@ -318,7 +330,12 @@ export function planCspTakeBack(project: Project, reads: readonly PageRead[], na
     ];
     for (const layer of lineLayers) {
       const base = baseName(layer.name);
-      const recorded = baseline.lines[layer.name] ?? unrecorded(read, layer.name) ?? [];
+      const fallback = baseline.lines[layer.name] ? null : unrecorded(read, layer.name);
+      if (fallback === "skip") {
+        skipped.add(base);
+        continue;
+      }
+      const recorded = baseline.lines[layer.name] ?? fallback ?? [];
       // Lines as recorded: the name's (or left in CSP before).
       const left = [...recorded];
       const lines: PendingLine[] = [];
@@ -365,8 +382,6 @@ export function planCspTakeBack(project: Project, reads: readonly PageRead[], na
       const [pairedGone, pairedAdded] = [new Map<number, number>(), new Map<number, number>()];
       for (const pair of pairs) {
         if (pairedGone.has(pair.g) || pairedAdded.has(pair.a)) continue;
-        // One panel drawn as several lines (点線, 波線, 裁ち切り) is not one shape to swap.
-        if (isPanels && recorded.filter((entry) => entry.key === gone[pair.g].entry.key).length > 1) continue;
         pairedGone.set(pair.g, pair.a);
         pairedAdded.set(pair.a, pair.g);
       }
@@ -383,10 +398,12 @@ export function planCspTakeBack(project: Project, reads: readonly PageRead[], na
           if (a !== undefined) lines.push({ sig: added[a].sig, key: null });
           return;
         }
-        if (isPanels && multi(entry)) {
+        // A panel drawn as several lines or as part of its outline (点線, 波線, 裁ち切り, 重なり) is not one shape to take.
+        if (isPanels && !layer.frames && (multi(entry) || (a !== undefined && !added[a].line?.closed))) {
           if (!noted.has(entry.key!))
             plan.notes.push(`${where(pages[0])}: 点線・波線・裁ち切りのコマの枠を CSP で変えたものは読み戻しません`);
           noted.add(entry.key!);
+          if (a !== undefined) lines.push({ sig: added[a].sig, key: entry.key! });
           return;
         }
         const r = ref();
@@ -460,7 +477,12 @@ export function planCspTakeBack(project: Project, reads: readonly PageRead[], na
         });
       });
     }
+    if (skipped.size) for (const name of skipped) (unread.get(name) ?? unread.set(name, []).get(name)!).push(pages[0]);
   }
+  for (const [name, pages] of unread)
+    plan.notes.push(
+      `${pages.map((page) => where(page)).join("・")}: 前のバージョンで書き出したページなので、CSP で「${name}」の線を変えていても読み戻しません（ネームでも変えていると、どちらの変更か分からないため）`,
+    );
   return plan;
 }
 
