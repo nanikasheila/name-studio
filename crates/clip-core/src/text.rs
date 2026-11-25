@@ -13,6 +13,8 @@ use crate::vector::BBox;
 pub const ATTR_FONT_SIZE: u32 = 0x20;
 pub const ATTR_BBOX: u32 = 0x2a;
 pub const ATTR_FONT_NAME: u32 = 0x39;
+/// The 1-based number of the balloon the block sits in (0: none).
+pub const ATTR_BALLOON: u32 = 0x2d;
 pub const ATTR_BLOCK_SIZE: u32 = 0x3f;
 pub const ATTR_QUAD: u32 = 0x40;
 const FONT_SIZE_UNIT: f64 = 100.0;
@@ -20,7 +22,12 @@ const FONT_SIZE_UNIT: f64 = 100.0;
 /// The decoded subset of one text block's attributes.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextAttributes {
+    /// Layer px; for a block in a balloon (`balloon`), from the centre of
+    /// that balloon's box.
     pub bbox: Option<BBox>,
+    /// The balloon the block sits in: its number among the layer's vector
+    /// objects that are not tails, from 1.
+    pub balloon: Option<u32>,
     pub font_size_pt: Option<f64>,
     pub font_name: Option<String>,
 }
@@ -84,6 +91,10 @@ pub fn parse_text_attributes(blob: &[u8]) -> Result<TextAttributes> {
             .and_then(le_i32s::<1>)
             .map(|[size]| size as f64 / FONT_SIZE_UNIT),
         font_name: find(ATTR_FONT_NAME).and_then(font_name),
+        balloon: find(ATTR_BALLOON)
+            .and_then(le_i32s::<1>)
+            .map(|[number]| number as u32)
+            .filter(|number| *number > 0),
     })
 }
 

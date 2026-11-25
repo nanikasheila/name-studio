@@ -380,13 +380,17 @@ export interface ReferenceImage {
    * "name": the name itself, drawn elsewhere (on paper, in a ミニネーム) and
    * taken in from a picture of it. It is read and written out with the
    * name's own lines (読む, PDF, ミニネーム, its own layer in CSP); a 資料
-   * picture is only looked at while drawing.
+   * picture is only looked at while drawing. "drawing": CSP の絵, drawn in
+   * CSP and taken back (読み戻し): part of the name as it is, written back
+   * to its own layer (`layer`).
    */
-  kind?: "name" | "background";
+  kind?: "name" | "background" | "drawing";
   /** A background's panel (on the same page): it shows inside it only. */
   panel?: string;
   /** Where a background came from: its 案 in the background folder ("panel/take/variant"). */
   source?: string;
+  /** CSP の絵 ("drawing"): the CSP image layer it was drawn on and goes back to. */
+  layer?: string;
 }
 
 /** A picture kept in the project (resized when it was taken in). */

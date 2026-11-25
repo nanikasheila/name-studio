@@ -3,7 +3,7 @@
 //! ```text
 //! name-studio-app --export-csp <name.namestudio> (--template <page.clip> | --builtin) --out <folder>
 //!     [--work-template <work.cmc>] [--work-name <name>] [--story-index <n>] [--donor <sample.clip>]...
-//!     [--no-draft-rough] [--no-notes] [--no-marks] [--frame-folders] [--update-dialogue | --read-dialogue]
+//!     [--no-draft-rough] [--no-notes] [--no-marks] [--frame-folders] [--update-dialogue | --read-dialogue | --read-back]
 //!     [--report <file.json>]
 //! ```
 //!
@@ -15,7 +15,10 @@
 //! since) get only the changed dialogue and its balloons, as the export
 //! dialog's 「セリフだけ反映」 does. With `--read-dialogue` it goes the other
 //! way, as 「CSP のセリフを読み戻す」: dialogue retyped, added or deleted in
-//! those pages in CSP is taken into the name, which is saved.
+//! those pages in CSP is taken into the name, which is saved. `--read-back`
+//! takes back everything 「CSP から読み戻す」 finds (the lines, the panels and
+//! the pictures drawn there too, all but removing panels and layers hidden in
+//! CSP).
 //!
 //! The window opens, writes the pages and the work as the export dialog would
 //! (CSP layers where it can), writes a report (JSON, by default
@@ -56,6 +59,9 @@ pub struct BatchExport {
     pub update_dialogue: bool,
     /// Take the dialogue changed in CSP back into the name (`--read-dialogue`).
     pub read_dialogue: bool,
+    /// Take everything changed in CSP back into the name: the dialogue, the
+    /// lines, the panels and the pictures drawn there (`--read-back`).
+    pub read_back: bool,
     pub report: String,
 }
 
@@ -77,6 +83,7 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
     let mut marks = true;
     let mut update_dialogue = false;
     let mut read_dialogue = false;
+    let mut read_back = false;
     let mut builtin = false;
     while let Some(arg) = args.next() {
         let mut value = || args.next().ok_or(format!("{arg} の後に値がありません"));
@@ -102,6 +109,7 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
             "--no-marks" => marks = false,
             "--update-dialogue" => update_dialogue = true,
             "--read-dialogue" => read_dialogue = true,
+            "--read-back" => read_back = true,
             "--builtin" => builtin = true,
             // Anything else (such as what the system adds) is left alone.
             _ => {}
@@ -136,6 +144,7 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
         marks,
         update_dialogue,
         read_dialogue,
+        read_back,
         report,
     }))
 }

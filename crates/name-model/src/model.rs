@@ -283,7 +283,9 @@ pub struct ReferenceImage {
     /// "name": the name itself, taken in from a picture of it (a ミニネーム
     /// or a page drawn on paper), written out with the name's own lines.
     /// "background": the background of one panel ([`Self::panel`]), shown
-    /// inside it only and written out as a layer of its own.
+    /// inside it only and written out as a layer of its own. "drawing": a
+    /// picture drawn in CSP and taken back (CSP の絵), shown as it is and
+    /// written back to its layer ([`Self::layer`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
     /// The panel (on the same page) a background is cut to.
@@ -292,6 +294,10 @@ pub struct ReferenceImage {
     /// Where a background came from: its 案 in the background folder ("panel/take/variant").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    /// "drawing" (CSP の絵, drawn in CSP and taken back): the CSP image layer
+    /// it goes back to, by name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layer: Option<String>,
 }
 
 /// A picture kept in the name (made smaller when it was taken in).

@@ -177,6 +177,7 @@ describe("editable layers", () => {
           [200, 450],
         ],
         widthPx: expect.closeTo(6),
+        key: expect.stringMatching(/^p:p1:/),
       },
     ]);
     expect(vectorLines(page, "panels", m, [], ids).map((line) => line.points.length)).toEqual([

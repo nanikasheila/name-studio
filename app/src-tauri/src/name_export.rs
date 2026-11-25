@@ -1,6 +1,7 @@
 //! Writing the name data out as CSP pages and a work, one page per call, and
 //! putting edited dialogue into pages written before.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use clip_core::RgbaImage;
@@ -15,7 +16,7 @@ use clip_core::write::raster_page::{
 use clip_core::write::split::DEFAULT_NAME_PATTERN;
 use clip_core::write::spread::SpreadLayout;
 use clip_core::write::verify::{self, ExpectedLayer, FileCheck};
-use clip_core::write::{manifest, update};
+use clip_core::write::{manifest, readback, update};
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
@@ -146,6 +147,9 @@ pub(crate) struct LineMeta {
     /// 8-bit RGB; none: black.
     #[serde(default)]
     color: Option<[u8; 3]>,
+    /// What of the name the line is (kept in the record, see `LineRecord`).
+    #[serde(default)]
+    key: Option<String>,
 }
 
 /// One panel of a コマ枠フォルダー in template px.
@@ -154,6 +158,8 @@ pub(crate) struct LineMeta {
 pub(crate) struct FrameMeta {
     points: Vec<[f64; 2]>,
     width_px: f64,
+    #[serde(default)]
+    key: Option<String>,
 }
 
 /// One layer of a page, bottom first.
@@ -239,6 +245,32 @@ pub(crate) struct PageLayersMeta {
     /// Two pages of the book as one 見開き page (images at the spread's size).
     #[serde(default)]
     spread: bool,
+    /// The name's pages (`Page.id`) in the file, to record.
+    #[serde(default)]
+    page_ids: Vec<String>,
+}
+
+/// The keys of each vector layer's lines and each コマ枠フォルダー's frames,
+/// by layer name after its folders (as the record names them).
+fn line_keys(layers: &[LayerMeta], prefix: &str, keys: &mut BTreeMap<String, Vec<Option<String>>>) {
+    for layer in layers {
+        match layer {
+            LayerMeta::Vector { name, lines } => {
+                keys.insert(
+                    format!("{prefix}{name}"),
+                    lines.iter().map(|line| line.key.clone()).collect(),
+                );
+            }
+            LayerMeta::Frames { name, frames, .. } => {
+                keys.insert(
+                    format!("{prefix}{name}"),
+                    frames.iter().map(|frame| frame.key.clone()).collect(),
+                );
+            }
+            LayerMeta::Folder { name, children, .. } => line_keys(children, &format!("{prefix}{name}/"), keys),
+            _ => {}
+        }
+    }
 }
 
 /// Rough images from the source sheet, placed on one transparent page image.
@@ -390,6 +422,8 @@ pub(crate) async fn export_name_page(
                 rest = &rest[length..];
                 Ok(png)
             };
+            let mut keys = BTreeMap::new();
+            line_keys(&meta.layers, "", &mut keys);
             for layer in meta.layers {
                 layers.push(page_layer(layer, &mut take, width, height)?);
             }
@@ -404,6 +438,22 @@ pub(crate) async fn export_name_page(
             let path = writer
                 .write_page(&layers, overlay.as_ref(), meta.spread)
                 .map_err(|error| error.to_string())?;
+            // What CSP's changes are told from later: which line is what of the
+            // name, the pages, and every image layer as written.
+            let pixels = clip_core::ClipDocument::read(&path)
+                .and_then(|document| readback::page_pixels(&document))
+                .unwrap_or_default();
+            writer.amend_last_record(|record| {
+                for (name, keys) in keys {
+                    if let Some(lines) = record.lines.get_mut(&name) {
+                        for (line, key) in lines.iter_mut().zip(keys) {
+                            line.key = key;
+                        }
+                    }
+                }
+                record.page_ids = meta.page_ids;
+                record.pixels = pixels;
+            });
             Ok(verify::verify_page(&path, &expected, &canvas))
         })();
         *state.name_export.lock().map_err(lock_error)? = Some(writer);
@@ -547,6 +597,70 @@ pub(crate) async fn adopt_name_dialogue(paths: Vec<PathBuf>) -> Result<(), Strin
     tauri::async_runtime::spawn_blocking(move || {
         for path in paths {
             update::adopt_dialogue(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+/// The next page the export wrote (a 見開き page when `spread`) as CSP has it now.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CspPageRead {
+    path: PathBuf,
+    /// None when the page's file is not there.
+    content: Option<readback::CspPageContent>,
+}
+
+/// Read everything of the next page the export wrote (a 見開き page when
+/// `spread`): to take what was drawn in CSP back into the name.
+#[tauri::command]
+pub(crate) async fn read_name_page(app: tauri::AppHandle, spread: bool) -> Result<CspPageRead, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let mut guard = state.name_export.lock().map_err(lock_error)?;
+        let writer = guard.as_mut().ok_or("書き出しが始まっていません")?;
+        let path = writer.next_page_path(spread);
+        drop(guard);
+        let content = if path.exists() {
+            Some(readback::read_page(&path).map_err(|error| format!("{}: {error}", path.display()))?)
+        } else {
+            None
+        };
+        Ok(CspPageRead { path, content })
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+/// The pixels of image layer `id` of the page `path` inside `bbox` (canvas
+/// px), no larger than `max_side` on their long side, as a PNG.
+#[tauri::command]
+pub(crate) async fn read_csp_layer_image(
+    path: PathBuf,
+    id: i64,
+    bbox: [i64; 4],
+    max_side: u32,
+) -> Result<tauri::ipc::Response, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let image =
+            readback::layer_image(&path, id, bbox, max_side).map_err(|error| format!("{}: {error}", path.display()))?;
+        image
+            .to_png()
+            .map(tauri::ipc::Response::new)
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+/// Record what the name took back of these pages (see `readback::adopt_page`).
+#[tauri::command]
+pub(crate) async fn adopt_csp_pages(pages: Vec<(PathBuf, readback::Adoption)>) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        for (path, adoption) in pages {
+            readback::adopt_page(&path, &adoption).map_err(|error| format!("{}: {error}", path.display()))?;
         }
         Ok(())
     })

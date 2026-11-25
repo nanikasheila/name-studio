@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use super::Values;
 use super::cmc::{work_canvas_values, write_cmc};
 use super::layers::{copy_layer, csp_image, raster_like, save, set_layer_mask, set_row_value};
-use super::manifest::{PageRecord, image_signature};
+use super::manifest::{LineRecord, PageRecord, image_signature, line_signature};
 use super::page::{apply_page_settings, replace_preview};
 use super::split::page_file_name;
 use super::spread::{SpreadLayout, make_spread_template};
@@ -764,6 +764,28 @@ fn add_to_record(record: &mut PageRecord, layers: &[PageLayer], images: &[String
                     format!("{prefix}{name}"),
                     shape_signature(points.iter().map(Vec::as_slice)),
                 );
+                record.lines.insert(
+                    format!("{prefix}{name}"),
+                    points
+                        .iter()
+                        .map(|points| LineRecord {
+                            sig: line_signature(points),
+                            key: None,
+                        })
+                        .collect(),
+                );
+            }
+            PageLayer::Frames { name, frames, .. } => {
+                record.lines.insert(
+                    format!("{prefix}{name}"),
+                    frames
+                        .iter()
+                        .map(|frame| LineRecord {
+                            sig: line_signature(&frame.points),
+                            key: None,
+                        })
+                        .collect(),
+                );
             }
             PageLayer::Raster(raster) if images.contains(&raster.name) => {
                 record
@@ -973,6 +995,13 @@ impl RasterWorkWriter {
         self.pages.push(output.clone());
         self.records.push(page_record(layers, &self.options.draft_layers));
         Ok(output)
+    }
+
+    /// Add to what the last page written is recorded with.
+    pub fn amend_last_record(&mut self, amend: impl FnOnce(&mut PageRecord)) {
+        if let Some(record) = self.records.last_mut() {
+            amend(record);
+        }
     }
 
     pub fn out_dir(&self) -> &Path {
