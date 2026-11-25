@@ -404,7 +404,12 @@ objects: Array<BackgroundObject>,
  * 遠景: the far layers behind everything (a 360° picture from the 素材,
  * or skyline, mountains and trees made from a seed), farthest first.
  */
-far: Array<BackgroundFar>, };
+far: Array<BackgroundFar>, 
+/**
+ * 見た目: how far to draw (to the development: light and materials) and
+ * the light and materials in words (name-blockout's look).
+ */
+look?: BackgroundLook, };
 
 export type BackgroundCamera = "eye" | "low" | "high";
 
@@ -429,6 +434,34 @@ turnDeg?: number,
 seed?: number, };
 
 export type FarKind = "panorama" | "mountains" | "skyline" | "trees";
+
+export type BackgroundLook = { 
+/**
+ * 作画まで: drawn to the development (light, shadows, tones by material), not only the blockout.
+ */
+develop: boolean, 
+/**
+ * 時間帯: dawn, morning, noon, afternoon, evening, dusk, night.
+ */
+timeOfDay?: string, 
+/**
+ * 天気: clear, cloudy, haze, overcast, rain, snow, fog.
+ */
+weather?: string, 
+/**
+ * 屋外 outdoor / 屋内 indoor.
+ */
+setting?: string, 
+/**
+ * 光: front, back, side-left, side-right, top, window, interior, street.
+ */
+light?: string, 
+/**
+ * 材質 of the 物 (by id) and the ground ("ground"), by the name in name-blockout's library.
+ */
+materials: Array<BackgroundMaterial>, };
+
+export type BackgroundMaterial = { target: string, material: string, };
 
 export type BackgroundSettings = { 
 /**

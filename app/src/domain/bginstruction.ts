@@ -20,6 +20,7 @@ import {
   type BackgroundTake,
 } from "./background";
 import { cameraFit } from "./bgcamera";
+import { lookInstruction } from "./bglook";
 import type { BackgroundRequest } from "./bgrequest";
 import { rulerOf } from "./bgruler";
 
@@ -50,7 +51,7 @@ export function instructionShot(
     label: panelLabel(project, page, panel),
     page: project.pages.indexOf(page) + 1,
     order: panelNumber(page, panel),
-    stage: "blockout",
+    stage: lookInstruction(panel).stage,
     frame: {
       boxMm: box,
       dpi,
@@ -111,6 +112,8 @@ export function instructionShot(
     ...(layer.kind !== "panorama" && layer.seed !== undefined ? { seed: layer.seed } : {}),
   }));
   if (far.length) shot.far = far;
+  const { look } = lookInstruction(panel);
+  if (look) shot.look = look;
   shot.output = { take: String(nextTake(takes, panel.id)) };
   return shot;
 }

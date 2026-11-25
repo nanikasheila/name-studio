@@ -15,6 +15,22 @@ import {
   setFar,
 } from "../domain/background";
 import {
+  GROUND,
+  INDOOR_LIGHTS,
+  LIGHT_LABELS,
+  MATERIALS,
+  OUTDOOR_LIGHTS,
+  SETTING_LABELS,
+  TIME_LABELS,
+  WEATHER_LABELS,
+  lookOf,
+  lookWords,
+  materialOf,
+  setLook,
+  setMaterial,
+  shareLook,
+} from "../domain/bglook";
+import {
   PERSPECTIVES,
   PERSPECTIVE_LABELS,
   PERSPECTIVE_TITLES,
@@ -24,7 +40,18 @@ import {
   rulerWords,
   setPerspective,
 } from "../domain/bgruler";
-import type { BackgroundCamera, BackgroundFar, FarKind, Panel, Project } from "../model/model";
+import type {
+  BackgroundCamera,
+  BackgroundFar,
+  BackgroundLook,
+  FarKind,
+  LightKey,
+  LookSetting,
+  Panel,
+  Project,
+  TimeOfDay,
+  Weather,
+} from "../model/model";
 import type { DrawAssets } from "./drawassets";
 
 /** An element with these attributes and children. */
@@ -56,6 +83,7 @@ export function instructionSummary(panel: Panel): string {
     !ruler.vanishing.length && bg.camera ? CAMERA_LABELS[bg.camera] : "",
     bg.objects?.length ? `物 ${bg.objects.map((object) => object.label).join("・")}` : "",
     bg.far?.length ? `遠景 ${bg.far.map(farWord).join("・")}` : "",
+    lookWords(panel),
   ].filter(Boolean);
   return parts.length ? parts.join(" / ") : "指示なし（ラフのまま）";
 }
@@ -126,6 +154,119 @@ function farRow(host: InstructionHost, panel: Panel): HTMLElement {
     parts.push(again);
   }
   return tag("div", { class: "assist-row drawing-far" }, ...parts);
+}
+
+/** A choice of words (its first option: none), set by `pick`. */
+function choice<T extends string>(
+  label: string,
+  title: string,
+  none: string,
+  values: readonly T[],
+  labels: Record<T, string>,
+  value: T | undefined,
+  pick: (value: T | undefined) => void,
+): HTMLSelectElement {
+  const select = tag("select", { "aria-label": label, title });
+  select.append(tag("option", { value: "" }, none));
+  for (const one of values) select.append(tag("option", { value: one }, labels[one]));
+  if (value && !values.includes(value)) select.append(tag("option", { value }, labels[value] ?? value));
+  select.value = value ?? "";
+  select.addEventListener("change", () => pick((select.value || undefined) as T | undefined));
+  return select;
+}
+
+/** A 物's (or the ground's) material, from name-blockout's library; none: guessed from its name. */
+export function materialChoice(host: InstructionHost, panel: Panel, target: string, what: string): HTMLSelectElement {
+  const names = MATERIALS.map((one) => one.name);
+  const labels = Object.fromEntries(MATERIALS.map((one) => [one.name, one.name])) as Record<string, string>;
+  const select = choice(
+    `${what}の材質`,
+    `${what}の材質（3D の質感と漫画での描き方の組。${MATERIALS.map((one) => `${one.name}: ${one.note}`).join("／")}）`,
+    "材質: 名前から",
+    names,
+    labels,
+    materialOf(panel, target),
+    (value) =>
+      host.edit((project) => {
+        const found = findPanel(project, panel.id);
+        if (found) setMaterial(found.panel, target, value);
+      }),
+  );
+  select.classList.add("drawing-material");
+  return select;
+}
+
+/** 見た目: 作画まで (name-blockout's development), the time, weather, indoors or out, the light; the ground's material. */
+function lookRow(host: InstructionHost, panel: Panel): HTMLElement {
+  const look = lookOf(panel);
+  const change = (next: Partial<BackgroundLook>) =>
+    host.edit((project) => {
+      const found = findPanel(project, panel.id);
+      if (found) setLook(found.panel, next);
+    });
+  const develop = tag("input", { type: "checkbox" });
+  develop.checked = !!look.develop;
+  develop.dataset.look = "develop";
+  develop.addEventListener("change", () => change({ develop: develop.checked }));
+  const indoor = look.setting === "indoor";
+  const parts: HTMLElement[] = [
+    tag(
+      "label",
+      {
+        class: "check",
+        title: "あたり（Blockout）のあと、光の向きどおりの影・材質ごとのトーンとベタまで描く（name-blockout の開発）",
+      },
+      develop,
+      " 作画まで",
+    ),
+    choice<TimeOfDay>(
+      "時間帯",
+      "時間帯（太陽の高さと向き。屋内では窓の外の明るさ）",
+      "時間帯",
+      Object.keys(TIME_LABELS) as TimeOfDay[],
+      TIME_LABELS,
+      look.timeOfDay,
+      (value) => change({ timeOfDay: value }),
+    ),
+    choice<Weather>(
+      "天気",
+      "天気（晴れ・くもり・かすみは日差しあり、どんより・雨・雪・霧は日差しなし）",
+      "天気",
+      Object.keys(WEATHER_LABELS) as Weather[],
+      WEATHER_LABELS,
+      look.weather,
+      (value) => change({ weather: value }),
+    ),
+    choice<LookSetting>(
+      "屋内か屋外か",
+      "屋内では太陽ではなく部屋の明かりで照らし、地面は床になります（決めないと物の名前から推します）",
+      "屋内/屋外",
+      ["outdoor", "indoor"],
+      SETTING_LABELS,
+      look.setting,
+      (value) => change({ setting: value }),
+    ),
+    choice<LightKey>(
+      "光",
+      indoor ? "屋内の明かり（決めないと天井の明かり）" : "日差しの向きの狙い（時間帯があれば、合わないときに北の向きを聞かれます）",
+      "光",
+      indoor ? INDOOR_LIGHTS : OUTDOOR_LIGHTS,
+      LIGHT_LABELS,
+      look.light,
+      (value) => change({ light: value }),
+    ),
+  ];
+  if (look.develop) parts.push(materialChoice(host, panel, GROUND, indoor ? "床" : "地面"));
+  if (look.timeOfDay || look.weather || look.setting || look.light) {
+    const share = tag(
+      "button",
+      { type: "button", title: "時間帯・天気・屋内/屋外・光を、同じシーンのほかのコマにも（シーンがなければ同じページ）" },
+      "シーンにも",
+    );
+    share.addEventListener("click", () => host.edit((project) => void shareLook(project, panel.id)));
+    parts.push(share);
+  }
+  return tag("div", { class: "assist-row drawing-look" }, tag("span", { class: "hint", title: "見た目（光と材質）" }, "見た目"), ...parts);
 }
 
 /** A panel's 背景の指示, to write and choose. */
@@ -213,8 +354,9 @@ export function instructionsView(host: InstructionHost, panel: Panel): HTMLEleme
         if (found) renameObject(found.panel, object.id, name.value);
       }),
     );
+    const material = bg.look?.develop ? [materialChoice(host, panel, object.id, `「${object.label}」`)] : [];
     const listed = host.assets.names("thing");
-    if (!listed.length && !object.asset) return name;
+    if (!listed.length && !object.asset) return material.length ? tag("span", { class: "drawing-object-asset" }, name, ...material) : name;
     // Its 素材: chosen, else the one its name begins with.
     const asset = tag("select", { "aria-label": "物の素材", title: "この物に使う素材（素材の一覧から）" });
     const guessed = objectAsset(host.assets.list, { ...object, asset: undefined });
@@ -229,7 +371,7 @@ export function instructionsView(host: InstructionHost, panel: Panel): HTMLEleme
         if (found) chooseAsset(found.panel, object.id, asset.value || undefined);
       }),
     );
-    return tag("span", { class: "drawing-object-asset" }, name, asset);
+    return tag("span", { class: "drawing-object-asset" }, name, asset, ...material);
   });
   return tag(
     "div",
@@ -245,6 +387,6 @@ export function instructionsView(host: InstructionHost, panel: Panel): HTMLEleme
       tag("span", { class: "hint", title: "背景の道具（H）で描いた指示" }, drawn.length ? drawn.join("・") : ""),
     ),
     ...(things.length ? [tag("div", { class: "assist-row drawing-objects" }, tag("span", { class: "hint" }, "物"), ...things)] : []),
-    ...(bg.none ? [] : [farRow(host, panel)]),
+    ...(bg.none ? [] : [farRow(host, panel), lookRow(host, panel)]),
   );
 }

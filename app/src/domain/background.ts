@@ -86,7 +86,8 @@ export function hasInstructions(panel: Panel): boolean {
       !!bg.horizon ||
       !!bg.vanishing?.length ||
       !!bg.objects?.length ||
-      !!bg.far?.length)
+      !!bg.far?.length ||
+      !!bg.look)
   );
 }
 

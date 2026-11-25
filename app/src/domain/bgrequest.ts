@@ -8,6 +8,7 @@
 import { bounds } from "../model/geometry";
 import { ASSETS_FILE, type BackgroundAsset, assetsSection, panelAssetWords } from "./bgassets";
 import { cameraFit, cameraWords } from "./bgcamera";
+import { lookWords } from "./bglook";
 import { rulerOf, rulerWords } from "./bgruler";
 import type { BoxMm, Page, Panel, Point, Project } from "../model/model";
 import {
@@ -124,6 +125,11 @@ export function instructionWords(panel: Panel): string[] {
     );
     out.push(`遠景（奥から）: ${words.join("・")}。線は細く、トーンは明るく。遠景だけの絵（遠景.png）も別に`);
   }
+  const look = lookWords(panel);
+  if (look)
+    out.push(
+      `見た目: ${look}${bg.look?.develop ? "。作画まで（光の向きどおりの影、材質ごとのトーン・ベタ。影だけの絵 影.png も別に）" : ""}`,
+    );
   return out;
 }
 
