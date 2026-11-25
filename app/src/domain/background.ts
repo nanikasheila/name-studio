@@ -34,6 +34,8 @@ export const MAX_VANISHING = 3;
 export const MANIFEST_FILE = "背景.json";
 /** Where each request's files go, in the background folder. */
 export const REQUEST_DIR = "依頼";
+/** A request as data for tools (name-blockout's instruction), beside its 依頼.md: 依頼/<stamp>/指示.json (bginstruction.ts). */
+export const INSTRUCTION_FILE = "指示.json";
 /** Where the takes go, in the background folder: 案/<panel>/<take>/. */
 export const TAKES_DIR = "案";
 

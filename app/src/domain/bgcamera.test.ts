@@ -147,4 +147,26 @@ describe("背景の指示 as a camera", () => {
       ),
     ).toBeNull();
   });
+
+  it("puts the principal point in the picture's own axes when the eye level is tilted (roll), for Blender's shift", () => {
+    // Eye level from (0, 30) to (200, 50) mm: rolled atan(0.1), passing 100 px above the middle; the points either side.
+    const horizon: [Point, Point] = [
+      [0, 30],
+      [200, 50],
+    ];
+    const vanishing: Point[] = [
+      [-100, 20],
+      [300, 60],
+    ];
+    const fit = cameraFit(panel(horizon, vanishing), box, DPI)!;
+    // The principal point is the foot of the middle (1000, 500) on the eye level, as Blender's shift puts it.
+    const [ax, ay] = [0, 300];
+    const [ux, uy] = [Math.cos(Math.atan(0.1)), Math.sin(Math.atan(0.1))];
+    const k = (1000 - ax) * ux + (500 - ay) * uy;
+    const [px, py] = [ax + k * ux, ay + k * uy];
+    expect(fit.rollDeg).toBeCloseTo(5.7, 1);
+    expect(fit.shiftX).toBeCloseTo(-(px - 1000) / 2000, 3);
+    expect(fit.shiftY).toBeCloseTo((py - 500) / 2000, 3);
+    expect(fit.shiftX).not.toBe(0);
+  });
 });

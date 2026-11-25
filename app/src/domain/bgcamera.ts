@@ -117,9 +117,10 @@ export function cameraFit(panel: Panel, box: BoxMm, dpi: number): CameraFit | nu
     focalPx: round(focalPx, 0),
     lensMm: round((focalPx * SENSOR_MM) / longer, 1),
     lensFromPoints: fromPoints,
-    // Blender's shift: +x moves the view right (the principal point appears left of the middle), +y moves it up.
-    shiftX: round(-ps / longer),
-    shiftY: round(pt / longer),
+    // Blender's shift is in the picture's own axes: the principal point (ps, pt along and across the eye level) is
+    // turned back by the roll first. +x moves the view right (the principal point appears left of the middle), +y up.
+    shiftX: round(-(ps * cos - pt * sin) / longer),
+    shiftY: round((ps * sin + pt * cos) / longer),
     tiltDeg: round((tilt * 180) / Math.PI, 1),
     rollDeg: round((roll * 180) / Math.PI, 1),
     turnsDeg: turns.map((turn) => (turn === null ? null : round(turn, 1))),
