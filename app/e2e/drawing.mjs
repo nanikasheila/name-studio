@@ -69,7 +69,16 @@ try {
           const asked = shot.camera?.heightM === undefined;
           return JSON.stringify({
             findings: asked
-              ? [{ code: "camera.height", level: "warn", shot: shot.id, label: shot.label, path: "camera.heightM", message: "カメラの高さが決まっていません" }]
+              ? [
+                  {
+                    code: "camera.height",
+                    level: "warn",
+                    shot: shot.id,
+                    label: shot.label,
+                    path: "camera.heightM",
+                    message: "カメラの高さが決まっていません",
+                  },
+                ]
               : [{ code: "look.date", level: "info", shot: shot.id, label: shot.label, path: "look.date", message: "日付は春分" }],
             questions: asked
               ? [
