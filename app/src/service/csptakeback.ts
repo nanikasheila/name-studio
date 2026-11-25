@@ -308,6 +308,8 @@ export interface CspReadBack {
  * Read the pages written to `request.outDir` back as CSP has them now, and
  * plan what to take back into the name (nothing is changed yet).
  */
+const fileOf = (path: string) => path.split(/[\\/]/).pop() ?? path;
+
 export async function readCspBack(project: Project, request: CspExportRequest, progress: (message: string) => void): Promise<CspReadBack> {
   const start = await call("begin_name_export", { request: { ...request, frameFolders: false } });
   const reads: PageRead[] = [];
@@ -321,6 +323,7 @@ export async function readCspBack(project: Project, request: CspExportRequest, p
   try {
     const full = projectToTemplate(project, start);
     const { units: pages } = exportUnits(project, start.firstPageLeft, start.spread ? null : start.spreadProblem);
+    const sized = new Map<string, boolean>();
     for (const [index, unit] of pages.entries()) {
       progress(`${index + 1} / ${pages.length} ページを読み中…`);
       const spread = unit.length > 1 && start.spread ? start.spread : null;
@@ -348,12 +351,15 @@ export async function readCspBack(project: Project, request: CspExportRequest, p
           return { text, page: on.page, box };
         }),
       });
+      // Whether the file is a 見開き, by its size (CSP marks only the 見開き it made as one).
+      if (page.content && page.path) sized.set(fileOf(page.path), !!start.spread && page.content.widthPx === start.spread.widthPx);
       if (page.content && !resized)
         reads.push({ path: page.path, places, gutterPx: spread ? spread.gutterPx : null, content: page.content });
     }
     // The work's pages: added, deleted or moved in CSP.
     const work = await call("read_csp_work", { outDir: request.outDir });
     if (work) {
+      work.pages = work.pages.map((page) => (sized.has(page.file) ? { ...page, spread: sized.get(page.file)! } : page));
       pagesPlan = planCspPages(project, work, pageRef);
       // Each page added in CSP as read: a single page or a 見開き by its size (another size is left out).
       const contents = new Map<string, CspPageContent>();

@@ -155,6 +155,47 @@ export interface PanelAdd {
   ref: string;
   page: number;
   shape: Point[];
+  /** Its 裁ち切り edges (`Panel.openEdges`). */
+  openEdges?: number[];
+}
+
+/** How near (mm) the canvas side a corner is to count as on it. */
+const ON_SIDE_MM = 0.5;
+
+/**
+ * A frame line on a page added in CSP as a panel: a closed line, or an open
+ * one of a few corners (the name writes a panel's border without its
+ * 裁ち切り edges, and without what a panel over it hides), closed from its
+ * end to its start. Corners past the canvas come back onto it, and an edge
+ * along a side of the canvas is 裁ち切り. Null: not a frame (a hand-drawn
+ * open line, a dash), read as 描く instead.
+ */
+export function framePanel(
+  points: Point[],
+  closed: boolean,
+  canvasMm: readonly [number, number],
+): { shape: Point[]; openEdges: number[] } | null {
+  let corners = points.length > 12 ? (closed ? fitOutline(points) : null) : points;
+  if (!corners) return null;
+  const [w, h] = canvasMm;
+  const first = corners[0];
+  const last = corners[corners.length - 1];
+  if (corners.length > 3 && Math.hypot(first[0] - last[0], first[1] - last[1]) < ON_SIDE_MM) corners = corners.slice(0, -1);
+  if (corners.length < 3) return null;
+  const shape = corners.map(([x, y]): Point => [Math.min(w, Math.max(0, x)), Math.min(h, Math.max(0, y))]);
+  let area = 0;
+  shape.forEach(([x0, y0], i) => {
+    const [x1, y1] = shape[(i + 1) % shape.length];
+    area += x0 * y1 - x1 * y0;
+  });
+  if (Math.abs(area) / 2 < 25) return null;
+  const side = ([x, y]: Point) =>
+    [x <= ON_SIDE_MM && "l", x >= w - ON_SIDE_MM && "r", y <= ON_SIDE_MM && "t", y >= h - ON_SIDE_MM && "b"].filter(Boolean) as string[];
+  const openEdges = shape.flatMap((a, i) => {
+    const b = shape[(i + 1) % shape.length];
+    return side(a).some((s) => side(b).includes(s)) ? [i] : [];
+  });
+  return { shape, openEdges };
 }
 
 export interface PanelRemove {
@@ -486,9 +527,15 @@ export function planCspTakeBack(project: Project, reads: readonly PageRead[], na
         }
         if (isPanels) {
           const points = line.points.map((point) => toMm(place.m, point));
-          // On a page added in CSP each closed frame is a panel of its own (as drawn, not read as 描く over the others).
-          if (read.added && line.line?.closed && points.length >= 3) {
-            plan.panelsAdded.push({ ref: r, page: place.page, shape: points.length > 12 ? fitOutline(points) : points });
+          // On a page added in CSP each frame is a panel of its own (as drawn, not read as 描く over the others).
+          const frame = read.added ? framePanel(points, !!line.line?.closed, project.pageFormat.canvasMm) : null;
+          if (frame) {
+            plan.panelsAdded.push({
+              ref: r,
+              page: place.page,
+              shape: frame.shape,
+              ...(frame.openEdges.length ? { openEdges: frame.openEdges } : {}),
+            });
             return;
           }
           plan.panelSketches.push({ ref: r, page: place.page, points: line.line?.closed ? [...points, points[0]] : points });
@@ -671,6 +718,7 @@ export function applyCspTakeBack(project: Project, plan: CspTakeBack): Made {
   for (const change of plan.panelsAdded) {
     const page = project.pages[change.page];
     const panel = addPanel(project, page, change.shape);
+    if (change.openEdges?.length) panel.openEdges = [...change.openEdges];
     made.set(change.ref, panelKey(panel));
   }
   for (const change of plan.panelSketches) {

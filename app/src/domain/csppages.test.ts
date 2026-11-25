@@ -6,6 +6,7 @@ import {
   allRefs,
   type CspLayerNames,
   emptyTakeBack,
+  framePanel,
   madePages,
   onAddedPage,
   pickCspTakeBack,
@@ -275,5 +276,64 @@ describe("CSP の作品のページ（足す・消す・並べ替え）", () => 
     expect([plan.panelsAdded.length, plan.panelSketches.length]).toEqual([3, 0]);
     applyCspTakeBack(project, plan);
     expect(project.pages[1].panels).toHaveLength(3);
+  });
+
+  it("makes a frame written without its 裁ち切り edge, or partly under another panel, a panel too", () => {
+    const canvas: [number, number] = [257, 364];
+    // Three sides; the top past the canvas (裁ち切り).
+    const bleed = framePanel(
+      [
+        [20, -3],
+        [20, 100],
+        [120, 100],
+        [120, -3],
+      ],
+      false,
+      canvas,
+    );
+    expect(bleed?.shape).toEqual([
+      [20, 0],
+      [20, 100],
+      [120, 100],
+      [120, 0],
+    ]);
+    expect(bleed?.openEdges).toEqual([3]);
+    // A corner hidden under another panel: closed straight.
+    expect(
+      framePanel(
+        [
+          [150, 20],
+          [150, 100],
+          [230, 100],
+          [230, 60],
+        ],
+        false,
+        canvas,
+      )?.openEdges,
+    ).toEqual([]);
+    // A dash, a hand-drawn open line, nothing much: not frames.
+    expect(
+      framePanel(
+        [
+          [0, 0],
+          [10, 0],
+        ],
+        false,
+        canvas,
+      ),
+    ).toBeNull();
+    const hand = Array.from({ length: 30 }, (_, i): [number, number] => [10 + i * 3, 50 + Math.sin(i) * 20]);
+    expect(framePanel(hand, false, canvas)).toBeNull();
+    expect(
+      framePanel(
+        [
+          [0, 0],
+          [3, 0],
+          [3, 3],
+        ],
+        false,
+        canvas,
+      ),
+    ).toBeNull();
   });
 });
