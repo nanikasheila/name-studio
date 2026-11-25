@@ -178,6 +178,7 @@ function fullPage(id: string): Full<Project["pages"][number]> {
         kind: "background",
         panel: `${id}-panel1`,
         source: "panel1/2/完成",
+        layer: "レイヤー 1",
       },
     ],
   };

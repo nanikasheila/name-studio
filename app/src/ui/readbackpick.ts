@@ -1,24 +1,62 @@
-// CSP のセリフを読み戻す, one change at a time: every change CSP made is
-// listed with a box to tick, all ticked to start with. What is left unticked
-// stays as the name has it (and the next セリフだけ反映 puts it in CSP too).
+// CSP から読み戻す, one change at a time: every change found in CSP is listed
+// with a box to tick (all ticked to start with, but removing dialogue or a
+// panel and layers hidden in CSP). What is left unticked stays as the name has it.
 import { element } from "../platform/dom";
 import { pickTakeBack, type TakeBack } from "../domain/readback";
+import { pickCspTakeBack, panelLabel, startsUnticked, type CspTakeBack } from "../domain/csptakeback";
+import type { Project } from "../model/model";
 
 const flat = (text: string) => text.replace(/\n/g, " ");
 
+/** What was picked: the dialogue's changes and the rest. */
+export interface ReadBackPick {
+  dialogue: TakeBack;
+  csp: CspTakeBack;
+}
+
 /** The changes to take back, as chosen (null: none, or やめる). */
-export function chooseTakeBack(plan: TakeBack, where: string): Promise<TakeBack | null> {
+export function chooseReadBack(project: Project, dialogue: TakeBack, csp: CspTakeBack, where: string): Promise<ReadBackPick | null> {
   const dialog = element("dialog", { className: "export readback-pick", id: "readback-pick" });
   const boxes = { retyped: [] as HTMLInputElement[], added: [] as HTMLInputElement[], removed: [] as HTMLInputElement[] };
-  const row = (list: HTMLInputElement[], text: string) => {
-    const box = element("input", { type: "checkbox", checked: true });
+  // Each box and the changes it stands for (the lines of a layer of a page go in one).
+  const cspBoxes = new Map<HTMLInputElement, string[]>();
+  const unticked = startsUnticked(csp);
+  const row = (list: HTMLInputElement[], text: string, checked = true) => {
+    const box = element("input", { type: "checkbox", checked });
     list.push(box);
     return element("label", { className: "check readback-item" }, box, text);
   };
-  const section = (title: string, rows: HTMLElement[]) =>
-    rows.length ? [element("h4", { textContent: `${title}（${rows.length}）` }), ...rows] : [];
+  const cspRow = (ref: string | string[], text: string, picture?: string) => {
+    const refs = typeof ref === "string" ? [ref] : ref;
+    const box = element("input", { type: "checkbox", checked: !refs.some((r) => unticked.has(r)) });
+    cspBoxes.set(box, refs);
+    const label = element("label", { className: "check readback-item" }, box, text);
+    if (picture) label.append(element("img", { className: "readback-thumb", src: picture, alt: "" }));
+    return label;
+  };
+  const section = (title: string, rows: HTMLElement[], count = rows.length) =>
+    rows.length ? [element("h4", { textContent: `${title}（${count}）` }), ...rows] : [];
+  /** The lines of each layer of a page, in one row. */
+  const lineRows = (list: { ref: string; page: number; cspLayer: string; newLayer?: string }[]) => {
+    const groups = new Map<string, typeof list>();
+    for (const item of list) {
+      const key = `${item.page}\u0000${item.cspLayer}`;
+      groups.set(key, [...(groups.get(key) ?? []), item]);
+    }
+    return [...groups.values()].map((items) => {
+      const [first] = items;
+      const many = items.length > 1 ? ` ${items.length} 本` : "";
+      const made = first.newLayer ? `（新しいラフ線のレイヤー「${first.newLayer}」）` : "";
+      return cspRow(
+        items.map((item) => item.ref),
+        `${p(first.page)} ${layerOf(first.cspLayer)}の線${many}${made}`,
+      );
+    });
+  };
   const go = element("button", { type: "button", className: "primary", id: "readback-go" });
-  const count = () => Object.values(boxes).reduce((sum, list) => sum + list.filter((box) => box.checked).length, 0);
+  const count = () =>
+    Object.values(boxes).reduce((sum, list) => sum + list.filter((box) => box.checked).length, 0) +
+    [...cspBoxes].reduce((sum, [box, refs]) => sum + (box.checked ? refs.length : 0), 0);
   const update = () => {
     go.textContent = `${count()} 件を読み戻す`;
     go.disabled = count() === 0;
@@ -26,43 +64,74 @@ export function chooseTakeBack(plan: TakeBack, where: string): Promise<TakeBack 
   const all = element("button", { type: "button", textContent: "全部選ぶ" });
   const none = element("button", { type: "button", textContent: "全部外す" });
   const stop = element("button", { type: "button", textContent: "やめる" });
-  const conflicts = plan.conflicts.length
-    ? [
-        element("p", {
-          className: "hint",
-          textContent: `ネームでも変えていたので、ネームのままにするもの ${plan.conflicts.length}: ${plan.conflicts.map((c) => `${c.page + 1}p「${flat(c.csp)}」`).join("、")}`,
-        }),
-      ]
-    : [];
+  const said = [
+    ...(dialogue.conflicts.length
+      ? [
+          `ネームでも変えていたので、ネームのままにするセリフ ${dialogue.conflicts.length}: ${dialogue.conflicts.map((c) => `${c.page + 1}p「${flat(c.csp)}」`).join("、")}`,
+        ]
+      : []),
+    ...csp.conflicts,
+    ...csp.notes,
+  ];
+  const p = (page: number) => `${page + 1}p`;
+  const layerOf = (name: string) => `「${name}」`;
   dialog.append(
-    element("h3", { textContent: "CSP で変えたセリフを読み戻す" }),
+    element("h3", { textContent: "CSP で変えたものを読み戻す" }),
     element("p", {
       className: "hint",
-      textContent: `${where} のページ。外したものはネームのまま（次の「セリフだけ反映」で CSP もネームに合わせます）。元に戻すは Ctrl+Z。`,
+      textContent: `${where} のページ。外したものはネームのままです（次からは聞きません）。元に戻すは Ctrl+Z。`,
     }),
     element(
       "div",
       { className: "readback-list" },
       ...section(
-        "CSP で直した",
-        plan.retyped.map((r) => row(boxes.retyped, `${r.page + 1}p「${flat(r.from)}」→「${flat(r.to)}」`)),
+        "CSP で直したセリフ",
+        dialogue.retyped.map((r) => row(boxes.retyped, `${p(r.page)}「${flat(r.from)}」→「${flat(r.to)}」`)),
       ),
       ...section(
-        "CSP で足した",
-        plan.added.map((a) => row(boxes.added, `${a.page + 1}p「${flat(a.text)}」`)),
+        "CSP で足したセリフ",
+        dialogue.added.map((a) => row(boxes.added, `${p(a.page)}「${flat(a.text)}」`)),
       ),
       ...section(
-        "CSP で消した",
-        plan.removed.map((r) => row(boxes.removed, `${r.page + 1}p「${flat(r.text)}」`)),
+        "CSP で消したセリフ（はじめは外してあります）",
+        dialogue.removed.map((r) => row(boxes.removed, `${p(r.page)}「${flat(r.text)}」`, false)),
+      ),
+      ...section("CSP で描いた線（ラフ線に）", lineRows(csp.strokesAdded), csp.strokesAdded.length),
+      ...section("CSP で直した線", lineRows(csp.strokesChanged), csp.strokesChanged.length),
+      ...section("CSP で消した線", lineRows(csp.strokesRemoved), csp.strokesRemoved.length),
+      ...section(
+        "CSP で形を変えたコマ",
+        csp.panelsChanged.map((c) =>
+          cspRow(c.ref, `${p(c.page)} ${panelLabel(project, c.page, c.panel)}${c.frame ? "（コマ枠フォルダー）" : ""}`),
+        ),
+      ),
+      ...section("CSP で足したコマ・コマ枠に描いた線（囲む＝コマ、横切る＝割る）", [
+        ...csp.panelsAdded.map((a) => cspRow(a.ref, `${p(a.page)} コマ枠フォルダーのコマ`)),
+        ...csp.panelSketches.map((s) => cspRow(s.ref, `${p(s.page)} コマ枠の線`)),
+      ]),
+      ...section(
+        "CSP で消したコマ（はじめは外してあります）",
+        csp.panelsRemoved.map((r) => cspRow(r.ref, `${p(r.page)} ${panelLabel(project, r.page, r.panel)}`)),
+      ),
+      ...section(
+        "CSP で描いた絵（「CSP の絵」として、同じ名前のレイヤーに）",
+        csp.pictures.map((d) =>
+          cspRow(
+            d.ref,
+            `${p(d.page)} ${layerOf(d.cspLayer)}${d.layer !== d.cspLayer ? ` → ${layerOf(d.layer)}` : ""}${d.hidden ? "（CSP で隠したレイヤー）" : ""}`,
+            `data:${d.image.mime};base64,${d.image.dataBase64}`,
+          ),
+        ),
       ),
     ),
-    ...conflicts,
+    ...said.map((text) => element("p", { className: "hint", textContent: text })),
     element("div", { className: "actions" }, all, none, stop, go),
   );
   update();
   dialog.addEventListener("change", update);
   const tick = (on: boolean) => {
     for (const list of Object.values(boxes)) for (const box of list) box.checked = on;
+    for (const box of cspBoxes.keys()) box.checked = on;
     update();
   };
   all.addEventListener("click", () => tick(true));
@@ -70,7 +139,7 @@ export function chooseTakeBack(plan: TakeBack, where: string): Promise<TakeBack 
   document.body.append(dialog);
   dialog.showModal();
   return new Promise((resolve) => {
-    const close = (result: TakeBack | null) => {
+    const close = (result: ReadBackPick | null) => {
       dialog.close();
       dialog.remove();
       resolve(result);
@@ -81,13 +150,14 @@ export function chooseTakeBack(plan: TakeBack, where: string): Promise<TakeBack 
       close(null);
     });
     go.addEventListener("click", () =>
-      close(
-        pickTakeBack(plan, {
+      close({
+        dialogue: pickTakeBack(dialogue, {
           retyped: boxes.retyped.map((b) => b.checked),
           added: boxes.added.map((b) => b.checked),
           removed: boxes.removed.map((b) => b.checked),
         }),
-      ),
+        csp: pickCspTakeBack(csp, new Set([...cspBoxes].flatMap(([box, refs]) => (box.checked ? refs : [])))),
+      }),
     );
   });
 }

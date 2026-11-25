@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 
 use csp_format::ClipFile;
 use csp_format::rusqlite::types::Value;
+use csp_format::vector::VectorData;
 use serde::Serialize;
 
 use super::layers::{csp_image, place_above, raster_like, save};
@@ -94,8 +95,10 @@ pub fn text_key(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\r', "\n").trim().to_owned()
 }
 
-/// A dialogue text layer of the page: visible, plain (not the work info or
-/// the page number), not one this tool already hid.
+/// A dialogue text layer of the page: visible, `TextLayerType` 0 or 1 (1 is
+/// what the author's dialogue became in CSP on the real pages of 第4話;
+/// they still read as dialogue) and not the work info or the page number,
+/// not one this tool already hid.
 struct PageText {
     id: i64,
     name: String,
@@ -110,7 +113,7 @@ fn page_texts(document: &ClipDocument) -> Vec<PageText> {
         .filter(|layer| {
             document
                 .layer_row(layer.main_id)
-                .is_some_and(|row| row.int("TextLayerType") == 0 && row.int("ComicStoryInfoType") == 0)
+                .is_some_and(|row| matches!(row.int("TextLayerType"), 0 | 1) && row.int("ComicStoryInfoType") == 0)
         })
         .map(|layer| PageText {
             id: layer.main_id,
@@ -167,33 +170,79 @@ pub struct CspDialogue {
 /// or update wrote there.
 pub fn read_dialogue(path: &Path) -> Result<CspDialogue> {
     let document = ClipDocument::read(path)?;
-    let texts = page_texts(&document)
-        .into_iter()
-        .map(|text| {
-            // Moved in CSP: the layer's offset on top of where its text sits.
-            let bbox = document
-                .layers()
-                .into_iter()
-                .find(|layer| layer.main_id == text.id)
-                .and_then(|layer| {
-                    let (dx, dy) = (layer.offset_x, layer.offset_y);
-                    document
-                        .text_blocks(layer)
-                        .ok()?
-                        .into_iter()
-                        .filter_map(|block| block.bbox)
-                        .map(|(x0, y0, x1, y1)| [x0 as i64 + dx, y0 as i64 + dy, x1 as i64 + dx, y1 as i64 + dy])
-                        .reduce(|a, b| [a[0].min(b[0]), a[1].min(b[1]), a[2].max(b[2]), a[3].max(b[3])])
-                });
-            CspText { text: text.key, bbox }
-        })
-        .collect();
     let record = super::manifest::written(path).unwrap_or_default();
     Ok(CspDialogue {
-        texts,
+        texts: page_blocks(&document),
         written: record.texts,
         adopted_from: record.adopted_from,
     })
+}
+
+/// The dialogue of the page text by text: a layer CSP keeps several texts
+/// in (`TextLayerStringArray`, one balloon each) gives each its own, where
+/// it sits (moved in CSP: the layer's offset on top).
+fn page_blocks(document: &ClipDocument) -> Vec<CspText> {
+    let layers = document.layers();
+    page_texts(document)
+        .into_iter()
+        .flat_map(|text| {
+            let Some(layer) = layers.iter().find(|layer| layer.main_id == text.id) else {
+                return vec![CspText {
+                    text: text.key,
+                    bbox: None,
+                }];
+            };
+            let (dx, dy) = (layer.offset_x, layer.offset_y);
+            // A block in a balloon sits from the centre of the balloon's box.
+            let balloons: Vec<(i64, i64)> = document
+                .vector_payloads(layer)
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|payload| VectorData::parse(payload).ok())
+                .flat_map(|data| data.objects)
+                .filter(|object| !object.is_balloon_tail())
+                .map(|object| {
+                    let [x0, y0, x1, y1] = object.bbox();
+                    (
+                        (i64::from(x0) + i64::from(x1)).div_euclid(2),
+                        (i64::from(y0) + i64::from(y1)).div_euclid(2),
+                    )
+                })
+                .collect();
+            let boxes: Vec<Option<[i64; 4]>> = document
+                .text_blocks(layer)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|block| {
+                    let (ax, ay) = match block.balloon {
+                        Some(number) => *balloons.get(number as usize - 1)?,
+                        None => (0, 0),
+                    };
+                    let (x, y) = (dx + ax, dy + ay);
+                    block
+                        .bbox
+                        .map(|(x0, y0, x1, y1)| [x0 as i64 + x, y0 as i64 + y, x1 as i64 + x, y1 as i64 + y])
+                })
+                .collect();
+            let strings = document.text_strings(layer);
+            if strings.len() <= 1 {
+                let bbox = boxes
+                    .into_iter()
+                    .flatten()
+                    .reduce(|a, b| [a[0].min(b[0]), a[1].min(b[1]), a[2].max(b[2]), a[3].max(b[3])]);
+                return vec![CspText { text: text.key, bbox }];
+            }
+            strings
+                .iter()
+                .enumerate()
+                .map(|(index, string)| CspText {
+                    text: text_key(string),
+                    bbox: boxes.get(index).copied().flatten(),
+                })
+                .filter(|block| !block.text.is_empty())
+                .collect()
+        })
+        .collect()
 }
 
 /// Record the page's dialogue as CSP has it now as this tool's: once the
@@ -201,7 +250,7 @@ pub fn read_dialogue(path: &Path) -> Result<CspDialogue> {
 /// recorded before is kept (`adopted_from`) for a name that undoes it.
 pub fn adopt_dialogue(path: &Path) -> Result<()> {
     let document = ClipDocument::read(path)?;
-    let texts: Vec<String> = page_texts(&document).into_iter().map(|text| text.key).collect();
+    let texts: Vec<String> = page_blocks(&document).into_iter().map(|text| text.text).collect();
     let before = super::manifest::written(path).unwrap_or_default();
     let adopted_from = if before.texts.as_ref() == Some(&texts) {
         before.adopted_from.clone()
@@ -334,11 +383,32 @@ pub fn update_dialogue(
             }
         })
         .collect();
+    // What the take-back knows of the page stays; the balloons swapped are the name's lines.
+    let before = update.written.clone().unwrap_or_default();
+    let mut lines = before.lines;
+    for layer in &swaps {
+        if let PageLayer::Vector { name, lines: drawn, .. } = layer {
+            lines.insert(
+                name.clone(),
+                drawn
+                    .iter()
+                    .map(|line| super::manifest::LineRecord {
+                        sig: super::manifest::line_signature(&line.xy()),
+                        key: None,
+                    })
+                    .collect(),
+            );
+        }
+    }
     report.record = PageRecord {
         texts: Some(update.texts.iter().map(|text| text.text.clone()).collect()),
         adopted_from: None,
         vectors,
         rasters,
+        lines,
+        pixels: before.pixels,
+        page_ids: before.page_ids,
+        taken: before.taken,
     };
     if !texts_changed && swaps.is_empty() && redrawn.is_empty() {
         return Ok(report);

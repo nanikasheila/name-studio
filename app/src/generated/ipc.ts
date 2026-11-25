@@ -10,6 +10,19 @@ import type { CspToolData, Project, Series } from "../model/model";
  */
 export type RawBody = Uint8Array;
 
+/**
+ * What a take-back makes the name's: per vector layer, its lines now and
+ * what of the name each is; per image layer, its pixels now.
+ */
+export interface Adoption {
+  lines?: Record<string, LineRecord[]>;
+  pixels?: Record<string, string>;
+  /** The name's pages the file holds now. */
+  pageIds?: string[] | null;
+  /** Keys of what the take-back made in the name (see [`PageRecord::taken`]). */
+  made?: string[];
+}
+
 /** What a turn says, as it says it. */
 export interface AiEvent {
   run: number;
@@ -114,6 +127,11 @@ export interface BatchExport {
   updateDialogue: boolean;
   /** Take the dialogue changed in CSP back into the name (`--read-dialogue`). */
   readDialogue: boolean;
+  /**
+   * Take everything changed in CSP back into the name: the dialogue, the
+   * lines, the panels and the pictures drawn there (`--read-back`).
+   */
+  readBack: boolean;
   report: string;
 }
 
@@ -151,11 +169,69 @@ export interface CspDialogue {
   adoptedFrom: string[] | null;
 }
 
+/** A frame of a コマ枠フォルダー: its outline in canvas px. */
+export interface CspFrame {
+  sig: string;
+  points: [number, number][];
+}
+
+export interface CspFrameFolder {
+  name: string;
+  frames: CspFrame[];
+}
+
+/** One line of a vector layer as CSP has it, in canvas px. */
+export interface CspLine {
+  sig: string;
+  /**
+   * `[x, y, width factor]`: the factor (0..1) is what the line's brush
+   * makes of the pen pressure (and speed) there.
+   */
+  points: [number, number, number][];
+  /** Width where the factor is 1. */
+  widthPx: number;
+  /** 8-bit RGB. */
+  color: [number, number, number];
+  closed: boolean;
+}
+
+/** A page as CSP has it now, with what was recorded of it. */
+export interface CspPageContent {
+  dialogue: CspDialogue;
+  record: PageRecord;
+  vectors: CspVectorLayer[];
+  frames: CspFrameFolder[];
+  rasters: CspRaster[];
+  widthPx: number;
+  heightPx: number;
+}
+
 /** The dialogue of the next page as CSP has it now. */
 export interface CspPageDialogue {
   path: string;
   /** None when the page's file is not there. */
   dialogue: CspDialogue | null;
+}
+
+/** The next page the export wrote (a 見開き page when `spread`) as CSP has it now. */
+export interface CspPageRead {
+  path: string;
+  /** None when the page's file is not there. */
+  content: CspPageContent | null;
+}
+
+/** An image layer of the page. */
+export interface CspRaster {
+  id: number;
+  name: string;
+  sig: string;
+  /** Where it has visible pixels, in canvas px; none when it has none. */
+  bbox: [number, number, number, number] | null;
+  visible: boolean;
+  /** 0..1. */
+  opacity: number;
+  /** A 下描き layer. */
+  draft: boolean;
 }
 
 /** A dialogue text on a page, as CSP has it now. */
@@ -178,6 +254,14 @@ export interface CspToolLocations {
 export interface CspToolStamp {
   modifiedMs: number;
   size: number;
+}
+
+/** A vector layer and its lines. */
+export interface CspVectorLayer {
+  /** Its name, after the folders it is in (`folder/name`), as recorded. */
+  name: string;
+  visible: boolean;
+  lines: CspLine[];
 }
 
 export interface DialogueUpdateReport {
@@ -365,6 +449,16 @@ export interface Length {
 
 export type LengthUnit = "px" | "px10";
 
+/**
+ * One line of a vector layer: its shape ([`line_signature`]) and what of
+ * the name it is (the name's own key, such as a stroke's id); no key for a
+ * line the name does not have (drawn in CSP and left there).
+ */
+export interface LineRecord {
+  sig: string;
+  key?: string | null;
+}
+
 export interface NameExportReport extends WorkReport {
   /** The work read back (none without a work). */
   workCheck: FileCheck | null;
@@ -455,6 +549,40 @@ export interface PageNumber {
   start: number;
   /** Where the ページ番号 goes. */
   position?: StoryPosition;
+}
+
+/** What an export wrote into a page, to tell later what changed in CSP. */
+export interface PageRecord {
+  texts?: string[] | null;
+  /**
+   * The `texts` before the name last took CSP's dialogue back (see
+   * [`super::update::adopt_dialogue`]): a name that undid the take-back
+   * still has these, and reading back again finds the same changes.
+   */
+  adoptedFrom?: string[] | null;
+  /** Each vector layer's [`crate::vector::shape_signature`], by layer name. */
+  vectors?: Record<string, string>;
+  /** [`image_signature`] of the 下描き image layers (the memos), by name. */
+  rasters?: Record<string, string>;
+  /**
+   * Each vector layer's lines (and a コマ枠フォルダー's frames), by layer
+   * name, as written or as last taken back into the name: to tell the
+   * lines drawn, changed or deleted in CSP since.
+   */
+  lines?: Record<string, LineRecord[]>;
+  /**
+   * [`pixel_signature`] of every image layer of the page, by name, as
+   * written or as last taken back: to tell the ones drawn on in CSP.
+   */
+  pixels?: Record<string, string>;
+  /** The name's pages (`Page.id`) the file holds (two for a 見開き page). */
+  pageIds?: string[];
+  /**
+   * What the last take-back of the page made in the name and what was
+   * recorded before it: a name that undid it has none of those, and
+   * reading back again starts from before.
+   */
+  taken?: Taken | null;
 }
 
 /** What a page and its work are made with. Lengths in mm. */
@@ -685,6 +813,14 @@ export interface SubTool {
 
 export type SubToolKind = "pen" | "eraser" | "other";
 
+/** See [`PageRecord::taken`]. */
+export interface Taken {
+  /** Keys of what it made (strokes, panels, pictures). */
+  keys: string[];
+  lines: Record<string, LineRecord[]>;
+  pixels: Record<string, string>;
+}
+
 /** Size and frames of the template page, in its pixels. */
 export interface TemplateCanvas {
   widthPx: number;
@@ -854,6 +990,18 @@ export interface Commands {
   read_name_dialogue: [{ spread: boolean }, CspPageDialogue];
   /** Record the dialogue of these pages as CSP has it now as the name's (taken back into it). */
   adopt_name_dialogue: [{ paths: string[] }, void];
+  /**
+   * Read everything of the next page the export wrote (a 見開き page when
+   * `spread`): to take what was drawn in CSP back into the name.
+   */
+  read_name_page: [{ spread: boolean }, CspPageRead];
+  /**
+   * The pixels of image layer `id` of the page `path` inside `bbox` (canvas
+   * px), no larger than `max_side` on their long side, as a PNG.
+   */
+  read_csp_layer_image: [{ path: string; id: number; bbox: [number, number, number, number]; maxSide: number }, ArrayBuffer];
+  /** Record what the name took back of these pages (see `readback::adopt_page`). */
+  adopt_csp_pages: [{ pages: [string, Adoption][] }, void];
   /** Finish: write the work (.cmc) around the pages written so far, and check it. */
   finish_name_export: [void, NameExportReport];
   cancel_name_export: [void, number];

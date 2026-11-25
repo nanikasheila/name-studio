@@ -6,7 +6,8 @@
 // each panel as a folder with a layer mask (--panel-masks), with two
 // ラフ線のレイヤー, with 指示 (and --no-marks, then added by セリフだけ反映), a name saved by
 // a newer version (its report says what this one leaves out), and a 縦スクロール
-// whose pieces are joined into one tall page. The exports run side by side
+// whose pieces are joined into one tall page, and a page drawn on as in CSP
+// (examples/csp_drawn.rs) read back with --read-back. The exports run side by side
 // (one after another on Windows), each the app started on its own. Needs the
 // release build and a template page:
 //   npx tauri build --no-bundle
@@ -96,6 +97,21 @@ pictured.pages[0].references = [
 const scroll = P.newProject("縦スクロール", 3, "scroll");
 for (const piece of scroll.pages) P.setLineText(P.addLine(scroll, piece, [40, 40, 60, 100]), "セリフ");
 scroll.cspPage = { ...cspPageOf(scroll), joinPieces: true };
+// One page drawn on in CSP after the export (examples/csp_drawn.rs), then read back.
+const drawnOn = P.newProject("読み戻し", 1);
+const drawnPage = drawnOn.pages[0];
+P.addPanel(drawnOn, drawnPage, P.rectShape([20, 20, 160, 100]));
+P.addPanel(drawnOn, drawnPage, P.rectShape([20, 110, 160, 200]));
+for (const [i, y] of [40, 60, 80].entries())
+  drawnPage.strokes.push({
+    id: `rough${i + 1}`,
+    points: [
+      [30, y, 0.5],
+      [90, y + 10, 0.5],
+    ],
+    widthMm: 0.5,
+    closed: false,
+  });
 await server.close();
 // As a newer version would save it: a field this version does not know, on a stroke.
 const newer = JSON.parse(projectJson(project));
@@ -117,6 +133,8 @@ const spoilt = structuredClone(pictured);
 spoilt.images[0].dataBase64 = Buffer.from("not a picture").toString("base64");
 const spoiltName = join(dir, "spoilt.namestudio");
 writeFileSync(spoiltName, projectJson(spoilt));
+const drawnName = join(dir, "drawn.namestudio");
+writeFileSync(drawnName, projectJson(drawnOn));
 const failures = [];
 const check = (ok, what) => {
   console.log(`${ok ? "ok  " : "FAIL"} ${what}`);
@@ -201,6 +219,30 @@ function checked(label, { run, report }, pages = 3) {
 }
 
 const started = Date.now();
+// CSP から読み戻す: drawn on in CSP (as examples/csp_drawn.rs does), read back
+// into the name, read back again (nothing new) and written out once more.
+async function drawnThenReadBack() {
+  const exported = await exportTo("drawn", ["--builtin"], drawnName);
+  const before = readFileSync(drawnName, "utf8");
+  const page = exported.report?.pages?.[0];
+  const drawing = page
+    ? await new Promise((resolve) => {
+        const child = spawn("cargo", ["run", "-q", "-p", "clip-core", "--example", "csp_drawn", "--", page], {
+          cwd: join(root, ".."),
+          stdio: ["ignore", "ignore", "inherit"],
+        });
+        child.on("error", () => resolve(null));
+        child.on("close", resolve);
+      })
+    : null;
+  const back = [];
+  for (const round of ["first", "again"]) {
+    const run = await runApp(`readback-${round}`, ["--export-csp", drawnName, "--builtin", "--read-back", "--out", join(dir, "drawn")]);
+    back.push({ run, report: readReport(join(dir, "drawn")), name: JSON.parse(readFileSync(drawnName, "utf8")) });
+  }
+  const again = await exportTo("drawn-again", ["--builtin"], drawnName);
+  return { exported, before: JSON.parse(before), drawing, back, again };
+}
 // 指示 drawn after the export: セリフだけ反映 adds them to those pages as a layer,
 // and leaves them be the next time. Two runs on that folder, one after the other.
 async function unmarkedThenUpdated() {
@@ -225,18 +267,20 @@ async function unmarkedThenUpdated() {
   }
   return { unmarked, updates };
 }
-const [out, builtinRun, masksRun, layeredRun, markedRun, unmarkedRuns, picturedRun, spoiltRun, newerRun, tallRun] = await Promise.all([
-  exportTo("out", ["--template", join(dir, "page.clip")]),
-  exportTo("builtin", ["--builtin", "--work-name", "通しテスト", "--story-index", "1"]),
-  exportTo("masks", ["--builtin", "--panel-masks"]),
-  exportTo("layered", ["--builtin"], layeredName),
-  exportTo("marked", ["--builtin"], markedName),
-  unmarkedThenUpdated(),
-  exportTo("pictured", ["--builtin"], picturedName),
-  exportTo("spoilt", ["--builtin"], spoiltName),
-  exportTo("newer", ["--builtin"], newerName),
-  exportTo("tall", ["--builtin", "--work-name", "縦スクロール"], scrollName),
-]);
+const [out, builtinRun, masksRun, layeredRun, markedRun, unmarkedRuns, picturedRun, spoiltRun, newerRun, tallRun, drawn] =
+  await Promise.all([
+    exportTo("out", ["--template", join(dir, "page.clip")]),
+    exportTo("builtin", ["--builtin", "--work-name", "通しテスト", "--story-index", "1"]),
+    exportTo("masks", ["--builtin", "--panel-masks"]),
+    exportTo("layered", ["--builtin"], layeredName),
+    exportTo("marked", ["--builtin"], markedName),
+    unmarkedThenUpdated(),
+    exportTo("pictured", ["--builtin"], picturedName),
+    exportTo("spoilt", ["--builtin"], spoiltName),
+    exportTo("newer", ["--builtin"], newerName),
+    exportTo("tall", ["--builtin", "--work-name", "縦スクロール"], scrollName),
+    drawnThenReadBack(),
+  ]);
 console.log(`     all exports: ${((Date.now() - started) / 1000).toFixed(1)} s, ${parallel} at once`);
 
 checked("out", out);
@@ -298,4 +342,45 @@ check(
 check(!(builtin?.summary ?? []).some((line) => line.includes("知らない項目")), "builtin: a name of this version says nothing of the kind");
 const tall = checked("tall", tallRun, 1);
 check(tall?.textLayers === true && (tall?.checks?.[0]?.layers ?? 0) > 0, "tall: the joined page has its layers");
+checked("drawn", drawn.exported, 1);
+check(drawn.drawing === 0, `drawn: the page was drawn on as in CSP (${drawn.drawing})`);
+{
+  const [first, again] = drawn.back;
+  check(
+    first.run.status === 0 && first.report?.ok === true,
+    `readback: it reads back (${first.report?.summary?.join(" / ") ?? first.run.stderr})`,
+  );
+  const was = drawn.before.pages[0];
+  const now = first.name.pages[0];
+  const ids = now.strokes.map((s) => s.id);
+  check(!ids.includes("rough1"), "readback: the line deleted in CSP is gone");
+  const moved = now.strokes.find((s) => s.id === "rough2");
+  const shift = moved ? moved.points[0][0] - was.strokes[1].points[0][0] : 0;
+  check(
+    shift > 1 && Math.abs(moved.points[0][1] - was.strokes[1].points[0][1]) < 0.2,
+    `readback: the line moved in CSP moved right (${shift.toFixed(2)} mm)`,
+  );
+  check(ids.includes("rough3") && now.strokes.length === 3, `readback: the line drawn in CSP is a rough line (${ids.join(", ")})`);
+  check(now.panels.length === 3, `readback: the line across a panel cut it in two (${now.panels.length} panels)`);
+  const nudged = now.panels.filter((panel) => !was.panels.some((old) => JSON.stringify(old.shape) === JSON.stringify(panel.shape)));
+  check(nudged.length === 3, `readback: one panel moved, the other cut (${nudged.length} of ${now.panels.length} new shapes)`);
+  const pictures = (now.references ?? []).filter((r) => r.kind === "drawing");
+  check(
+    pictures.length === 1 && pictures[0].layer === "下描き",
+    `readback: the raster drawn in CSP is a CSP の絵 on 下描き (${JSON.stringify(pictures.map((r) => r.layer))})`,
+  );
+  const box = pictures[0]?.box ?? [0, 0, 0, 0];
+  const sizeMm = box[2] - box[0];
+  check(sizeMm > 1 && Math.abs(sizeMm - (box[3] - box[1])) < 0.2, `readback: the picture is the square drawn (${sizeMm.toFixed(2)} mm)`);
+  check(
+    again.run.status === 0 && again.report?.summary?.[0] === "CSP で変えたものはありませんでした",
+    `readback: reading back again takes nothing twice (${again.report?.summary?.[0]})`,
+  );
+  check(JSON.stringify(again.name) === JSON.stringify(first.name), "readback: the name is as the first read-back left it");
+  const written = checked("drawn-again", drawn.again, 1);
+  check(
+    (written?.checks?.[0]?.layers ?? 0) === (drawn.exported.report?.checks?.[0]?.layers ?? 0) + 1,
+    "drawn-again: the CSP の絵 is a layer of its own",
+  );
+}
 if (failures.length) process.exit(1);

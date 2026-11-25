@@ -18,7 +18,6 @@ import {
   ExportStopped,
   imagesNote,
   missingEditable,
-  readCspDialogue,
   ROUGH_LAYERS,
   updateCspDialogue,
 } from "../service/nameexport";
@@ -28,6 +27,8 @@ import { exportImages, imageFileNames, inFolder } from "../service/imageexport";
 import { IMAGE_DEFAULTS, fileStem, imageSummary, type ImageOptions } from "../domain/imageexport";
 import { MINI_DEFAULTS, type MiniFormat, type MiniOptions } from "../domain/mininame";
 import { applyTakeBack, planTakeBack, takeBackSummary } from "../domain/readback";
+import { adoptions, applyCspTakeBack, changeCount, cspTakeBackSummary, type Made } from "../domain/csptakeback";
+import { adoptCspPages, readCspBack } from "../service/csptakeback";
 import { ISSUE_LABELS, checkName, issueSummary } from "../domain/namecheck";
 import { tidyPanels } from "../domain/tidy";
 import { $, element } from "../platform/dom";
@@ -47,7 +48,7 @@ import {
 } from "../domain/csppage";
 import type { CspPage, CspStory, NombrePlace, Project, RoughImage, StoryPosition } from "../model/model";
 import { fontField } from "./fontpicker";
-import { chooseTakeBack } from "./readbackpick";
+import { chooseReadBack, type ReadBackPick } from "./readbackpick";
 import {
   againSummary,
   exportSummary,
@@ -477,7 +478,7 @@ export class ExportDialog {
   }
 
   /**
-   * CSP のセリフを読み戻す from a command: the dialog opens on CSP, with this
+   * CSP から読み戻す from a command: the dialog opens on CSP, with this
    * name's last export, and reads back from its folder.
    */
   async readBackAgain(): Promise<void> {
@@ -1376,7 +1377,11 @@ export class ExportDialog {
     }
   }
 
-  /** CSP のセリフを読み戻す: dialogue retyped, added or deleted in CSP since the export, into the name. */
+  /**
+   * CSP から読み戻す: what was changed in CSP since the export (dialogue
+   * retyped, added or deleted; lines drawn, changed or deleted; panels
+   * changed; pictures drawn on image layers), into the name.
+   */
   private async readBack(): Promise<void> {
     const project = this.host.project();
     if (!project || this.busy) return;
@@ -1400,7 +1405,7 @@ export class ExportDialog {
     try {
       this.busy = true;
       button.disabled = true;
-      const units = await readCspDialogue(
+      const { units, plan: csp } = await readCspBack(
         project,
         {
           template: request.template,
@@ -1414,28 +1419,33 @@ export class ExportDialog {
         (text) => this.message(text),
       );
       const plan = planTakeBack(project, units);
-      const summary = takeBackSummary(plan);
-      const changes = plan.retyped.length + plan.added.length + plan.removed.length;
+      const summary = [...takeBackSummary(plan), ...cspTakeBackSummary(csp)];
+      const changes = plan.retyped.length + plan.added.length + plan.removed.length + changeCount(csp);
       if (!changes) {
-        this.message(["CSP で直したセリフはありませんでした", ...summary].join("\n"));
+        this.message(["CSP で変えたものはありませんでした", ...summary].join("\n"));
         return;
       }
       // One change at a time: what is left unticked stays as the name has it.
-      const picked = await chooseTakeBack(plan, request.outDir);
+      const picked = await chooseReadBack(project, plan, csp, request.outDir);
       if (!picked) {
         this.message("読み戻しませんでした");
         return;
       }
-      this.host.edit((p) => applyTakeBack(p, picked));
-      // From now on these texts count as the name's: セリフだけ反映 leaves them as they are.
-      const recorded = await call("adopt_name_dialogue", { paths: plan.paths }).then(
+      let made: Made = new Map();
+      this.host.edit((p) => {
+        applyTakeBack(p, picked.dialogue);
+        made = applyCspTakeBack(p, picked.csp);
+      });
+      // From now on these count as the name's: セリフだけ反映 and the next reading leave them be.
+      const recorded = await Promise.all([call("adopt_name_dialogue", { paths: plan.paths }), adoptCspPages(adoptions(csp, made))]).then(
         () => null,
-        (error) =>
-          `ただし書き出し先に記録できませんでした（${explain(error).text}）。次のセリフだけ反映で、CSP のセリフが「（旧）」になることがあります`,
+        (error) => `ただし書き出し先に記録できませんでした（${explain(error).text}）。次に読み戻すと、同じものがまた出ることがあります`,
       );
-      const left = changes - picked.retyped.length - picked.added.length - picked.removed.length;
-      const done = `CSP のセリフを読み戻しました（直した ${picked.retyped.length}・足した ${picked.added.length}・消した ${picked.removed.length}${left ? `。ネームのままにしたもの ${left}` : ""}）。元に戻すは Ctrl+Z${recorded ? `。${recorded}` : ""}`;
-      this.message([done, ...summary.filter((line) => !/^CSP で(直した|足した|消した)/.test(line))].join("\n"));
+      const taken =
+        picked.dialogue.retyped.length + picked.dialogue.added.length + picked.dialogue.removed.length + changeCount(picked.csp);
+      const left = changes - taken;
+      const done = `CSP から ${taken} 件を読み戻しました（${readBackParts(picked)}${left ? `。ネームのままにしたもの ${left}` : ""}）。元に戻すは Ctrl+Z${recorded ? `。${recorded}` : ""}`;
+      this.message([done, ...summary.slice(1)].join("\n"));
       this.host.status(done);
     } catch (error) {
       this.message(failureText("読み戻せませんでした", error), true);
@@ -1444,4 +1454,17 @@ export class ExportDialog {
       button.disabled = false;
     }
   }
+}
+
+/** What was taken back, in a few words. */
+function readBackParts({ dialogue, csp }: ReadBackPick): string {
+  const parts: string[] = [];
+  const dialogueCount = dialogue.retyped.length + dialogue.added.length + dialogue.removed.length;
+  if (dialogueCount) parts.push(`セリフ ${dialogueCount}`);
+  const lines = csp.strokesAdded.length + csp.strokesChanged.length + csp.strokesRemoved.length;
+  if (lines) parts.push(`線 ${lines}`);
+  const panels = csp.panelsChanged.length + csp.panelsAdded.length + csp.panelSketches.length + csp.panelsRemoved.length;
+  if (panels) parts.push(`コマ ${panels}`);
+  if (csp.pictures.length) parts.push(`絵 ${csp.pictures.length}`);
+  return parts.join("・");
 }
