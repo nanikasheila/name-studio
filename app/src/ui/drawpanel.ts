@@ -63,6 +63,8 @@ import {
   requestSummary,
   type BackgroundTarget,
 } from "../domain/bgrequest";
+import { INSTRUCTION_FILE, requestInstruction } from "../domain/bginstruction";
+import { appVersion } from "./updater";
 import { BACKGROUND_DPI } from "../domain/background";
 import { DrawAssets } from "./drawassets";
 import { instructionSummary, instructionsView, tag as element } from "./drawinstructions";
@@ -1247,6 +1249,10 @@ export class DrawPanel {
         this.host.status("依頼と絵を背景のフォルダーに書いています…");
         const files: SessionFile[] = [
           { path: `${requestDir(stamp)}/${REQUEST_FILE}`, text: requestBrief(project, request, this.takes) },
+          {
+            path: `${requestDir(stamp)}/${INSTRUCTION_FILE}`,
+            text: `${JSON.stringify(requestInstruction(project, request, this.takes, { version: await appVersion(), createdAt: new Date().toISOString() }), null, 1)}\n`,
+          },
           ...(await requestPictures(project, stamp, job.targets, (rough) => this.host.rough(rough))),
         ];
         await call("bg_write", { folder, files });

@@ -13,6 +13,7 @@ import type { BoxMm, Page, Panel, Point, Project } from "../model/model";
 import {
   BACKGROUND_BLEED_MM,
   CAMERA_LABELS,
+  INSTRUCTION_FILE,
   MANIFEST_FILE,
   REQUEST_DIR,
   TAKES_DIR,
@@ -166,6 +167,7 @@ export function requestBrief(project: Project, request: BackgroundRequest, takes
     "",
     `- \`${dir}/<コマの id>.png\`: 描く範囲（下の「紙面の範囲」）そのままの絵。ラフ・セリフ＝黒、コマ枠＝青、背景の指示＝緑の破線（アイレベル）、赤・青・紫（X・Y・Z の線と、それぞれの消失点へ向かう細い線。X と Y はアイレベルの上の消失点 1・2、Z は縦の線が集まる消失点 3）と橙（物の範囲と名前）。`,
     `- \`${dir}/pNNN.png\`: そのコマのあるページ全体（前後の流れを見るため）。`,
+    `- \`${dir}/${INSTRUCTION_FILE}\`: この依頼を道具が読む形にしたもの（name-blockout の指示書 v1。座標は紙面の mm、カメラは下の「カメラ（計算済み）」と同じ値）。name-blockout があれば \`name-blockout blockout\` でこのファイルから箱のあたりを組み、数値で確かめられる。`,
     `- 座標は紙面の mm（用紙 ${mm(w)}×${mm(h)}mm の左上が原点、右が x、下が y）。`,
     "",
     "## おすすめの作り方（前にうまくいった手順）",

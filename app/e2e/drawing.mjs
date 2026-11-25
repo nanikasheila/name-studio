@@ -328,6 +328,17 @@ try {
       brief.includes("あたり（モック）"),
     "依頼.md names the 素材 of the panel and asks for a quick あたり",
   );
+  const instruction = JSON.parse(Object.entries(written).find(([path]) => path.endsWith("/指示.json"))?.[1]?.text ?? "{}");
+  const shot = instruction.shots?.find((one) => one.id === first.id);
+  check(
+    instruction.format === "name-blockout/instruction" &&
+      instruction.formatVersion === 1 &&
+      instruction.request?.note === "夜。線は細めに" &&
+      instruction.folders?.background === FOLDER &&
+      shot?.frame?.dpi > 0 &&
+      shot?.place?.asset === "団地の屋上",
+    "指示.json (name-blockout's instruction) goes with 依頼.md: the panel's picture, place and things as data",
+  );
   const [session] = await page.evaluate(() => window.__sessions);
   check(
     ["SYSTEM.md", "CLAUDE.md", "AGENTS.md"].every((path) => session.files.some((file) => file.path === path && file.text.includes(FOLDER))),
