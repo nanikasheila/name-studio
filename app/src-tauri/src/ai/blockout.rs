@@ -28,17 +28,26 @@ pub struct BlockoutFound {
     pub version: String,
 }
 
-/// Python on this computer: `python` (not the Microsoft Store's stand-in, which only opens the Store), else `py -3`.
+/// Python on this computer: `python`, `py -3`, `python3`; `python` from WindowsApps last, as it is either the
+/// Microsoft Store's Python or its stand-in (which, given arguments, only says Python is not installed and fails).
 fn pythons() -> Vec<(PathBuf, Vec<String>)> {
+    let python = find_program("python");
+    let store = python
+        .as_ref()
+        .filter(|path| path.to_string_lossy().contains("WindowsApps"))
+        .cloned();
     let mut out = Vec::new();
-    if let Some(python) = find_program("python").filter(|path| !path.to_string_lossy().contains("WindowsApps")) {
+    if let Some(python) = python.filter(|_| store.is_none()) {
         out.push((python, Vec::new()));
     }
     if let Some(py) = find_program("py") {
         out.push((py, vec!["-3".to_owned()]));
     }
-    if let Some(python3) = find_program("python3") {
+    if let Some(python3) = find_program("python3").filter(|path| !path.to_string_lossy().contains("WindowsApps")) {
         out.push((python3, Vec::new()));
+    }
+    if let Some(store) = store {
+        out.push((store, Vec::new()));
     }
     out
 }
