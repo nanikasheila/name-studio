@@ -62,16 +62,16 @@ export function cspLayerNames(project: Project): CspLayerNames {
 }
 
 /**
- * For pages written before lines were recorded: the lines of a CSP layer
- * as written, when the layer is as it was then. A layer of the name's own
- * (ラフ線, コマ枠) changed since is skipped: the name may have changed too,
- * and which change is whose cannot be told. Layers made in CSP: none (all
- * their lines were drawn there).
+ * A layer with no lines recorded: a layer made in CSP (none, all its lines
+ * were drawn there), or one of the name's own (ラフ線, コマ枠) on a page
+ * written before lines were recorded (an export records every one of them).
+ * That one is as written when it is as it was then; changed since, it is
+ * skipped, now and on every later read: the name may have changed too, and
+ * which change is whose cannot be told.
  */
 function unrecordedLines(names: CspLayerNames): Unrecorded {
   return (read: PageRead, layer: string) => {
     const record = read.content.record;
-    if (record.lines && Object.keys(record.lines).length) return null;
     const csp = read.content.vectors.find((vector) => vector.name === layer);
     const before = record.vectors?.[layer];
     if (csp && before && before === shapeSignature(csp.lines.map((line) => line.points)))

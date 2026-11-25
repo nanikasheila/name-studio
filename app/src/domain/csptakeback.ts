@@ -286,6 +286,14 @@ function overlapOf(a: readonly (readonly number[])[], b: readonly (readonly numb
   return w <= 0 || h <= 0 ? 0 : (Math.max(w, 1) * Math.max(h, 1)) / smaller;
 }
 
+/** Whether a line spans less of a panel's outline than its whole box (an edge of it, a piece). */
+function partOfOutline(shape: readonly (readonly number[])[] | null, line: readonly (readonly number[])[]): boolean {
+  if (!shape) return false;
+  const [sx0, sy0, sx1, sy1] = bounds(shape);
+  const [lx0, ly0, lx1, ly1] = bounds(line);
+  return lx1 - lx0 < (sx1 - sx0) * 0.8 || ly1 - ly0 < (sy1 - sy0) * 0.8;
+}
+
 /**
  * For a page written before lines were recorded: what to compare a layer
  * with (null: nothing, every line is new), or "skip" to leave the layer be.
@@ -399,7 +407,7 @@ export function planCspTakeBack(project: Project, reads: readonly PageRead[], na
           return;
         }
         // A panel drawn as several lines or as part of its outline (点線, 波線, 裁ち切り, 重なり) is not one shape to take.
-        if (isPanels && !layer.frames && (multi(entry) || (a !== undefined && !added[a].line?.closed))) {
+        if (isPanels && !layer.frames && (multi(entry) || (a !== undefined && partOfOutline(shapeOf(key!), added[a].points)))) {
           if (!noted.has(entry.key!))
             plan.notes.push(`${where(pages[0])}: 点線・波線・裁ち切りのコマの枠を CSP で変えたものは読み戻しません`);
           noted.add(entry.key!);
