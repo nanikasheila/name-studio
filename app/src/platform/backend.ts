@@ -46,6 +46,18 @@ export interface CspExportRequest extends NameExportRequest {
   notes?: boolean;
   /** 指示: each 指示のレイヤー as a 下描き image layer in its colour, over everything (on unless false). */
   marks?: boolean;
+  /** How the rough (each ラフ線のレイヤー and the name sheet's rough) is written; none: as always. */
+  rough?: RoughExport;
+}
+
+/** How the rough goes to CSP. */
+export interface RoughExport {
+  /** As image (raster) layers, not vector lines, also when the rest is editable. */
+  raster?: boolean;
+  /** The CSP layers' opacity (0..1), times each ラフ線のレイヤー's own; none: half on a 下描き layer, else full. */
+  opacity?: number;
+  /** CSP's レイヤーカラー (`#rrggbb`): the rough shown in it there; none: as drawn. */
+  color?: string;
 }
 
 /** Where new versions come from: 正式版 only, or 試験版 (every version CI let through) too. */

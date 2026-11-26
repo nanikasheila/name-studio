@@ -9,6 +9,7 @@ const memory = (timeMs: number, outDir = "C:/out"): ExportMemory => ({
   panels: "masks",
   editable: true,
   draftRough: false,
+  rough: { raster: true, opacity: 35, layerColor: true, color: "#3e8cec" },
   notes: true,
   marks: true,
   pdf: { area: "trim", dpi: 200 },
@@ -42,6 +43,15 @@ describe("export memory", () => {
       files: { pdf: "a.pdf" },
     });
     expect(read?.files.text).toBeUndefined();
+    // Kept before the rough's own settings: as it was written then (half on a 下描き layer, full without).
+    expect(read?.rough).toEqual({ raster: false, opacity: 50, layerColor: false, color: "#3e8cec" });
+    expect(memoryFrom({ timeMs: 1, draftRough: false })?.rough.opacity).toBe(100);
+    expect(memoryFrom({ timeMs: 1, rough: { opacity: 0, color: "blue", raster: 1 } })?.rough).toEqual({
+      raster: false,
+      opacity: 50,
+      layerColor: false,
+      color: "#3e8cec",
+    });
     // Kept before the ミニネーム: its defaults.
     expect(read?.mini).toEqual({ format: "png", area: "trim", dpi: 100, columns: 0, numbers: true, title: true });
     expect(
@@ -91,6 +101,7 @@ describe("what 書き出す will make", () => {
     panels: "lines" as const,
     editable: true,
     draftRough: true,
+    rough: { raster: false, opacity: 50, layerColor: false, color: "#3e8cec" },
     notes: false,
     marks: true,
     pdf: { area: "trim" as const, dpi: 200 },
@@ -110,6 +121,17 @@ describe("what 書き出す will make", () => {
       ),
     ).toBe("21 ページ・ひな形 page.clip・直せる線とセリフ・ラフは下描き・コマ枠の線 → ページだけを （書き出し先が未選択） に");
     expect(exportSummary(settings, { ...of, page: { ...of.page, preset: null } })).toContain("仕上がり 257×364 mm");
+  });
+
+  it("says how the rough goes when it differs from the usual", () => {
+    const rough = (more: Partial<typeof settings.rough>, draftRough = true, editable = true) =>
+      exportSummary({ ...settings, draftRough, editable, rough: { ...settings.rough, ...more } }, of);
+    expect(rough({})).toContain("・ラフは下描き・");
+    expect(rough({ raster: true, opacity: 30, layerColor: true })).toContain("・ラフは下描き（ラスター・不透明度 30%・レイヤーカラー）・");
+    // Not editable: everything is a picture anyway.
+    expect(rough({ raster: true }, true, false)).toContain("・ラフは下描き・");
+    expect(rough({ opacity: 100 }, false)).not.toContain("ラフ");
+    expect(rough({ opacity: 60 }, false)).toContain("・ラフ（不透明度 60%）・");
   });
 
   it("says the PDF's resolution and area, and the script", () => {

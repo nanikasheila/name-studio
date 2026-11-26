@@ -49,7 +49,7 @@ cargo build --release -p name-cli
 
 ```bash
 name-studio-app --export-csp ネーム.namestudio (--template page.clip | --builtin) --out 書き出し先 \
-  [--work-template 作品.cmc --work-name 第1話] [--story-index 1] [--donor 見本.clip] [--no-draft-rough] [--no-notes] [--no-marks] [--frame-folders | --panel-masks] [--update-dialogue] [--report 結果.json]
+  [--work-template 作品.cmc --work-name 第1話] [--story-index 1] [--donor 見本.clip] [--no-draft-rough] [--rough-raster] [--rough-opacity 1〜100] [--rough-color #rrggbb] [--no-notes] [--no-marks] [--frame-folders | --panel-masks] [--update-dialogue] [--report 結果.json]
 ```
 
 終了コード: 0 = 書き出して読み直しも問題なし、1 = 問題あり・失敗（理由は結果の JSON）、2 = 引数の誤り、3 = 結果の JSON を保存できなかった（ページは書き出してあることもある）。0 以外のときは理由を標準エラーにも出します。書き出し先の中を確かめられない（権限がない・フォルダーでない）ときは、何も書かずに 1 で終わります。

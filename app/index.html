@@ -253,7 +253,15 @@
           <details id="ne-more" class="ne-more">
             <summary>レイヤー・コマ・用紙とノンブル（詳しい設定）</summary>
           <label class="check"><input type="checkbox" id="ne-editable" checked /> 線をベクターレイヤー、セリフをテキストレイヤーにする（CSP で直せる）</label>
-          <label class="check"><input type="checkbox" id="ne-draft" checked /> ラフ線を下描きレイヤーにする（不透明度 50%。上にペン入れでき、塗りつぶしの参照と画像の書き出しに入らない）</label>
+          <label class="check"><input type="checkbox" id="ne-draft" checked /> ラフ線を下描きレイヤーにする（上にペン入れでき、塗りつぶしの参照と画像の書き出しに入らない）</label>
+          <div class="field csp-page ne-rough" id="ne-rough">
+            <label for="ne-rough-form">ラフ線</label>
+            <span class="mm-pair"><select id="ne-rough-form"><option value="vector">ベクターレイヤー（CSP で線を直せる）</option><option value="raster">ラスターレイヤー（画像にする）</option></select></span>
+            <label for="ne-rough-opacity">不透明度</label>
+            <span class="mm-pair"><input id="ne-rough-opacity" type="number" min="1" max="100" step="1" /> % <small>ラフ線のレイヤーごとの濃さを掛けます（ネーム用紙のラフも）</small></span>
+            <span>レイヤーカラー</span>
+            <span class="mm-pair"><label class="check"><input type="checkbox" id="ne-rough-color-on" /> 使う</label> <input id="ne-rough-color" type="color" value="#3e8cec" aria-label="レイヤーカラーの色" /> <small>CSP でラフをこの色で見せる（線の色そのものは変えない）</small></span>
+          </div>
           <label class="check"><input type="checkbox" id="ne-notes" checked /> コマのメモとページのメモを下描きレイヤー「メモ（ネーム）」に書く（ペン入れ中に見られ、印刷されない。付箋は書かない）</label>
           <label class="check"><input type="checkbox" id="ne-marks" checked /> 指示（指示ツールで描いたもの）を色ごとに下描きレイヤー「指示」でいちばん上に書く（ペン入れする人への指示書。印刷されない）</label>
           <div class="field">

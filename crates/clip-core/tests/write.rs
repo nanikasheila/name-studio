@@ -1321,18 +1321,21 @@ fn writes_rough_layers_hidden_and_fainter_as_set() {
                 opacity: 0.5,
                 hidden: true,
                 whole: false,
+                color: None,
             },
             LayerLook {
                 name: "効果".into(),
                 opacity: 0.25,
                 hidden: false,
                 whole: false,
+                color: Some([64, 128, 255]),
             },
             LayerLook {
                 name: "指示".into(),
                 opacity: 0.75,
                 hidden: false,
                 whole: true,
+                color: None,
             },
         ],
         frame_folders: false,
@@ -1359,6 +1362,22 @@ fn writes_rough_layers_hidden_and_fainter_as_set() {
     assert_eq!(look("効果"), (64, 1));
     // 指示: a 下描き layer at its own opacity, not halved.
     assert_eq!(look("指示"), (192, 1));
+    // レイヤーカラー: on, each channel's 8 bits in the top byte; the others keep theirs.
+    let color = |name: &str| {
+        let layer = written.root.children.iter().find(|layer| layer.name == name).unwrap();
+        let row = written.layer_row(layer.main_id).unwrap();
+        (
+            row.opt_int("DrawColorEnable").unwrap_or(0),
+            row.opt_int("DrawColorMainRed"),
+            row.opt_int("DrawColorMainBlue"),
+            row.opt_int("DrawColorSubGreen"),
+        )
+    };
+    assert_eq!(
+        color("効果"),
+        (1, Some(0x4040_4040), Some(0xFFFF_FFFF), Some(0xFFFF_FFFF))
+    );
+    assert_eq!(color("背景").0, 0);
 }
 
 #[test]

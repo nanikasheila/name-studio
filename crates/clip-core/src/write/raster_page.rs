@@ -345,6 +345,9 @@ pub struct LayerLook {
     /// The opacity as is, not times a 下描き layer's half: 指示 keep their colour.
     #[serde(default)]
     pub whole: bool,
+    /// CSP's レイヤーカラー (8-bit RGB): the layer shown in this colour; none: as drawn.
+    #[serde(default)]
+    pub color: Option<[u8; 3]>,
 }
 
 /// Give a written layer its look.
@@ -360,7 +363,61 @@ fn apply_look(file: &mut ClipFile, id: i64, look: &LayerLook) -> Result<()> {
         // Bit 0 shows the layer; the others (its mask in use) stay.
         file.set_layer_visible(id, false)?;
     }
+    if let Some(color) = look.color {
+        set_layer_color(file, id, color)?;
+    }
     Ok(())
+}
+
+/// The columns of CSP's レイヤーカラー: on, the main colour (the dark parts)
+/// and the sub colour (the light parts). CSP's own files with it on always
+/// have the sub colour's columns too.
+const LAYER_COLOR_COLUMNS: [&str; 7] = [
+    "DrawColorEnable",
+    "DrawColorMainRed",
+    "DrawColorMainGreen",
+    "DrawColorMainBlue",
+    "DrawColorSubRed",
+    "DrawColorSubGreen",
+    "DrawColorSubBlue",
+];
+
+/// Turn on CSP's レイヤーカラー for a layer: what is drawn on it is shown in
+/// `color` (as レイヤープロパティ > レイヤーカラー does; the pixels and lines keep theirs).
+pub(crate) fn set_layer_color(file: &mut ClipFile, id: i64, color: [u8; 3]) -> Result<()> {
+    // A template whose paper has no colour of its own may lack them.
+    for column in LAYER_COLOR_COLUMNS {
+        csp_format::database::add_column(file.database(), "Layer", column)?;
+    }
+    // Each channel a 32-bit value whose top byte is the 8-bit one (white: 0xFFFFFFFF).
+    let word = |value: u8| Value::Integer(i64::from(value) * 0x0101_0101);
+    // The sub colour white, as CSP sets it.
+    let values = [
+        Value::Integer(1),
+        word(color[0]),
+        word(color[1]),
+        word(color[2]),
+        word(255),
+        word(255),
+        word(255),
+    ];
+    Ok(file.set_layer_values(id, LAYER_COLOR_COLUMNS.into_iter().zip(values))?)
+}
+
+/// How a layer with レイヤーカラー looks (for the thumbnail): dark parts in
+/// `color`, light parts white, mixed by luminance; alpha is kept.
+pub(crate) fn tinted(image: &RgbaImage, color: [u8; 3]) -> RgbaImage {
+    let mut tinted = image.clone();
+    for pixel in tinted.pixels.as_chunks_mut::<4>().0 {
+        if pixel[3] == 0 {
+            continue;
+        }
+        let light = (299 * u32::from(pixel[0]) + 587 * u32::from(pixel[1]) + 114 * u32::from(pixel[2]) + 500) / 1000;
+        for channel in 0..3 {
+            pixel[channel] = ((u32::from(color[channel]) * (255 - light) + 255 * light + 127) / 255) as u8;
+        }
+    }
+    tinted
 }
 
 /// Make `file` able to hold the donor's layers (its tables, columns and
@@ -599,6 +656,14 @@ impl PageBuilder<'_> {
                 let id = raster_like(file, parent, &layer.name, like)?;
                 if !crate::raster::is_transparent(image) {
                     file.set_layer_pixels(id, &csp_image(image), (0, 0))?;
+                    // The thumbnail shows it as CSP will: in its レイヤーカラー.
+                    let color = self
+                        .looks
+                        .iter()
+                        .find(|look| look.name == layer.name)
+                        .and_then(|look| look.color);
+                    let tint = color.map(|color| tinted(image, color));
+                    let image = tint.as_ref().unwrap_or(image);
                     match mask {
                         Some(mask) => self.composite.draw_over(&masked(image, mask), 0, 0),
                         None => self.composite.draw_over(image, 0, 0),

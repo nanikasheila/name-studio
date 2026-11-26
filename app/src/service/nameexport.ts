@@ -4,6 +4,8 @@
 import {
   call,
   type CspExportRequest,
+  type LayerLook,
+  type RoughExport,
   type DialogueUpdateReport,
   type FileCheck,
   type SpreadLayout,
@@ -646,12 +648,42 @@ export function placeStacked(
   }));
 }
 
-/** How a kind of part goes to CSP: as vector lines, as text layers, as a picture, or not at all. */
-export function layerForm(kind: LayerKind, vector: boolean, text: boolean): "vector" | "text" | "raster" | "none" {
+/** How a kind of part goes to CSP: as vector lines, as text layers, as a picture, or not at all (`roughRaster`: the rough as pictures). */
+export function layerForm(kind: LayerKind, vector: boolean, text: boolean, roughRaster = false): "vector" | "text" | "raster" | "none" {
   // Image balloons carry their own paper.
   if (kind === "balloonFills" && !vector) return "none";
   if (kind === "text") return text ? "text" : "raster";
+  if (roughRaster && (kind === "strokes" || kind === "overStrokes")) return "raster";
   return vector && canBeVector(kind) ? "vector" : "raster";
+}
+
+/** How a colour of the rough looks under CSP's レイヤーカラー `color`: dark parts in it, light parts white, by luminance. */
+export function layerTint(ink: string, color: string): string {
+  const [r, g, b] = parseHex(ink) ?? [0, 0, 0];
+  const [cr, cg, cb] = parseHex(color) ?? [0, 0, 0];
+  const light = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  const mix = (main: number) => Math.round(main * (1 - light) + 255 * light);
+  return `#${[mix(cr), mix(cg), mix(cb)].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** The CSP looks of the rough's layers (`names`: each ラフ線のレイヤー's) as `rough` asks, with each layer's own opacity and hiding. */
+export function roughLooks(layers: readonly RoughLayer[], names: (layer: RoughLayer) => string[], rough: RoughExport = {}): LayerLook[] {
+  const color = rough.color ? parseHex(rough.color) : null;
+  const set = rough.opacity !== undefined;
+  const look = (name: string, opacity: number, hidden: boolean): LayerLook => ({
+    name,
+    // Set: the layer's opacity as is (a 下描き layer too); else times what it has (a 下描き layer's half).
+    opacity: set ? Math.min(1, Math.max(0.01, rough.opacity!)) * opacity : opacity,
+    hidden,
+    ...(set ? { whole: true } : {}),
+    ...(color ? { color } : {}),
+  });
+  const looks = layers
+    .filter((layer) => set || color || layer.hidden || opacityOfLayer(layer) < 1)
+    .flatMap((layer) => names(layer).map((name) => look(name, opacityOfLayer(layer), !!layer.hidden)));
+  // The name sheet's rough goes as the rough does.
+  if (set || color) looks.push(look(SHEET_ROUGH_NAME, 1, false));
+  return looks;
 }
 
 /** The CSP names of the ラフ線のレイヤー and 指示のレイヤー, apart from the page's other layers. */
@@ -747,15 +779,7 @@ export async function exportToCsp(
   const markName = (layer: RoughLayer) => roughNames.get(layer.id)!.under;
   if (markSet.length) request = { ...request, draftLayers: [...(request.draftLayers ?? []), ...markSet.map(markName)] };
   const looks = [
-    ...roughSet
-      .filter((layer) => layer.hidden || opacityOfLayer(layer) < 1)
-      .flatMap((layer) =>
-        [roughName(layer, "strokes"), roughName(layer, "overStrokes")].map((name) => ({
-          name,
-          opacity: opacityOfLayer(layer),
-          hidden: !!layer.hidden,
-        })),
-      ),
+    ...roughLooks(roughSet, (layer) => [roughName(layer, "strokes"), roughName(layer, "overStrokes")], request.rough),
     // 指示 keep their colour: a 下描き layer at its own opacity, not halved; a hidden 指示のレイヤー goes hidden.
     ...markSet.map((layer) => ({ name: markName(layer), opacity: opacityOfLayer(layer), hidden: !!layer.hidden, whole: true })),
   ];
@@ -763,6 +787,9 @@ export async function exportToCsp(
   // The name's binding, not the template's: a left-bound name may start from a right-bound work.
   request = { ...request, rightBinding: !project.scroll && project.binding === "right" };
   const start = await call("begin_name_export", { request });
+  const roughRaster = !!request.rough?.raster;
+  // CSP's レイヤーカラー on the rough: the thumbnail shows its lines so.
+  const roughTint = request.rough?.color;
   const vector = editable && start.vectorLayers;
   const text = editable && start.textLayers;
   // マスク付きフォルダー take the place of the コマ枠フォルダー.
@@ -830,7 +857,7 @@ export async function exportToCsp(
       for (const layer of pictureLayers) if (!drawings.has(layer.name)) await pictureLayer(layer);
       // One kind of part of `pages` as a layer named `name`: vector lines, or a picture (its PNG goes to `pngs`).
       const part = async (kind: LayerKind, pages: readonly PlacedPage[], name: string): Promise<LayerMeta> => {
-        if (layerForm(kind, vector, text) === "vector" && canBeVector(kind)) {
+        if (layerForm(kind, vector, text, roughRaster) === "vector" && canBeVector(kind)) {
           const lines = pages.flatMap(({ page, m, right }) => {
             const own = vectorLines(page, kind, m, project.brushes);
             return spread ? clipLines(own, spread.gutterPx, right) : own;
@@ -858,14 +885,28 @@ export async function exportToCsp(
       };
       for (const kind of LAYER_ORDER) {
         if (kind === "balloonFills") await drawingsHere();
-        const form = layerForm(kind, vector, text);
+        const form = layerForm(kind, vector, text, roughRaster);
         if (form === "none") continue;
         if (form !== "raster") {
           const toOverlay = overlay.width / pageWidth;
+          const tinted = roughTint && (kind === "strokes" || kind === "overStrokes");
           for (const { page, m, right } of placed) {
             // CSP draws these itself when the page is opened; the thumbnail does not (nor hidden rough layers, nor 指示).
             const shown = { ...page, strokes: withoutMarks(project, shownStrokes(project, page.strokes)) };
-            clipped(overlayCtx, toOverlay, right, () => drawPart(overlayCtx, shown, kind, scaled(m, toOverlay), project.brushes));
+            const at = scaled(m, toOverlay);
+            clipped(overlayCtx, toOverlay, right, () =>
+              tinted
+                ? drawStrokes(
+                    overlayCtx,
+                    shown,
+                    at,
+                    kind === "overStrokes",
+                    (stroke) => layerTint(roughInk(stroke), roughTint),
+                    1,
+                    project.brushes,
+                  )
+                : drawPart(overlayCtx, shown, kind, at, project.brushes),
+            );
           }
         }
         if (kind === "strokes" && masks) {

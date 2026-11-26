@@ -214,6 +214,11 @@ export async function runBatchExport(task: BatchExport | { error: string }, stat
           source,
           donors: [...(task.donors ?? []), project.source?.path, ...templates.donors].filter((path): path is string => !!path),
           draftLayers: task.draftRough === false ? [] : ROUGH_LAYERS,
+          rough: {
+            raster: task.roughRaster === true,
+            ...(task.roughOpacity != null ? { opacity: task.roughOpacity / 100 } : {}),
+            ...(task.roughColor ? { color: task.roughColor } : {}),
+          },
           frameFolders: task.frameFolders === true,
           panelMasks: task.panelMasks === true,
           notes: task.notes !== false,
