@@ -4,6 +4,8 @@
 // can help make a name from the file alone.
 import { copyFileSync, existsSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { applyOps, nameBrief, opsGuide, parseOps } from "../domain/assist";
+import { hasInstructions } from "../domain/background";
+import { requestInstruction } from "../domain/bginstruction";
 import type { Project } from "../model/model";
 import { ISSUE_LABELS, checkName } from "../domain/namecheck";
 import { newProject, normalize, type NameKind } from "../domain/project";
@@ -18,7 +20,11 @@ const USAGE = `使い方（node namestudio.mjs …）:
   apply  <ネーム.namestudio> <案.json | -> [--dry-run] [--out 別名.namestudio]
                                                          変更の案を当てて保存（前の中身は .bak に）
   new    <ネーム.namestudio> [--title 題] [--pages 24] [--kind right|left|scroll]
-                                                         新しいネームを作る`;
+                                                         新しいネームを作る
+  blockout <ネーム.namestudio> <指示.json> [--panels <コマのid,…>] [--dpi 600] [--folder 背景のフォルダー]
+           [--assets 素材のフォルダー] [--stamp 20261126-0900]
+                                                         背景の指示書（name-blockout の 指示.json）を、アプリの
+                                                         作画の欄と同じ形でコマの定規・物・見た目から書く`;
 
 class Usage extends Error {}
 
@@ -132,6 +138,39 @@ function run(argv: string[]): number {
       if (existsSync(path)) throw new Error(`${path} はもうあります`);
       save(path, newProject(title, pages, kind), null);
       say(`作りました: ${path}（${pages} ページ）`);
+      return 0;
+    }
+    case "blockout": {
+      const asked = (option(args, "--panels") ?? "").split(",").filter(Boolean);
+      const dpi = Number(option(args, "--dpi") ?? "600");
+      const folder = option(args, "--folder") ?? "";
+      const assets = option(args, "--assets");
+      const stamp = option(args, "--stamp") ?? "skill";
+      const [path, out] = args;
+      if (!path || !out) throw new Usage("ネームのファイルと、書く指示書の名前がいります");
+      if (!Number.isFinite(dpi) || dpi < 72 || dpi > 1200) throw new Usage("--dpi は 72〜1200");
+      const project = load(path);
+      // Without --panels: every panel with instructions for its background.
+      const panels = asked.length ? asked : project.pages.flatMap((page) => page.panels.filter(hasInstructions).map((panel) => panel.id));
+      if (panels.length === 0) throw new Usage("背景の指示のあるコマがありません（--panels で選べます）");
+      const instruction = requestInstruction(
+        project,
+        {
+          stamp,
+          targets: panels.map((panel) => ({ panel })),
+          note: "",
+          dpi,
+          folder,
+          blender: null,
+          ...(assets ? { assets: { folder: assets, list: [] } } : {}),
+        },
+        [],
+        { version: "skill" },
+      );
+      const shots = (instruction.shots as unknown[]).length;
+      if (shots < panels.length) throw new Error(`コマが見つからないか背景の指示がありません（${shots}/${panels.length} コマ）`);
+      writeFileSync(out, `${JSON.stringify(instruction, null, 2)}\n`, "utf8");
+      say(`指示書を書きました: ${out}（${shots} コマ）`);
       return 0;
     }
     default:
