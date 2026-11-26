@@ -240,18 +240,18 @@ function star(line) {
 			const a1 = a0 + TAU / teeth / 2;
 			const inner = (a) => radius(a, 0);
 			const outer = (a) => radius(a, 1);
-			samples.push(at(center, a0, inner(a0)), at(center, a0 + 1e-6, outer(a0)), at(center, a1, outer(a1)), at(center, a1 + 1e-6, inner(a1)));
+			samples.push(at$1(center, a0, inner(a0)), at$1(center, a0 + 1e-6, outer(a0)), at$1(center, a1, outer(a1)), at$1(center, a1 + 1e-6, inner(a1)));
 		}
 	} else {
 		const corners = angles.length - count;
-		samples = angles.map((angle, index) => at(center, angle, radius(angle, Math.max(index - corners, 0))));
+		samples = angles.map((angle, index) => at$1(center, angle, radius(angle, Math.max(index - corners, 0))));
 	}
 	return {
 		center,
 		samples: dedupeSamples(samples)
 	};
 }
-function at(center, angle, r) {
+function at$1(center, angle, r) {
 	return {
 		angle: wrap(angle),
 		point: [center[0] + Math.cos(angle) * r, center[1] + Math.sin(angle) * r]
@@ -3612,6 +3612,467 @@ function applyOps(project, ops) {
 		broken: broken.length > 0
 	};
 }
+/** The panel's number in reading order on its page (from 1). */
+function panelNumber(page, panel) {
+	return [...page.panels].sort((a, b) => a.order - b.order).indexOf(panel) + 1;
+}
+/** "p15 コマ7". */
+function panelLabel(project, page, panel) {
+	return `p${project.pages.indexOf(page) + 1} コマ${panelNumber(page, panel)}`;
+}
+/** The panel with `id` and its page. */
+function findPanel(project, id) {
+	for (const page of project.pages) {
+		const panel = page.panels.find((one) => one.id === id);
+		if (panel) return {
+			page,
+			panel
+		};
+	}
+	return null;
+}
+/** A background's instructions with nothing left out (empty when there are none). */
+function backgroundOf(panel) {
+	return panel.background ?? {};
+}
+/** Whether a panel has instructions for its background (words, camera, lines or things). */
+function hasInstructions(panel) {
+	const bg = panel.background;
+	return !!bg && (!!bg.brief?.trim() || !!bg.place?.trim() || !!bg.camera || !!bg.horizon || !!bg.vanishing?.length || !!bg.objects?.length || !!bg.far?.length || !!bg.look);
+}
+/** The eye level drawn from the panel's left to its right side (or as given when it stands upright). */
+function horizonAcross(panel, [a, b]) {
+	const [x0, , x1] = bounds(panel.shape);
+	const dx = b[0] - a[0];
+	if (Math.abs(dx) < 1e-6) return [a, b];
+	const slope = (b[1] - a[1]) / dx;
+	return [[x0, a[1] + (x0 - a[0]) * slope], [x1, a[1] + (x1 - a[0]) * slope]];
+}
+/** Where a panel's background is drawn: its bounds and the bleed, kept on the paper. */
+function backgroundBox(format, panel, bleed = 3) {
+	const [x0, y0, x1, y1] = bounds(panel.shape);
+	const [w, h] = format.canvasMm;
+	return [
+		Math.max(0, x0 - bleed),
+		Math.max(0, y0 - bleed),
+		Math.min(w, x1 + bleed),
+		Math.min(h, y1 + bleed)
+	].map(tenth);
+}
+var tenth = (v) => Math.round(v * 10) / 10;
+/** The pixels of `box` at `dpi`. */
+function boxPixels([x0, y0, x1, y1], dpi) {
+	return [Math.round((x1 - x0) * dpi / 25.4), Math.round((y1 - y0) * dpi / 25.4)];
+}
+/** The number the next take of a panel gets. */
+function nextTake(takes, panelId) {
+	return Math.max(0, ...takes.filter((take) => take.panel === panelId).map((take) => Number(take.take) || 0)) + 1;
+}
+// src/domain/bgruler.ts
+/** How many points a panel's ruler has (as many as are placed when not chosen). */
+function perspectiveOf(bg) {
+	const n = bg.perspective ?? bg.vanishing?.length ?? 0;
+	return Math.max(0, Math.min(3, Math.round(n)));
+}
+/** How many lines a ruler of `points` has. */
+var guideCount = (points) => points === 3 ? 4 : points;
+/** The point a line `k` sets (0, 1, then the third for both Z lines). */
+var pointOfGuide = (k) => Math.min(k, 2);
+/** The eye level as a frame: along it to the right (s), and across it downwards (t). */
+function frameOf([a, b]) {
+	let [dx, dy] = [b[0] - a[0], b[1] - a[1]];
+	const length = Math.hypot(dx, dy) || 1;
+	if (dx < 0) [dx, dy] = [-dx, -dy];
+	const u = [dx / length, dy / length];
+	return {
+		o: a,
+		u,
+		n: [-u[1], u[0]]
+	};
+}
+var along = (f, p) => (p[0] - f.o[0]) * f.u[0] + (p[1] - f.o[1]) * f.u[1];
+var off = (f, p) => (p[0] - f.o[0]) * f.n[0] + (p[1] - f.o[1]) * f.n[1];
+var at = (f, s, t) => [f.o[0] + s * f.u[0] + t * f.n[0], f.o[1] + s * f.u[1] + t * f.n[1]];
+var clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+var round = (p) => [Math.round(p[0] * 100) / 100, Math.round(p[1] * 100) / 100];
+function size(panel) {
+	const box = bounds(panel.shape);
+	const [x0, y0, x1, y1] = box;
+	return {
+		box,
+		w: x1 - x0,
+		h: y1 - y0,
+		centre: [(x0 + x1) / 2, (y0 + y1) / 2]
+	};
+}
+/** A level eye level across the panel at `y`. */
+function level(panel, y) {
+	const [x0, , x1] = bounds(panel.shape);
+	return [[x0, y], [x1, y]];
+}
+/** A line turned (about its end farther from `point`) to aim at `point`, its length kept (short of the point); one through it already stays. */
+function aim([a, b], point) {
+	const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
+	const span = Math.hypot(dx, dy);
+	if (span > 1e-6 && Math.abs((point[0] - a[0]) * dy - (point[1] - a[1]) * dx) / span < .02) return [a, b];
+	const da = Math.hypot(point[0] - a[0], point[1] - a[1]);
+	const db = Math.hypot(point[0] - b[0], point[1] - b[1]);
+	const [pivot, other] = da >= db ? [a, b] : [b, a];
+	const to = Math.max(da, db);
+	if (to < 1e-6) return [a, b];
+	const length = Math.min(Math.hypot(other[0] - pivot[0], other[1] - pivot[1]), .8 * to);
+	const end = [pivot[0] + (point[0] - pivot[0]) / to * length, pivot[1] + (point[1] - pivot[1]) / to * length];
+	return da >= db ? [round(pivot), round(end)] : [round(end), round(pivot)];
+}
+/** The third point kept between the first two (across the eye level) and off it, so a camera can be found. */
+function third(f, v1, v2, v3, h) {
+	const [s1, s2] = [along(f, v1), along(f, v2)].sort((a, b) => a - b);
+	const margin = .1 * (s2 - s1);
+	const s = s2 - s1 < 1e-6 ? s1 : clamp(along(f, v3), s1 + margin, s2 - margin);
+	const t0 = off(f, v3);
+	const least = .25 * h;
+	return at(f, s, Math.abs(t0) < least ? t0 < 0 ? -least : least : t0);
+}
+/** Lines in the panel aimed at each point, where none were drawn: on the roomier side of the eye level. */
+function defaultGuides(panel, horizon, vanishing) {
+	const { box, w, h, centre } = size(panel);
+	const [x0, y0, x1, y1] = box;
+	const f = frameOf(horizon);
+	const cs = along(f, centre);
+	const ch = off(f, centre);
+	const side = ch >= 0 ? 1 : -1;
+	const inside = (p) => [clamp(p[0], x0 + .05 * w, x1 - .05 * w), clamp(p[1], y0 + .05 * h, y1 - .05 * h)];
+	const lineTo = (anchor, point) => aim([anchor, [anchor[0] + .01, anchor[1]]], point);
+	const guides = [];
+	const spots = [-.25, .25];
+	vanishing.slice(0, 2).forEach((point, i) => {
+		const away = along(f, point) >= cs ? -1 : 1;
+		const anchor = inside(at(f, cs + away * .35 * w + spots[i] * .2 * w, side * Math.max((i ? .42 : .22) * h, Math.abs(ch) * .8)));
+		const line = lineTo(anchor, point);
+		guides.push(stretch(line, point, .3 * w));
+	});
+	if (vanishing[2]) for (const s of spots) {
+		const anchor = inside(at(f, cs + s * 1.4 * w, off(f, vanishing[2]) > 0 ? -.3 * h + ch : .3 * h + ch));
+		guides.push(stretch(lineTo(anchor, vanishing[2]), vanishing[2], .5 * h));
+	}
+	return guides;
+}
+/** A line from its anchor (the first end) `length` long towards `point` (short of it). */
+function stretch([a], point, length) {
+	const to = Math.hypot(point[0] - a[0], point[1] - a[1]) || 1;
+	const l = Math.min(length, .8 * to);
+	return [round(a), round([a[0] + (point[0] - a[0]) / to * l, a[1] + (point[1] - a[1]) / to * l])];
+}
+/** A panel's ruler, held together (the points on the eye level, the third between, lines for each). */
+function rulerOf(panel) {
+	const bg = backgroundOf(panel);
+	const points = perspectiveOf(bg);
+	const given = (bg.vanishing ?? []).slice(0, points);
+	const horizon = bg.horizon ?? (given[0] ? level(panel, given[0][1]) : void 0);
+	if (!horizon) return {
+		points,
+		vanishing: [],
+		guides: []
+	};
+	const f = frameOf(horizon);
+	const vanishing = given.map((p, i) => i < 2 ? at(f, along(f, p), 0) : p);
+	if (vanishing.length === 3) vanishing[2] = third(f, vanishing[0], vanishing[1], vanishing[2], size(panel).h);
+	const stored = bg.guides ?? [];
+	const guides = stored.length === guideCount(vanishing.length) ? stored.map((line, k) => aim(line, vanishing[pointOfGuide(k)])) : defaultGuides(panel, horizon, vanishing);
+	return {
+		points,
+		horizon,
+		vanishing: vanishing.map(round),
+		guides
+	};
+}
+/** The camera for a panel's 背景の指示 in a picture of `box` at `dpi` (none without an eye level). */
+function cameraFit(panel, box, dpi) {
+	const ruler = rulerOf(panel);
+	if (!ruler.horizon) return null;
+	const scale = dpi / 25.4;
+	const width = Math.round((box[2] - box[0]) * scale);
+	const height = Math.round((box[3] - box[1]) * scale);
+	const toPx = ([x, y]) => [(x - box[0]) * scale, (y - box[1]) * scale];
+	const [a, b] = horizonAcross(panel, ruler.horizon).map(toPx);
+	const slope = Math.abs(b[0] - a[0]) < 1e-6 ? 0 : (b[1] - a[1]) / (b[0] - a[0]);
+	const rowAt = (x) => a[1] + (x - a[0]) * slope;
+	const horizon = [rowAt(0), rowAt(width)];
+	const vanishing = ruler.vanishing.map(toPx);
+	const longer = Math.max(width, height);
+	const roll = Math.atan(slope);
+	const [cos, sin] = [Math.cos(roll), Math.sin(roll)];
+	const [cx, cy] = [width / 2, height / 2];
+	const s = ([x, y]) => (x - cx) * cos + (y - cy) * sin;
+	const t = ([x, y]) => -(x - cx) * sin + (y - cy) * cos;
+	const th = t(a);
+	const onLine = vanishing.slice(0, 2).map(s);
+	let ps = 0;
+	let pt = th;
+	let focalPx = 35 * longer / 36;
+	let fromPoints = false;
+	let tilt = 0;
+	if (vanishing.length >= 3) {
+		const [s1, s2] = onLine;
+		const [s3, t3] = [s(vanishing[2]), t(vanishing[2])];
+		ps = s3;
+		pt = th - (s3 - s1) * (s3 - s2) / (t3 - th);
+		const d = Math.abs(pt - th);
+		const e = Math.abs(t3 - pt);
+		if (d * e > 1) {
+			focalPx = Math.sqrt(d * e);
+			fromPoints = true;
+		}
+		tilt = (t3 > th ? 1 : -1) * Math.atan2(d, focalPx);
+	} else if (onLine.length === 2) {
+		const [u1, u2] = [...onLine].sort((p, q) => p - q);
+		ps = u1 < 0 && 0 < u2 ? 0 : (u1 + u2) / 2;
+		const product = (ps - u1) * (u2 - ps);
+		if (product > 1) {
+			focalPx = Math.sqrt(product);
+			fromPoints = true;
+		}
+	} else if (onLine.length === 1) ps = onLine[0];
+	const along = Math.cos(tilt);
+	const turns = vanishing.map((point, i) => i < 2 ? Math.atan2((s(point) - ps) * along, focalPx) * 180 / Math.PI : null);
+	const round = (v, places = 3) => Math.round(v * 10 ** places) / 10 ** places || 0;
+	return {
+		width,
+		height,
+		horizon: [round(horizon[0], 0), round(horizon[1], 0)],
+		vanishing: vanishing.map(([x, y]) => [round(x, 0), round(y, 0)]),
+		mode: vanishing.length >= 3 ? "tilt" : "level",
+		points: Math.min(3, vanishing.length),
+		focalPx: round(focalPx, 0),
+		lensMm: round(focalPx * 36 / longer, 1),
+		lensFromPoints: fromPoints,
+		shiftX: round(-(ps * cos - pt * sin) / longer),
+		shiftY: round((ps * sin + pt * cos) / longer),
+		tiltDeg: round(tilt * 180 / Math.PI, 1),
+		rollDeg: round(roll * 180 / Math.PI, 1),
+		turnsDeg: turns.map((turn) => turn === null ? null : round(turn, 1))
+	};
+}
+// src/domain/bglook.ts
+/** The ground's target among the materials (a floor indoors). */
+var GROUND = "ground";
+/** A room's walls and ceiling among the materials (indoors, name-blockout builds the room). */
+var WALLS = "walls";
+/** The materials that still name something: a 物 of the panel, or the ground. */
+function liveMaterials(bg) {
+	const ids = /* @__PURE__ */ new Set([
+		GROUND,
+		WALLS,
+		...(bg.objects ?? []).map((object) => object.id)
+	]);
+	return (bg.look?.materials ?? []).filter((one) => ids.has(one.target) && one.material.trim());
+}
+/** What 指示.json carries of it: the stage (develop when 作画まで) and the look in name-blockout's words. */
+function lookInstruction(panel) {
+	const bg = backgroundOf(panel);
+	const look = bg.look;
+	const materials = liveMaterials(bg).map((one) => ({
+		target: one.target,
+		material: one.material.trim()
+	}));
+	const out = {
+		...look?.timeOfDay ? { timeOfDay: look.timeOfDay } : {},
+		...look?.setting ? { setting: look.setting } : {},
+		...look?.weather ? { weather: look.weather } : {},
+		...look?.light ? { light: { key: look.light } } : {},
+		...materials.length ? { materials } : {}
+	};
+	return {
+		stage: look?.develop ? "develop" : "blockout",
+		...Object.keys(out).length ? { look: out } : {}
+	};
+}
+// src/domain/bgreview.ts
+/** The answers' values written into an instruction's shot, and the paths answered as requirement.answered. */
+function applyAnswers(shot, answers) {
+	if (!answers?.length) return;
+	for (const one of answers) {
+		if (one.value === void 0) continue;
+		let value;
+		try {
+			value = JSON.parse(one.value);
+		} catch {
+			continue;
+		}
+		setPath(shot, one.path, value);
+	}
+	shot.requirement = {
+		...shot.requirement ?? {},
+		answered: [...new Set(answers.map((one) => one.path))]
+	};
+}
+/** a.b.c, objects/<id or n>/field, far/<n>/field, look.materials/<target> (as name-blockout reads them). */
+function setPath(shot, path, value) {
+	const keys = path.split("/").flatMap((part, i) => i === 0 ? part.split(".") : [part]);
+	let node = shot;
+	for (const [i, key] of keys.slice(0, -1).entries()) {
+		if (Array.isArray(node)) {
+			const item = itemOf(node, key);
+			if (!item) return false;
+			node = item;
+			continue;
+		}
+		const at = node;
+		if (at[key] == null) {
+			if ([
+				"objects",
+				"figures",
+				"far"
+			].includes(key)) return false;
+			at[key] = key === "materials" && i === keys.length - 2 ? [] : {};
+		}
+		node = at[key];
+	}
+	const last = keys[keys.length - 1];
+	if (Array.isArray(node)) {
+		const item = itemOf(node, last);
+		if (item && "target" in item) {
+			item.material = value;
+			return true;
+		}
+		if (!item && node.every((one) => one && typeof one === "object" && "target" in one)) {
+			node.push({
+				target: last,
+				material: value
+			});
+			return true;
+		}
+		return false;
+	}
+	node[last] = value;
+	return true;
+}
+function itemOf(items, key) {
+	const objects = items.filter((one) => !!one && typeof one === "object");
+	return objects.find((one) => one.id === key) ?? objects.find((one) => one.target === key) ?? (/^\d+$/.test(key) ? objects[Number(key)] : void 0);
+}
+// src/domain/bginstruction.ts
+var INSTRUCTION_FORMAT = "name-blockout/instruction";
+var INSTRUCTION_SCHEMA = "https://raw.githubusercontent.com/nanikasheila/name-blockout/main/schema/v1/instruction.schema.json";
+var r3 = (v) => Math.round(v * 1e3) / 1e3;
+var pt = ([x, y]) => [r3(x), r3(y)];
+var one = (text) => text?.trim().replace(/\s*\n\s*/g, " / ") || void 0;
+/** The shot for one panel (none when the panel is gone). */
+function instructionShot(project, panelId, dpi, takes) {
+	const found = findPanel(project, panelId);
+	if (!found) return null;
+	const { page, panel } = found;
+	const bg = backgroundOf(panel);
+	const box = backgroundBox(project.pageFormat, panel);
+	const shot = {
+		id: panel.id,
+		label: panelLabel(project, page, panel),
+		page: project.pages.indexOf(page) + 1,
+		order: panelNumber(page, panel),
+		stage: lookInstruction(panel).stage,
+		frame: {
+			boxMm: box,
+			dpi,
+			sizePx: boxPixels(box, dpi),
+			shapeMm: panel.shape.map(pt),
+			...panel.openEdges?.length ? { openEdges: [...panel.openEdges] } : {}
+		}
+	};
+	const dialogue = page.lines.filter((line) => line.panel === panel.id && line.text.trim()).map((line) => `${project.characters.find((c) => c.id === line.speaker)?.name ?? ""}「${line.text.replace(/\s*\n\s*/g, "")}」`);
+	const intent = {
+		...bg.none ? { none: true } : {},
+		...one(bg.brief) ? { brief: one(bg.brief) } : {},
+		...bg.camera ? { camera: bg.camera } : {},
+		...one(panel.note) ? { memo: one(panel.note) } : {},
+		...dialogue.length ? { dialogue } : {},
+		...one(page.memo) ? { pageMemo: one(page.memo) } : {}
+	};
+	if (Object.keys(intent).length) shot.intent = intent;
+	const ruler = rulerOf(panel);
+	if (ruler.horizon) {
+		shot.ruler = {
+			points: ruler.vanishing.length,
+			horizonMm: horizonAcross(panel, ruler.horizon).map(pt),
+			...ruler.vanishing.length ? { vanishingMm: ruler.vanishing.map(pt) } : {},
+			...ruler.guides.length ? { guidesMm: ruler.guides.map((line) => line.map(pt)) } : {}
+		};
+		const fit = cameraFit(panel, box, dpi);
+		if (fit) shot.camera = { hint: {
+			mode: fit.mode,
+			points: fit.points,
+			lensMm: fit.lensMm,
+			focalPx: fit.focalPx,
+			lensFromPoints: fit.lensFromPoints,
+			shiftX: fit.shiftX,
+			shiftY: fit.shiftY,
+			tiltDeg: fit.tiltDeg,
+			rollDeg: fit.rollDeg,
+			turnsDeg: fit.turnsDeg
+		} };
+	}
+	if (bg.place?.trim()) shot.place = { asset: bg.place.trim() };
+	const objects = (bg.objects ?? []).map((object) => ({
+		id: object.id,
+		label: object.label,
+		shapeMm: boxShape(object.shape),
+		...object.asset?.trim() ? { asset: object.asset.trim() } : {}
+	}));
+	if (objects.length) shot.objects = objects;
+	const far = (bg.far ?? []).map((layer) => ({
+		kind: layer.kind,
+		...layer.kind === "panorama" && layer.asset?.trim() ? { asset: layer.asset.trim() } : {},
+		...layer.kind === "panorama" && layer.turnDeg ? { turnDeg: layer.turnDeg } : {},
+		...layer.kind !== "panorama" && layer.seed !== void 0 ? { seed: layer.seed } : {}
+	}));
+	if (far.length) shot.far = far;
+	const { look } = lookInstruction(panel);
+	if (look) shot.look = look;
+	applyAnswers(shot, bg.answers);
+	shot.output = { take: String(nextTake(takes, panel.id)) };
+	return shot;
+}
+/** 物の範囲 as name-studio keeps it: a box (its outline's bounds), four corners clockwise. */
+function boxShape(shape) {
+	const [x0, y0, x1, y1] = bounds(shape);
+	return [
+		pt([x0, y0]),
+		pt([x1, y0]),
+		pt([x1, y1]),
+		pt([x0, y1])
+	];
+}
+/** 指示.json for a request (as an object; JSON.stringify it to write). */
+function requestInstruction(project, request, takes, app) {
+	const shots = request.targets.flatMap((target) => {
+		const shot = instructionShot(project, target.panel, request.dpi, takes);
+		return shot ? [shot] : [];
+	});
+	return {
+		$schema: INSTRUCTION_SCHEMA,
+		format: INSTRUCTION_FORMAT,
+		formatVersion: 1,
+		createdBy: {
+			app: "name-studio",
+			...app?.version ? { version: app.version } : {}
+		},
+		request: {
+			id: request.stamp,
+			...app?.createdAt ? { createdAt: app.createdAt } : {},
+			...request.note.trim() ? { note: request.note.trim() } : {}
+		},
+		work: {
+			title: project.title,
+			paperMm: [...project.pageFormat.canvasMm],
+			binding: project.binding,
+			...project.backgrounds?.brief?.trim() ? { worldBrief: project.backgrounds.brief.trim() } : {}
+		},
+		folders: {
+			background: request.folder,
+			...request.assets ? { assets: request.assets.folder } : {}
+		},
+		shots
+	};
+}
 // src/domain/namecheck.ts
 var ISSUE_LABELS = {
 	overlap: "フキダシの重なり",
@@ -3697,7 +4158,11 @@ var USAGE = `使い方（node namestudio.mjs …）:
   apply  <ネーム.namestudio> <案.json | -> [--dry-run] [--out 別名.namestudio]
                                                          変更の案を当てて保存（前の中身は .bak に）
   new    <ネーム.namestudio> [--title 題] [--pages 24] [--kind right|left|scroll]
-                                                         新しいネームを作る`;
+                                                         新しいネームを作る
+  blockout <ネーム.namestudio> <指示.json> [--panels <コマのid,…>] [--dpi 600] [--folder 背景のフォルダー]
+           [--assets 素材のフォルダー] [--stamp 20261126-0900]
+                                                         背景の指示書（name-blockout の 指示.json）を、アプリの
+                                                         作画の欄と同じ形でコマの定規・物・見た目から書く`;
 var Usage = class extends Error {};
 function option(args, name) {
 	const at = args.indexOf(name);
@@ -3810,6 +4275,36 @@ function run(argv) {
 			if (existsSync(path)) throw new Error(`${path} はもうあります`);
 			save(path, newProject(title, pages, kind), null);
 			say(`作りました: ${path}（${pages} ページ）`);
+			return 0;
+		}
+		case "blockout": {
+			const asked = (option(args, "--panels") ?? "").split(",").filter(Boolean);
+			const dpi = Number(option(args, "--dpi") ?? "600");
+			const folder = option(args, "--folder") ?? "";
+			const assets = option(args, "--assets");
+			const stamp = option(args, "--stamp") ?? "skill";
+			const [path, out] = args;
+			if (!path || !out) throw new Usage("ネームのファイルと、書く指示書の名前がいります");
+			if (!Number.isFinite(dpi) || dpi < 72 || dpi > 1200) throw new Usage("--dpi は 72〜1200");
+			const project = load(path);
+			const panels = asked.length ? asked : project.pages.flatMap((page) => page.panels.filter(hasInstructions).map((panel) => panel.id));
+			if (panels.length === 0) throw new Usage("背景の指示のあるコマがありません（--panels で選べます）");
+			const instruction = requestInstruction(project, {
+				stamp,
+				targets: panels.map((panel) => ({ panel })),
+				note: "",
+				dpi,
+				folder,
+				blender: null,
+				...assets ? { assets: {
+					folder: assets,
+					list: []
+				} } : {}
+			}, [], { version: "skill" });
+			const shots = instruction.shots.length;
+			if (shots < panels.length) throw new Error(`コマが見つからないか背景の指示がありません（${shots}/${panels.length} コマ）`);
+			writeFileSync(out, `${JSON.stringify(instruction, null, 2)}\n`, "utf8");
+			say(`指示書を書きました: ${out}（${shots} コマ）`);
 			return 0;
 		}
 		default: throw new Usage(command ? `知らないコマンド ${command}` : "コマンドがありません");

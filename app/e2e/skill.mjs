@@ -39,4 +39,11 @@ const bad = spawnSync("node", [cli, "apply", name, "-"], {
 if (bad.status !== 1 || readFileSync(name, "utf8") !== before) fail(`a bad change was saved: ${bad.stdout}`);
 if (spawnSync("node", [cli, "nope"]).status !== 2) fail("usage");
 if (!ns("ops").includes("- addLine: ")) fail("ops");
+// The background's instruction for name-blockout, as the app writes it: the panel's ruler, things and look.
+const full = fileURLToPath(new URL("../../crates/name-model/tests/fixtures/full-project.json", import.meta.url));
+const instruction = join(dir, "指示.json");
+if (!ns("blockout", full, instruction, "--dpi", "300").includes("1 コマ")) fail("blockout");
+const shot = JSON.parse(readFileSync(instruction, "utf8")).shots[0];
+if (shot.id !== "page1-panel1" || !shot.ruler || shot.frame.dpi !== 300) fail(`blockout shot: ${JSON.stringify(shot).slice(0, 200)}`);
+if (spawnSync("node", [cli, "blockout", full, instruction, "--panels", "nope"]).status !== 1) fail("blockout: unknown panel");
 console.log("skill: ok");
