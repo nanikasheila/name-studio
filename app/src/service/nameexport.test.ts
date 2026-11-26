@@ -3,6 +3,8 @@ import {
   LAYER_ORDER,
   canBeVector,
   layerForm,
+  layerTint,
+  roughLooks,
   placeStacked,
   placeUnit,
   checkSummary,
@@ -473,6 +475,50 @@ describe("the layer plan of a page", () => {
     expect(forms(true, true)).toEqual(["raster", "vector", "raster", "vector", "vector", "raster", "vector", "text"]);
     expect(forms(false, false)).toEqual(["raster", "raster", "raster", "raster", "raster", "none", "raster", "raster"]);
     expect(forms(true, false)).toEqual(["raster", "vector", "raster", "vector", "vector", "raster", "vector", "raster"]);
+    // ラフ線 as pictures, the rest as it can be.
+    const raster = LAYER_ORDER.map((kind) => layerForm(kind, true, true, true));
+    expect(raster).toEqual(["raster", "raster", "raster", "vector", "raster", "raster", "vector", "text"]);
+  });
+});
+
+describe("the rough's CSP layers", () => {
+  const layers = [
+    { id: "a", name: "人物" },
+    { id: "b", name: "背景", opacity: 0.5 },
+    { id: "c", name: "効果", hidden: true },
+  ];
+  const names = (layer: { name: string }) => [layer.name, `${layer.name}（はみ出し）`];
+
+  it("as always without settings: only the fainter and hidden layers, times what CSP has", () => {
+    expect(roughLooks(layers, names)).toEqual([
+      { name: "背景", opacity: 0.5, hidden: false },
+      { name: "背景（はみ出し）", opacity: 0.5, hidden: false },
+      { name: "効果", opacity: 1, hidden: true },
+      { name: "効果（はみ出し）", opacity: 1, hidden: true },
+    ]);
+  });
+
+  it("sets every rough layer's opacity as is, times its own, and the レイヤーカラー, the name sheet's rough too", () => {
+    const looks = roughLooks(layers, names, { opacity: 0.4, color: "#3e8cec" });
+    const color = [62, 140, 236];
+    expect(looks.map((look) => [look.name, look.opacity, look.hidden])).toEqual([
+      ["人物", 0.4, false],
+      ["人物（はみ出し）", 0.4, false],
+      ["背景", 0.2, false],
+      ["背景（はみ出し）", 0.2, false],
+      ["効果", 0.4, true],
+      ["効果（はみ出し）", 0.4, true],
+      ["ラフ（ネーム用紙）", 0.4, false],
+    ]);
+    expect(looks.every((look) => look.whole && JSON.stringify(look.color) === JSON.stringify(color))).toBe(true);
+    // Only a colour: the opacity stays what CSP has (a 下描き layer's half).
+    expect(roughLooks([layers[0]], names, { color: "#3e8cec" })[0]).toEqual({ name: "人物", opacity: 1, hidden: false, color });
+  });
+
+  it("shows the rough in the レイヤーカラー as CSP does: black in it, white white, the rest between", () => {
+    expect(layerTint("#000000", "#3e8cec")).toBe("#3e8cec");
+    expect(layerTint("#ffffff", "#3e8cec")).toBe("#ffffff");
+    expect(layerTint("#808080", "#000000")).toBe("#808080");
   });
 });
 

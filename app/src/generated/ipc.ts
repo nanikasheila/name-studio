@@ -115,6 +115,12 @@ export interface BatchExport {
   donors: string[];
   /** The rough as 下描き layers at half opacity (`--no-draft-rough` turns it off). */
   draftRough: boolean;
+  /** The rough as image layers, not vector lines (`--rough-raster`). */
+  roughRaster: boolean;
+  /** The rough layers' opacity in CSP, in percent (`--rough-opacity`); none: half as a 下描き layer, else full. */
+  roughOpacity: number | null;
+  /** CSP's レイヤーカラー on the rough layers (`--rough-color #rrggbb`). */
+  roughColor: string | null;
   /** Panels as a コマ枠フォルダー copied from a donor (`--frame-folders`). */
   frameFolders: boolean;
   /** Each panel as a folder with a レイヤーマスク (`--panel-masks`). */
@@ -462,6 +468,8 @@ export interface LayerLook {
   hidden?: boolean;
   /** The opacity as is, not times a 下描き layer's half: 指示 keep their colour. */
   whole?: boolean;
+  /** CSP's レイヤーカラー (8-bit RGB): the layer shown in this colour; none: as drawn. */
+  color?: [number, number, number] | null;
 }
 
 export interface LayerView {

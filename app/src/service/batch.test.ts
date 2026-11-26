@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const calls: { command: string; args: Record<string, unknown> }[] = [];
 const exported: unknown[] = [];
-const options: { template: string; workTemplate: string | null; donors: string[] }[] = [];
+const options: { template: string; workTemplate: string | null; donors: string[]; rough?: unknown }[] = [];
 /** What Rust finds a newer version added to the name (none: an older Rust side that cannot tell). */
 let unknownFields: string[] | null = null;
 /** Something going wrong after the pages were checked (putting the report together). */
@@ -62,6 +62,9 @@ const task = (
   builtin: false,
   donors: [],
   draftRough: true,
+  roughRaster: false,
+  roughOpacity: null,
+  roughColor: null,
   frameFolders: false,
   panelMasks: false,
   notes: true,
@@ -243,5 +246,21 @@ describe("runBatchExport", () => {
     expect(options[0].workTemplate).toBe("/data/work.cmc");
     expect(options[0].donors).toContain("/data/parts.clip");
     expect(calls.at(-1)).toEqual({ command: "end_batch_export", args: { code: 0, message: null } });
+  });
+
+  it("writes the rough as --rough-raster, --rough-opacity and --rough-color say (none: as always)", async () => {
+    const asked = {
+      project: "a.namestudio",
+      template: "t.clip",
+      outDir: "out",
+      workTemplate: null,
+      workName: null,
+      storyIndex: null,
+      report: "r.json",
+    };
+    await runBatchExport(task(asked), () => undefined);
+    expect(options[0].rough).toEqual({ raster: false });
+    await runBatchExport(task({ ...asked, roughRaster: true, roughOpacity: 30, roughColor: "#3e8cec" }), () => undefined);
+    expect(options[1].rough).toEqual({ raster: true, opacity: 0.3, color: "#3e8cec" });
   });
 });

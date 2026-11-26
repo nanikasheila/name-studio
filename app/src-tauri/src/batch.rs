@@ -3,7 +3,7 @@
 //! ```text
 //! name-studio-app --export-csp <name.namestudio> (--template <page.clip> | --builtin) --out <folder>
 //!     [--work-template <work.cmc>] [--work-name <name>] [--story-index <n>] [--donor <sample.clip>]...
-//!     [--no-draft-rough] [--no-notes] [--no-marks] [--frame-folders] [--update-dialogue | --read-dialogue | --read-back]
+//!     [--no-draft-rough] [--rough-raster] [--rough-opacity <1..100>] [--rough-color <#rrggbb>] [--no-notes] [--no-marks] [--frame-folders] [--update-dialogue | --read-dialogue | --read-back]
 //!     [--report <file.json>]
 //! ```
 //!
@@ -47,6 +47,12 @@ pub struct BatchExport {
     pub donors: Vec<String>,
     /// The rough as 下描き layers at half opacity (`--no-draft-rough` turns it off).
     pub draft_rough: bool,
+    /// The rough as image layers, not vector lines (`--rough-raster`).
+    pub rough_raster: bool,
+    /// The rough layers' opacity in CSP, in percent (`--rough-opacity`); none: half as a 下描き layer, else full.
+    pub rough_opacity: Option<f64>,
+    /// CSP's レイヤーカラー on the rough layers (`--rough-color #rrggbb`).
+    pub rough_color: Option<String>,
     /// Panels as a コマ枠フォルダー copied from a donor (`--frame-folders`).
     pub frame_folders: bool,
     /// Each panel as a folder with a レイヤーマスク (`--panel-masks`).
@@ -77,6 +83,9 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
     let mut report = None;
     let mut donors = Vec::new();
     let mut draft_rough = true;
+    let mut rough_raster = false;
+    let mut rough_opacity = None;
+    let mut rough_color = None;
     let mut frame_folders = false;
     let mut panel_masks = false;
     let mut notes = true;
@@ -103,6 +112,25 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
             "--report" => report = Some(value()?),
             "--donor" => donors.push(value()?),
             "--no-draft-rough" => draft_rough = false,
+            "--rough-raster" => rough_raster = true,
+            "--rough-opacity" => {
+                let text = value()?;
+                rough_opacity = Some(
+                    text.trim_end_matches('%')
+                        .parse::<f64>()
+                        .ok()
+                        .filter(|percent| (1.0..=100.0).contains(percent))
+                        .ok_or(format!("--rough-opacity は 1〜100 の数にしてください: {text}"))?,
+                );
+            }
+            "--rough-color" => {
+                let text = value()?;
+                let hex = text.strip_prefix('#').unwrap_or(&text);
+                if hex.len() != 6 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+                    return Err(format!("--rough-color は #rrggbb の色にしてください: {text}"));
+                }
+                rough_color = Some(format!("#{}", hex.to_ascii_lowercase()));
+            }
             "--frame-folders" => frame_folders = true,
             "--panel-masks" => panel_masks = true,
             "--no-notes" => notes = false,
@@ -138,6 +166,9 @@ pub fn from_args(args: impl IntoIterator<Item = String>) -> Result<Option<BatchE
         story_index,
         donors,
         draft_rough,
+        rough_raster,
+        rough_opacity,
+        rough_color,
         frame_folders,
         panel_masks,
         notes,
@@ -245,6 +276,23 @@ mod tests {
         .unwrap()
         .unwrap();
         assert!(batch.read_dialogue && !batch.update_dialogue);
+    }
+
+    #[test]
+    fn reads_the_rough_options() {
+        let base = ["--export-csp", "a", "--builtin", "--out", "o"];
+        let batch = from_args(args(&base)).unwrap().unwrap();
+        assert!(!batch.rough_raster && batch.rough_opacity.is_none() && batch.rough_color.is_none());
+        let with = |more: &[&str]| from_args(args(&[&base[..], more].concat()));
+        let batch = with(&["--rough-raster", "--rough-opacity", "30%", "--rough-color", "3E8CEC"])
+            .unwrap()
+            .unwrap();
+        assert!(batch.rough_raster);
+        assert_eq!(batch.rough_opacity, Some(30.0));
+        assert_eq!(batch.rough_color.as_deref(), Some("#3e8cec"));
+        assert!(with(&["--rough-opacity", "0"]).unwrap_err().contains("1〜100"));
+        assert!(with(&["--rough-opacity", "150"]).is_err());
+        assert!(with(&["--rough-color", "blue"]).unwrap_err().contains("#rrggbb"));
     }
 
     #[test]

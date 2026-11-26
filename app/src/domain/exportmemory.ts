@@ -10,6 +10,31 @@ export type ExportKind = "csp" | "pdf" | "image" | "mini" | "text";
 export type TemplateMode = "builtin" | "file";
 export type PanelExport = "lines" | "masks" | "frames";
 
+/** How the rough (each ラフ線のレイヤー and the name sheet's rough) goes to the CSP pages. */
+export interface RoughOptions {
+  /** As image (raster) layers, not vector lines. */
+  raster: boolean;
+  /** The CSP layers' opacity in percent (1..100), times each ラフ線のレイヤー's own. */
+  opacity: number;
+  /** CSP's レイヤーカラー on, in `color`. */
+  layerColor: boolean;
+  /** The レイヤーカラー (`#rrggbb`), kept while it is off. */
+  color: string;
+}
+
+/** The colour CSP gives a layer when its レイヤーカラー is turned on (as found in CSP's own files). */
+export const CSP_LAYER_COLOR = "#3e8cec";
+
+/** The rough as it has always been written: vector lines, half opacity as a 下描き layer (else full), its own colours. */
+export function roughDefaults(draftRough: boolean): RoughOptions {
+  return { raster: false, opacity: draftRough ? 50 : 100, layerColor: false, color: CSP_LAYER_COLOR };
+}
+
+/** What the export takes of `rough` (the opacity 0..1, the colour only when on). */
+export function roughRequest(rough: RoughOptions): { raster: boolean; opacity: number; color?: string } {
+  return { raster: rough.raster, opacity: rough.opacity / 100, ...(rough.layerColor ? { color: rough.color } : {}) };
+}
+
 export interface ExportMemory {
   /** When it was written out (ms since 1970). */
   timeMs: number;
@@ -19,6 +44,8 @@ export interface ExportMemory {
   panels: PanelExport;
   editable: boolean;
   draftRough: boolean;
+  /** The rough's layers: raster or vector, opacity, レイヤーカラー. */
+  rough: RoughOptions;
   notes: boolean;
   /** 指示 into the CSP pages (下描き layers) and onto the PDF. */
   marks: boolean;
@@ -38,6 +65,10 @@ const oneOf = <T extends string>(value: unknown, allowed: readonly T[], fallback
   allowed.includes(value as T) ? (value as T) : fallback;
 const text = (value: unknown): string => (typeof value === "string" ? value : "");
 const flag = (value: unknown, fallback: boolean): boolean => (typeof value === "boolean" ? value : fallback);
+const percent = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value) && value >= 1 && value <= 100 ? Math.round(value) : null;
+const hexColor = (value: unknown): string | null =>
+  typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? value.toLowerCase() : null;
 
 /** A kept memory, read leniently (what cannot be read takes the dialog's default); null if it is not one. */
 export function memoryFrom(value: unknown): ExportMemory | null {
@@ -48,7 +79,11 @@ export function memoryFrom(value: unknown): ExportMemory | null {
   const mini = (typeof v.mini === "object" && v.mini !== null ? v.mini : {}) as Record<string, unknown>;
   const image = (typeof v.image === "object" && v.image !== null ? v.image : {}) as Record<string, unknown>;
   const files = (typeof v.files === "object" && v.files !== null ? v.files : {}) as Record<string, unknown>;
+  const rough = (typeof v.rough === "object" && v.rough !== null ? v.rough : {}) as Record<string, unknown>;
   if (!Number.isFinite(v.timeMs)) return null;
+  const draftRough = flag(v.draftRough, true);
+  // Kept before these were chosen: as it was written then.
+  const roughBefore = roughDefaults(draftRough);
   return {
     timeMs: v.timeMs as number,
     kind: oneOf(v.kind, ["csp", "pdf", "image", "mini", "text"], "csp"),
@@ -64,7 +99,13 @@ export function memoryFrom(value: unknown): ExportMemory | null {
     mode: oneOf(v.mode, ["builtin", "file"], "builtin"),
     panels: oneOf(v.panels, ["lines", "masks", "frames"], "lines"),
     editable: flag(v.editable, true),
-    draftRough: flag(v.draftRough, true),
+    draftRough,
+    rough: {
+      raster: flag(rough.raster, roughBefore.raster),
+      opacity: percent(rough.opacity) ?? roughBefore.opacity,
+      layerColor: flag(rough.layerColor, roughBefore.layerColor),
+      color: hexColor(rough.color) ?? roughBefore.color,
+    },
     notes: flag(v.notes, true),
     marks: flag(v.marks, true),
     pdf: {
@@ -161,11 +202,23 @@ export function exportSummary(settings: Omit<ExportMemory, "timeMs" | "files">, 
       : `ひな形 ${settings.form.template ? fileName(settings.form.template) : "未選択"}`,
     builtin ? `${of.page!.resolution} dpi` : null,
     settings.editable ? "直せる線とセリフ" : "画像の線とセリフ",
-    settings.draftRough ? "ラフは下描き" : null,
+    roughSummary(settings.draftRough, settings.rough, settings.editable),
     PANELS_SHORT[settings.panels],
     settings.notes ? "メモ付き" : null,
     of.marks && settings.marks ? "指示付き" : null,
   ].filter((part): part is string => !!part);
   const work = settings.form.makeWork ? `作品「${settings.form.workName || "（名前なし）"}」とページ` : "ページだけ";
   return `${parts.join("・")} → ${work}を ${settings.form.outDir || "（書き出し先が未選択）"} に`;
+}
+
+/** The rough in the line of what 書き出す makes: 下描き, and what differs from how it has always gone. */
+export function roughSummary(draftRough: boolean, rough: RoughOptions, editable: boolean): string | null {
+  const usual = roughDefaults(draftRough);
+  const more = [
+    rough.raster && editable ? "ラスター" : null,
+    rough.opacity !== usual.opacity ? `不透明度 ${rough.opacity}%` : null,
+    rough.layerColor ? "レイヤーカラー" : null,
+  ].filter((part): part is string => !!part);
+  if (!draftRough && !more.length) return null;
+  return `${draftRough ? "ラフは下描き" : "ラフ"}${more.length ? `（${more.join("・")}）` : ""}`;
 }

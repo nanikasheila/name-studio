@@ -49,9 +49,11 @@ import {
 import type { CspPage, CspStory, NombrePlace, Project, RoughImage, StoryPosition } from "../model/model";
 import { fontField } from "./fontpicker";
 import { chooseReadBack, type ReadBackPick } from "./readbackpick";
+import { RoughFields } from "./roughexportfields";
 import {
   againSummary,
   exportSummary,
+  roughRequest,
   type ExportKind,
   type ExportMemory,
   type PanelExport,
@@ -316,8 +318,10 @@ export class ExportDialog {
     storyIndex: "",
   };
   private editable = true;
-  /** The rough written as 下描き layers at half opacity, to ink over. */
+  /** The rough written as 下描き layers, to ink over. */
   private draftRough = true;
+  /** The rough's layers: raster or vector, opacity, レイヤーカラー. */
+  private readonly rough = new RoughFields(() => this.showSummary());
   /** How panels go to CSP: border lines only, a folder with a layer mask each, or a コマ枠フォルダー. */
   private panels: PanelExport = readPanels();
   /** The name's memos as a 下描き layer, to see while inking. */
@@ -358,10 +362,12 @@ export class ExportDialog {
     });
     $<HTMLInputElement>("ne-editable").addEventListener("change", (event) => {
       this.editable = (event.target as HTMLInputElement).checked;
+      this.rough.editableChanged(this.editable);
       this.showSummary();
     });
     $<HTMLInputElement>("ne-draft").addEventListener("change", (event) => {
       this.draftRough = (event.target as HTMLInputElement).checked;
+      this.rough.draftChanged(this.draftRough);
       this.showSummary();
     });
     for (const id of ["ne-notes", "ne-image-notes"]) {
@@ -497,6 +503,7 @@ export class ExportDialog {
     this.panels = memory.panels;
     this.editable = memory.editable;
     this.draftRough = memory.draftRough;
+    this.rough.value = memory.rough;
     this.notes = memory.notes;
     this.marks = memory.marks;
     $<HTMLSelectElement>("ne-pdf-area").value = memory.pdf.area;
@@ -533,6 +540,7 @@ export class ExportDialog {
       panels: this.panels,
       editable: this.editable,
       draftRough: this.draftRough,
+      rough: this.rough.value,
       notes: this.notes,
       marks: this.marks,
       pdf: { area: $<HTMLSelectElement>("ne-pdf-area").value as "trim" | "canvas", dpi: Number($<HTMLSelectElement>("ne-pdf-dpi").value) },
@@ -687,6 +695,8 @@ export class ExportDialog {
     $("ne-clear-donor").hidden = !this.donor;
     $<HTMLInputElement>("ne-editable").checked = this.editable;
     $<HTMLInputElement>("ne-draft").checked = this.draftRough;
+    this.rough.show();
+    this.rough.editableChanged(this.editable);
     $<HTMLSelectElement>("ne-panels").value = this.panels;
     $("ne-panels-hint").textContent = PANEL_HINTS[this.panels];
     $<HTMLInputElement>("ne-notes").checked = this.notes;
@@ -1147,6 +1157,7 @@ export class ExportDialog {
             source: this.exportSource(),
             donors: [this.donor, written.source?.path, ...templates.donors].filter((path): path is string => !!path),
             draftLayers: this.draftRough ? ROUGH_LAYERS : [],
+            rough: roughRequest(this.rough.value),
             frameFolders: this.panels === "frames",
             panelMasks: this.panels === "masks",
             notes: this.notes,
